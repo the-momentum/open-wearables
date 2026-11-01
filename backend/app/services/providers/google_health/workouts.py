@@ -15,11 +15,13 @@ from app.constants.workout_types import get_unified_google_workout_type
 from app.database import DbSession
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.services.event_record_service import event_record_service
+from app.services.providers.google_health.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    extract_form_factor,
     extract_source,
     parse_duration_seconds,
     parse_interval,
@@ -110,18 +112,20 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
         if start is None or end is None:
             raise ValueError("Exercise interval missing startTime/endTime")
         source_name, device_model = extract_source(raw_workout.get("dataSource"))
+        device_type = extract_form_factor(raw_workout.get("dataSource"))
 
         duration_seconds = int((end - start).total_seconds()) if start and end else None
         zone_offset = zone_offset_from(interval.get("startUtcOffset"))
 
         record = EventRecordCreate(
             id=workout_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=get_unified_google_workout_type(exercise.get("exerciseType", "")).value,
             provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
             device_model=device_model,
+            device_type=device_type,
             external_id=raw_workout.get("name"),
             start_datetime=start,
             end_datetime=end,
@@ -138,6 +142,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
             record_id=workout_id,
             moving_time_seconds=as_int(parse_duration_seconds(exercise.get("activeDuration"))),
             energy_burned=read_number(metrics, "caloriesKcal"),
+            energy_series=WORKOUT_ENERGY_SERIES,
             distance=read_number(metrics, "distanceMillimeters", scale=_MM_TO_M),
             steps_count=as_int(read_number(metrics, "steps")),
             average_speed=read_number(metrics, "averageSpeedMillimetersPerSecond", scale=_MM_TO_M),

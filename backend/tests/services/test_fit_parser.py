@@ -145,8 +145,8 @@ class TestSegments:
 
 class TestInvalidInput:
     def test_empty_bytes_returns_no_samples(self) -> None:
-        assert parse_fit_file(b"", uuid4(), uuid4()).samples == []
+        assert parse_fit_file(b"", str(uuid4()), str(uuid4())).samples == []
 
     def test_garbage_bytes_raises(self) -> None:
         with pytest.raises(fitdecode.FitError):
-            parse_fit_file(b"not a fit file at all", uuid4(), uuid4())
+            parse_fit_file(b"not a fit file at all", str(uuid4()), str(uuid4()))

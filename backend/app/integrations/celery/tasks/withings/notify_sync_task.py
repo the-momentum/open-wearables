@@ -15,6 +15,7 @@ from logging import getLogger
 
 from celery import Task, shared_task
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.withings.webhook_service import WithingsWebhookService
@@ -24,6 +25,7 @@ logger = getLogger(__name__)
 
 
 @shared_task(
+    name=CeleryTask.WITHINGS_SYNC_USER_SUBSCRIPTIONS,
     bind=True,
     acks_late=True,
     reject_on_worker_lost=True,

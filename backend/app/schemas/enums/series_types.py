@@ -12,7 +12,12 @@ IMPORTANT: Never change existing IDs - only add new ones. IDs are persisted in t
 from enum import Enum
 
 # TEMPORARY until 1.0: retired name -> current name. Delete with SeriesType._missing_ below.
-RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {"energy": "active_energy"}
+RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {
+    "energy": "active_energy",
+    "walking_heart_rate_average": "walking_heart_rate",
+    # A workout's average MET is that workout's physical_effort average, kept per workout as a session value.
+    "average_met": "physical_effort",
+}
 
 
 class SeriesType(str, Enum):
@@ -25,7 +30,7 @@ class SeriesType(str, Enum):
     resting_heart_rate = "resting_heart_rate"
     heart_rate_variability_sdnn = "heart_rate_variability_sdnn"
     heart_rate_recovery_one_minute = "heart_rate_recovery_one_minute"
-    walking_heart_rate_average = "walking_heart_rate_average"
+    walking_heart_rate = "walking_heart_rate"
     heart_rate_variability_rmssd = "heart_rate_variability_rmssd"
 
     # =========================================================================
@@ -84,8 +89,8 @@ class SeriesType(str, Enum):
     exercise_time = "exercise_time"
     physical_effort = "physical_effort"
     flights_climbed = "flights_climbed"
-    average_met = "average_met"
     active_time = "active_time"  # Provider-reported daily active time (non-sedentary)
+    total_energy = "total_energy"  # Provider-reported total energy (active + basal), no split available
 
     # =========================================================================
     # ACTIVITY - Distance (IDs 100-119)
@@ -130,6 +135,8 @@ class SeriesType(str, Enum):
     cadence = "cadence"
     power = "power"
     speed = "speed"
+    distance = "distance"
+    elevation_gain = "elevation_gain"
 
     # Generic Activity Metrics
     workout_effort_score = "workout_effort_score"
@@ -167,6 +174,52 @@ class SeriesType(str, Enum):
     withings_metabolic_age = "withings_metabolic_age"
 
     # =========================================================================
+    # NUTRITION - Dietary intake (IDs 260-301)
+    # =========================================================================
+    dietary_energy_consumed = "dietary_energy_consumed"
+    dietary_carbohydrates = "dietary_carbohydrates"
+    dietary_fiber = "dietary_fiber"
+    dietary_sugar = "dietary_sugar"
+    dietary_fat_total = "dietary_fat_total"
+    dietary_fat_saturated = "dietary_fat_saturated"
+    dietary_fat_monounsaturated = "dietary_fat_monounsaturated"
+    dietary_fat_polyunsaturated = "dietary_fat_polyunsaturated"
+    dietary_cholesterol = "dietary_cholesterol"
+    dietary_protein = "dietary_protein"
+    dietary_sodium = "dietary_sodium"
+    dietary_potassium = "dietary_potassium"
+    dietary_calcium = "dietary_calcium"
+    dietary_iron = "dietary_iron"
+    dietary_magnesium = "dietary_magnesium"
+    dietary_phosphorus = "dietary_phosphorus"
+    dietary_zinc = "dietary_zinc"
+    dietary_copper = "dietary_copper"
+    dietary_manganese = "dietary_manganese"
+    dietary_selenium = "dietary_selenium"
+    dietary_chromium = "dietary_chromium"
+    dietary_molybdenum = "dietary_molybdenum"
+    dietary_iodine = "dietary_iodine"
+    dietary_chloride = "dietary_chloride"
+    dietary_vitamin_a = "dietary_vitamin_a"
+    dietary_vitamin_b6 = "dietary_vitamin_b6"
+    dietary_vitamin_b12 = "dietary_vitamin_b12"
+    dietary_vitamin_c = "dietary_vitamin_c"
+    dietary_vitamin_d = "dietary_vitamin_d"
+    dietary_vitamin_e = "dietary_vitamin_e"
+    dietary_vitamin_k = "dietary_vitamin_k"
+    dietary_thiamin = "dietary_thiamin"
+    dietary_riboflavin = "dietary_riboflavin"
+    dietary_niacin = "dietary_niacin"
+    dietary_folate = "dietary_folate"
+    dietary_pantothenic_acid = "dietary_pantothenic_acid"
+    dietary_biotin = "dietary_biotin"
+    dietary_caffeine = "dietary_caffeine"
+    dietary_fat_trans = "dietary_fat_trans"
+    dietary_energy_from_fat = "dietary_energy_from_fat"
+    dietary_fat_unsaturated = "dietary_fat_unsaturated"
+    dietary_folic_acid = "dietary_folic_acid"
+
+    # =========================================================================
     # OTHER (IDs 500-)
     # =========================================================================
 
@@ -200,7 +253,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (2, SeriesType.resting_heart_rate, "bpm"),
     (3, SeriesType.heart_rate_variability_sdnn, "ms"),
     (4, SeriesType.heart_rate_recovery_one_minute, "bpm"),
-    (5, SeriesType.walking_heart_rate_average, "bpm"),
+    (5, SeriesType.walking_heart_rate, "bpm"),
     (7, SeriesType.heart_rate_variability_rmssd, "ms"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Blood & Respiratory (IDs 20-39)
@@ -248,10 +301,11 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (82, SeriesType.basal_energy, "kcal"),
     (83, SeriesType.stand_time, "minutes"),
     (84, SeriesType.exercise_time, "minutes"),
-    (85, SeriesType.physical_effort, "score"),
+    (85, SeriesType.physical_effort, "met"),
     (86, SeriesType.flights_climbed, "count"),
-    (87, SeriesType.average_met, "met"),
+    # 87 was average_met, merged into physical_effort; never reuse it.
     (88, SeriesType.active_time, "minutes"),
+    (89, SeriesType.total_energy, "kcal"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Distance (IDs 100-119)
     # -------------------------------------------------------------------------
@@ -293,6 +347,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (182, SeriesType.speed, "m_per_s"),
     (183, SeriesType.workout_effort_score, "score"),
     (184, SeriesType.estimated_workout_effort_score, "score"),
+    (185, SeriesType.distance, "meters"),
+    (186, SeriesType.elevation_gain, "meters"),
     # -------------------------------------------------------------------------
     # ENVIRONMENTAL (IDs 200-219)
     # -------------------------------------------------------------------------
@@ -322,6 +378,51 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (240, SeriesType.withings_pulse_wave_velocity, "m_per_s"),
     (241, SeriesType.withings_metabolic_age, "years"),
     # -------------------------------------------------------------------------
+    # NUTRITION - Dietary intake (IDs 260-301)
+    # -------------------------------------------------------------------------
+    (260, SeriesType.dietary_energy_consumed, "kcal"),
+    (261, SeriesType.dietary_carbohydrates, "g"),
+    (262, SeriesType.dietary_fiber, "g"),
+    (263, SeriesType.dietary_sugar, "g"),
+    (264, SeriesType.dietary_fat_total, "g"),
+    (265, SeriesType.dietary_fat_saturated, "g"),
+    (266, SeriesType.dietary_fat_monounsaturated, "g"),
+    (267, SeriesType.dietary_fat_polyunsaturated, "g"),
+    (268, SeriesType.dietary_cholesterol, "mg"),
+    (269, SeriesType.dietary_protein, "g"),
+    (270, SeriesType.dietary_sodium, "mg"),
+    (271, SeriesType.dietary_potassium, "mg"),
+    (272, SeriesType.dietary_calcium, "mg"),
+    (273, SeriesType.dietary_iron, "mg"),
+    (274, SeriesType.dietary_magnesium, "mg"),
+    (275, SeriesType.dietary_phosphorus, "mg"),
+    (276, SeriesType.dietary_zinc, "mg"),
+    (277, SeriesType.dietary_copper, "mg"),
+    (278, SeriesType.dietary_manganese, "mg"),
+    (279, SeriesType.dietary_selenium, "mcg"),
+    (280, SeriesType.dietary_chromium, "mcg"),
+    (281, SeriesType.dietary_molybdenum, "mcg"),
+    (282, SeriesType.dietary_iodine, "mcg"),
+    (283, SeriesType.dietary_chloride, "mg"),
+    (284, SeriesType.dietary_vitamin_a, "mcg"),
+    (285, SeriesType.dietary_vitamin_b6, "mg"),
+    (286, SeriesType.dietary_vitamin_b12, "mcg"),
+    (287, SeriesType.dietary_vitamin_c, "mg"),
+    (288, SeriesType.dietary_vitamin_d, "mcg"),
+    (289, SeriesType.dietary_vitamin_e, "mg"),
+    (290, SeriesType.dietary_vitamin_k, "mcg"),
+    (291, SeriesType.dietary_thiamin, "mg"),
+    (292, SeriesType.dietary_riboflavin, "mg"),
+    (293, SeriesType.dietary_niacin, "mg"),
+    (294, SeriesType.dietary_folate, "mcg"),
+    (295, SeriesType.dietary_pantothenic_acid, "mg"),
+    (296, SeriesType.dietary_biotin, "mcg"),
+    (297, SeriesType.dietary_caffeine, "mg"),
+    (298, SeriesType.dietary_fat_trans, "g"),
+    (299, SeriesType.dietary_energy_from_fat, "kcal"),
+    (300, SeriesType.dietary_fat_unsaturated, "g"),
+    (301, SeriesType.dietary_folic_acid, "mcg"),
+    # -------------------------------------------------------------------------
     # OTHER (IDs 500-)
     # -------------------------------------------------------------------------
     (500, SeriesType.electrodermal_activity, "count"),
@@ -342,11 +443,16 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
 SERIES_TYPE_ID_BY_ENUM: dict[SeriesType, int] = {enum: type_id for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}
 SERIES_TYPE_ENUM_BY_ID: dict[int, SeriesType] = {type_id: enum for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}
 SERIES_TYPE_UNIT_BY_ENUM: dict[SeriesType, str] = {enum: unit for _, enum, unit in SERIES_TYPE_DEFINITIONS}
+# A retired id reads as the series it merged into: the startup merge moves its rows once, but a pod on the
+# previous release keeps writing the old id until the rollout ends, and a read must not fail on those rows.
+RETIRED_SERIES_TYPE_IDS: dict[int, SeriesType] = {87: SeriesType.physical_effort}
 
 # Optional human-readable descriptions surfaced in the coverage matrix (tooltips).
 # Only series types that need a meaningful clarification have an entry here;
 SERIES_TYPE_DESCRIPTION_BY_ENUM: dict[SeriesType, str] = {
     SeriesType.garmin_body_battery: "Intraday body battery readings (0-100), one sample per measurement",
+    SeriesType.distance: "Distance of a whole workout, whatever its type; per-sport distance samples have own types",
+    SeriesType.elevation_gain: "Total ascent of a whole workout; elevation holds the altitude itself",
 }
 
 
@@ -361,8 +467,8 @@ def get_series_type_id(series_type: SeriesType) -> int:
 
 
 def get_series_type_from_id(series_type_id: int) -> SeriesType:
-    """Get the series type enum from a database ID."""
-    return SERIES_TYPE_ENUM_BY_ID[series_type_id]
+    """Get the series type enum from a database ID; a retired id gives the series it merged into."""
+    return SERIES_TYPE_ENUM_BY_ID.get(series_type_id) or RETIRED_SERIES_TYPE_IDS[series_type_id]
 
 
 def get_series_type_unit(series_type: SeriesType) -> str:
@@ -387,6 +493,7 @@ _CATEGORY_RANGES: list[tuple[range, str]] = [
     (range(180, 200), "Activity - Generic"),
     (range(200, 220), "Environmental"),
     (range(220, 250), "Provider-Specific"),  # 220-239 Garmin, 240-249 Withings
+    (range(260, 302), "Nutrition"),
     (range(500, 600), "Other"),
 ]
 

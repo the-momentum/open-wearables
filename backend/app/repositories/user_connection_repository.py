@@ -3,7 +3,7 @@ from logging import getLogger
 from typing import cast
 from uuid import uuid4
 
-from sqlalchemy import CursorResult, and_, func, select, tuple_, update
+from sqlalchemy import CursorResult, and_, func, or_, select, tuple_, update
 from sqlalchemy.orm import Query
 from sqlalchemy.orm.exc import MultipleResultsFound
 
@@ -257,6 +257,8 @@ class UserConnectionRepository(
         )
         result: dict[tuple[str, str], list[str]] = {}
         for provider, provider_user_id, linked_user_id in rows:
+            if provider_user_id is None:
+                continue
             result.setdefault((provider, provider_user_id), []).append(linked_user_id)
         return result
 
@@ -295,7 +297,12 @@ class UserConnectionRepository(
         )
 
     def disconnect(self, db_session: DbSession, user_id: str, provider: str) -> int:
-        """Disconnect a provider in a single UPDATE query. Returns number of rows updated."""
+        """Revoke a provider connection and clear its tokens.
+
+        Returns the number of connections that went from non-revoked to revoked. Tokens are
+        cleared even on an already revoked connection, e.g. one revoked by a failed token
+        refresh during provider deregistration.
+        """
         result = cast(
             CursorResult[tuple[()]],
             db_session.execute(
@@ -315,6 +322,17 @@ class UserConnectionRepository(
                     updated_at=datetime.now(timezone.utc),
                 ),
             ),
+        )
+        db_session.execute(
+            update(UserConnection)
+            .where(
+                and_(
+                    UserConnection.user_id == user_id,
+                    UserConnection.provider == provider,
+                    or_(UserConnection.access_token.is_not(None), UserConnection.refresh_token.is_not(None)),
+                ),
+            )
+            .values(access_token=None, refresh_token=None, token_expires_at=None),
         )
         db_session.commit()
         return result.rowcount
@@ -430,15 +448,12 @@ class UserConnectionRepository(
             .all()
         )
 
-    def get_all_active_users(self, db_session: DbSession) -> list[str]:
-        """Get all unique user IDs that have active connections."""
-        return [
-            row.user_id
-            for row in db_session.query(self.model.user_id)
-            .filter(self.model.status == ConnectionStatus.ACTIVE)
-            .distinct()
-            .all()
-        ]
+    def get_all_active_users(self, db_session: DbSession, providers: list[str] | None = None) -> list[str]:
+        """Unique user IDs with an active connection, optionally only to one of ``providers``."""
+        query = db_session.query(self.model.user_id).filter(self.model.status == ConnectionStatus.ACTIVE)
+        if providers is not None:
+            query = query.filter(self.model.provider.in_(providers))
+        return [row.user_id for row in query.distinct().all()]
 
     def ensure_sdk_connection(
         self,

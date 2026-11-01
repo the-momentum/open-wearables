@@ -16,6 +16,7 @@ class PersonalRecord(BaseDbModel):
     user_id: Mapped[Unique[FKUser]]
 
     birth_date: Mapped[date | None]
+    # Biological sex: True = male, False = female, None = unknown.
     sex: Mapped[bool | None]
     gender: Mapped[str_32 | None]
 

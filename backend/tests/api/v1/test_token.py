@@ -6,13 +6,17 @@ Tests cover:
 - DELETE /api/v1/token/refresh - revoke refresh token
 """
 
+import pytest
 from jose import jwt
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
 from app.config import settings
+from app.models import RefreshToken
+from app.schemas.auth import SDKTokenOrigin
 from app.services import refresh_token_service
 from tests.factories import ApplicationFactory, DeveloperFactory, UserFactory
+from tests.utils import developer_auth_headers
 
 
 class TestRefreshToken:
@@ -22,8 +26,10 @@ class TestRefreshToken:
         """Valid SDK refresh token should return new access token and rotated refresh token."""
         # Arrange
         user = UserFactory()
-        app_id = "test_app_123"
-        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, app_id)
+        application = ApplicationFactory(developer=DeveloperFactory())
+        refresh_token = refresh_token_service.create_sdk_refresh_token(
+            db, user.id, SDKTokenOrigin.APPLICATION, application_id=application.id
+        )
 
         # Act
         response = client.post(
@@ -47,7 +53,57 @@ class TestRefreshToken:
         )
         assert payload["sub"] == str(user.id)
         assert payload["scope"] == "sdk"
-        assert payload["app_id"] == app_id
+        assert payload["app_id"] == application.app_id
+
+    @pytest.mark.parametrize("origin", [SDKTokenOrigin.ADMIN, SDKTokenOrigin.INVITE])
+    def test_refresh_developer_issued_sdk_token_keeps_app_id_claim(
+        self, client: TestClient, db: Session, api_v1_prefix: str, origin: SDKTokenOrigin
+    ) -> None:
+        """Refreshing an admin/invite SDK token should keep the "{origin}:{developer_id}" app_id claim."""
+        # Arrange
+        user = UserFactory()
+        developer = DeveloperFactory()
+        refresh_token = refresh_token_service.create_sdk_refresh_token(
+            db, user.id, origin, issued_by_developer_id=developer.id
+        )
+
+        # Act
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": refresh_token})
+
+        # Assert
+        assert response.status_code == 200
+        payload = jwt.decode(
+            response.json()["access_token"],
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            options={"verify_exp": False},
+        )
+        assert payload["app_id"] == f"{origin}:{developer.id}"
+        rotated = db.get(RefreshToken, response.json()["refresh_token"])
+        assert rotated.origin == origin
+        assert rotated.issued_by_developer_id == developer.id
+
+    def test_refresh_sdk_token_of_deleted_application_fails(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Deleting an application should cut off the refresh tokens it issued."""
+        # Arrange
+        developer = DeveloperFactory()
+        application = ApplicationFactory(developer=developer)
+        refresh_token = refresh_token_service.create_sdk_refresh_token(
+            db, UserFactory().id, SDKTokenOrigin.APPLICATION, application_id=application.id
+        )
+        delete_response = client.delete(
+            f"{api_v1_prefix}/applications/{application.app_id}",
+            headers=developer_auth_headers(developer.id),
+        )
+        assert delete_response.status_code == 204
+
+        # Act
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": refresh_token})
+
+        # Assert
+        assert response.status_code == 401
 
     def test_refresh_developer_token_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Valid developer refresh token should return new access token and rotated refresh token."""
@@ -95,7 +151,7 @@ class TestRefreshToken:
         """Revoked refresh token should return 401."""
         # Arrange
         user = UserFactory()
-        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, "test_app")
+        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, SDKTokenOrigin.ADMIN)
         refresh_token_service.revoke_token(db, refresh_token)
 
         # Act
@@ -125,7 +181,7 @@ class TestRefreshToken:
         """Old refresh token should be invalid after rotation."""
         # Arrange
         user = UserFactory()
-        old_refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, "test_app")
+        old_refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, SDKTokenOrigin.ADMIN)
 
         # Act - refresh once to rotate
         response = client.post(
@@ -157,7 +213,7 @@ class TestRevokeRefreshToken:
         """Valid refresh token should be revoked successfully."""
         # Arrange
         user = UserFactory()
-        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, "test_app")
+        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, SDKTokenOrigin.ADMIN)
 
         # Act
         response = client.post(
@@ -190,7 +246,7 @@ class TestRevokeRefreshToken:
         """Already revoked token should return 404."""
         # Arrange
         user = UserFactory()
-        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, "test_app")
+        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user.id, SDKTokenOrigin.ADMIN)
         refresh_token_service.revoke_token(db, refresh_token)
 
         # Act
@@ -257,8 +313,6 @@ class TestSDKTokenReturnsRefreshToken:
     def test_admin_sdk_token_returns_refresh_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Admin-generated SDK token should return refresh token."""
         # Arrange
-        from tests.utils import developer_auth_headers
-
         developer = DeveloperFactory()
         user = UserFactory()  # Create user
         headers = developer_auth_headers(developer.id)

@@ -1,12 +1,15 @@
 import json
 import time
+from collections import Counter
+from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable, TypedDict
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import sentry_sdk
+from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
 from app.constants.entry_source import get_unified_sdk_entry_source
@@ -16,15 +19,19 @@ from app.constants.series_types.sdk import (
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
+from app.constants.series_types.sdk.workout_statistics import WORKOUT_ENERGY_SERIES, WORKOUT_STATISTIC_STAT
+from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SERIES
 from app.constants.workout_types import get_unified_sdk_workout_type
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import SeriesType, daily_total_flag
+from app.schemas.enums import DeviceType, EventCategory, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
+    MealDetailCreate,
+    SessionValue,
     StepSampleCreate,
     TimeSeriesSampleCreate,
 )
@@ -43,17 +50,57 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import window_seconds
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
-from .device_resolution import extract_device_info
+from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from .sleep_service import handle_sleep_data
 
 # Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
 # in mg/dL round-trip with a ~0.1% offset under this factor.
 MMOL_L_TO_MG_DL = Decimal("18.0182")
 
+# Energy series stored in kcal.
+_KCAL_SERIES = frozenset({SeriesType.dietary_energy_consumed, SeriesType.dietary_energy_from_fat})
+
+MEAL_CORRELATION_TYPES = frozenset({"HKCorrelationTypeIdentifierFood", "FOOD"})
+
+MEAL_NUTRIENT_SERIES_TYPES = frozenset(
+    {st for st in SeriesType if st.value.startswith("dietary_")} | {SeriesType.hydration}
+)
+
+# First iOS SDK release that sends every `HKUnit.percent()` value on a 0-100 scale.
+# Older builds scale only SpO2 and send the series below as a 0-1 fraction,
+# which the backend scales x100.
+APPLE_SDK_PERCENT_SCALE_MIN_VERSION = Version("0.17.0")
+
+_FRACTION_PERCENT_SERIES = frozenset(
+    {
+        SeriesType.body_fat_percentage,
+        SeriesType.walking_double_support_percentage,
+        SeriesType.walking_asymmetry_percentage,
+        SeriesType.walking_steadiness,
+    }
+)
+
 _SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
+
+
+def _sends_fraction_percentages(provider: str | None, sdk_version: str | None) -> bool:
+    """Whether percentage values from this SDK arrive as a 0-1 fraction.
+
+    Only iOS SDK builds older than `APPLE_SDK_PERCENT_SCALE_MIN_VERSION` do. A missing or
+    unparseable version is treated as an old build. Pre-releases of the min version count
+    as new, since they are cut after the change.
+    """
+    if provider != "apple":
+        return False
+    try:
+        version = Version(sdk_version or "")
+    except InvalidVersion:
+        return True
+    return version.release < APPLE_SDK_PERCENT_SCALE_MIN_VERSION.release
 
 
 class InvalidRecord(TypedDict):
@@ -68,12 +115,14 @@ class InvalidRecord(TypedDict):
 
 class LoadDataResult(TypedDict):
     workouts_saved: int
+    meals_saved: int  # meal correlations inserted
     records_saved: int  # samples submitted
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
     types: list[str]  # series types written
     sleep_saved: int
     dropped: list[InvalidRecord]
+    unsupported_types: dict[str, int]  # record types with no series mapping, skipped
     validation_ms: float
 
 
@@ -152,6 +201,8 @@ class ImportService:
             external_id = wjson.id if wjson.id else None
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
+            device_type = extract_device_type(wjson.source)
+            device_id, source_app_id, device_manufacturer = extract_device_ids(wjson.source)
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.values,
@@ -162,6 +213,11 @@ class ImportService:
                 wjson.zoneOffset,
                 provider,
                 original_source_name,
+                device_type,
+                device_id,
+                source_app_id,
+                device_manufacturer,
+                workout_id,
             )
 
             if duration is None:
@@ -171,7 +227,7 @@ class ImportService:
             type = get_unified_sdk_workout_type(workout_type).value if workout_type else None
 
             record = EventRecordCreate(
-                category="workout",
+                category=EventCategory.WORKOUT,
                 type=type,
                 source_name=original_source_name or "unknown",
                 device_model=device_model,
@@ -183,6 +239,10 @@ class ImportService:
                 external_id=external_id,
                 source=original_source_name,
                 software_version=software_version,
+                device_type=device_type,
+                device_id=device_id,
+                source_app_id=source_app_id,
+                device_manufacturer=device_manufacturer,
                 provider=provider,
                 user_id=user_id,
             )
@@ -198,49 +258,104 @@ class ImportService:
 
             yield record, detail, time_series_samples
 
-    def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
+    def _build_meal_bundles(
+        self,
+        correlation_records: list[MetricRecord],
+        nutrient_records: dict[str, list[MetricRecord]],
+        provider: str,
+        user_id: str,
+    ) -> Generator[tuple[EventRecordCreate, MealDetailCreate]]:
+        """Build meal (EventRecordCreate, MealDetailCreate) pairs from food correlations and their nutrient records."""
+
+        for rjson in correlation_records:
+            if not rjson.id:
+                continue
+
+            meal_id = uuid4()
+            metadata = rjson.metadata if isinstance(rjson.metadata, dict) else {}
+            device_model, software_version, original_source_name = extract_device_info(rjson.source)
+
+            record = EventRecordCreate(
+                category=EventCategory.MEAL,
+                type=rjson.type,
+                source_name=original_source_name or "unknown",
+                device_model=device_model,
+                start_datetime=rjson.startDate,
+                end_datetime=rjson.endDate,
+                zone_offset=rjson.zoneOffset,
+                id=meal_id,
+                external_id=rjson.id,
+                source=original_source_name,
+                software_version=software_version,
+                provider=provider,
+                user_id=user_id,
+            )
+            nutrients: dict[SeriesType, float] = {}
+            for sample in self._build_statistic_bundles(nutrient_records.get(rjson.id, []), provider, user_id):
+                nutrients[sample.series_type] = nutrients.get(sample.series_type, 0.0) + float(sample.value)
+            detail = MealDetailCreate(
+                record_id=meal_id,
+                title=metadata.get("title"),
+                meal_type=metadata.get("mealType"),
+                nutrients=nutrients,
+            )
+
+            yield record, detail
+
+    def _normalize_unit(
+        self,
+        series_type: SeriesType,
+        value: Decimal,
+        provider: str | None = None,
+        sdk_version: str | None = None,
+    ) -> Decimal:
         match series_type:
             # meters → cm
             case SeriesType.height | SeriesType.walking_step_length:
                 return value * 100
-            # 0-1 fraction → percent (body_fat only for Apple; Health Connect already reports percent)
-            case SeriesType.body_fat_percentage if provider == "apple":
-                return value * 100
-            # HealthKit walking metrics returned as 0-1 fraction, DB stores percent
-            # apple-only metrics, so no need to check if provider is apple
-            case (
-                SeriesType.walking_double_support_percentage
-                | SeriesType.walking_asymmetry_percentage
-                | SeriesType.walking_steadiness
-            ):
+            # 0-1 fraction → percent (older iOS SDKs only; Health Connect and newer iOS SDKs send percent)
+            case _ if series_type in _FRACTION_PERCENT_SERIES and _sends_fraction_percentages(provider, sdk_version):
                 return value * 100
             case _:
                 return value
 
     def _build_statistic_bundles(
         self,
-        request: SDKSyncRequest,
+        records: list[MetricRecord],
+        provider: str,
         user_id: str,
+        sdk_version: str | None = None,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
-        provider = request.provider
 
-        for rjson in request.data.records:
-            value = Decimal(str(rjson.value))
 
+        for rjson in records:
             record_type = rjson.type or ""
+            value = Decimal(str(rjson.value))
+            unit = (rjson.unit or "").strip().lower()
+
             series_type = get_series_type_from_metric_type(record_type)
 
             if not series_type:
                 continue
-            value = self._normalize_unit(series_type, value, provider)
+            value = self._normalize_unit(series_type, value, provider, sdk_version)
 
             # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
-            if series_type == SeriesType.blood_glucose and (rjson.unit or "").lower().startswith("mmol"):
+            if series_type == SeriesType.blood_glucose and unit.startswith("mmol"):
                 value = value * MMOL_L_TO_MG_DL
+
+            # Convert hydration units to mL
+            if series_type == SeriesType.hydration and unit in ("l", "liter", "liters", "litre", "litres"):
+                value *= 1000
+
+            # Energy is stored in kcal. Case matters: "cal" is a small calorie (1/1000 kcal),
+            # "Cal" is the food Calorie (= kcal).
+            if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
+                value = value / 1000
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
+            device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -249,9 +364,14 @@ class ImportService:
                 source=original_source_name,
                 device_model=device_model,
                 software_version=software_version,
+                device_type=extract_device_type(rjson.source),
+                device_id=device_id,
+                source_app_id=source_app_id,
+                device_manufacturer=device_manufacturer,
                 provider=provider,
                 recorded_at=rjson.startDate,
                 zone_offset=rjson.zoneOffset,
+                window_seconds=window_seconds(rjson.startDate, rjson.endDate),
                 value=value,
                 series_type=series_type,
                 is_daily_total=daily_total_flag(series_type, is_daily=False),
@@ -285,6 +405,11 @@ class ImportService:
         zone_offset: str | None,
         provider: str,
         source_name: str | None,
+        device_type: DeviceType | None = None,
+        device_id: str | None = None,
+        source_app_id: str | None = None,
+        device_manufacturer: str | None = None,
+        record_id: UUID | None = None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
         """
         Returns a tuple with the metrics, time series samples, and duration.
@@ -293,9 +418,9 @@ class ImportService:
             return EventRecordMetrics(), [], None
 
         stats_dict: dict[str, Decimal | int] = {}
-        stats_dict["energy_burned"] = Decimal("0")
         time_series_samples: list[TimeSeriesSampleCreate] = []
         duration: float | None = None
+        energy_statistics: set[str] = set()
 
         for stat in stats:
             value = self._dec(stat.value)
@@ -312,12 +437,19 @@ class ImportService:
                         source=source_name,
                         device_model=device_model,
                         software_version=software_version,
+                        device_type=device_type,
+                        device_id=device_id,
+                        source_app_id=source_app_id,
+                        device_manufacturer=device_manufacturer,
                         provider=provider,
                         recorded_at=end_date,
                         zone_offset=zone_offset,
                         value=value,
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=False),
+                        session=SessionValue(record_id=record_id, stat=WORKOUT_STATISTIC_STAT.get(stat.type))
+                        if record_id and series_type not in UNDECIDED_WORKOUT_SERIES
+                        else None,
                     )
                 )
                 continue
@@ -332,7 +464,10 @@ class ImportService:
                     | WorkoutStatisticType.CALORIES
                     | WorkoutStatisticType.TOTAL_CALORIES
                 ):
-                    stats_dict["energy_burned"] += value
+                    # Summed across the energy statistics, and left unset when the payload reports none
+                    energy = stats_dict.get("energy_burned")
+                    stats_dict["energy_burned"] = value if energy is None else energy + value
+                    energy_statistics.add(stat.type)
                 case _:
                     detail_field = get_detail_field_from_workout_statistic_type(stat.type)
                     if detail_field:
@@ -341,7 +476,10 @@ class ImportService:
                             value = int(value)
                         stats_dict[detail_field] = value
 
-        return EventRecordMetrics(**stats_dict), time_series_samples, duration
+        metrics = EventRecordMetrics(**stats_dict)
+        if energy_series := WORKOUT_ENERGY_SERIES.get(frozenset(energy_statistics)):
+            metrics["energy_series"] = energy_series
+        return metrics, time_series_samples, duration
 
     def load_data(
         self,
@@ -361,30 +499,68 @@ class ImportService:
         request, dropped = _parse_sync_request(raw)
         validation_ms = round((time.perf_counter() - started) * 1000, 1)
         workouts_saved = 0
+        meals_saved = 0
         records_saved = 0
         records_inserted = 0
         records_updated = 0
         sleep_saved = 0
         types: set[str] = set()
 
+        # A nutrient record whose correlation isn't in this batch stays a loose sample.
+        correlation_records = [r for r in request.data.records if (r.type or "") in MEAL_CORRELATION_TYPES]
+        meal_external_ids = {r.id for r in correlation_records if r.id}
+        nutrient_records: dict[str, list[MetricRecord]] = {}
+        records: list[MetricRecord] = []
+        for rjson in request.data.records:
+            if (rjson.type or "") in MEAL_CORRELATION_TYPES:
+                continue
+            if (
+                rjson.parentId is not None
+                and rjson.parentId in meal_external_ids
+                and get_series_type_from_metric_type(rjson.type or "") in MEAL_NUTRIENT_SERIES_TYPES
+            ):
+                nutrient_records.setdefault(rjson.parentId, []).append(rjson)
+            else:
+                records.append(rjson)
+
+        # Types this backend can't map (e.g. sent by a newer SDK) are skipped while
+        # building samples; count them so the summary log shows what was dropped.
+        unsupported_types = Counter(
+            rjson.type or "" for rjson in records if get_series_type_from_metric_type(rjson.type or "") is None
+        )
+
+        # Process meals in batch
+        meal_bundles = list(self._build_meal_bundles(correlation_records, nutrient_records, request.provider, user_id))
+        if meal_bundles:
+            meals_saved = self.event_record_service.upsert_meals(db_session, meal_bundles)
+
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))
         if workout_bundles:
-            records = [record for record, _, _ in workout_bundles]
+            workout_records = [record for record, _, _ in workout_bundles]
             details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
-            # Flatten all time series samples from all workouts into a single list
-            time_series_samples = [sample for _, _, samples in workout_bundles for sample in samples]
-
             # Bulk create records - returns only IDs that were actually inserted
-            inserted_ids = self.event_record_service.bulk_create(db_session, records)
+            inserted_ids = self.event_record_service.bulk_create(db_session, workout_records)
             db_session.flush()
+
+            # A workout already stored keeps its own id, so its statistics cannot point at the new one.
+            inserted = set(inserted_ids)
+            time_series_samples = [
+                sample
+                if sample.session is None or sample.session.record_id in inserted
+                else sample.model_copy(update={"session": None})
+                for _, _, samples in workout_bundles
+                for sample in samples
+            ]
 
             # Filter details to only those records that were actually inserted (avoid FK violation)
             details_to_insert = [details_by_id[rid] for rid in inserted_ids if rid in details_by_id]
 
             # Bulk create details (requires event_record to exist due to FK)
             if details_to_insert:
-                self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="workout")
+                self.event_record_service.bulk_create_details(
+                    db_session, details_to_insert, detail_type=EventCategory.WORKOUT
+                )
             workouts_saved = len(inserted_ids)
 
             # Bulk create time series samples
@@ -396,7 +572,7 @@ class ImportService:
                 types.update(sample.series_type.value for sample in time_series_samples)
 
         # Process time series samples (records)
-        samples = self._build_statistic_bundles(request, user_id)
+        samples = self._build_statistic_bundles(records, request.provider, user_id, request.sdkVersion)
         if samples:
             counts = self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)
@@ -414,12 +590,14 @@ class ImportService:
 
         return {
             "workouts_saved": workouts_saved,
+            "meals_saved": meals_saved,
             "records_saved": records_saved,
             "records_inserted": records_inserted,
             "records_updated": records_updated,
             "types": sorted(types),
             "sleep_saved": sleep_saved,
             "dropped": dropped,
+            "unsupported_types": dict(unsupported_types),
             "validation_ms": validation_ms,
         }
 
@@ -487,6 +665,7 @@ class ImportService:
                 records_updated=saved_counts["records_updated"],
                 workouts_saved=saved_counts["workouts_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
+                unsupported_types=saved_counts["unsupported_types"],
                 validation_ms=saved_counts["validation_ms"],
             )
 
@@ -538,6 +717,7 @@ class ImportService:
                 records_updated=saved_counts["records_updated"],
                 types=saved_counts["types"],
                 workouts_saved=saved_counts["workouts_saved"],
+                meals_saved=saved_counts["meals_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
             )
 

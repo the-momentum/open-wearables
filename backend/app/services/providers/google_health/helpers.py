@@ -6,7 +6,9 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.schemas.providers.google import DataPointsPage
+from app.constants.devices_map import map_reported_device_type
+from app.schemas.enums import DeviceType
+from app.schemas.providers.google import DataPointsPage, LevelSum
 from app.utils.conversion import to_decimal
 from app.utils.dates import offset_to_iso, to_rfc3339
 
@@ -59,12 +61,36 @@ def read_number(
     return number * scale if number is not None else None
 
 
+def read_level_sum(
+    obj: dict[str, Any],
+    field: str,
+    level_sum: LevelSum,
+    scale: Decimal = Decimal(1),
+) -> Decimal | None:
+    """Add up the ``obj[field]`` entries whose level is one of ``level_sum.levels``.
+
+    None when the list is missing; 0 when it lists only other levels, since the day was
+    still measured.
+    """
+    entries = obj.get(field)
+    if not isinstance(entries, list):
+        return None
+    total = Decimal(0)
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        level = entry.get(level_sum.level_key)
+        if isinstance(level, str) and level in level_sum.levels:
+            total += to_decimal(entry.get(level_sum.value_field)) or Decimal(0)
+    return total * scale
+
+
 def extract_source(data_source: Any) -> tuple[str, str | None]:
     """Derive (source_name, device_model) from a list data point's dataSource.
 
     device shapes vary: {displayName} (Fitbit), {manufacturer, formFactor} (Health
     Connect), or empty/absent. device_model falls back displayName -> manufacturer
-    formFactor -> platform; source_name is the platform.
+    formFactor; the platform is not a device, so it is only the source_name.
     """
     if not isinstance(data_source, dict):
         return "Google Health", None
@@ -74,10 +100,15 @@ def extract_source(data_source: Any) -> tuple[str, str | None]:
     device_model = (
         device.get("displayName")
         or " ".join(p for p in (device.get("manufacturer"), form_factor.lower() if form_factor else None) if p)
-        or platform
         or None
     )
     return platform or "Google Health", device_model
+
+
+def extract_form_factor(data_source: Any) -> DeviceType | None:
+    """Device type from a list data point's ``dataSource.device.formFactor``; reconciled points carry none."""
+    device = data_source.get("device") if isinstance(data_source, dict) else None
+    return map_reported_device_type(device.get("formFactor")) if isinstance(device, dict) else None
 
 
 def parse_duration_seconds(value: str | None) -> Decimal | None:

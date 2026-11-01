@@ -261,7 +261,7 @@ class TestApiKeyServiceRotateApiKey:
 
         # Act & Assert
         with pytest.raises(HTTPException) as exc_info:
-            api_key_service.rotate_api_key(db, uuid4(), developer.id)
+            api_key_service.rotate_api_key(db, str(uuid4()), developer.id)
 
         assert exc_info.value.status_code == 404
 
@@ -345,7 +345,7 @@ class TestApiKeyServiceGet:
     def test_get_nonexistent_api_key_returns_none(self, db: Session) -> None:
         """Should return None for non-existent key."""
         # Act
-        result = api_key_service.get(db, uuid4())
+        result = api_key_service.get(db, str(uuid4()))
 
         # Assert
         assert result is None
@@ -370,4 +370,4 @@ class TestApiKeyServiceDelete:
     def test_delete_nonexistent_api_key(self, db: Session) -> None:
         """Should handle deleting non-existent key gracefully."""
         # Act & Assert - should not raise error
-        api_key_service.delete(db, uuid4(), raise_404=False)
+        api_key_service.delete(db, str(uuid4()), raise_404=False)

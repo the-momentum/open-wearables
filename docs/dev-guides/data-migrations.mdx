@@ -23,6 +23,18 @@ This automatic execution is **temporary**. Each entry in `app.sh` is gated by a 
 
 The practical consequence: if you upgrade Open Wearables long after a migration shipped, the corresponding script may already have been removed from `app.sh` and **will not run automatically**. In that case, run it manually (see below). Scripts that were never added to `app.sh` must always be run manually.
 
+### Run-once scripts
+
+Some scripts are expensive to run even when there is nothing left to fix, because checking means scanning a large table. These run **at most once per instance**: a clean run writes a row with the script's name to the `data_migration` table, and from then on the script prints `already completed, skipping` and exits, both on startup and when run manually. A run that fails or is interrupted writes nothing, so it is retried on the next startup. When several replicas start at once, only one runs the script; the others skip it.
+
+To run such a script again, delete its row first:
+
+```sql
+DELETE FROM data_migration WHERE name = '<script_name>';
+```
+
+`--dry-run` never writes the row.
+
 ## Prerequisites
 
 The scripts import from the `app` package and connect to the database via the environment variables in `backend/config/.env`. You need:

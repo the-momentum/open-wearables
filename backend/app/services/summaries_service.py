@@ -1,16 +1,13 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
+import contextlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, HealthScore, ProviderPriority, User
+from app.models import EventRecord, HealthScore, ProviderPriority, SeriesSample, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
-from app.repositories.archival_repository import (
-    ArchivalSettingRepository,
-    DataPointSeriesArchiveRepository,
-)
 from app.repositories.data_point_series_repository import (
     ActiveMinutesResult,
     DataPointSeriesRepository,
@@ -18,15 +15,17 @@ from app.repositories.data_point_series_repository import (
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
+from app.repositories.series_aggregate_repository import SeriesAggregateRepository, daily_activity
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
+    DeviceType,
     ProviderName,
     SeriesType,
     get_series_type_id,
-    infer_device_type_from_model,
 )
 from app.schemas.responses.activity import (
     ActivitySummary,
+    ActivityTotals,
     BloodPressure,
     BodyAveraged,
     BodyLatest,
@@ -45,6 +44,7 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.aggregate_backfill_service import days_from_samples
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
@@ -85,17 +85,33 @@ DEFAULT_AVERAGE_PERIOD_DAYS = 7
 DEFAULT_LATEST_WINDOW_HOURS = 4
 
 
+def _midnight(day: date) -> datetime:
+    """A calendar date as the UTC midnight that starts it."""
+    return datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+
+
+def _activity_key(row: dict) -> tuple:
+    """The compound key an activity cursor points at: date, then source, then device."""
+    return (row["activity_date"], row["source"] or "", row.get("device_model") or "")
+
+
 class SummariesService:
     """Service for aggregating daily health summaries."""
 
     def __init__(self, log: Logger):
         self.logger = log
         self.event_record_repo = EventRecordRepository(EventRecord)
-        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_repo = DataPointSeriesRepository(SeriesSample)
+        self.series_aggregate_repo = SeriesAggregateRepository()
         self.user_repo = UserRepository(User)
-        self.archival_settings_repo = ArchivalSettingRepository()
-        self.archive_repo = DataPointSeriesArchiveRepository()
         self.health_score_repo = HealthScoreRepository(HealthScore)
+
+    @staticmethod
+    def _priority_orders(db_session: DbSession) -> tuple[dict[ProviderName, int], dict[DeviceType, int]]:
+        return (
+            ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session),
+            DeviceTypePriorityRepository().get_priority_order(db_session),
+        )
 
     def _filter_by_priority(
         self,
@@ -116,8 +132,7 @@ class SummariesService:
         if not results:
             return results
 
-        provider_order = ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session)
-        device_type_order = DeviceTypePriorityRepository().get_priority_order(db_session)
+        provider_order, device_type_order = self._priority_orders(db_session)
 
         # Group results by date
         by_date: dict[date, list[dict]] = defaultdict(list)
@@ -142,12 +157,10 @@ class SummariesService:
 
                 provider_priority = provider_order.get(provider, 99)
 
-                # Parse device type
                 device_model = entry.get("device_model")
                 device_type_priority = 99
-                if device_model:
-                    device_type = infer_device_type_from_model(device_model)
-                    device_type_priority = device_type_order.get(device_type, 99)
+                with contextlib.suppress(ValueError):
+                    device_type_priority = device_type_order.get(DeviceType(entry.get("device_type")), 99)
 
                 return (provider_priority, device_type_priority, device_model or "")
 
@@ -188,61 +201,6 @@ class SummariesService:
             "vigorous_max": int(max_hr * HR_ZONE_VIGOROUS[1]),
         }
 
-    def _merge_archive_activity(
-        self,
-        db_session: DbSession,
-        user_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        live_results: list,  # noqa: ANN401  — accepts ActivityAggregateResult | dict
-    ) -> list:
-        """Merge archived daily aggregates into live results.
-
-        If archival is enabled, some days may only have data in the archive table.
-        This method queries the archive and merges rows, preferring live data when
-        both exist for the same (date, source, device_model) key.
-        """
-        try:
-            self.archival_settings_repo.get(db_session)
-        except Exception:
-            return live_results
-
-        series_type_ids = [
-            get_series_type_id(t)
-            for t in [
-                SeriesType.steps,
-                SeriesType.active_energy,
-                SeriesType.basal_energy,
-                SeriesType.heart_rate,
-                SeriesType.distance_walking_running,
-                SeriesType.flights_climbed,
-                SeriesType.active_time,
-            ]
-        ]
-
-        archive_results = self.archive_repo.get_daily_activity_aggregates_from_archive(
-            db_session, user_id, start_date, end_date, series_type_ids
-        )
-
-        if not archive_results:
-            return live_results
-
-        # Build lookup from live data keyed on (date, source, device_model)
-        live_keys: set[tuple] = set()
-        for r in live_results:
-            live_keys.add((r["activity_date"], r["source"], r.get("device_model")))
-
-        # Add archive rows that are NOT already covered by live data
-        merged = list(live_results)
-        for ar in archive_results:
-            key = (ar["activity_date"], ar["source"], ar.get("device_model"))
-            if key not in live_keys:
-                merged.append(ar)
-
-        # Sort by date
-        merged.sort(key=lambda r: r["activity_date"])
-        return merged
-
     @handle_exceptions
     def get_sleep_summaries(
         self,
@@ -258,18 +216,8 @@ class SummariesService:
         self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
 
         cursor_direction = decode_cursor(cursor)[2] if cursor else "next"
-        provider_order = ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session)
-        device_type_order = DeviceTypePriorityRepository().get_priority_order(db_session)
         results = self.event_record_repo.get_sleep_summaries(
-            db_session,
-            user_id,
-            start_date,
-            end_date,
-            cursor,
-            limit,
-            provider_order,
-            device_type_order,
-            sort_order,
+            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session), sort_order
         )
 
         # Check if there's more data
@@ -286,13 +234,9 @@ class SummariesService:
         if results:
             # Use the last result for next cursor
             last_result = results[-1]
-            last_date_midnight = datetime.combine(last_result["sleep_date"], datetime.min.time()).replace(
-                tzinfo=timezone.utc
-            )
+            last_date_midnight = _midnight(last_result["sleep_date"])
             first_result = results[0]
-            first_date_midnight = datetime.combine(first_result["sleep_date"], datetime.min.time()).replace(
-                tzinfo=timezone.utc
-            )
+            first_date_midnight = _midnight(first_result["sleep_date"])
 
             # Previous cursor if we had a cursor (not first page)
             if cursor_direction == "prev":
@@ -412,10 +356,8 @@ class SummariesService:
         """
         cursor_direction = decode_cursor(cursor)[2] if cursor else "next"
         results = self.health_score_repo.get_recovery_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit, sort_order
+            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session), sort_order
         )
-
-        results = self._filter_by_priority(db_session, user_id, results, date_key="recovery_date")
 
         has_more = len(results) > limit
         if has_more:
@@ -501,100 +443,8 @@ class SummariesService:
         """
         self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
 
-        # Get aggregated data from time-series repository (live data)
-        results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start_date, end_date)
-
-        # Merge archived data when archival is enabled
-        results = self._merge_archive_activity(db_session, user_id, start_date, end_date, results)
-
-        # Filter by priority to get best source per date
-        results = self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
-
-        # Get workout aggregates (elevation, distance, energy from workouts)
-        workout_aggregates = self.event_record_repo.get_daily_workout_aggregates(
-            db_session, user_id, start_date, end_date
-        )
-
-        # Build lookup dict for workout data by (date, provider, device)
-        workout_lookup: dict[tuple, dict] = {}
-        for wa in workout_aggregates:
-            key = (wa["workout_date"], wa["source"], wa.get("device_model"))
-            workout_lookup[key] = wa
-
-        # Get active/sedentary minutes from step data
-        activity_minutes = self.data_point_repo.get_daily_active_minutes(
-            db_session, user_id, start_date, end_date, active_threshold=ACTIVE_STEPS_THRESHOLD
-        )
-
-        # Build lookup for activity minutes
-        activity_lookup: dict[tuple, ActiveMinutesResult] = {}
-        for am in activity_minutes:
-            key = (am["activity_date"], am["source"], am.get("device_model"))
-            activity_lookup[key] = am
-
-        # Get intensity minutes from HR data
-        # Calculate HR zone thresholds based on user's max HR (220 - age)
-        max_hr = self._get_user_max_hr(db_session, user_id, start_date)
-        hr_zones = self._get_hr_zone_thresholds(max_hr)
-        intensity_minutes_data = self.data_point_repo.get_daily_intensity_minutes(
-            db_session,
-            user_id,
-            start_date,
-            end_date,
-            light_min=hr_zones["light_min"],
-            light_max=hr_zones["light_max"],
-            moderate_max=hr_zones["moderate_max"],
-            vigorous_max=hr_zones["vigorous_max"],
-        )
-
-        # Build lookup for intensity minutes
-        intensity_lookup: dict[tuple, IntensityMinutesResult] = {}
-        for im in intensity_minutes_data:
-            key = (im["activity_date"], im["source"], im.get("device_model"))
-            intensity_lookup[key] = im
-
-        # Sort results based on sort_order (default ascending from DB)
-        if sort_order == "desc":
-            results = list(reversed(results))
-
-        # Apply cursor-based pagination using compound key (date, provider, device)
-        # This ensures we don't skip records when multiple providers exist for the same date
-        if cursor:
-            cursor_date, cursor_provider, cursor_device, direction = decode_activity_cursor(cursor)
-            cursor_key = (cursor_date, cursor_provider, cursor_device or "")
-
-            if direction == "prev":
-                # Backward pagination: get items BEFORE cursor key (in current sort order)
-                if sort_order == "desc":
-                    # In desc order, "before" means items with GREATER keys
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
-                    ]
-                else:
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
-                    ]
-                # Reverse to get correct order for backward pagination
-                results = list(reversed(results))
-            else:
-                # Forward pagination: get items AFTER cursor key (in current sort order)
-                if sort_order == "desc":
-                    # In desc order, "after" means items with SMALLER keys
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
-                    ]
-                else:
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
-                    ]
+        # Only this page's days are aggregated, so its cost follows the page, not the period.
+        results = self._activity_page_days(db_session, user_id, start_date, end_date, cursor, limit, sort_order)
 
         # Check for more data
         has_more = len(results) > limit
@@ -620,12 +470,62 @@ class SummariesService:
                     first["activity_date"], first["source"] or "unknown", first.get("device_model"), "prev"
                 )
 
+        # The per-day extras, for this page's dates only.
+        page_dates = [r["activity_date"] for r in results]
+        page_start = _midnight(min(page_dates)) if page_dates else start_date
+        page_end = _midnight(max(page_dates)) + timedelta(days=1) if page_dates else start_date
+
+        # Get workout aggregates (elevation, distance, energy from workouts)
+        workout_aggregates = self.event_record_repo.get_daily_workout_aggregates(
+            db_session, user_id, page_start, page_end
+        )
+
+        # Build lookup dict for workout data by (date, provider, source, device)
+        workout_lookup: dict[tuple, dict] = {}
+        for wa in workout_aggregates:
+            key = (wa["workout_date"], wa["provider"], wa["source"], wa.get("device_model"))
+            workout_lookup[key] = wa
+
+        # Get active/sedentary minutes from step data
+        activity_minutes = self.data_point_repo.get_daily_active_minutes(
+            db_session, user_id, page_start, page_end, active_threshold=ACTIVE_STEPS_THRESHOLD
+        )
+
+        # Build lookup for activity minutes
+        activity_lookup: dict[tuple, ActiveMinutesResult] = {}
+        for am in activity_minutes:
+            key = (am["activity_date"], am["source"], am.get("device_model"))
+            activity_lookup[key] = am
+
+        # Get intensity minutes from HR data
+        # Calculate HR zone thresholds based on user's max HR (220 - age)
+        max_hr = self._get_user_max_hr(db_session, user_id, start_date)
+        hr_zones = self._get_hr_zone_thresholds(max_hr)
+        intensity_minutes_data = self.data_point_repo.get_daily_intensity_minutes(
+            db_session,
+            user_id,
+            page_start,
+            page_end,
+            light_min=hr_zones["light_min"],
+            light_max=hr_zones["light_max"],
+            moderate_max=hr_zones["moderate_max"],
+            vigorous_max=hr_zones["vigorous_max"],
+        )
+
+        # Build lookup for intensity minutes
+        intensity_lookup: dict[tuple, IntensityMinutesResult] = {}
+        for im in intensity_minutes_data:
+            key = (im["activity_date"], im["source"], im.get("device_model"))
+            intensity_lookup[key] = im
+
         # Transform to schema
         data = []
         for result in results:
             # Look up workout data for this day/provider/device
             result_key = (result["activity_date"], result["source"], result.get("device_model"))
-            workout_data = workout_lookup.get(result_key, {})
+            workout_data = workout_lookup.get(
+                (result["activity_date"], result.get("provider"), result["source"], result.get("device_model")), {}
+            )
             activity_data = activity_lookup.get(result_key, {})
             intensity_data = intensity_lookup.get(result_key, {})
 
@@ -661,9 +561,9 @@ class SummariesService:
             # not additive - providers report daily totals that include workout calories
             active_cal = result.get("active_energy_sum")
             basal_cal = result.get("basal_energy_sum")
-            total_cal = None
-            if active_cal is not None or basal_cal is not None:
-                total_cal = (active_cal or 0.0) + (basal_cal or 0.0)
+            total_cal = result.get("total_energy_sum")
+            if total_cal is None and active_cal is not None and basal_cal is not None:
+                total_cal = active_cal + basal_cal
 
             # Active minutes: prefer the provider-reported daily active time (Garmin
             # activeTimeInSeconds, Oura high+medium+low activity time, Polar active_duration).
@@ -686,7 +586,6 @@ class SummariesService:
                     vigorous=vigorous,
                 )
 
-            steps = result.get("steps_sum")
             summary = ActivitySummary(
                 date=result["activity_date"],
                 source=SourceMetadata(
@@ -695,7 +594,7 @@ class SummariesService:
                     device=result.get("device_model"),
                     device_type=result.get("device_type"),
                 ),
-                steps=steps if steps is not None else None,
+                steps=result.get("steps_sum"),
                 distance_meters=total_distance,
                 floors_climbed=floors_climbed,
                 elevation_meters=elevation_meters,
@@ -721,6 +620,119 @@ class SummariesService:
                 end_time=end_date,
             ),
         )
+
+    def get_activity_totals(
+        self, db_session: DbSession, user_id: str, start_date: datetime, end_date: datetime
+    ) -> ActivityTotals:
+        """The daily summaries' steps, distance and active energy, added up over the period.
+
+        Only the daily sums: the per-day extras the summaries attach (workouts, active
+        and intensity minutes) are most of their cost and none of a total.
+        """
+        days = self._activity_days(db_session, user_id, start_date, end_date)
+        steps = [float(day["steps_sum"]) for day in days if day.get("steps_sum") is not None]
+        return ActivityTotals(
+            days=len(days),
+            steps=round(sum(steps)),
+            distance_meters=sum(float(day.get("distance_sum") or 0) for day in days),
+            active_calories_kcal=sum(float(day.get("active_energy_sum") or 0) for day in days),
+            avg_steps=round(sum(steps) / len(steps)) if steps else None,
+        )
+
+    def _activity_days(self, db_session: DbSession, user_id: str, start: datetime, end: datetime) -> list[dict]:
+        """One row per day in [start, end) from the day aggregates, best source per date."""
+        results = daily_activity(db_session, user_id, start, end, days_from_samples(db_session))
+        results = self._add_workout_only_days(db_session, user_id, start, end, results)
+        return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+
+    def _add_workout_only_days(
+        self, db_session: DbSession, user_id: str, start: datetime, end: datetime, results: list
+    ) -> list:
+        """Add an empty row per source for dates that have workouts but no time-series data."""
+        covered = {r["activity_date"] for r in results}
+        extra = [
+            {
+                "activity_date": wa["workout_date"],
+                "provider": wa["provider"],
+                "source": wa["source"],
+                "device_model": wa["device_model"],
+                "device_type": wa["device_type"],
+                "steps_sum": None,
+                "active_energy_sum": None,
+                "basal_energy_sum": None,
+                "total_energy_sum": None,
+                "hr_avg": None,
+                "hr_max": None,
+                "hr_min": None,
+                "distance_sum": None,
+                "flights_climbed_sum": None,
+                "active_time_minutes": None,
+            }
+            for wa in self.event_record_repo.get_daily_workout_aggregates(db_session, user_id, start, end)
+            if wa["workout_date"] not in covered
+        ]
+        if not extra:
+            return results
+        return sorted([*results, *extra], key=lambda r: r["activity_date"])
+
+    def _activity_page_days(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+        sort_order: str,
+    ) -> list[dict]:
+        """The days for one page, in page order, plus one more if there is a next page.
+
+        Aggregates a window that starts limit + 2 days wide from where the page
+        begins, and widens it fourfold until it holds enough days or reaches the
+        edge of the period. A user with daily data needs one pass; a sparse one a few.
+        """
+        cursor_date: date | None = None
+        direction = "next"
+        if cursor:
+            cursor_date, cursor_provider, cursor_device, direction = decode_activity_cursor(cursor)
+            cursor_key = (cursor_date, cursor_provider, cursor_device or "")
+        # Which way the page runs from its anchor: into the past, or the future.
+        backwards = (sort_order == "desc") == (direction != "prev")
+
+        # The page, one more to tell there is a next, and the cursor's own day,
+        # which the window holds and the cursor then drops.
+        span = timedelta(days=limit + 2)
+        # A window over half the period is not worth a second, wider pass.
+        if span * 2 >= end_date - start_date:
+            span = end_date - start_date
+        while True:
+            if backwards:
+                anchor = min(end_date, _midnight(cursor_date) + timedelta(days=1)) if cursor_date else end_date
+                window = (max(start_date, anchor - span), anchor)
+                complete = window[0] <= start_date
+            else:
+                anchor = max(start_date, _midnight(cursor_date)) if cursor_date else start_date
+                window = (anchor, min(end_date, anchor + span))
+                complete = window[1] >= end_date
+
+            results = self._activity_days(db_session, user_id, *window)
+            if sort_order == "desc":
+                results = list(reversed(results))
+
+            # Compound key (date, provider, device), so a date two providers share is
+            # not skipped. A backwards page keeps the keys below the cursor, else above.
+            if cursor:
+                results = [
+                    r
+                    for r in results
+                    if (_activity_key(r) < cursor_key if backwards else _activity_key(r) > cursor_key)
+                ]
+                if direction == "prev":
+                    results = list(reversed(results))
+
+            if complete or len(results) > limit:
+                return results
+            span *= 4
 
     def _calculate_age(self, birth_date: date, reference_date: date) -> int:
         """Calculate age in years from birth date to reference date."""
@@ -832,23 +844,25 @@ class SummariesService:
             age=age,
         )
 
-        # --- AVERAGED: Get aggregates for vitals over the period ---
+        # --- AVERAGED: the vitals' day values over the period ---
+        # A resting pulse or a night's HRV is a day value for most providers, so the day rows hold every
+        # device's: the provider's where it sent one, ours rolled up from the samples where it did not.
         period_end = now
         period_start = now - timedelta(days=average_period_days)
 
-        vitals_aggregates = self.data_point_repo.get_aggregates_for_period(
-            db_session, user_id, period_start, period_end, BODY_AVERAGED_SERIES
+        first_day, last_day = period_start.date(), period_end.date()
+        nights = self.event_record_repo.night_values(
+            db_session, user_id, [get_series_type_id(t) for t in BODY_AVERAGED_SERIES], first_day, last_day
+        )
+        averages = self.series_aggregate_repo.period_averages(
+            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights, days_from_samples(db_session)
         )
 
-        resting_hr_data = vitals_aggregates.get(SeriesType.resting_heart_rate)
-        hrv_sdnn_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
-        hrv_rmssd_data = vitals_aggregates.get(SeriesType.heart_rate_variability_rmssd)
-
-        resting_hr_avg = resting_hr_data.get("avg") if resting_hr_data else None
+        resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
         resting_hr = int(round(resting_hr_avg)) if resting_hr_avg else None
-        hrv_sdnn_raw = hrv_sdnn_data.get("avg") if hrv_sdnn_data else None
+        hrv_sdnn_raw = averages.get(SeriesType.heart_rate_variability_sdnn)
         hrv_sdnn_avg = round(hrv_sdnn_raw, 1) if hrv_sdnn_raw is not None else None
-        hrv_rmssd_raw = hrv_rmssd_data.get("avg") if hrv_rmssd_data else None
+        hrv_rmssd_raw = averages.get(SeriesType.heart_rate_variability_rmssd)
         hrv_rmssd_avg = round(hrv_rmssd_raw, 1) if hrv_rmssd_raw is not None else None
 
         body_averaged = BodyAveraged(
@@ -869,6 +883,13 @@ class SummariesService:
         skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
         )
+        # Whoop and Polar report skin temperature once a night, as a day value.
+        if skin_temp_reading is None and (
+            day_value := self.series_aggregate_repo.latest_day_value(
+                db_session, user_id, SeriesType.skin_temperature, latest_window_start.date()
+            )
+        ):
+            skin_temp_reading = (*day_value, "", None)
         # Get blood pressure readings within the window
         bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now

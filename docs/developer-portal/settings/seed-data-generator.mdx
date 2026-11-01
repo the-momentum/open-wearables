@@ -1,7 +1,7 @@
 ---
 title: "Seed Data Generator"
 sidebarTitle: "Seed Data Generator"
-description: "Generate synthetic users, workouts, sleep, and time series from the dashboard. Reproducible via a random seed embedded in the user name."
+description: "Generate synthetic users, workouts, sleep, meals, and time series from the dashboard. Reproducible via a random seed embedded in the user name."
 keywords: ["seed data", "synthetic health data", "test data generator", "open wearables dashboard"]
 "og:title": "Seed Data Generator | Open Wearables"
 "og:description": "Generate synthetic users with workouts, sleep, and time series from the dashboard. Reproducible via random seed."
@@ -12,13 +12,17 @@ keywords: ["seed data", "synthetic health data", "test data generator", "open we
 "twitter:card": "summary_large_image"
 ---
 
-The Seed Data Generator creates synthetic users with configurable workouts, sleep records, and time series. Use it to populate a fresh instance for demos, exercise dashboards and API integrations, or reproduce a specific dataset that a teammate shared.
+The Seed Data Generator creates synthetic users with configurable workouts, sleep records, meals, and time series. Use it to populate a fresh instance for demos, exercise dashboards and API integrations, or reproduce a specific dataset that a teammate shared.
 
 Open the dashboard and go to **Settings → Seed Data**. Generation runs in the background via Celery; the dispatch call returns immediately with the seed that was used.
 
+<Warning>
+Seeded data does not reflect real device volumes or sampling frequency. Don't use it to estimate how much data a real user generates.
+</Warning>
+
 ## When to use it
 
-- Populating a fresh dev/staging instance with realistic data.
+- Populating a fresh dev/staging instance with test data.
 - Testing charts, filters, and aggregations across many users and date ranges.
 - Reproducing a bug report - the reporter shares their seed and preset, you regenerate the same dataset locally.
 
@@ -53,7 +57,8 @@ One click fills the whole form with a tuned configuration. Any manual edit clear
 | **Activity Only** | 80 workouts, no sleep. |
 | **Sleep Only** | 40 optimal sleeps, no workouts. |
 | **Minimal (Quick)** | 5 workouts + 5 sleeps, no time series. Fast smoke test. |
-| **Comprehensive** | 150 workouts, 60 sleeps, 5 providers, 80% time series. Large dataset. |
+| **Comprehensive** | 150 workouts, 60 sleeps, 50 meals, 5 providers, 80% time series. Large dataset. |
+| **Nutrition Focused** | 540 meals (~3/day over 6 months) from Apple Health, 10 light workouts, no sleep. |
 
 ### Workouts
 
@@ -68,6 +73,13 @@ Toggle to enable. Configure:
 - **Nap chance (%)** - probability a given record is flagged as a nap.
 - **Weekend catch-up** - shorter weekday sleep, longer weekend sleep.
 - **Stage distribution** - pick a named profile (Optimal, Deep Deficit, REM Deprived, Restless, Athlete Recovery) or set custom min/max % for Deep, REM, and Awake. Light sleep fills the remainder (sum of max % must stay ≤95%).
+
+### Meals
+
+Off by default - opt in explicitly. Each meal is an `EventRecord` (category `meal`) plus a `MealDetails` row whose `nutrients` hold calories, protein, carbs, fat, fiber and water - the same shape real meals are stored in. Meals are only generated for connected providers that deliver meals (Apple Health among the seeded ones); the meal type is picked at random. Configure:
+- **Meal count** (0-10000).
+- **Calories range** - per-meal calorie total; macros are derived from it with a randomized protein/fat/carb split.
+- **Date range** (from/to).
 
 ### Time series
 
@@ -109,7 +121,7 @@ Every generated user's first name is prefixed with the seed and preset:
 If the preset is `custom`, you also need the other form values - seed alone isn't enough to reproduce a hand-tuned configuration.
 
 <Note>
-Data is anchored to a fixed reference date (2025-01-01) inside the service, so the same seed produces the same dates regardless of when you run the generator. Explicit **Date range** inputs override this anchor.
+Data is anchored to the current day (midnight UTC), so seeded users always have recent data. The same seed produces the same values, shifted to end around the day you run the generator. Explicit **Date range** inputs override this anchor.
 </Note>
 
 ## API

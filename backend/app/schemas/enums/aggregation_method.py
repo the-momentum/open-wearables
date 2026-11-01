@@ -25,7 +25,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.resting_heart_rate: AggregationMethod.AVG,
     SeriesType.heart_rate_variability_sdnn: AggregationMethod.AVG,
     SeriesType.heart_rate_recovery_one_minute: AggregationMethod.AVG,
-    SeriesType.walking_heart_rate_average: AggregationMethod.AVG,
+    SeriesType.walking_heart_rate: AggregationMethod.AVG,
     SeriesType.heart_rate_variability_rmssd: AggregationMethod.AVG,
     # ── Blood & Respiratory ──
     SeriesType.oxygen_saturation: AggregationMethod.AVG,
@@ -57,11 +57,11 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.steps: AggregationMethod.SUM,
     SeriesType.active_energy: AggregationMethod.SUM,
     SeriesType.basal_energy: AggregationMethod.SUM,
+    SeriesType.total_energy: AggregationMethod.SUM,
     SeriesType.stand_time: AggregationMethod.SUM,
     SeriesType.exercise_time: AggregationMethod.SUM,
     SeriesType.physical_effort: AggregationMethod.AVG,
     SeriesType.flights_climbed: AggregationMethod.SUM,
-    SeriesType.average_met: AggregationMethod.AVG,
     SeriesType.active_time: AggregationMethod.SUM,
     # ── Activity — Distance ──
     SeriesType.distance_walking_running: AggregationMethod.SUM,
@@ -92,6 +92,8 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.speed: AggregationMethod.AVG,
     SeriesType.workout_effort_score: AggregationMethod.AVG,
     SeriesType.estimated_workout_effort_score: AggregationMethod.AVG,
+    SeriesType.distance: AggregationMethod.SUM,
+    SeriesType.elevation_gain: AggregationMethod.SUM,
     # ── Environmental ──
     SeriesType.environmental_audio_exposure: AggregationMethod.AVG,
     SeriesType.headphone_audio_exposure: AggregationMethod.AVG,
@@ -110,6 +112,49 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     # ── Withings-specific ──
     SeriesType.withings_pulse_wave_velocity: AggregationMethod.AVG,
     SeriesType.withings_metabolic_age: AggregationMethod.AVG,
+    # ── Nutrition — Dietary intake ──
+    SeriesType.dietary_energy_consumed: AggregationMethod.SUM,
+    SeriesType.dietary_carbohydrates: AggregationMethod.SUM,
+    SeriesType.dietary_fiber: AggregationMethod.SUM,
+    SeriesType.dietary_sugar: AggregationMethod.SUM,
+    SeriesType.dietary_fat_total: AggregationMethod.SUM,
+    SeriesType.dietary_fat_saturated: AggregationMethod.SUM,
+    SeriesType.dietary_fat_monounsaturated: AggregationMethod.SUM,
+    SeriesType.dietary_fat_polyunsaturated: AggregationMethod.SUM,
+    SeriesType.dietary_cholesterol: AggregationMethod.SUM,
+    SeriesType.dietary_protein: AggregationMethod.SUM,
+    SeriesType.dietary_sodium: AggregationMethod.SUM,
+    SeriesType.dietary_potassium: AggregationMethod.SUM,
+    SeriesType.dietary_calcium: AggregationMethod.SUM,
+    SeriesType.dietary_iron: AggregationMethod.SUM,
+    SeriesType.dietary_magnesium: AggregationMethod.SUM,
+    SeriesType.dietary_phosphorus: AggregationMethod.SUM,
+    SeriesType.dietary_zinc: AggregationMethod.SUM,
+    SeriesType.dietary_copper: AggregationMethod.SUM,
+    SeriesType.dietary_manganese: AggregationMethod.SUM,
+    SeriesType.dietary_selenium: AggregationMethod.SUM,
+    SeriesType.dietary_chromium: AggregationMethod.SUM,
+    SeriesType.dietary_molybdenum: AggregationMethod.SUM,
+    SeriesType.dietary_iodine: AggregationMethod.SUM,
+    SeriesType.dietary_chloride: AggregationMethod.SUM,
+    SeriesType.dietary_vitamin_a: AggregationMethod.SUM,
+    SeriesType.dietary_vitamin_b6: AggregationMethod.SUM,
+    SeriesType.dietary_vitamin_b12: AggregationMethod.SUM,
+    SeriesType.dietary_vitamin_c: AggregationMethod.SUM,
+    SeriesType.dietary_vitamin_d: AggregationMethod.SUM,
+    SeriesType.dietary_vitamin_e: AggregationMethod.SUM,
+    SeriesType.dietary_vitamin_k: AggregationMethod.SUM,
+    SeriesType.dietary_thiamin: AggregationMethod.SUM,
+    SeriesType.dietary_riboflavin: AggregationMethod.SUM,
+    SeriesType.dietary_niacin: AggregationMethod.SUM,
+    SeriesType.dietary_folate: AggregationMethod.SUM,
+    SeriesType.dietary_pantothenic_acid: AggregationMethod.SUM,
+    SeriesType.dietary_biotin: AggregationMethod.SUM,
+    SeriesType.dietary_caffeine: AggregationMethod.SUM,
+    SeriesType.dietary_fat_trans: AggregationMethod.SUM,
+    SeriesType.dietary_energy_from_fat: AggregationMethod.SUM,
+    SeriesType.dietary_fat_unsaturated: AggregationMethod.SUM,
+    SeriesType.dietary_folic_acid: AggregationMethod.SUM,
     # ── Other ──
     SeriesType.electrodermal_activity: AggregationMethod.AVG,
     SeriesType.push_count: AggregationMethod.SUM,
@@ -118,6 +163,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.number_of_times_fallen: AggregationMethod.SUM,
     SeriesType.number_of_alcoholic_beverages: AggregationMethod.SUM,
     SeriesType.nike_fuel: AggregationMethod.SUM,
+    SeriesType.hydration: AggregationMethod.SUM,
 }
 
 
@@ -130,7 +176,7 @@ def get_aggregation_method(series_type: SeriesType) -> AggregationMethod:
 
 
 def daily_total_flag(series_type: SeriesType, is_daily: bool) -> bool | None:
-    """Value for DataPointSeries.is_daily_total at ingestion.
+    """Value for SeriesSample.is_daily_total at ingestion.
 
     Only summable (SUM) series have a meaningful daily-total vs intraday-sample
     distinction — they are the ones the prefer-daily aggregation sums, so a daily

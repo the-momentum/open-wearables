@@ -133,7 +133,7 @@ def test_reconcile_user_subscribes_every_missing_appli() -> None:
         patch.object(service, "_list_subscriptions", return_value=[]),
         patch.object(service, "_change_subscription", return_value={"status": "subscribed"}) as mock_change,
     ):
-        results = service.sync_user(MagicMock(), uuid4(), LiveSyncMode.WEBHOOK)
+        results = service.sync_user(MagicMock(), str(uuid4()), LiveSyncMode.WEBHOOK)
 
     assert len(results) == len(SUBSCRIBED_APPLIS)
     assert {call.args[2] for call in mock_change.call_args_list} == {"subscribe"}
@@ -146,7 +146,7 @@ def test_reconcile_user_revokes_our_own_profiles_when_switched_to_pull() -> None
         patch.object(service, "_list_subscriptions", return_value=existing),
         patch.object(service, "_change_subscription", return_value={"status": "revoked"}) as mock_change,
     ):
-        service.sync_user(MagicMock(), uuid4(), LiveSyncMode.PULL)
+        service.sync_user(MagicMock(), str(uuid4()), LiveSyncMode.PULL)
 
     assert mock_change.call_args.args[2] == "revoke"
 
@@ -158,7 +158,7 @@ def test_reconcile_user_leaves_profiles_registered_by_another_host_alone() -> No
         patch.object(service, "_list_subscriptions", return_value=existing),
         patch.object(service, "_change_subscription") as mock_change,
     ):
-        service.sync_user(MagicMock(), uuid4(), LiveSyncMode.PULL)
+        service.sync_user(MagicMock(), str(uuid4()), LiveSyncMode.PULL)
 
     mock_change.assert_not_called()
 
@@ -168,7 +168,7 @@ def test_reconcile_user_skips_when_the_webhook_token_is_unconfigured(
 ) -> None:
     monkeypatch.setattr("app.config.settings.withings_webhook_token", None)
 
-    results = _service().sync_user(MagicMock(), uuid4(), LiveSyncMode.WEBHOOK)
+    results = _service().sync_user(MagicMock(), str(uuid4()), LiveSyncMode.WEBHOOK)
 
     assert results == [{"status": "skipped", "reason": "webhook_token_unconfigured"}]
 

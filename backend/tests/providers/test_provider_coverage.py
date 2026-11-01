@@ -5,7 +5,7 @@ implementation files and assert that:
 
 - every emitted ``series_type=SeriesType.<x>`` is declared in ``TIMESERIES``
 - every EventRecordDetail data field it sets is declared in
-  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS`` or ``MENSTRUAL_CYCLE_FIELDS``
+  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS``, ``MENSTRUAL_CYCLE_FIELDS`` or ``MEAL_FIELDS``
 - declared field/score names are valid
 
 A drift (new metric in the code, stale coverage) fails the test.
@@ -35,7 +35,7 @@ from app.services.providers.factory import ProviderFactory
 PROVIDERS_DIR = Path("app/services/providers")
 
 # Implementation files that may emit timeseries / set detail fields.
-IMPL_FILES = ("data_247.py", "workouts.py", "webhook_handler.py", "webhook_service.py")
+IMPL_FILES = ("data_247.py", "workouts.py", "nutrition.py", "webhook_handler.py", "webhook_service.py")
 
 # SDK providers emit via the shared SDK pipeline (not their own data_247);
 # their timeseries is derived from the SDK maps and sleep details are set in the
@@ -54,7 +54,7 @@ EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_s
 SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "moving_time_seconds", "entry_source"}}
 
 # EventRecordDetail fields that are NOT part of the coverage matrix.
-STRUCTURAL_DETAIL_FIELDS = {"record_id"}
+STRUCTURAL_DETAIL_FIELDS = {"record_id", "energy_series"}
 
 
 def _all_detail_fields() -> set[str]:
@@ -111,6 +111,10 @@ def _menstrual_cycle_fields(cov: ModuleType) -> frozenset:
     return getattr(cov, "MENSTRUAL_CYCLE_FIELDS", frozenset())
 
 
+def _meal_fields(cov: ModuleType) -> frozenset:
+    return getattr(cov, "MEAL_FIELDS", frozenset())
+
+
 def _health_scores(cov: ModuleType) -> frozenset:
     return getattr(cov, "HEALTH_SCORES", frozenset())
 
@@ -132,12 +136,28 @@ def test_emitted_timeseries_are_declared(provider: str) -> None:
 def test_set_detail_fields_are_declared(provider: str) -> None:
     cov = _load_coverage(provider)
     source = _impl_source(provider)
-    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)
+    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
 
     used = {field for field in TRACKED_DETAIL_FIELDS if re.search(rf"\b{field}=", source) or f'"{field}"' in source}
     undeclared = used - declared - SDK_UNREACHABLE_DETAIL_FIELDS.get(provider, set())
 
     assert not undeclared, f"{provider}: sets EventRecordDetail fields not declared in coverage: {sorted(undeclared)}"
+
+
+_ENERGY_SERIES_RE = re.compile(r"energy_series\"?\]?\s*=\s*([A-Za-z_][\w.]*)")
+
+
+@pytest.mark.parametrize("provider", sorted(set(_providers_with_coverage()) - SDK_PROVIDERS))
+def test_workout_energy_comes_from_coverage(provider: str) -> None:
+    """A provider's workout energy goes to the series its coverage.py declares, never to a literal; a provider
+    whose energy semantics are not established declares none and sets none (the column keeps it)."""
+    cov = _load_coverage(provider)
+    assigned = set(_ENERGY_SERIES_RE.findall(_impl_source(provider)))
+
+    if getattr(cov, "WORKOUT_ENERGY_SERIES", None) is None:
+        assert not assigned, f"{provider}: sets energy_series but coverage declares no WORKOUT_ENERGY_SERIES"
+    else:
+        assert assigned <= {"WORKOUT_ENERGY_SERIES"}, f"{provider}: energy_series set from {sorted(assigned)}"
 
 
 _SDK_METRIC_MAP = {
@@ -173,6 +193,7 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
     assert exposed.menstrual_cycle_fields == _menstrual_cycle_fields(cov), (
         f"{provider}: strategy drops/alters MENSTRUAL_CYCLE_FIELDS"
     )
+    assert exposed.meal_fields == _meal_fields(cov), f"{provider}: strategy drops/alters MEAL_FIELDS"
     assert exposed.health_scores == _health_scores(cov), f"{provider}: strategy drops/alters HEALTH_SCORES"
 
 
@@ -180,7 +201,9 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
 def test_declared_names_are_valid(provider: str) -> None:
     cov = _load_coverage(provider)
 
-    bad_fields = (_workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)) - ALL_DETAIL_FIELDS
+    bad_fields = (
+        _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
+    ) - ALL_DETAIL_FIELDS
     assert not bad_fields, f"{provider}: unknown EventRecordDetail fields declared: {sorted(bad_fields)}"
 
     assert all(isinstance(s, HealthScoreCategory) for s in _health_scores(cov))

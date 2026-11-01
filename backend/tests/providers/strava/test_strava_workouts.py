@@ -1,5 +1,6 @@
 """Tests for StravaWorkouts normalization."""
 
+from decimal import Decimal
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -42,21 +43,29 @@ class TestStravaWorkoutsNormalization:
         )
 
     def test_normalize_workout_manual_entry(self, workouts: StravaWorkouts) -> None:
-        record, detail = workouts._normalize_workout(self._activity(manual=True), uuid4())
+        record, detail = workouts._normalize_workout(self._activity(manual=True), str(uuid4()))
 
         assert record.source == "strava"
         assert detail.entry_source == EntrySource.MANUAL
         assert detail.label == "Evening Ride"
 
     def test_normalize_workout_auto_entry(self, workouts: StravaWorkouts) -> None:
-        _, detail = workouts._normalize_workout(self._activity(manual=False), uuid4())
+        _, detail = workouts._normalize_workout(self._activity(manual=False), str(uuid4()))
 
         assert detail.entry_source == EntrySource.AUTOMATIC
 
     def test_normalize_workout_unknown_entry_source(self, workouts: StravaWorkouts) -> None:
-        _, detail = workouts._normalize_workout(self._activity(), uuid4())
+        _, detail = workouts._normalize_workout(self._activity(), str(uuid4()))
 
         assert detail.entry_source is None
+
+    def test_ride_without_calories_takes_kilojoules_one_to_one(self, workouts: StravaWorkouts) -> None:
+        activity = self._activity().model_copy(update={"kilojoules": 750.0})
+
+        _, detail = workouts._normalize_workout(activity, str(uuid4()))
+
+        # Pedal work at ~24% efficiency makes 1 kJ of work about 1 kcal burned.
+        assert detail.energy_burned == Decimal("750")
 
     def test_oversized_name_does_not_abort_the_batch(self, workouts: StravaWorkouts) -> None:
         """An overlong name is truncated so the surrounding activities still import."""
@@ -74,7 +83,7 @@ class TestStravaWorkoutsNormalization:
             self._activity(manual=True),
         ]
 
-        details = [workouts._normalize_workout(a, uuid4())[1] for a in activities]
+        details = [workouts._normalize_workout(a, str(uuid4()))[1] for a in activities]
 
         assert len(details) == 3
         assert details[1].label == "x" * 255

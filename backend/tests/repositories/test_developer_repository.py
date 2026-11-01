@@ -71,7 +71,7 @@ class TestDeveloperRepository:
     def test_get_nonexistent(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test retrieving a nonexistent developer returns None."""
         # Act
-        result = developer_repo.get(db, uuid4())
+        result = developer_repo.get(db, str(uuid4()))
 
         # Assert
         assert result is None
@@ -113,6 +113,18 @@ class TestDeveloperRepository:
         assert len(results) == 1
         assert results[0].email == "target@example.com"
         assert results[0].id == dev1.id
+
+    def test_get_by_email(self, db: Session, developer_repo: DeveloperRepository) -> None:
+        developer = DeveloperFactory(email="found@example.com")
+        DeveloperFactory(email="other@example.com")
+
+        assert developer_repo.get_by_email(db, "found@example.com") == developer
+        assert developer_repo.get_by_email(db, "missing@example.com") is None
+
+    def test_list_all(self, db: Session, developer_repo: DeveloperRepository) -> None:
+        developers = {DeveloperFactory().id for _ in range(3)}
+
+        assert {developer.id for developer in developer_repo.list_all(db)} >= developers
 
     def test_get_all_with_pagination(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test pagination with offset and limit."""

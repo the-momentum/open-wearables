@@ -1,5 +1,5 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
-from app.services.providers.samsung.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
+from app.services.providers.samsung.coverage import HEALTH_SCORES, MEAL_FIELDS, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 
 
 class SamsungStrategy(BaseProviderStrategy):
@@ -33,5 +33,6 @@ class SamsungStrategy(BaseProviderStrategy):
             timeseries=TIMESERIES,
             workout_fields=WORKOUT_FIELDS,
             sleep_fields=SLEEP_FIELDS,
+            meal_fields=MEAL_FIELDS,
             health_scores=HEALTH_SCORES,
         )

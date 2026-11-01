@@ -14,7 +14,7 @@ from app.services.providers.withings.handlers import rpc_client
 def _request(**overrides: Any) -> Any:
     kwargs: dict[str, Any] = {
         "db": MagicMock(),
-        "user_id": uuid4(),
+        "user_id": str(uuid4()),
         "connection_repo": MagicMock(),
         "oauth": MagicMock(),
         "service_path": "/measure",
@@ -69,7 +69,7 @@ def _http_response(envelope: dict[str, Any]) -> MagicMock:
 
 
 @patch("app.services.providers.withings.handlers.rpc_client.time.sleep")
-@patch("app.services.providers.api_client._get_valid_token", return_value="token")
+@patch("app.services.providers.api_client.get_valid_token", return_value="token")
 @patch("app.services.providers.api_client.httpx.Client")
 def test_throttle_is_retried_through_the_shared_client(
     mock_client: MagicMock, mock_token: MagicMock, mock_sleep: MagicMock
@@ -86,7 +86,7 @@ def test_throttle_is_retried_through_the_shared_client(
 
 
 @patch("app.services.providers.withings.handlers.rpc_client.time.sleep")
-@patch("app.services.providers.api_client._get_valid_token", return_value="token")
+@patch("app.services.providers.api_client.get_valid_token", return_value="token")
 @patch("app.services.providers.api_client.httpx.Client")
 def test_throttle_that_persists_is_a_rate_limit_error(
     mock_client: MagicMock, mock_token: MagicMock, mock_sleep: MagicMock

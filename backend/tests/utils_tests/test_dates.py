@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.utils.dates import align_tz_awareness, parse_query_datetime, parse_query_end_datetime
+from app.utils.dates import align_tz_awareness, parse_query_datetime, parse_query_end_datetime, window_seconds
 from app.utils.exceptions import DatetimeParseError
 
 
@@ -23,6 +23,16 @@ class TestParseQueryDatetime:
         with pytest.raises(DatetimeParseError) as exc_info:
             parse_query_datetime("invalid")
         assert "Invalid datetime format" in exc_info.value.detail
+
+    @pytest.mark.parametrize("value", ["inf", "-inf", "1e17", "1e20", "1e309"])
+    def test_out_of_range_timestamp_raises_parse_error(self, value: str) -> None:
+        with pytest.raises(DatetimeParseError):
+            parse_query_datetime(value)
+
+    @pytest.mark.parametrize("value", ["inf", "1e20"])
+    def test_out_of_range_end_bound_raises_parse_error(self, value: str) -> None:
+        with pytest.raises(DatetimeParseError):
+            parse_query_end_datetime(value)
 
 
 class TestParseQueryEndDatetime:
@@ -87,3 +97,18 @@ class TestAlignTzAwareness:
         dt = datetime(2026, 6, 9, 3, 3)
         assert align_tz_awareness(dt, None) == (dt, None)
         assert align_tz_awareness(None, dt) == (None, dt)
+
+
+class TestWindowSeconds:
+    def test_whole_seconds_of_the_span(self) -> None:
+        start = datetime(2026, 6, 9, 3, 0, tzinfo=timezone.utc)
+        assert window_seconds(start, start + timedelta(seconds=900)) == 900
+        assert window_seconds(start, start + timedelta(seconds=59, microseconds=999_999)) == 59
+
+    def test_an_instant_or_a_span_under_a_second_has_no_width(self) -> None:
+        start = datetime(2026, 6, 9, 3, 0, tzinfo=timezone.utc)
+        assert window_seconds(start, start) is None
+        assert window_seconds(start, start - timedelta(seconds=1)) is None
+        assert window_seconds(start, start + timedelta(milliseconds=500)) is None
+        assert window_seconds(start, None) is None
+        assert window_seconds(None, start) is None

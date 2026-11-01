@@ -228,6 +228,7 @@ class UserCreateInternal(UserCreate):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
     )
+    is_seed: bool = False
 
 
 class UserUpdate(BaseModel):
