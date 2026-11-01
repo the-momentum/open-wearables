@@ -14,14 +14,13 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.constants.celery_tasks import CeleryTask
 from app.constants.devices_map import resolve_device_name
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
 
 logger = logging.getLogger(__name__)
-
-_EMIT_TASK = "app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event"
 
 # Maximum number of samples included in a single Svix message.
 # At ~200 bytes per serialised sample, 2 500 samples ≈ 500 KB — well within
@@ -57,7 +56,7 @@ def _dispatch(
         return
     try:
         celery_app.send_task(
-            _EMIT_TASK,
+            CeleryTask.EMIT_WEBHOOK_EVENT,
             args=[event_type, payload],
             kwargs={"channels": channels, "idempotency_key": idempotency_key},
         )
@@ -82,6 +81,7 @@ def on_workout_created(
     max_heart_rate_bpm: int | None = None,
     elevation_gain_meters: float | None = None,
     avg_pace_sec_per_km: int | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.WORKOUT_CREATED,
@@ -102,6 +102,7 @@ def on_workout_created(
                 "max_heart_rate_bpm": max_heart_rate_bpm,
                 "avg_pace_sec_per_km": avg_pace_sec_per_km,
                 "elevation_gain_meters": elevation_gain_meters,
+                "sync": sync,
             },
         },
         idempotency_key=f"workout.created.{record_id}",
@@ -124,6 +125,7 @@ def on_meal_created(
     macros: dict[str, float | None] | None = None,
     water_ml: float | None = None,
     nutrients: dict[str, dict[str, float | str]] | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     """Dispatch the meal.created webhook for a newly saved meal."""
     _dispatch(
@@ -143,6 +145,7 @@ def on_meal_created(
                 "macros": macros,
                 "water_ml": water_ml,
                 "nutrients": nutrients or {},
+                "sync": sync,
             },
         },
         idempotency_key=f"meal.created.{record_id}",
@@ -164,6 +167,7 @@ def on_menstrual_cycle_created(
     cycle_length: int | None = None,
     is_predicted_cycle: bool | None = None,
     pregnancy_snapshot: list[dict] | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.MENSTRUAL_CYCLE_CREATED,
@@ -181,6 +185,7 @@ def on_menstrual_cycle_created(
                 "cycle_length": cycle_length,
                 "is_predicted_cycle": is_predicted_cycle,
                 "pregnancy_snapshot": pregnancy_snapshot,
+                "sync": sync,
             },
         },
         idempotency_key=f"menstrual_cycle.created.{record_id}",
@@ -205,6 +210,7 @@ def on_sleep_created(
     device_type: str | None = None,
     sleep_duration_seconds: float | None = None,
     sleep_stage_intervals: list[dict[str, Any]] | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.SLEEP_CREATED,
@@ -229,6 +235,7 @@ def on_sleep_created(
                 "stages": stages,
                 "sleep_stage_intervals": sleep_stage_intervals,
                 "is_nap": is_nap,
+                "sync": sync,
             },
         },
         idempotency_key=f"sleep.created.{record_id}",
@@ -245,6 +252,7 @@ def on_timeseries_batch_saved(
     start_time: str | None = None,
     end_time: str | None = None,
     samples: list[dict[str, Any]] | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     """Emit one webhook event per data-type per ingestion batch.
 
@@ -261,6 +269,10 @@ def on_timeseries_batch_saved(
     - a *group* event (e.g. ``heart_rate.created``) for broad subscriptions
     - a *granular* event (e.g. ``series.resting_heart_rate.created``) for
       narrow subscriptions to a specific metric
+
+    ``sync`` identifies the run that produced the batch, so a consumer can tell a
+    historical backfill from a live reading. It is None where no run owns the write, such
+    as seed data and pushes from providers that do not track runs.
     """
     group_event = SERIES_TYPE_TO_GROUP_EVENT.get(series_type)
     if group_event is None:
@@ -280,8 +292,12 @@ def on_timeseries_batch_saved(
             channels=[f"user.{user_id}"],
         )
 
+    # Two runs can write the same window with different provenance. Without the run in
+    # the key they share an event id, and Svix drops the second as a duplicate.
+    run_segment = f".{sync['run_id']}" if sync and sync.get("run_id") else ""
+
     if len(samples) <= SVIX_MAX_SAMPLES_PER_EVENT:
-        base_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
+        base_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}{run_segment}"
         data: dict[str, Any] = {
             "user_id": str(user_id),
             "provider": provider,
@@ -290,6 +306,7 @@ def on_timeseries_batch_saved(
             "start_time": start_time,
             "end_time": end_time,
             "samples": samples,
+            "sync": sync,
         }
         for event_type in event_types_to_emit:
             _emit(event_type, data, base_key)
@@ -302,7 +319,8 @@ def on_timeseries_batch_saved(
             chunk_start = chunk[0]["timestamp"] if chunk else start_time
             chunk_end = chunk[-1]["timestamp"] if chunk else end_time
             base_key = (
-                f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
+                f"timeseries.{user_id}.{provider}.{series_type}."
+                f"{start_time or ''}.{end_time or ''}{run_segment}.chunk{chunk_index}"
             )
             data = {
                 "user_id": str(user_id),
@@ -314,6 +332,7 @@ def on_timeseries_batch_saved(
                 "samples": chunk,
                 "chunk_index": chunk_index,
                 "total_chunks": total_chunks,
+                "sync": sync,
             }
             for event_type in event_types_to_emit:
                 _emit(event_type, data, base_key)
@@ -455,5 +474,65 @@ def on_sync_failed(
             },
         },
         idempotency_key=f"sync.failed.{run_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
+def on_sync_data_type_finished(
+    *,
+    user_id: UUID,
+    provider: str,
+    source: str,
+    scope: str,
+    run_id: str,
+    data_type: str,
+    kind: str,
+    status: str,
+    succeeded: bool,
+    native_data_type: str | None = None,
+    reported_records: int | None = None,
+    items_inserted: int = 0,
+    items_updated: int = 0,
+    covered_start: str | None = None,
+    covered_end: str | None = None,
+    coverage_start: str | None = None,
+    coverage_end: str | None = None,
+    error_code: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Emit the terminal outcome of one data type within a run.
+
+    On a historical run this is the per-type "done" signal: the run-level ``sync.completed``
+    only says the whole run finished, which for a months-long backfill arrives long after
+    an individual type is fully in.
+
+    ``written`` is what this run wrote, ``coverage`` the total span now held for the type.
+    They differ, and the second is the one that answers "is the history complete".
+    """
+    event_type = WebhookEventType.SYNC_DATA_TYPE_COMPLETED if succeeded else WebhookEventType.SYNC_DATA_TYPE_FAILED
+    _dispatch(
+        event_type,
+        {
+            "type": event_type,
+            "data": {
+                "user_id": str(user_id),
+                "provider": provider,
+                "source": source,
+                "scope": scope,
+                "run_id": run_id,
+                "data_type": data_type,
+                "native_data_type": native_data_type,
+                "kind": kind,
+                "status": status,
+                "items_reported": reported_records,
+                "items_inserted": items_inserted,
+                "items_updated": items_updated,
+                "written": {"start": covered_start, "end": covered_end} if covered_end else None,
+                "coverage": {"start": coverage_start, "end": coverage_end} if coverage_end else None,
+                "error_code": error_code,
+                "error": error,
+            },
+        },
+        idempotency_key=_safe_key(f"{event_type}.{run_id}.{data_type}"),
         channels=[f"user.{user_id}"],
     )

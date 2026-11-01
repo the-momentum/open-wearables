@@ -11,3 +11,6 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
 )
 
 __all__ = ["HEALTH_SCORES", "MEAL_FIELDS", "SLEEP_FIELDS", "TIMESERIES", "WORKOUT_FIELDS"]
+
+# ``metricsSummary.caloriesKcal``: "Total active calories burned during the workout" (Google Health workouts docs).
+WORKOUT_ENERGY_SERIES = SeriesType.active_energy

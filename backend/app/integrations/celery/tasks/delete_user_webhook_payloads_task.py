@@ -14,6 +14,7 @@ from uuid import UUID
 from celery import shared_task
 from svix.api.errors.http_error import HttpError
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services import developer_service
 from app.services.outgoing_webhooks import svix as svix_service
@@ -38,7 +39,7 @@ def _load_developer_ids() -> list[str]:
 
 
 @shared_task(
-    name="app.integrations.celery.tasks.delete_user_webhook_payloads_task.delete_user_webhook_payloads",
+    name=CeleryTask.DELETE_USER_WEBHOOK_PAYLOADS,
     bind=True,
     max_retries=5,
     default_retry_delay=60,

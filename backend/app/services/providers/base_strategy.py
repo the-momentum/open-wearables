@@ -6,6 +6,7 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -206,9 +207,9 @@ class BaseProviderStrategy(ABC):
             return
 
         celery_app.send_task(
-            "app.integrations.celery.tasks.provider_webhooks_task.reconcile_provider_webhooks",
+            CeleryTask.RECONCILE_PROVIDER_WEBHOOKS,
             args=[self.name, mode],
-            queue="webhook_sync",
+            queue=CeleryQueue.WEBHOOK_SYNC,
         )
 
     def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
@@ -226,7 +227,7 @@ class BaseProviderStrategy(ABC):
         start_date = end_date - timedelta(days=days)
 
         task = celery_app.send_task(
-            "app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data",
+            CeleryTask.SYNC_VENDOR_DATA,
             kwargs={
                 "user_id": str(user_id),
                 "start_date": start_date.isoformat(),
@@ -254,6 +255,17 @@ class BaseProviderStrategy(ABC):
     def has_cloud_api(self) -> bool:
         """Returns True if provider uses cloud OAuth API."""
         return self.oauth is not None
+
+    @property
+    def credentials_configured(self) -> bool:
+        """False when a cloud provider is missing its OAuth client ID or secret.
+
+        SDK-only providers need no credentials, so they always count as configured.
+        """
+        if self.oauth is None:
+            return True
+        credentials = self.oauth.credentials
+        return bool(credentials.client_id and credentials.client_secret)
 
     @property
     def live_sync_configurable(self) -> bool:

@@ -14,6 +14,7 @@ from uuid import UUID
 from celery import Task, shared_task
 from fastapi import HTTPException
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
@@ -130,6 +131,7 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
 
 
 @shared_task(
+    name=CeleryTask.PROCESS_WEBHOOK_PUSH,
     bind=True,
     acks_late=True,
     reject_on_worker_lost=True,
@@ -155,6 +157,9 @@ def process_webhook_push(
         provider_user_id = handler.extract_user_id(payload)
         with SessionLocal() as db:
             result = handler.process_payload(db, payload, request_trace_id)
+            # Bulk sample/score writes defer their commit to the caller, so closing the
+            # session without this would silently discard them.
+            db.commit()
         _emit_webhook_sync_status(provider_name, result)
         return result
     except ValueError as exc:

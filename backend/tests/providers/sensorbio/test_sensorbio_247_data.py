@@ -9,14 +9,16 @@ as recommended in gap-analysis card t_38e552b2 finding #8.
 t_5912f22f adds: ACTIVITY + SLEEP HealthScore extraction from /v1/scores (parity with Oura).
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
 
 # ---------------------------------------------------------------------------
@@ -70,6 +72,22 @@ class TestSensorBio247SleepNormalization:
         assert result["average_hrv"] == 45.0
         assert result["average_spo2"] == 97.0
         assert result["resting_heart_rate"] == 52.0
+
+    def test_unreported_stages_stay_none_and_zero_stays_zero(self, data_247: SensorBio247Data) -> None:
+        raw = {
+            "start_timestamp": 1_700_000_000,
+            "end_timestamp": 1_700_028_800,
+            "total_sleep_mins": 420.0,
+            "rem_sleep_mins": 0.0,
+        }
+        result = data_247.normalize_sleep(raw, USER_ID)
+        assert result is not None
+        assert result["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": 0,
+            "awake_seconds": None,
+        }
 
     def test_is_nap_always_false_without_api_flag(self, data_247: SensorBio247Data) -> None:
         """Sensor Bio has no nap flag; short sessions stay is_nap=False."""
@@ -168,6 +186,25 @@ class TestSensorBio247SaveSleepData:
         mock_svc.create.assert_called_once()
         mock_svc.create_detail.assert_called_once()
 
+    def test_persists_unreported_stages_as_none(self, data_247: SensorBio247Data) -> None:
+        normalized = {
+            "id": uuid4(),
+            "start_time": datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
+            "end_time": datetime(2024, 1, 15, 8, 0, 0, tzinfo=timezone.utc),
+            "duration_seconds": 28800,
+            "stages": {"deep_seconds": None, "light_seconds": None, "rem_seconds": 0, "awake_seconds": None},
+        }
+        with patch("app.services.providers.sensorbio.data_247.event_record_service") as mock_svc:
+            mock_svc.create.return_value = MagicMock(id=normalized["id"])
+            data_247.save_sleep_data(MagicMock(), USER_ID, normalized)
+
+        detail = mock_svc.create_detail.call_args[0][1]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_total_duration_minutes == 0
+
 
 # ---------------------------------------------------------------------------
 # 2. normalize_recovery + save_recovery_data (including recovery.value extraction)
@@ -235,11 +272,16 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 3
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
+            mock_hs.bulk_create.return_value = WriteCounts(1, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 3, "scores_synced": 1}
+        assert counts == 4  # 3 metrics + 1 score
+        assert counts.inserted == 4
         mock_ts.bulk_create_samples.assert_called_once()
+        assert {s.period for s in mock_ts.bulk_create_samples.call_args[0][1]} == {
+            CalendarPeriod.of_date(date(2024, 1, 15))
+        }
         mock_hs.bulk_create.assert_called_once()
         scores = mock_hs.bulk_create.call_args[0][1]
         from app.schemas.enums import HealthScoreCategory
@@ -260,7 +302,7 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 1
+            mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             data_247.save_recovery_data(db, USER_ID, normalized)
 
         mock_hs.bulk_create.assert_not_called()
@@ -273,7 +315,7 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
-        assert counts == {"metrics_synced": 0, "scores_synced": 0}
+        assert counts == 0
         mock_ts.bulk_create_samples.assert_not_called()
         mock_hs.bulk_create.assert_not_called()
 
@@ -523,6 +565,7 @@ class TestSensorBio247SaveDailyActivity:
             "energy": 312.0,
         }
         with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
         assert count == 3
@@ -542,6 +585,7 @@ class TestSensorBio247SaveDailyActivity:
             "energy": None,
         }
         with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+            mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
         assert count == 1
@@ -668,9 +712,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 2}
+        assert counts == 2
         mock_hs.bulk_create.assert_called_once()
         from app.schemas.enums import HealthScoreCategory
 
@@ -694,9 +739,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 2}
+        assert counts == 2
         from app.schemas.enums import HealthScoreCategory
 
         scores = mock_hs.bulk_create.call_args[0][1]
@@ -722,10 +768,11 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 3
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
+            mock_hs.bulk_create.return_value = WriteCounts(3, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 3, "scores_synced": 3}
+        assert counts == 6  # 3 metrics + 3 scores
         assert mock_hs.bulk_create.call_count == 1
         from app.schemas.enums import HealthScoreCategory
 
@@ -746,9 +793,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(1, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 1}
+        assert counts == 1
         from app.schemas.enums import HealthScoreCategory
 
         scores = mock_hs.bulk_create.call_args[0][1]
@@ -768,7 +816,7 @@ class TestSensorBio247SaveRecoveryDataScores:
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 0}
+        assert counts == 0
         mock_hs.bulk_create.assert_not_called()
 
 

@@ -53,3 +53,6 @@ HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset(
         HealthScoreCategory.STRAIN,
     }
 )
+
+# ``score.kilojoule`` includes BMR: on our data, low-effort workouts bottom out at the resting rate, never below it.
+WORKOUT_ENERGY_SERIES = SeriesType.total_energy

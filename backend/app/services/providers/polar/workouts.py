@@ -7,6 +7,7 @@ import isodate
 
 from app.constants.workout_types.polar import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -119,7 +120,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         zone_offset = offset_to_iso(raw_workout.start_time_utc_offset * 60)
 
         record = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=raw_workout.device,
             device_model=raw_workout.device,

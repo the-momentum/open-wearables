@@ -9,5 +9,7 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 	const asked = samplesFor(url, VITAL_TYPES);
 	if (!asked) return json(NO_SAMPLES);
 
-	return json(await fetchSamples(params.id, accessToken, asked.window, asked.provider));
+	// A vital is a day value for most providers (Oura's resting pulse, Whoop's nightly HRV), and the
+	// raw stream no longer carries those; the day rows hold every device's, ours where the provider sent none.
+	return json(await fetchSamples(params.id, accessToken, asked.window, asked.provider, '1day'));
 };

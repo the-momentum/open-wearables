@@ -20,6 +20,7 @@ from celery import current_app as celery_app
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession, SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -30,7 +31,6 @@ from app.services.providers.templates.base_webhook_service import BaseWebhookSer
 from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.handlers.errors import WithingsTokenError
 from app.services.providers.withings.handlers.rpc_client import withings_request
-from app.services.providers.withings.handlers.tasks import SYNC_USER_SUBSCRIPTIONS_TASK
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -152,9 +152,9 @@ class WithingsWebhookService(BaseWebhookService):
         for user_id in subscription_owners.values():
             try:
                 celery_app.send_task(
-                    SYNC_USER_SUBSCRIPTIONS_TASK,
+                    CeleryTask.WITHINGS_SYNC_USER_SUBSCRIPTIONS,
                     args=[user_id],
-                    queue="webhook_sync",
+                    queue=CeleryQueue.WEBHOOK_SYNC,
                 )
                 results.append({"status": "dispatched", "user_id": user_id})
             except Exception as e:

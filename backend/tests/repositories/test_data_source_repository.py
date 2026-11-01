@@ -287,7 +287,7 @@ class TestDataSourceRepository:
         }
 
         relayed = repo.ensure_data_source(db, **ids, device_model="iPhone16,1", reported_type=DeviceType.PHONE)
-        assert relayed.device_type == DeviceType.PHONE
+        assert relayed.device_type == DeviceType.RING
         unknown = repo.ensure_data_source(db, **ids)
         old_client = repo.ensure_data_source(db, **ids, device_model="iPhone16,1", reported_type=DeviceType.PHONE)
 

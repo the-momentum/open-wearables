@@ -130,6 +130,11 @@ class TestReportedDeviceType:
         )
         assert infer_device_type(ProviderName.SAMSUNG, "unlisted-model", None, DeviceType.OTHER) == DeviceType.OTHER
 
+    def test_relaying_host_is_ignored_for_third_party_writer(self) -> None:
+        oura = infer_device_type(ProviderName.APPLE, "iPhone16,1", "Oura", DeviceType.PHONE, "com.ouraring.oura")
+        strava = infer_device_type(ProviderName.APPLE, "iPhone16,1", "Strava", DeviceType.PHONE, "com.strava.run")
+        assert (oura, strava) == (DeviceType.RING, DeviceType.UNKNOWN)
+
     def test_unknown_sdk_type_falls_back_to_inference(self) -> None:
         assert infer_device_type(ProviderName.HEALTH_CONNECT, "Pixel 8", None, DeviceType.UNKNOWN) == DeviceType.PHONE
 

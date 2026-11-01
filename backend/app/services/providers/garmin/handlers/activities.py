@@ -14,10 +14,11 @@ from sqlalchemy.exc import IntegrityError
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
-from app.schemas.sync_status import SyncSource, SyncStatus
+from app.schemas.sync_status import SyncRunContext, SyncScope, SyncSource, SyncStatus
 from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.sync_status_service import emit_sync_completed, new_run_id
+from app.utils.context import sync_run_context
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -105,12 +106,14 @@ def process_activity_notification(
             user_id=str(internal_user_id),
             is_primary=is_primary,
         )
+        run_id = new_run_id(prefix=f"garmin_webhook_activity_{activity_id}")
         try:
-            created_ids = garmin_workouts.process_push_activities(
-                db=db,
-                activities=[activity],
-                user_id=internal_user_id,
-            )
+            with sync_run_context(SyncRunContext(run_id=run_id, source=sync_source, scope=SyncScope.LIVE)):
+                created_ids = garmin_workouts.process_push_activities(
+                    db=db,
+                    activities=[activity],
+                    user_id=internal_user_id,
+                )
         except IntegrityError:
             db.rollback()
             log_structured(
@@ -139,7 +142,7 @@ def process_activity_notification(
             internal_user_id,
             "garmin",
             sync_source,
-            run_id=new_run_id(prefix=f"garmin_webhook_activity_{activity_id}"),
+            run_id=run_id,
             status=SyncStatus.SUCCESS,
             message=f"Garmin activity received: {activity_name}",
             items_processed=len(created_ids),
