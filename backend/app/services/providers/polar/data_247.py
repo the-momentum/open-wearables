@@ -170,6 +170,10 @@ class Polar247Data(Base247DataTemplate):
         nights = (response or {}).get("available", [])
         return {date.fromisoformat(night["date"]) for night in nights if night.get("date")}
 
+    @staticmethod
+    def _sleep_external_id(night: date) -> str:
+        return f"sleep-{night.isoformat()}"
+
     def get_sleep_data(
         self,
         db: DbSession,
@@ -181,8 +185,16 @@ class Polar247Data(Base247DataTemplate):
             start_time.date() + timedelta(days=i) for i in range((end_time.date() - start_time.date()).days + 1)
         }
         available_dates = self._get_available_sleep_dates(db, user_id)
+        # A night lands in /sleep/available only once the watch syncs with Polar Flow, which can be days after
+        # its date left the sync window. Fetch those late nights too, unless they are already stored.
+        late_dates = available_dates - date_range
+        if late_dates:
+            stored = event_record_service.crud.get_by_external_ids(
+                db, user_id, [self._sleep_external_id(d) for d in late_dates], provider=ProviderName.POLAR
+            )
+            late_dates = {d for d in late_dates if self._sleep_external_id(d) not in stored}
         sleep_data = []
-        for d in date_range.intersection(available_dates):
+        for d in sorted(date_range.intersection(available_dates) | late_dates):
             response = self._make_api_request(db, user_id, f"/v3/users/sleep/{d.isoformat()}")
             if response:
                 sleep_data.append(response)
