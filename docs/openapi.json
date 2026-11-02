@@ -4651,11 +4651,11 @@
               "type": "integer",
               "maximum": 3650,
               "minimum": 1,
-              "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window actually fetched.",
+              "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync.",
               "default": 90,
               "title": "Days"
             },
-            "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window actually fetched."
+            "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync."
           },
           {
             "name": "X-Open-Wearables-API-Key",

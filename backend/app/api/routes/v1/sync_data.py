@@ -270,7 +270,7 @@ def sync_historical_data(
         Query(
             description="Days of historical data to fetch (default: 90, max: 3650). "
             "Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); "
-            "the response `days` reflects the window actually fetched.",
+            "the response `days` reflects the window scheduled for sync.",
             ge=1,
             le=3650,
         ),
