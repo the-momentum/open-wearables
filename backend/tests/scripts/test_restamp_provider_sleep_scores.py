@@ -32,23 +32,27 @@ START = datetime(2026, 10, 27, 23, 55, tzinfo=timezone.utc)  # 00:55 on the 28th
 WAKE_UP = datetime(2026, 10, 28, 5, 46, tzinfo=timezone.utc)
 
 
-def _night(user: User, provider: ProviderName, zone_offset: str | None = "+01:00") -> EventRecord:
+def _night(
+    user: User, provider: ProviderName, zone_offset: str | None = "+01:00", start: datetime = START
+) -> EventRecord:
     source = DataSourceFactory(user=user, provider=provider, source=provider.value)
     return EventRecordFactory(
         data_source=source,
         category="sleep",
         type="sleep_session",
-        start_datetime=START,
+        start_datetime=start,
         end_datetime=WAKE_UP,
         zone_offset=zone_offset,
     )
 
 
-def _score(user: User, provider: ProviderName, recorded_at: datetime, **kwargs: object) -> UUID:
+def _score(
+    user: User, provider: ProviderName, recorded_at: datetime, data_source_id: UUID | None = None, **kwargs: object
+) -> UUID:
     """The score's id, since the script's commits expire the instance."""
     return HealthScoreFactory(
         user_id=user.id,
-        data_source_id=None,
+        data_source_id=data_source_id,
         provider=provider,
         category=HealthScoreCategory.SLEEP,
         value=Decimal("80"),
@@ -83,6 +87,15 @@ class TestRestampProviderSleepScores:
         assert restamp_provider_sleep_scores(db, dry_run=False) == 1
         assert _stamp(db, score) == (WAKE_UP, None)
 
+    def test_moves_a_polar_score_whose_night_a_re_sync_moved(self, db: Session) -> None:
+        """A re-sync replaces a Polar night in place, so its start may no longer be the score's."""
+        user = UserFactory()
+        night = _night(user, ProviderName.POLAR, zone_offset=None, start=START + timedelta(minutes=10))
+        score = _score(user, ProviderName.POLAR, START, event_record_id=night.id)
+
+        assert restamp_provider_sleep_scores(db, dry_run=False) == 1
+        assert _stamp(db, score) == (WAKE_UP, None)
+
     def test_drops_a_score_whose_night_already_has_one_at_the_wake_up(self, db: Session) -> None:
         # Written by the fixed ingestion after the deploy, before this ran
         user = UserFactory()
@@ -94,6 +107,18 @@ class TestRestampProviderSleepScores:
 
         assert _stamp(db, old) is None
         assert _stamp(db, new) == (WAKE_UP, "+01:00")
+
+    def test_a_score_of_another_source_at_the_wake_up_does_not_block_the_move(self, db: Session) -> None:
+        """The unique key includes the source (#1877), so that time is still free for the score."""
+        user = UserFactory()
+        night = _night(user, ProviderName.GARMIN)
+        moving = _score(user, ProviderName.GARMIN, START)
+        other = _score(user, ProviderName.GARMIN, WAKE_UP, data_source_id=night.data_source_id)
+
+        restamp_provider_sleep_scores(db, dry_run=False)
+
+        assert _stamp(db, moving) == (WAKE_UP, "+01:00")
+        assert _stamp(db, other) is not None
 
     def test_leaves_other_scores_alone(self, db: Session) -> None:
         user = UserFactory()

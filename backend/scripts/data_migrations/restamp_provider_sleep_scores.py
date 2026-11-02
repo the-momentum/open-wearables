@@ -7,8 +7,9 @@ date of falling asleep. East of UTC, a user who falls asleep sometimes before an
 midnight UTC got two scores on one day and none on the next. Ingestion now records them at the
 night's end with its zone offset, and this moves the scores already stored.
 
-A score's night is its event record for Polar, which links it, and otherwise the user's sleep
-record of the same provider that starts at the score's ``recorded_at``. The score moves to the
+A score's night is its event record for Polar, which links it (a re-sync may have moved the
+night's start since), and otherwise the user's sleep record of the same provider that starts at
+the score's ``recorded_at``. The score moves to the
 night's ``end_datetime`` and ``zone_offset``, which is empty for Polar's sleep records and for
 Whoop's stored before ingestion read Whoop's ``timezone_offset``. A score whose night already has
 one at the wake-up, written by the fixed ingestion, is deleted, and of two scores moving to the
@@ -36,15 +37,18 @@ _PROVIDERS = [ProviderName.GARMIN.value, ProviderName.POLAR.value, ProviderName.
 
 _AT_START = """
     SELECT DISTINCT ON (hs.id)
-        hs.id, hs.user_id, hs.provider, hs.category, hs.created_at,
+        hs.id, hs.user_id, hs.provider, hs.data_source_id, hs.category, hs.created_at,
         er.end_datetime AS wake_up, er.zone_offset
     FROM health_score hs
     JOIN data_source ds ON ds.user_id = hs.user_id AND ds.provider = hs.provider
-    JOIN event_record er ON er.data_source_id = ds.id AND er.start_datetime = hs.recorded_at
+    -- A Polar score links its night, which a re-sync may have moved; the others sit at its start
+    JOIN event_record er ON er.data_source_id = ds.id AND (
+        er.id = hs.event_record_id OR (hs.event_record_id IS NULL AND er.start_datetime = hs.recorded_at)
+    )
     WHERE hs.provider = ANY(:providers)
       AND hs.category = :category
       AND er.category = 'sleep'
-      AND (hs.event_record_id IS NULL OR hs.event_record_id = er.id)
+      AND hs.recorded_at <> er.end_datetime
     ORDER BY hs.id, er.end_datetime DESC
 """
 _COUNT = text(f"SELECT count(*) FROM ({_AT_START}) at_start")
@@ -53,12 +57,12 @@ _COUNT = text(f"SELECT count(*) FROM ({_AT_START}) at_start")
 _DROP = text("DROP TABLE IF EXISTS sleep_scores_at_start")
 _COLLECT = text(f"CREATE TEMP TABLE sleep_scores_at_start AS {_AT_START}")
 _INDEX = text("CREATE INDEX ON sleep_scores_at_start (id)")
-# Moving a score onto a time another one holds would break the unique key and fail every run: the
-# score already there stays, and of several moving to one time the newest
+# Moving a score onto a time another one of its key holds (#1877 added the source to it) would break
+# the unique key and fail every run: the score already there stays, and of several moving to one time the newest
 _DELETE_DUPLICATES = text("""
     WITH ranked AS (
         SELECT id, row_number() OVER (
-            PARTITION BY user_id, provider, category, wake_up ORDER BY created_at DESC, id
+            PARTITION BY user_id, provider, data_source_id, category, wake_up ORDER BY created_at DESC, id
         ) AS n
         FROM sleep_scores_at_start
     )
@@ -68,6 +72,7 @@ _DELETE_DUPLICATES = text("""
       AND (ranked.n > 1 OR EXISTS (
           SELECT 1 FROM health_score taken
           WHERE taken.user_id = s.user_id AND taken.provider = s.provider
+            AND taken.data_source_id IS NOT DISTINCT FROM s.data_source_id
             AND taken.category = s.category AND taken.recorded_at = s.wake_up AND taken.id <> s.id
       ))
 """)
