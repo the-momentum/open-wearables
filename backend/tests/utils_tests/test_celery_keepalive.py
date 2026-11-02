@@ -26,6 +26,12 @@ class TestTcpKeepaliveOptions:
 
         assert celery_core._tcp_keepalive_options() == {0x10: 60, 0x101: 10, 0x102: 3}
 
+    def test_tcp_keepidle_is_preferred_over_tcp_keepalive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        both = SimpleNamespace(TCP_KEEPIDLE=4, TCP_KEEPALIVE=0x10, TCP_KEEPINTVL=5, TCP_KEEPCNT=6)
+        monkeypatch.setattr(celery_core, "socket", both)
+
+        assert celery_core._tcp_keepalive_options() == {4: 60, 5: 10, 6: 3}
+
     def test_options_the_platform_lacks_are_left_out(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(celery_core, "socket", SimpleNamespace(TCP_KEEPINTVL=5))
 
