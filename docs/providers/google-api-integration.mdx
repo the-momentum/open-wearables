@@ -280,7 +280,7 @@ Verification attaches to the **Google Cloud project** — its consent screen and
         | `openid`, `email` | Sign-in only — neither is sensitive or restricted |
 
         <Tip>
-        Trim `GOOGLE_DEFAULT_SCOPE` to the data types you actually surface before you submit. Every extra restricted scope is another justification to defend, and unused ones are reviewed just as hard as the rest.
+        Trim `GOOGLE_DEFAULT_SCOPE` to the data types you actually surface before you submit. Every extra restricted scope is another justification to defend, and unused ones are reviewed just as hard as the rest. Data types covered by a scope a connection never granted are skipped during syncs rather than failing, so trimming is safe to do at any time.
         </Tip>
       </Step>
 

@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.constants.google_health_endpoints import LIST_ENDPOINT as DATAPOINTS_LIST_ENDPOINT
+from app.constants.google_health_endpoints import NUTRITION_SCOPE
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import EventCategory, ProviderName, SeriesType, get_series_type_unit
@@ -20,6 +21,7 @@ from app.services.providers.google_health.helpers import (
     parse_interval,
     parse_page,
     read_number,
+    scope_granted,
     zone_offset_from,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -128,6 +130,8 @@ class GoogleHealthApiNutrition:
 
         Flushes only - the caller's savepoint and commit own the transaction. Returns the number of new meals.
         """
+        if not scope_granted(self.connection_repo, db, user_id, self.provider_name, NUTRITION_SCOPE):
+            return 0
         meals = [
             self._meal_bundle(user_id, meal)
             for point in self._fetch(db, user_id, start_time, end_time)

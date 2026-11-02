@@ -196,6 +196,9 @@ class DataTypeMetric:
     value_key: str
     rollup_spec: RollupSpec | None = None
     list_spec: ListSpec | None = None
+    # OAuth scope the type's endpoints require beyond the baseline grant; when the
+    # connection's granted scope lacks it the sync skips the type instead of 403ing.
+    required_scope: str | None = None
 
     def __post_init__(self) -> None:
         # A rollUp-only type would ingest nothing while rollUp is off (see use_list).
