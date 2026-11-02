@@ -258,22 +258,57 @@ class TestGarmin247Data:
         assert normalized["duration_seconds"] == 9000  # 7200 asleep + 1800 awake
 
     def test_normalize_sleep_missing_stages(self, garmin_247: Garmin247Data) -> None:
-        """Test normalizing sleep with missing stage data."""
+        """A manually entered sleep carries no stage fields, so the stages stay unreported."""
         user_id = uuid4()
         sleep_data = {
             "summaryId": "sleep_123",
             "startTimeInSeconds": 1705273200,
             "durationInSeconds": 28800,
+            "validation": "MANUAL",
         }
 
         normalized, _ = garmin_247.normalize_sleep(sleep_data, user_id)
+        result = garmin_247._build_sleep_record(user_id, normalized)
+        assert result is not None
+        _, detail = result
 
-        # Should handle missing stage data gracefully
-        stages = normalized["stages"]
-        assert stages["deep_seconds"] == 0
-        assert stages["light_seconds"] == 0
-        assert stages["rem_seconds"] == 0
-        assert stages["awake_seconds"] == 0
+        assert normalized["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": None,
+            "awake_seconds": None,
+        }
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_total_duration_minutes is None
+        assert detail.sleep_efficiency_score is None
+        assert detail.sleep_time_in_bed_minutes == 480
+
+    def test_build_sleep_record_keeps_reported_zero_stages(self, garmin_247: Garmin247Data) -> None:
+        """Devices without REM tracking report remSleepInSeconds=0, which is a real measurement."""
+        user_id = uuid4()
+        sleep_data = {
+            "summaryId": "sleep_123",
+            "startTimeInSeconds": 1705273200,
+            "durationInSeconds": 28800,
+            "validation": "AUTO_FINAL",
+            "deepSleepDurationInSeconds": 7200,
+            "lightSleepDurationInSeconds": 21600,
+            "remSleepInSeconds": 0,
+            "awakeDurationInSeconds": 0,
+        }
+
+        normalized, _ = garmin_247.normalize_sleep(sleep_data, user_id)
+        result = garmin_247._build_sleep_record(user_id, normalized)
+        assert result is not None
+        _, detail = result
+
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_awake_minutes == 0
+        assert detail.sleep_deep_minutes == 120
+        assert detail.sleep_total_duration_minutes == 480
 
     # -------------------------------------------------------------------------
     # Dailies Data Tests

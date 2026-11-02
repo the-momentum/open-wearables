@@ -73,6 +73,22 @@ class TestSensorBio247SleepNormalization:
         assert result["average_spo2"] == 97.0
         assert result["resting_heart_rate"] == 52.0
 
+    def test_unreported_stages_stay_none_and_zero_stays_zero(self, data_247: SensorBio247Data) -> None:
+        raw = {
+            "start_timestamp": 1_700_000_000,
+            "end_timestamp": 1_700_028_800,
+            "total_sleep_mins": 420.0,
+            "rem_sleep_mins": 0.0,
+        }
+        result = data_247.normalize_sleep(raw, USER_ID)
+        assert result is not None
+        assert result["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": 0,
+            "awake_seconds": None,
+        }
+
     def test_is_nap_always_false_without_api_flag(self, data_247: SensorBio247Data) -> None:
         """Sensor Bio has no nap flag; short sessions stay is_nap=False."""
         raw = {
@@ -169,6 +185,25 @@ class TestSensorBio247SaveSleepData:
         assert result is True
         mock_svc.create.assert_called_once()
         mock_svc.create_detail.assert_called_once()
+
+    def test_persists_unreported_stages_as_none(self, data_247: SensorBio247Data) -> None:
+        normalized = {
+            "id": uuid4(),
+            "start_time": datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
+            "end_time": datetime(2024, 1, 15, 8, 0, 0, tzinfo=timezone.utc),
+            "duration_seconds": 28800,
+            "stages": {"deep_seconds": None, "light_seconds": None, "rem_seconds": 0, "awake_seconds": None},
+        }
+        with patch("app.services.providers.sensorbio.data_247.event_record_service") as mock_svc:
+            mock_svc.create.return_value = MagicMock(id=normalized["id"])
+            data_247.save_sleep_data(MagicMock(), USER_ID, normalized)
+
+        detail = mock_svc.create_detail.call_args[0][1]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_total_duration_minutes == 0
 
 
 # ---------------------------------------------------------------------------
