@@ -488,7 +488,7 @@ class DataSourceRepository(
 
         Deletes the user's health_score rows for the provider (some are not linked to
         a data_source), then the data_source rows. ON DELETE CASCADE on the data_source
-        FK removes every dependent row - event_records, data_point_series (+ archive),
+        FK removes every dependent row - event_records, series_sample (+ archive),
         event/sleep/workout/menstrual details and health_scores linked via data_source
         or event_record. Returns the number of data_source rows deleted.
         """

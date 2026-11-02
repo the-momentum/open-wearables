@@ -9,22 +9,22 @@ from app.mappings import (
     FKDataSource,
     FKSeriesTypeDefinition,
     PrimaryKey,
-    numeric_10_3,
+    numeric_unbounded,
     str_10,
     str_100,
 )
 
 
-class DataPointSeries(BaseDbModel):
+class SeriesSample(BaseDbModel):
     """Unified time-series data points for device metrics (heart rate, steps, energy, etc.)."""
 
-    __tablename__ = "data_point_series"
+    __tablename__ = "series_sample"
     __table_args__ = (
         UniqueConstraint(
             "data_source_id",
             "series_type_definition_id",
             "recorded_at",
-            name="uq_data_point_series_source_type_time",
+            name="uq_series_sample_source_type_time",
         ),
     )
 
@@ -33,6 +33,7 @@ class DataPointSeries(BaseDbModel):
     data_source_id: Mapped[FKDataSource]
     recorded_at: Mapped[datetime]
     zone_offset: Mapped[str_10 | None]
-    value: Mapped[numeric_10_3]
+    window_seconds: Mapped[int | None]
+    value: Mapped[numeric_unbounded]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]
     is_daily_total: Mapped[bool | None] # True = pre-aggregated daily total; False = granular intraday samples
