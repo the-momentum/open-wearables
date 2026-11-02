@@ -189,6 +189,18 @@ def _apply_transition(
             source_app_id,
             device_manufacturer,
         )
+        state.has_sleep_sample = sleep_phase in SLEEP_START_STATES
+    elif not state.has_sleep_sample and sleep_phase in SLEEP_START_STATES:
+        # The session was opened by awake samples: the first sleep sample sets its source.
+        state.has_sleep_sample = True
+        state.uuid = uuid or state.uuid
+        state.source_name = source_name or "unknown"
+        state.device_model = device_model
+        state.device_type = device_type
+        state.device_id = device_id
+        state.source_app_id = source_app_id
+        state.device_manufacturer = device_manufacturer
+        state.zone_offset = zone_offset or state.zone_offset
 
     if zone_offset and not state.zone_offset:
         state.zone_offset = zone_offset
@@ -269,7 +281,7 @@ def handle_sleep_data(
     Flow:
         - Acquire a per-user Redis lock to prevent concurrent state corruption
         - Deduplicate incoming data based on start/end/stage/source
-        - If no active session exists: Create new session in Redis (only for valid start states)
+        - If no active session exists: Create new session in Redis (sleep start states or awake)
         - If active session exists: Check gap between new sample and the session window
           * Gap > 2 hours: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
@@ -316,7 +328,10 @@ def handle_sleep_data(
                 continue
 
             if not current_state:
-                if sleep_phase not in SLEEP_START_STATES:
+                # Awake samples may open a session: an upload can start in the middle of a
+                # night that is already stored. Awake before the night's first sleep sample
+                # is dropped when the session is saved (see _drop_awake_before_first_sleep).
+                if sleep_phase not in SLEEP_START_STATES and sleep_phase != SleepPhase.AWAKE:
                     continue
 
                 current_state = _create_new_sleep_state(
@@ -332,6 +347,7 @@ def handle_sleep_data(
                     source_app_id,
                     device_manufacturer,
                 )
+                current_state.has_sleep_sample = sleep_phase in SLEEP_START_STATES
 
             current_state = _apply_transition(
                 db_session,
@@ -379,6 +395,37 @@ def handle_sleep_data(
     # Dispatch the stale-sleep task so sessions that have gone quiet (including
     # other users' sessions) are finalised promptly without waiting for the next beat.
     celery_app.send_task(CeleryTask.FINALIZE_STALE_SLEEPS)
+
+
+_SLEEP_START_STAGES = {
+    SleepStageType.IN_BED,
+    SleepStageType.SLEEPING,
+    SleepStageType.LIGHT,
+    SleepStageType.DEEP,
+    SleepStageType.REM,
+}
+
+
+def _drop_awake_before_first_sleep(stages: list[SleepStateStage]) -> list[SleepStateStage]:
+    """Drop awake time before the first sleep stage of the night.
+
+    A night starts at its first sleep sample. Applying this to the whole merged night,
+    rather than to each upload, keeps an awakening that happens to open a later upload.
+    Returns an empty list when there is no sleep stage at all.
+    """
+    sleep_starts = [s.start_time for s in stages if s.stage in _SLEEP_START_STAGES]
+    if not sleep_starts:
+        return []
+    night_start = min(sleep_starts)
+
+    kept: list[SleepStateStage] = []
+    for stage in stages:
+        if stage.stage == SleepStageType.AWAKE and stage.start_time < night_start:
+            if stage.end_time <= night_start:
+                continue
+            stage = stage.model_copy(update={"start_time": night_start})
+        kept.append(stage)
+    return kept
 
 
 def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[SleepStage]]:
@@ -517,7 +564,18 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         provider=state.provider,
     )
 
-    if adjacent is not None:
+    external_id = state.uuid
+
+    if adjacent is None:
+        if not state.has_sleep_sample:
+            # Only awake samples and no stored night to attach them to: not a sleep session.
+            delete_sleep_state(user_id)
+            return
+        metrics, cleaned_stages = _calculate_final_metrics(_drop_awake_before_first_sleep(state.stages))
+        if cleaned_stages:
+            start_time = cleaned_stages[0].start_time
+            end_time = cleaned_stages[-1].end_time
+    else:
         # Deserialise the stored stages back to SleepStateStage so we can feed
         # them into _calculate_final_metrics together with the new stages.
         existing_state_stages: list[SleepStateStage] = []
@@ -526,15 +584,23 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
                 with contextlib.suppress(Exception):
                     existing_state_stages.append(SleepStateStage.model_validate(s))
 
-        # Recalculate from the union of both stage lists.
-        metrics, cleaned_stages = _calculate_final_metrics(existing_state_stages + state.stages)
+        # Recalculate from the union of both stage lists. Leading awake is dropped from
+        # the merged night, not from each upload, so an awakening that opens this upload
+        # in the middle of the stored night is kept.
+        metrics, cleaned_stages = _calculate_final_metrics(
+            _drop_awake_before_first_sleep(existing_state_stages + state.stages)
+        )
 
         # Expand the session window to cover both records.
-        start_time = min(adjacent.start_datetime, start_time)
-        end_time = max(adjacent.end_datetime, end_time)
+        start_time = adjacent.start_datetime
+        end_time = adjacent.end_datetime
         if cleaned_stages:
             start_time = min(start_time, cleaned_stages[0].start_time)
             end_time = max(end_time, cleaned_stages[-1].end_time)
+
+        if not state.has_sleep_sample:
+            # The upload only adds awake time: the stored night keeps its identity.
+            external_id = adjacent.external_id or external_id
 
         # Remove the old record before creating the merged one (cascade deletes detail).
         event_record_service.delete(db_session, adjacent.id)
@@ -553,7 +619,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
 
     sleep_record = EventRecordCreate(
         id=uuid4(),
-        external_id=state.uuid,
+        external_id=external_id,
         user_id=UUID(user_id),
         start_datetime=start_time,
         end_datetime=end_time,

@@ -42,6 +42,11 @@ class SleepState(BaseModel):
     # Provider-computed sleep score sent in the SDK sleep entry `values` (Samsung `sleepScore`)
     sleep_score: float | None = None
 
+    # False while the session holds only awake samples. Such a session is kept so
+    # an awakening that opens an upload is not lost, but it is not a night on its own:
+    # its source is replaced by the first sleep sample, and it is dropped if none comes.
+    has_sleep_sample: bool = True
+
     stages: list[SleepStateStage] = Field(default_factory=list)
 
 

@@ -11,13 +11,13 @@ Apple Watch sleep data patterns:
 
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
-from app.models import EventRecord, HealthScore
+from app.models import DataSource, EventRecord, HealthScore
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -30,6 +30,7 @@ from app.schemas.providers.mobile_sdk import (
 )
 from app.services.sdk.sleep_service import (
     _calculate_final_metrics,
+    _drop_awake_before_first_sleep,
     finish_sleep,
     handle_sleep_data,
 )
@@ -1088,3 +1089,230 @@ class TestProviderSleepScore:
         session = db.get(EventRecord, score.event_record_id)
         assert session is not None
         assert session.category == "sleep"
+
+
+def _sleep_entry(entry_id: str, stage: str, start: str, end: str) -> dict:
+    return {
+        "id": entry_id,
+        "stage": stage,
+        "startDate": start,
+        "endDate": end,
+        "source": {"device_type": "watch", "device_model": "Watch7,9"},
+    }
+
+
+def _sleep_payload(*entries: dict) -> SyncRequest:
+    return SyncRequest.model_validate(
+        {
+            "provider": "apple",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2026-03-23T08:00:01Z",
+            "data": {"records": [], "workouts": [], "sleep": list(entries)},
+        }
+    )
+
+
+class TestDropAwakeBeforeFirstSleep:
+    def test_drops_leading_awake_and_keeps_awake_inside_the_night(self) -> None:
+        stages = [
+            _stage(SleepStageType.AWAKE, "2026-03-22T22:30:00Z", "2026-03-22T23:00:00Z"),
+            _stage(SleepStageType.LIGHT, "2026-03-22T23:00:00Z", "2026-03-23T02:00:00Z"),
+            _stage(SleepStageType.AWAKE, "2026-03-23T02:00:00Z", "2026-03-23T02:15:00Z"),
+            _stage(SleepStageType.DEEP, "2026-03-23T02:15:00Z", "2026-03-23T04:00:00Z"),
+        ]
+
+        kept = _drop_awake_before_first_sleep(stages)
+
+        assert [s.stage for s in kept] == [SleepStageType.LIGHT, SleepStageType.AWAKE, SleepStageType.DEEP]
+
+    def test_trims_awake_that_crosses_the_first_sleep_sample(self) -> None:
+        stages = [
+            _stage(SleepStageType.AWAKE, "2026-03-22T22:30:00Z", "2026-03-22T23:30:00Z"),
+            _stage(SleepStageType.LIGHT, "2026-03-22T23:00:00Z", "2026-03-23T02:00:00Z"),
+        ]
+
+        kept = _drop_awake_before_first_sleep(stages)
+
+        assert kept[0].stage == SleepStageType.AWAKE
+        assert kept[0].start_time == _dt("2026-03-22T23:00:00Z")
+        assert kept[0].end_time == _dt("2026-03-22T23:30:00Z")
+
+    def test_in_bed_starts_the_night(self) -> None:
+        stages = [
+            _stage(SleepStageType.IN_BED, "2026-03-22T22:30:00Z", "2026-03-23T07:00:00Z"),
+            _stage(SleepStageType.AWAKE, "2026-03-22T22:30:00Z", "2026-03-22T23:00:00Z"),
+            _stage(SleepStageType.SLEEPING, "2026-03-22T23:00:00Z", "2026-03-23T07:00:00Z"),
+        ]
+
+        assert _drop_awake_before_first_sleep(stages) == stages
+
+    def test_awake_only_returns_nothing(self) -> None:
+        stages = [_stage(SleepStageType.AWAKE, "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z")]
+
+        assert _drop_awake_before_first_sleep(stages) == []
+
+
+class TestAwakeAtStartOfUpload:
+    """Regression tests for #1899: awake samples that open an upload in the middle of a
+    stored night must be kept; awake before the night's first sleep sample is still dropped."""
+
+    @staticmethod
+    def _stored_night() -> MagicMock:
+        """The night 23:00-03:00 that an earlier upload already saved."""
+        adjacent = MagicMock()
+        adjacent.id = uuid4()
+        adjacent.external_id = "A001"
+        adjacent.start_datetime = _dt("2026-03-22T23:00:00Z")
+        adjacent.end_datetime = _dt("2026-03-23T03:00:00Z")
+        adjacent.sleep_detail = MagicMock()
+        adjacent.sleep_detail.sleep_stages = [
+            {"stage": "light", "start_time": "2026-03-22T23:00:00+00:00", "end_time": "2026-03-23T01:00:00+00:00"},
+            {"stage": "deep", "start_time": "2026-03-23T01:00:00+00:00", "end_time": "2026-03-23T03:00:00+00:00"},
+        ]
+        return adjacent
+
+    @staticmethod
+    def _mock_services(mock_redis_func: MagicMock, mock_event_service: MagicMock, adjacent: MagicMock | None) -> None:
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None
+        mock_redis_func.return_value = mock_redis
+        mock_event_service.create.return_value = MagicMock(id=uuid4())
+        mock_event_service.find_adjacent_sleep_record.return_value = adjacent
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_awakening_at_start_of_second_upload_is_kept(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        """The example from the issue: upload 2 (03:00-07:00) starts with 40 min of awake."""
+        adjacent = self._stored_night()
+        self._mock_services(mock_redis_func, mock_event_service, adjacent)
+
+        payload = _sleep_payload(
+            _sleep_entry("B001", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+            _sleep_entry("B002", "light", "2026-03-23T03:40:00Z", "2026-03-23T07:00:00Z"),
+        )
+        handle_sleep_data(db, payload, str(uuid4()))
+
+        mock_event_service.delete.assert_called_once_with(db, adjacent.id)
+        created_record: EventRecordCreate = mock_event_service.create.call_args[0][1]
+        assert created_record.start_datetime == _dt("2026-03-22T23:00:00Z")
+        assert created_record.end_datetime == _dt("2026-03-23T07:00:00Z")
+
+        detail: EventRecordDetailCreate = mock_event_service.create_detail.call_args[0][1]
+        assert detail.sleep_awake_minutes == 40
+        assert detail.sleep_stages is not None
+        awake = [s for s in detail.sleep_stages if s.stage == SleepStageType.AWAKE]
+        assert [(s.start_time, s.end_time) for s in awake] == [
+            (_dt("2026-03-23T03:00:00Z"), _dt("2026-03-23T03:40:00Z"))
+        ]
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_awake_only_upload_extends_stored_night_and_keeps_its_id(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        adjacent = self._stored_night()
+        self._mock_services(mock_redis_func, mock_event_service, adjacent)
+
+        payload = _sleep_payload(_sleep_entry("B001", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"))
+        handle_sleep_data(db, payload, str(uuid4()))
+
+        created_record: EventRecordCreate = mock_event_service.create.call_args[0][1]
+        assert created_record.external_id == "A001"
+        assert created_record.end_datetime == _dt("2026-03-23T03:40:00Z")
+        detail: EventRecordDetailCreate = mock_event_service.create_detail.call_args[0][1]
+        assert detail.sleep_awake_minutes == 40
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_awake_only_upload_without_stored_night_saves_nothing(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        self._mock_services(mock_redis_func, mock_event_service, None)
+
+        payload = _sleep_payload(_sleep_entry("B001", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"))
+        handle_sleep_data(db, payload, str(uuid4()))
+
+        mock_event_service.create.assert_not_called()
+        mock_event_service.create_detail.assert_not_called()
+        mock_redis_func.return_value.delete.assert_called_once()
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_awake_before_falling_asleep_is_still_dropped(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        """Without a stored night the night starts at the first sleep sample, which sets its source."""
+        self._mock_services(mock_redis_func, mock_event_service, None)
+
+        payload = _sleep_payload(
+            {
+                **_sleep_entry("C001", "awake", "2026-03-22T22:30:00Z", "2026-03-22T23:00:00Z"),
+                "source": {"device_type": "phone", "device_model": "iPhone16,1"},
+            },
+            _sleep_entry("C002", "light", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+        )
+        handle_sleep_data(db, payload, str(uuid4()))
+
+        created_record: EventRecordCreate = mock_event_service.create.call_args[0][1]
+        assert created_record.start_datetime == _dt("2026-03-22T23:00:00Z")
+        assert created_record.external_id == "C002"
+        assert created_record.device_model == "Watch7,9"
+        detail: EventRecordDetailCreate = mock_event_service.create_detail.call_args[0][1]
+        assert detail.sleep_awake_minutes == 0
+        assert detail.sleep_stages is not None
+        assert SleepStageType.AWAKE not in {s.stage for s in detail.sleep_stages}
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    def test_split_upload_matches_single_upload(self, mock_finalize: MagicMock, db: Session) -> None:
+        """End to end against the DB: the same night sent in one or two uploads gives the same record."""
+        entries = [
+            _sleep_entry("D001", "light", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+            _sleep_entry("D002", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+            _sleep_entry("D003", "deep", "2026-03-23T03:40:00Z", "2026-03-23T07:00:00Z"),
+        ]
+
+        def stored_night(user_id: str) -> EventRecord:
+            records = (
+                db.query(EventRecord)
+                .join(DataSource)
+                .filter(DataSource.user_id == UUID(user_id), EventRecord.category == "sleep")
+                .all()
+            )
+            assert len(records) == 1
+            return records[0]
+
+        single_user = UserFactory()
+        handle_sleep_data(db, _sleep_payload(*entries), str(single_user.id))
+
+        split_user = UserFactory()
+        handle_sleep_data(db, _sleep_payload(entries[0]), str(split_user.id))
+        handle_sleep_data(db, _sleep_payload(*entries[1:]), str(split_user.id))
+
+        single, split = stored_night(str(single_user.id)), stored_night(str(split_user.id))
+        assert (split.start_datetime, split.end_datetime) == (single.start_datetime, single.end_datetime)
+        assert single.sleep_detail is not None
+        assert split.sleep_detail is not None
+        assert split.sleep_detail.sleep_awake_minutes == single.sleep_detail.sleep_awake_minutes == 40
+        assert split.sleep_detail.sleep_efficiency_score == single.sleep_detail.sleep_efficiency_score
