@@ -1024,7 +1024,8 @@ class EventRecordService(
         source_selection: SourceSelection,
     ) -> Query | None:
         """An inline subquery of the sessions no better-ranked source also recorded, None when every source shows."""
-        if source_selection is not SourceSelection.PER_SESSION:
+        # By value: a caller passing the plain string "per_session" takes this path too.
+        if source_selection != SourceSelection.PER_SESSION:
             return None
         ranking = SourceRanking(
             self.provider_priority_repo.get_priority_order(db_session),

@@ -1580,6 +1580,21 @@ class TestGetSleepSessions:
         assert {s.id for s in response.data} == {garmin_record.id}
         assert oura_record.id not in {s.id for s in response.data}
 
+    def test_per_session_given_as_a_plain_string_selects_too(self, db: Session) -> None:
+        """Compared by value: a caller passing "per_session" rather than the enum member is not shown every source."""
+        user, oura, garmin = self._garmin_over_oura(db)
+        self._sleep_record(oura)
+        garmin_record = self._sleep_record(garmin)
+
+        response = event_record_service.get_sleep_sessions(
+            db,
+            user.id,
+            self._params(),
+            source_selection="per_session",  # ty: ignore[invalid-argument-type]
+        )
+
+        assert {s.id for s in response.data} == {garmin_record.id}
+
     def test_per_session_keeps_a_lower_sources_nap_the_better_one_missed(self, db: Session) -> None:
         """The per-date rule dropped every session of the losing source; a nap overlapping nothing is a sleep of its
         own, and a night split by the better source still drops the other source's copy."""
