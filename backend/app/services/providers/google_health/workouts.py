@@ -23,7 +23,6 @@ from app.services.providers.google_health.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     SESSION_PAGE_SIZE,
-    chunk_range,
     extract_form_factor,
     extract_source,
     next_page_token,
@@ -40,7 +39,6 @@ from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.conversion import as_int
 from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
 
 _MM_TO_M = Decimal("0.001")
 
@@ -50,8 +48,6 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
 
     LIST_ENDPOINT = DATAPOINTS_LIST_ENDPOINT.format(data_type="exercise")
     PAGE_SIZE = SESSION_PAGE_SIZE
-    # At 25 per page a long window is thousands of requests; a week keeps each fetch small.
-    WINDOW_DAYS = 7
 
     def __init__(
         self,
@@ -171,40 +167,20 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
             return 0
 
         count = 0
-        for chunk_start, chunk_end in chunk_range(start, end, self.WINDOW_DAYS):
+        for point in self.get_workouts(db, user_id, start, end):
             try:
-                points = self.get_workouts(db, user_id, chunk_start, chunk_end)
+                record, detail = self._normalize_workout(point, user_id)
+                created = event_record_service.create(db, record)
+                event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
             except Exception as e:
-                # One unfetchable week must not cost the rest of the window.
                 log_and_capture_error(
                     e,
                     self.logger,
-                    f"Google workouts fetch failed for {chunk_start.date()}..{chunk_end.date()}: {e}",
-                    extra={"user_id": str(user_id), "provider": "google_health"},
+                    f"Google workout sync failed for a datapoint: {e}",
+                    extra={"user_id": str(user_id), "provider": "google_health", "external_id": point.get("name")},
                 )
                 continue
-            for point in points:
-                try:
-                    record, detail = self._normalize_workout(point, user_id)
-                    created = event_record_service.create(db, record)
-                    event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
-                except Exception as e:
-                    log_and_capture_error(
-                        e,
-                        self.logger,
-                        f"Google workout sync failed for a datapoint: {e}",
-                        extra={"user_id": str(user_id), "provider": "google_health", "external_id": point.get("name")},
-                    )
-                    continue
-                count += 1
-            log_structured(
-                self.logger,
-                "info",
-                f"Google workouts {chunk_start.date()}..{chunk_end.date()}: {count} saved so far",
-                provider="google_health",
-                task="load_data",
-                user_id=str(user_id),
-            )
+            count += 1
         return count
 
     @staticmethod

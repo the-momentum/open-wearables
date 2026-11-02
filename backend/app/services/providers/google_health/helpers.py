@@ -18,9 +18,6 @@ GOOGLE_HEALTH_API_SOURCE = "google_health_api"
 # Google truncates pageSize to 25 for the session data types; larger values are ignored.
 SESSION_PAGE_SIZE = 25
 
-# Per-fetch backstop against a window that never exhausts.
-MAX_PAGES = 200
-
 
 def parse_page(response: Any, endpoint: str) -> DataPointsPage:
     """Validate one page envelope of a dataPoints / reconcile / rollUp response.
@@ -37,15 +34,13 @@ def parse_page(response: Any, endpoint: str) -> DataPointsPage:
 def next_page_token(page: DataPointsPage, seen: set[str], endpoint: str) -> str | None:
     """Token for the next page, or None when the fetch is exhausted.
 
-    Raises on a repeated token or a runaway page count rather than looping forever (#1518).
+    Raises on a repeated token rather than looping forever (#1518).
     """
     token = page.next_page_token
     if not token:
         return None
     if token in seen:
         raise RuntimeError(f"{endpoint} returned a repeated page token")
-    if len(seen) >= MAX_PAGES:
-        raise RuntimeError(f"{endpoint} exceeded {MAX_PAGES} pages")
     seen.add(token)
     return token
 
