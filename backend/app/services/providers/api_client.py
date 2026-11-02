@@ -14,6 +14,7 @@ from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.exceptions import ReauthRequiredError
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -53,11 +54,6 @@ def get_valid_token(
 
     # Check if token is expired (with 5 minute buffer)
     if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
-        if not connection.refresh_token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Token expired and no refresh token available for {provider_name}",
-            )
         # Scope distributed lock per user/provider to avoid concurrent refresh race conditions.
 
         redis_client = get_redis_client()
@@ -85,11 +81,18 @@ def get_valid_token(
             if not connection.token_expires_at or connection.token_expires_at >= now + timedelta(minutes=5):
                 return connection.access_token
 
-            # Guard against missing refresh token before attempting OAuth refresh
+            # Expired with nothing to refresh it with: the grant is dead, so revoke it like a
+            # rejected refresh token (stops retries, emits connection.revoked).
             if not connection.refresh_token:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Token expired and no refresh token available for {provider_name}",
+                # Inside the refresh buffer but not yet expired: keep using the token until it dies.
+                if connection.token_expires_at > now:
+                    return connection.access_token
+                if revoke_on_failure:
+                    oauth.revoke_connection(db, user_id, reason="no_refresh_token")
+                raise ReauthRequiredError(
+                    provider_name,
+                    user_id,
+                    f"Token expired and no refresh token available for {provider_name}; reconnection required",
                 )
 
             token_response = oauth.refresh_access_token(
