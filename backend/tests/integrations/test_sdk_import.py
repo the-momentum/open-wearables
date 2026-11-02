@@ -1850,7 +1850,44 @@ class TestSDKWorkoutRouteAndSamples:
         assert result["workouts_saved"] == 1
         assert result["dropped"] == []
         assert {st: len(rows) for st, rows in self._series(db, user.id).items()} == {SeriesType.heart_rate: 1}
-        assert "Skipped workout samples with unsupported types" in caplog.text
+        assert "Skipped workout samples with unsupported types or units" in caplog.text
+
+    def test_sample_with_unexpected_unit_is_skipped(self, db: Session, import_service: ImportService) -> None:
+        """A km/h speed would land in the m/s series at the wrong scale, so it's not stored."""
+        user = UserFactory()
+        payload = self._samsung_payload()
+        workout = payload["data"]["workouts"][0]
+        workout["route"] = None
+        workout["samples"] = [
+            {"timestamp": "2026-02-24T06:01:00Z", "type": "speed", "value": 6.5, "unit": "km/h"},
+            {"timestamp": "2026-02-24T06:02:00Z", "type": "speed", "value": 1.8, "unit": "M/S"},
+            {"timestamp": "2026-02-24T06:03:00Z", "type": "cadence", "value": 85.0, "unit": "rpm"},
+            {"timestamp": "2026-02-24T06:04:00Z", "type": "power", "value": 210.0, "unit": None},
+        ]
+
+        import_service.load_data(db, payload, str(user.id))
+
+        series = self._series(db, user.id)
+        assert [row.value for row in series[SeriesType.speed]] == [Decimal("1.8")]
+        assert len(series[SeriesType.cadence]) == 1
+        assert len(series[SeriesType.power]) == 1
+
+    def test_malformed_route_point_or_sample_keeps_the_workout(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        user = UserFactory()
+        payload = self._samsung_payload()
+        workout = payload["data"]["workouts"][0]
+        workout["route"].append({"timestamp": "2026-02-24T06:02:00Z", "latitude": "north", "longitude": 21.0})
+        workout["samples"].append({"timestamp": "not a date", "type": "heartRate", "value": 120.0})
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["workouts_saved"] == 1
+        assert result["dropped"] == []
+        series = self._series(db, user.id)
+        assert len(series[SeriesType.latitude]) == 1
+        assert len(series[SeriesType.heart_rate]) == 1
 
     def test_nothing_stored_when_ingest_workout_samples_is_off(
         self, db: Session, import_service: ImportService, ingest_workout_samples: Any

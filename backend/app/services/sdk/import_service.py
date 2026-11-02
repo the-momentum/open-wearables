@@ -22,7 +22,7 @@ from app.constants.series_types.sdk import (
     get_series_type_from_workout_sample_type,
     get_series_type_from_workout_statistic_type,
 )
-from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE, WORKOUT_SAMPLE_UNITS
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_ENERGY_SERIES, WORKOUT_STATISTIC_STAT
 from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SERIES
 from app.constants.workout_types import get_unified_sdk_workout_type
@@ -316,19 +316,25 @@ class ImportService:
                     add(point.timestamp, series_type, value)
 
         unknown_types: Counter[str] = Counter()
+        unexpected_units: Counter[str] = Counter()
         for sample in wjson.samples or []:
             if sample.timestamp is None or sample.value is None:
                 continue
-            series_type = get_series_type_from_workout_sample_type(sample.type or "")
+            sample_type = sample.type or ""
+            series_type = get_series_type_from_workout_sample_type(sample_type)
             if series_type is None:
-                unknown_types[sample.type or ""] += 1
+                unknown_types[sample_type] += 1
+                continue
+            unit = (sample.unit or "").strip().lower()
+            if unit and unit not in WORKOUT_SAMPLE_UNITS[sample_type]:
+                unexpected_units[f"{sample_type}:{unit}"] += 1
                 continue
             add(sample.timestamp, series_type, sample.value)
 
-        if unknown_types:
+        if unknown_types or unexpected_units:
             self.log.debug(
-                "Skipped workout samples with unsupported types",
-                extra={"workout_id": wjson.id, "types": dict(unknown_types)},
+                "Skipped workout samples with unsupported types or units",
+                extra={"workout_id": wjson.id, "types": dict(unknown_types), "units": dict(unexpected_units)},
             )
         return result
 

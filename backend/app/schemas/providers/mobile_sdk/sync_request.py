@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, ValidationInfo, field_validator
 
 from app.constants.series_types.sdk import SDKMetricType, SleepPhase, WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
@@ -142,6 +142,21 @@ class Workout(BaseModel):
     values: list[WorkoutStatistic] | None = None
     route: list[WorkoutRoutePoint] | None = None
     samples: list[WorkoutSample] | None = None
+
+    @field_validator("route", "samples", mode="before")
+    @classmethod
+    def _drop_invalid_items(cls, items: Any, info: ValidationInfo) -> Any:
+        """A malformed route point or sample is dropped on its own instead of failing the workout."""
+        if not isinstance(items, list):
+            return items
+        model = WorkoutRoutePoint if info.field_name == "route" else WorkoutSample
+        valid = []
+        for item in items:
+            try:
+                valid.append(model.model_validate(item))
+            except ValidationError:
+                continue
+        return valid
 
     # everything below is unused for now
     segments: list[dict[str, Any]] | None = None
