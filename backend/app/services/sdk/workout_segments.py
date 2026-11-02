@@ -53,7 +53,7 @@ def build_workout_segments(workout: Workout) -> list[dict[str, Any]] | None:
         if kind is not None:
             items.append((kind, lap))
     items.extend(("split", segment) for segment in workout.segments or [])
-    items.sort(key=lambda item: item[1].startDate)
+    items.sort(key=lambda item: _as_utc(item[1].startDate))
 
     counters: dict[str, int] = {}
     segments: list[dict[str, Any]] = []
@@ -131,6 +131,10 @@ def _r2(v: float | None) -> float | None:
     return None if v is None else round(v, 2)
 
 
+def _as_utc(v: datetime) -> datetime:
+    """Treat a naive SDK timestamp as UTC, so naive and offset-aware ones compare."""
+    return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+
+
 def _iso(v: datetime) -> str:
-    ts = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
-    return ts.isoformat()
+    return _as_utc(v).isoformat()

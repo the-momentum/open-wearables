@@ -153,3 +153,21 @@ class TestLapsAndSplits:
     def test_no_laps_or_segments_returns_none(self) -> None:
         assert build_workout_segments(_workout(laps=None, segments=None)) is None
         assert build_workout_segments(_workout(laps=[_at("06:00:00", "06:00:00", type="marker")])) is None
+
+
+class TestTolerance:
+    def test_malformed_lap_is_skipped_and_the_workout_kept(self) -> None:
+        workout = _workout(laps=[{"type": "lap", "startDate": "not-a-date"}, _at("06:00:00", "06:01:00", type="lap")])
+
+        assert [s["kind"] for s in build_workout_segments(workout) or []] == ["lap"]
+
+    def test_naive_and_offset_aware_timestamps_sort_together(self) -> None:
+        workout = _workout(
+            laps=[{"type": "lap", "startDate": "2026-09-01T06:05:00", "endDate": "2026-09-01T06:06:00"}],
+            segments=[_at("06:00:00", "06:05:00", type="running")],
+        )
+
+        segments = build_workout_segments(workout) or []
+
+        assert [s["kind"] for s in segments] == ["split", "lap"]
+        assert segments[1]["start_time"] == "2026-09-01T06:05:00+00:00"
