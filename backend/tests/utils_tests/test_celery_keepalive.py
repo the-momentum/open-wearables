@@ -45,3 +45,4 @@ class TestTcpKeepaliveOptions:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             for option, value in options.items():
                 sock.setsockopt(socket.IPPROTO_TCP, option, value)
+                assert sock.getsockopt(socket.IPPROTO_TCP, option) == value
