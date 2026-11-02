@@ -6,13 +6,16 @@ from uuid import UUID
 from celery import shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.constants.sdk_providers import SDK_PROVIDERS
 from app.database import SessionLocal
+from app.integrations import rollup_queue
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.sync_status import (
     DataTypeKind,
     DataTypeOutcome,
+    SyncRunContext,
     SyncScope,
     SyncSource,
     SyncStatus,
@@ -31,6 +34,7 @@ from app.services.sync_status_service import (
     try_record_data_types,
 )
 from app.services.user_connection_service import user_connection_service
+from app.utils.context import sync_run_context
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -69,7 +73,7 @@ def _batch_outcomes(types: list[str], workouts_saved: int, sleep_saved: int, sco
     return outcomes
 
 
-@shared_task(queue="sdk_sync")
+@shared_task(name=CeleryTask.PROCESS_SDK_UPLOAD)
 def process_sdk_upload(
     content: str | None,
     content_type: str,
@@ -138,6 +142,7 @@ def process_sdk_upload(
     # id. Without one the batch is its own run, which is why live syncs are not persisted.
     scope = SyncScope.HISTORICAL if sync_type == SyncScope.HISTORICAL and sync_session_id else SyncScope.LIVE
     run_id = f"sdk_{sync_session_id}" if scope == SyncScope.HISTORICAL else batch_id
+    run = SyncRunContext(run_id=run_id, source=SyncSource.SDK, scope=scope)
 
     # Validate user_id format
     try:
@@ -183,14 +188,17 @@ def process_sdk_upload(
     emit_sync_started(
         user_uuid,
         provider,
-        SyncSource.SDK,
-        scope=scope,
-        run_id=run_id,
+        run.source,
+        scope=run.scope,
+        run_id=run.run_id,
         message=f"Processing {provider} SDK batch",
         metadata={"batch_id": batch_id},
     )
 
-    with SessionLocal() as db:
+    with (
+        sync_run_context(run),
+        SessionLocal() as db,
+    ):
         # Ensure SDK connection exists for this user (SDK-based, no OAuth tokens).
         # Goes through the service so a new/reactivated connection emits connection.created.
         user_connection_service.ensure_sdk_connection(db, user_uuid, provider)
@@ -230,6 +238,9 @@ def process_sdk_upload(
         items_total = records_saved + workouts_saved + sleep_saved
 
         if isinstance(status_code, int) and 200 <= status_code < 300:
+            if items_total:
+                # The SDK sends no day values of its own: its days and summaries are ours, so roll them up now.
+                rollup_queue.roll_up_soon()
             # Same wording as webhook_push_task; records_saved counts samples submitted.
             message = f"{provider.capitalize()} batch saved: {records_inserted} new, {records_updated} updated"
             if dropped_count:
@@ -237,9 +248,9 @@ def process_sdk_upload(
             emit_sync_completed(
                 user_uuid,
                 provider,
-                SyncSource.SDK,
-                scope=scope,
-                run_id=run_id,
+                run.source,
+                scope=run.scope,
+                run_id=run.run_id,
                 status=SyncStatus.SUCCESS,
                 message=message,
                 items_processed=items_total,
@@ -254,7 +265,9 @@ def process_sdk_upload(
                     "dropped_count": dropped_count,
                 },
             )
-            try_record_data_types(run_id, _batch_outcomes(types, workouts_saved, sleep_saved, scope), scope=scope)
+            try_record_data_types(
+                run.run_id, _batch_outcomes(types, workouts_saved, sleep_saved, run.scope), scope=run.scope
+            )
             if payload_ref and settings.raw_payload_storage == "disabled":
                 # Transport-only copy and the data is committed, so drop it. A failed batch
                 # keeps its payload for diagnosis.
@@ -263,9 +276,9 @@ def process_sdk_upload(
             emit_sync_failed(
                 user_uuid,
                 provider,
-                SyncSource.SDK,
-                scope=scope,
-                run_id=run_id,
+                run.source,
+                scope=run.scope,
+                run_id=run.run_id,
                 error=str(result.get("response", "Unknown error")),
                 message=f"{provider.capitalize()} batch failed",
                 metadata={"batch_id": batch_id, "status_code": status_code},

@@ -41,6 +41,8 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from app.database import DbSession
+from app.models import UserConnection
+from app.repositories import UserConnectionRepository
 from app.utils.structured_logging import log_structured
 
 
@@ -80,6 +82,10 @@ class BaseWebhookHandler(ABC):
             return None
         value = payload.get(self.user_id_field)
         return str(value) if value is not None else None
+
+    def find_connection(self, db: DbSession, provider_user_id: str) -> UserConnection | None:
+        """Resolve the active connection for an id returned by ``extract_user_id``."""
+        return UserConnectionRepository().get_by_provider_user_id(db, self.provider_name, provider_user_id)
 
     # ------------------------------------------------------------------
     # Abstract interface

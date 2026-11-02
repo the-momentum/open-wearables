@@ -1,6 +1,6 @@
 """Device resolution utilities for mobile SDK data (HealthKit, Health Connect, Samsung Health)."""
 
-from app.constants.devices_map import map_reported_device_type
+from app.constants.devices_map import is_apple_own_source, map_reported_device_type
 from app.schemas.enums import DeviceType
 from app.schemas.providers.mobile_sdk import OSVersion, SourceInfo
 
@@ -11,9 +11,16 @@ def _format_os_version(os_version: OSVersion | None) -> str | None:
     return f"{os_version.major_version}.{os_version.minor_version}.{os_version.patch_version}"
 
 
+def _get_source_app_id(source: SourceInfo) -> str | None:
+    return source.app_id or source.bundle_identifier
+
+
 def _get_device_model(source: SourceInfo | None) -> str | None:
     if not source:
         return None
+    # Apple's own sources tag some Watch samples with the paired iPhone's model; hardware is the producer
+    if source.device_hardware_version and is_apple_own_source(_get_source_app_id(source)):
+        return source.device_hardware_version
     if source.device_model:
         return source.device_model
     if source.product_type:
@@ -34,11 +41,7 @@ def _get_original_source_name(source: SourceInfo | None) -> str | None:
     # or ``bundleIdentifier`` (HealthKit Source bundle id). Falling back
     # to those keeps the workout's original provenance instead of
     # collapsing it to "unknown".
-    if source.app_id:
-        return source.app_id
-    if source.bundle_identifier:
-        return source.bundle_identifier
-    return None
+    return _get_source_app_id(source)
 
 
 def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | None, str | None]:
@@ -55,6 +58,17 @@ def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | No
     original_source_name = _get_original_source_name(source)  # e.g. "Apple Watch (Jan)" or "Zepp Life"
 
     return device_model, software_version, original_source_name
+
+
+def extract_device_ids(source: SourceInfo | None) -> tuple[str | None, str | None, str | None]:
+    """(device_id, source_app_id, device_manufacturer) reported by the SDK.
+
+    Both ids key the data source, so only stable values belong here: iOS and Health Connect never fill
+    deviceId (HealthKit's localIdentifier changes per host and on updates). The manufacturer is descriptive.
+    """
+    if not source:
+        return None, None, None
+    return source.device_id, _get_source_app_id(source), source.device_manufacturer
 
 
 def extract_device_type(source: SourceInfo | None) -> DeviceType | None:

@@ -4,6 +4,7 @@ from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.mappings import FKEventRecord, json_binary, numeric_5_2, numeric_10_3, str_10, str_32, str_255
+from app.schemas.enums import EventCategory
 
 from .event_record_detail import DetailType, EventRecordDetail
 
@@ -33,7 +34,7 @@ class WorkoutDetails(EventRecordDetail):
         ),
     )
 
-    detail_type: ClassVar[DetailType] = "workout"
+    detail_type: ClassVar[DetailType] = EventCategory.WORKOUT
 
     record_id: Mapped[FKEventRecord]
 

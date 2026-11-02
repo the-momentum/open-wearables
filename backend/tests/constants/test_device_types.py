@@ -2,8 +2,15 @@
 
 import pytest
 
-from app.constants.devices_map import infer_device_type, infer_device_type_from_model, map_reported_device_type
+from app.constants.devices_map import (
+    infer_device_type,
+    infer_device_type_from_model,
+    map_reported_device_type,
+    normalize_device_model,
+)
 from app.schemas.enums import DeviceType, ProviderName
+from app.schemas.providers.mobile_sdk import SourceInfo
+from app.services.sdk.device_resolution import extract_device_info
 
 
 class TestInferDeviceTypeFromModel:
@@ -123,6 +130,11 @@ class TestReportedDeviceType:
         )
         assert infer_device_type(ProviderName.SAMSUNG, "unlisted-model", None, DeviceType.OTHER) == DeviceType.OTHER
 
+    def test_relaying_host_is_ignored_for_third_party_writer(self) -> None:
+        oura = infer_device_type(ProviderName.APPLE, "iPhone16,1", "Oura", DeviceType.PHONE, "com.ouraring.oura")
+        strava = infer_device_type(ProviderName.APPLE, "iPhone16,1", "Strava", DeviceType.PHONE, "com.strava.run")
+        assert (oura, strava) == (DeviceType.RING, DeviceType.UNKNOWN)
+
     def test_unknown_sdk_type_falls_back_to_inference(self) -> None:
         assert infer_device_type(ProviderName.HEALTH_CONNECT, "Pixel 8", None, DeviceType.UNKNOWN) == DeviceType.PHONE
 
@@ -137,3 +149,26 @@ class TestReportedDeviceType:
         old_sdk = infer_device_type(ProviderName.SAMSUNG, device_model, name, DeviceType.PHONE)
         new_sdk = infer_device_type(ProviderName.SAMSUNG, device_model, name, DeviceType.WATCH)
         assert old_sdk == new_sdk == DeviceType.WATCH
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("unknown", None), ("  ", None), (None, None), (" Garmin fenix 8 ", "Garmin fenix 8")]
+)
+def test_normalize_device_model(raw: str | None, expected: str | None) -> None:
+    assert normalize_device_model(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("app_id", "device_model", "hardware", "expected"),
+    [
+        ("com.apple.health.0BA80355-AAAA", "iPhone16,1", "Watch6,2", "Watch6,2"),
+        ("com.apple.health.0BA80355-AAAA", "iPhone16,1", None, "iPhone16,1"),
+        ("com.apple.BTLEServer", "Watch7,9", "00760690.03", "Watch7,9"),
+        ("com.ouraring.oura", "iPhone15,2", "iPhone15,2", "iPhone15,2"),
+    ],
+)
+def test_sdk_device_model_uses_hardware_only_for_apple_own_sources(
+    app_id: str, device_model: str, hardware: str | None, expected: str
+) -> None:
+    source = SourceInfo(app_id=app_id, device_model=device_model, device_hardware_version=hardware)
+    assert extract_device_info(source)[0] == expected

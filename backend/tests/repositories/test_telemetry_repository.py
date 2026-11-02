@@ -90,3 +90,24 @@ class TestCounts:
         assert repo.count_active_connections_by_provider(db) == {"garmin": 1}
         assert repo.count_events_by_provider(db, "workout") == {"garmin": 2}
         assert repo.count_events_by_provider(db, "sleep") == {"garmin": 1}
+
+    def test_seed_users_and_their_data_are_counted_separately(self, db: Session) -> None:
+        repo = TelemetryRepository()
+        real = UserFactory()
+        seed = UserFactory(is_seed=True)
+        UserConnectionFactory(user=real, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=seed, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=seed, provider="oura", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=seed, provider="polar", status=ConnectionStatus.REVOKED)
+        EventRecordFactory(data_source=DataSourceFactory(user=real, provider="garmin"), category="workout")
+        EventRecordFactory(data_source=DataSourceFactory(user=seed, provider="garmin"), category="workout")
+        EventRecordFactory(data_source=DataSourceFactory(user=seed, provider="oura"), category="sleep")
+        db.flush()
+
+        assert repo.count_users(db) == 1
+        assert repo.count_seed_users(db) == 1
+        assert repo.count_users_with_active_connection(db) == 1
+        assert repo.count_inactive_connections(db) == 0
+        assert repo.count_active_connections_by_provider(db) == {"garmin": 1}
+        assert repo.count_events_by_provider(db, "workout") == {"garmin": 1}
+        assert repo.count_events_by_provider(db, "sleep") == {}

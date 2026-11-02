@@ -19,9 +19,11 @@ from app.constants.series_types.polar import (
     SLEEP_INERTIA_LABELS,
 )
 from app.database import DbSession
+from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
@@ -55,10 +57,12 @@ from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.polar.coverage import ACTIVITY_SERIES
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.conversion import seconds_to_minutes
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -242,11 +246,11 @@ class Polar247Data(Base247DataTemplate):
         for raw in raw_items:
             if (parsed := self._parse(raw, SleepJSON, user_id, "sleep")) is None:
                 continue
-            if not parsed.sleep_start_time or not parsed.sleep_end_time:
+            if not parsed.date or not parsed.sleep_start_time or not parsed.sleep_end_time:
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Polar sleep record missing start/end time: {parsed.date}",
+                    f"Polar sleep record missing date or start/end time: {parsed.date}",
                     provider="polar",
                     user_id=str(user_id),
                 )
@@ -257,30 +261,33 @@ class Polar247Data(Base247DataTemplate):
             end_dt = datetime.fromisoformat(parsed.sleep_end_time)
             duration_seconds = int((end_dt - start_dt).total_seconds())
 
-            light_s = parsed.light_sleep or 0
-            deep_s = parsed.deep_sleep or 0
-            rem_s = parsed.rem_sleep or 0
+            light_s = parsed.light_sleep
+            deep_s = parsed.deep_sleep
+            rem_s = parsed.rem_sleep
             sleep_stages = self._parse_hypnogram(parsed.hypnogram, start_dt, end_dt) if parsed.hypnogram else None
 
             record = EventRecordCreate(
                 id=sleep_id,
-                category="sleep",
+                category=EventCategory.SLEEP,
                 type="sleep_session",
                 source_name="Polar",
+                source=ProviderName.POLAR,
+                device_id=parsed.device_id,
                 duration_seconds=duration_seconds,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
+                external_id=f"sleep-{parsed.date}",
                 provider=ProviderName.POLAR,
                 user_id=user_id,
             )
             detail = EventRecordDetailCreate(
                 record_id=sleep_id,
-                sleep_total_duration_minutes=(light_s + deep_s + rem_s) // 60,
+                sleep_total_duration_minutes=seconds_to_minutes(light_s, deep_s, rem_s),
                 sleep_time_in_bed_minutes=duration_seconds // 60 if duration_seconds else None,
-                sleep_deep_minutes=deep_s // 60,
-                sleep_light_minutes=light_s // 60,
-                sleep_rem_minutes=rem_s // 60,
-                sleep_awake_minutes=(parsed.total_interruption_duration or 0) // 60,
+                sleep_deep_minutes=seconds_to_minutes(deep_s),
+                sleep_light_minutes=seconds_to_minutes(light_s),
+                sleep_rem_minutes=seconds_to_minutes(rem_s),
+                sleep_awake_minutes=seconds_to_minutes(parsed.total_interruption_duration),
                 sleep_stages=sleep_stages,
             )
 
@@ -313,6 +320,7 @@ class Polar247Data(Base247DataTemplate):
                 if parsed.heart_rate_samples
                 else []
             )
+            hr_samples = [s.model_copy(update={"device_id": parsed.device_id}) for s in hr_samples]
             results.append((record, detail, score, hr_samples))
         return results
 
@@ -370,6 +378,7 @@ class Polar247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=True),
+                        period=CalendarPeriod.of_date(recorded_at.date()),
                     )
                 )
             samples.extend(self._build_step_samples(parsed, user_id, recorded_at))
@@ -404,6 +413,7 @@ class Polar247Data(Base247DataTemplate):
                 provider=ProviderName.POLAR,
                 source=ProviderName.POLAR,
                 recorded_at=recorded_at,
+                window_seconds=steps.interval_ms // 1000 or None,
                 value=Decimal(count),
                 series_type=SeriesType.steps,
                 is_daily_total=daily_total_flag(SeriesType.steps, is_daily=False),
@@ -574,6 +584,7 @@ class Polar247Data(Base247DataTemplate):
                             recorded_at=recorded_at,
                             value=value,
                             series_type=series_type,
+                            period=CalendarPeriod.of_date(recorded_at.date()),
                         )
                     )
             # Polar withholds the status until it has three nights to compare against.
@@ -799,6 +810,7 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=parsed.sleep_time_skin_temperature_celsius,
                         series_type=SeriesType.skin_temperature,
+                        period=CalendarPeriod.of_date(recorded_at.date()),
                     )
                 )
             if parsed.deviation_from_baseline_celsius is not None:
@@ -811,6 +823,7 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=parsed.deviation_from_baseline_celsius,
                         series_type=SeriesType.skin_temperature_deviation,
+                        period=CalendarPeriod.of_date(recorded_at.date()),
                     )
                 )
         return samples
@@ -925,16 +938,29 @@ class Polar247Data(Base247DataTemplate):
     # Persistence helpers
     # -------------------------------------------------------------------------
 
-    def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> int:
-        counts: int = 0
+    @staticmethod
+    def _claim_night_stored_without_id(db: DbSession, user_id: UUID, record: EventRecordCreate) -> None:
+        """Give the record's id to the Polar night stored without one that it overlaps, so the save replaces it.
+
+        Polar keeps one sleep per date, so an overlapping night is this one, moved or not. Nights stored before
+        Polar sleep carried an id, by an old pod during a deploy, or without stages by dedupe_polar_sleep have none.
+        """
+        stored = event_record_service.find_adjacent_sleep_record(
+            db, user_id, record.start_datetime, record.end_datetime, 0, source=record.source, provider=record.provider
+        )
+        if stored is not None and stored.external_id is None:
+            stored.external_id = record.external_id
+
+    def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> WriteCounts:
+        counts = WriteCounts(0, 0)
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         return counts
 
-    def _save_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> int:
+    def _save_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
         if scores:
-            health_score_service.bulk_create(db, scores)
-        return len(scores)
+            return health_score_service.bulk_create(db, scores)
+        return WriteCounts(0, 0)
 
     def fetch_and_save_from_webhook(
         self,
@@ -953,12 +979,13 @@ class Polar247Data(Base247DataTemplate):
             case PolarWebhookEventType.SLEEP:
                 count = 0
                 for record, detail, score, hr_samples in self.normalize_sleep([raw], user_id):
-                    event_record_service.create_or_merge_sleep(
+                    self._claim_night_stored_without_id(db, user_id, record)
+                    stored = event_record_service.create_or_merge_sleep(
                         db, user_id, record, detail, settings.sleep_end_gap_minutes
                     )
                     count += 1
                     if score:
-                        health_score_service.bulk_create(db, [score])
+                        health_score_service.bulk_create(db, [score.model_copy(update={"event_record_id": stored.id})])
                     if hr_samples:
                         timeseries_service.bulk_create_samples(db, hr_samples)
                 return {"sleep": count}
@@ -1009,6 +1036,7 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> int:
+        """Returns the number of sleep sessions saved (score and HR rows ride along)."""
         raw_items = self.get_sleep_data(db, user_id, start_time, end_time)
         normalized = self.normalize_sleep(raw_items, user_id)
         count = 0
@@ -1017,10 +1045,14 @@ class Polar247Data(Base247DataTemplate):
 
         for record, detail, score, hr in normalized:
             try:
-                event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+                self._claim_night_stored_without_id(db, user_id, record)
+                stored = event_record_service.create_or_merge_sleep(
+                    db, user_id, record, detail, settings.sleep_end_gap_minutes
+                )
                 count += 1
+                # A re-sync keeps the stored night, not the id normalize_sleep drew for it
                 if score:
-                    scores.append(score)
+                    scores.append(score.model_copy(update={"event_record_id": stored.id}))
                 hr_samples.extend(hr)
             except Exception as e:
                 log_and_capture_error(
@@ -1045,17 +1077,10 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, int]:
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-        if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=30)
-        if not end_time:
-            end_time = datetime.now(timezone.utc)
+    ) -> Sync247Result:
+        start_time, end_time = self.resolve_window(start_time, end_time)
 
-        tasks: dict[str, Callable[[], int]] = {
+        tasks: dict[str, Callable[[], WriteCounts | int]] = {
             "sleep": lambda: self._save_sleep(db, user_id, start_time, end_time),
             "daily_activity": lambda: self._save_timeseries(
                 db,
@@ -1100,27 +1125,13 @@ class Polar247Data(Base247DataTemplate):
             ),
         }
 
-        results: dict[str, int] = {}
+        run = self.sync_run(db, user_id)
         for data_type, fn in tasks.items():
-            try:
-                results[data_type] = fn()
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                results[data_type] = 0
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Failed to sync {data_type} data",
-                    extra={
-                        "provider": "polar",
-                        "task": "load_and_save_all",
-                        "data_type": data_type,
-                        "user_id": str(user_id),
-                    },
-                )
+            with run.step(data_type, commit=True, capture=True) as step:
+                step.record(fn())
 
-        return results
+        run.log_summary()
+        return run.result
 
     # -------------------------------------------------------------------------
     # Not implemented — Polar recovery and activity samples map to other modules

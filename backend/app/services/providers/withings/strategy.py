@@ -9,7 +9,7 @@ from app.services.providers.withings.workouts import WithingsWorkouts
 
 class WithingsStrategy(BaseProviderStrategy):
     # Narrowed from the base's optional: Withings always manages its own subscriptions.
-    webhook_service: WithingsWebhookService
+    webhook_service: WithingsWebhookService  # ty:ignore[invalid-mutable-override]
 
     def __init__(self) -> None:
         super().__init__()

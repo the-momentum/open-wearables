@@ -29,7 +29,7 @@ from app.repositories.provider_settings_repository import ProviderSettingsReposi
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, DeviceType, SeriesType
 from app.schemas.enums.aggregation_method import daily_total_flag
-from app.schemas.model_crud.activities import TimeSeriesSampleCreate
+from app.schemas.model_crud.activities import CalendarPeriod, TimeSeriesSampleCreate
 from app.schemas.providers.google import (
     DailyRollupMetric,
     DailyRollupSpec,
@@ -42,26 +42,31 @@ from app.schemas.providers.google import (
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    chunk_range,
     civil_interval,
     extract_form_factor,
     extract_source,
+    next_page_token,
     parse_date,
+    parse_interval,
     parse_page,
     parse_rfc3339,
     physical_interval,
     read_level_sum,
     read_number,
+    time_filter,
     zone_offset_from,
 )
 from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS, DERIVED_DAILY_METRICS, METRICS
 from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition
 from app.services.providers.google_health.sleep import GoogleHealthApiSleep
+from app.services.providers.sync_247_result import Sync247Result, Sync247Run
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import window_seconds
 from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
 
 
 class UnsupportedGranularityError(RuntimeError):
@@ -76,7 +81,7 @@ class UnsupportedGranularityError(RuntimeError):
 
 
 class GoogleHealth247Data(Base247DataTemplate):
-    """Fetches Google 24/7 metrics (list/reconcile + dailyRollUp) and persists them as DataPointSeries."""
+    """Fetches Google 24/7 metrics (list/reconcile + dailyRollUp) and persists them as SeriesSample."""
 
     # rollUp enforces windowSize * pageSize <= the data type's max range; list default page.
     MAX_PAGE_SIZE = 10_000
@@ -95,17 +100,16 @@ class GoogleHealth247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
+        start_time: datetime | str | None = None,
+        end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, WriteCounts]:
+    ) -> Sync247Result:
         """Fetch + persist every registered metric; failures are isolated per metric."""
+        start_time, end_time = self.resolve_window(start_time, end_time)
         granularity = (
             self.settings_repo.get_data_granularity(db, self.provider_name) or settings.default_data_granularity
         )
-        results: dict[str, WriteCounts] = {}
-        failures: dict[str, str] = {}
-        succeeded = 0
+        run = self.sync_run(db, user_id)
 
         # These types can only be read at native resolution now, so an aggregating granularity
         # cannot be honoured — skip them rather than quietly storing raw rows against the
@@ -118,81 +122,35 @@ class GoogleHealth247Data(Base247DataTemplate):
                     build = partial(self._native_samples, db, user_id, metric, start_time, end_time)
                 else:
                     build = partial(self._rollup_samples, db, user_id, metric, start_time, end_time, granularity)
-                succeeded += self._store_samples(db, user_id, metric.data_type, build, results, failures)
+                self._store_samples(run, metric.data_type, build)
 
         for derived in DERIVED_DAILY_METRICS:
             build = partial(self._derived_daily_samples, db, user_id, derived, start_time, end_time)
-            succeeded += self._store_samples(db, user_id, derived.name, build, results, failures)
+            self._store_samples(run, derived.name, build)
 
         for daily in DAILY_ROLLUP_METRICS:
             build = partial(self._daily_rollup_samples, db, user_id, daily, start_time, end_time)
-            succeeded += self._store_samples(db, user_id, daily.name, build, results, failures)
+            self._store_samples(run, daily.name, build)
 
-        try:
-            with db.begin_nested():
-                sleep_count = self.sleep.load_and_save(db, user_id, start_time, end_time)
-            db.commit()
-            succeeded += 1
-        except Exception as e:
-            db.rollback()
-            self._log_metric_failure("sleep", user_id, e)
-            failures["sleep"] = str(e)
-            sleep_count = 0
+        with run.step("sleep", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
+            step.record(self.sleep.load_and_save(db, user_id, start_time, end_time))
 
-        try:
-            with db.begin_nested():
-                nutrition_count = self.nutrition.load_and_save(db, user_id, start_time, end_time)
-            db.commit()
-            succeeded += 1
-        except Exception as e:
-            db.rollback()
-            self._log_metric_failure("nutrition-log", user_id, e)
-            failures["nutrition-log"] = str(e)
-            nutrition_count = 0
+        with run.step("nutrition-log", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
+            step.record(self.nutrition.load_and_save(db, user_id, start_time, end_time))
 
+        # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — the caller marks
+        # the sync FAILED off ``all_failed`` rather than treating it as an empty success.
+        run.log_summary(granularity=granularity.value)
         if not granularity_supported:
             raise UnsupportedGranularityError(granularity)
-        # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — surface it so the sync
-        # is marked FAILED rather than an empty success. A partial/empty run returns normally.
-        if failures and not succeeded:
-            raise RuntimeError(f"All Google 24/7 data types failed: {failures}")
-        log_structured(
-            self.logger,
-            "info",
-            "Google 24/7 sync complete",
-            provider=self.provider_name,
-            task="load_and_save_all",
-            user_id=str(user_id),
-            granularity=granularity.value,
-            metrics_synced=len(results),
-            sleep_sessions=sleep_count,
-            nutrition_entries=nutrition_count,
-        )
-        return results
+        return run.result
 
-    def _store_samples(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        name: str,
-        build: Callable[[], list[TimeSeriesSampleCreate]],
-        results: dict[str, WriteCounts],
-        failures: dict[str, str],
-    ) -> bool:
+    def _store_samples(self, run: Sync247Run, name: str, build: Callable[[], list[TimeSeriesSampleCreate]]) -> None:
         """Fetch and write one data type in a savepoint, so a failure rolls back only that type."""
-        try:
-            with db.begin_nested():
-                samples = build()
-                counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            self._log_metric_failure(name, user_id, e)
-            failures[name] = str(e)
-            return False
-        if counts is not None:
-            results[name] = counts
-        return True
+        with run.step(name, savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
+            samples = build()
+            if samples:
+                step.record(timeseries_service.bulk_create_samples(run.db, samples))
 
     def sync_data_type(
         self,
@@ -261,7 +219,7 @@ class GoogleHealth247Data(Base247DataTemplate):
 
         endpoint = ROLLUP_ENDPOINT.format(data_type=metric.data_type)
         samples: list[TimeSeriesSampleCreate] = []
-        for chunk_start, chunk_end in self._chunk_range(start_time, end_time, spec.max_range_days):
+        for chunk_start, chunk_end in chunk_range(start_time, end_time, spec.max_range_days):
             body = {
                 "range": physical_interval(chunk_start, chunk_end),
                 "windowSize": f"{window_seconds}s",
@@ -278,7 +236,16 @@ class GoogleHealth247Data(Base247DataTemplate):
                     # #1586); for the counters a 0 adds nothing to a sum. Neither is worth a row.
                     if value is None or value == 0:
                         continue
-                    samples.append(self._sample(user_id, recorded_at, value, series_type, is_daily_total))
+                    samples.append(
+                        self._sample(
+                            user_id,
+                            recorded_at,
+                            value,
+                            series_type,
+                            is_daily_total,
+                            window=None if is_daily_total else window_seconds,
+                        )
+                    )
         return samples
 
     def _fetch_rollup_pages(
@@ -296,6 +263,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         """
         points: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen: set[str] = set()
         while True:
             response = make_authenticated_request(
                 db=db,
@@ -317,20 +285,10 @@ class GoogleHealth247Data(Base247DataTemplate):
             )
             page = parse_page(response, endpoint)
             points.extend(page.rollup_data_points)
-            page_token = page.next_page_token
+            page_token = next_page_token(page, seen, endpoint)
             if not page_token:
                 break
         return points
-
-    @staticmethod
-    def _chunk_range(start: datetime, end: datetime, max_days: int) -> Iterator[tuple[datetime, datetime]]:
-        """Split [start, end) into consecutive windows no longer than max_days."""
-        window = timedelta(days=max_days)
-        cursor = start
-        while cursor < end:
-            nxt = min(cursor + window, end)
-            yield cursor, nxt
-            cursor = nxt
 
     # -- dailyRollUp operation -------------------------------------------------
 
@@ -391,7 +349,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         end = datetime.combine(end_time.date() + timedelta(days=1), time.min, tzinfo=timezone.utc)
 
         totals: dict[datetime, Decimal] = {}
-        for chunk_start, chunk_end in self._chunk_range(start, end, spec.max_range_days):
+        for chunk_start, chunk_end in chunk_range(start, end, spec.max_range_days):
             body = {
                 "range": civil_interval(chunk_start.date(), chunk_end.date()),
                 "windowSizeDays": 1,
@@ -438,10 +396,10 @@ class GoogleHealth247Data(Base247DataTemplate):
         reconcile = settings.google_use_reconcile
         template = RECONCILE_ENDPOINT if reconcile else LIST_ENDPOINT
         endpoint = template.format(data_type=metric.data_type)
-        time_filter = self._time_filter(metric.data_type, spec.time, start_time, end_time, spec.session_interval)
+        point_filter = time_filter(metric.data_type, spec.time, start_time, end_time, spec.session_interval)
 
         samples: list[TimeSeriesSampleCreate] = []
-        for point in self._fetch_points(db, user_id, endpoint, time_filter):
+        for point in self._fetch_points(db, user_id, endpoint, point_filter):
             # Both operations nest the payload under the type's union key.
             value_obj = point.get(metric.value_key)
             if not isinstance(value_obj, dict):
@@ -449,6 +407,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             recorded_at, zone_offset = self._point_time(value_obj, spec.time)
             if recorded_at is None or not self._in_window(spec.time, recorded_at, start_time, end_time):
                 continue
+            width = window_seconds(*parse_interval(value_obj.get("interval")))
             # Only list points carry a dataSource; reconciled points are already merged.
             device_model = None if reconcile else extract_source(point.get("dataSource"))[1]
             device_type = None if reconcile else extract_form_factor(point.get("dataSource"))
@@ -466,6 +425,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                         zone_offset,
                         device_model,
                         device_type,
+                        width,
                     )
                 )
             # Unlike the readings above, a difference of zero is a measurement: the night sat on
@@ -485,6 +445,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                         zone_offset,
                         device_model,
                         device_type,
+                        width,
                     )
                 )
         return samples
@@ -515,7 +476,7 @@ class GoogleHealth247Data(Base247DataTemplate):
 
     @staticmethod
     def _in_window(shape: TimeShape, recorded_at: datetime, start_time: datetime, end_time: datetime) -> bool:
-        """Whether a point belongs to this sync window, matching :meth:`_time_filter`.
+        """Whether a point belongs to this sync window, matching :func:`time_filter`.
 
         Daily points are stamped midnight, so an intraday window would never contain one;
         they are compared by date instead, reaching back a day for a total published late.
@@ -524,32 +485,8 @@ class GoogleHealth247Data(Base247DataTemplate):
             return (start_time.date() - timedelta(days=1)) <= recorded_at.date() <= end_time.date()
         return start_time <= recorded_at < end_time
 
-    @staticmethod
-    def _time_filter(
-        data_type: str, shape: TimeShape, start_time: datetime, end_time: datetime, session_interval: bool = False
-    ) -> str:
-        """AIP-160 filter bounding the fetch to [start_time, end_time) for the type's time shape."""
-        field = data_type.replace("-", "_")
-        match shape:
-            case TimeShape.INTERVAL if session_interval:
-                # SessionTimeInterval types (excl. sleep/ECG) filter on civil start time, not physical.
-                member = f"{field}.interval.civil_start_time"
-                low = (start_time.date() - timedelta(days=1)).isoformat()
-                high = (end_time.date() + timedelta(days=1)).isoformat()
-            case TimeShape.DATE:
-                # A daily total is published once its day closes.
-                member = f"{field}.date"
-                low = (start_time.date() - timedelta(days=1)).isoformat()
-                high = (end_time.date() + timedelta(days=1)).isoformat()
-            case TimeShape.INTERVAL | TimeShape.SAMPLE:
-                suffix = "interval.start_time" if shape is TimeShape.INTERVAL else "sample_time.physical_time"
-                member = f"{field}.{suffix}"
-                window = physical_interval(start_time, end_time)
-                low, high = window["startTime"], window["endTime"]
-        return f'{member} >= "{low}" AND {member} < "{high}"'
-
     def _fetch_points(
-        self, db: DbSession, user_id: UUID, endpoint: str, time_filter: str | None = None
+        self, db: DbSession, user_id: UUID, endpoint: str, point_filter: str | None = None
     ) -> list[dict[str, Any]]:
         """GET a native-resolution endpoint (list or reconcile), following pageToken.
 
@@ -557,10 +494,11 @@ class GoogleHealth247Data(Base247DataTemplate):
         """
         points: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen: set[str] = set()
         while True:
             params: dict[str, Any] = {"pageSize": self.LIST_PAGE_SIZE}
-            if time_filter:
-                params["filter"] = time_filter
+            if point_filter:
+                params["filter"] = point_filter
             if page_token:
                 params["pageToken"] = page_token
             response = make_authenticated_request(
@@ -583,7 +521,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             )
             page = parse_page(response, endpoint)
             points.extend(page.data_points)
-            page_token = page.next_page_token
+            page_token = next_page_token(page, seen, endpoint)
             if not page_token:
                 break
         return points
@@ -598,6 +536,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         zone_offset: str | None = None,
         device_model: str | None = None,
         device_type: DeviceType | None = None,
+        window: int | None = None,
     ) -> TimeSeriesSampleCreate:
         return TimeSeriesSampleCreate(
             id=uuid4(),
@@ -608,11 +547,13 @@ class GoogleHealth247Data(Base247DataTemplate):
             device_type=device_type,
             recorded_at=recorded_at,
             zone_offset=zone_offset,
+            window_seconds=window,
             value=value,
             series_type=series_type,
             # Only SUM series carry the daily-vs-intraday distinction; for AVG/MAX it stays None,
             # or bucketed /timeseries reads would drop the daily rows as "totals" (see daily_total_flag).
             is_daily_total=daily_total_flag(series_type, is_daily_total),
+            period=CalendarPeriod.of_date(recorded_at.date(), zone_offset) if is_daily_total else None,
             external_id=(
                 f"{series_type.value}:{recorded_at.isoformat()}" if series_type is SeriesType.active_energy else None
             ),

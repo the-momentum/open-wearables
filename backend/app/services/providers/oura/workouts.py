@@ -9,6 +9,7 @@ from app.constants.entry_source import get_unified_oura_entry_source
 from app.constants.intensity import get_unified_oura_intensity
 from app.constants.workout_types.oura import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -191,7 +192,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         metrics = self._build_metrics(raw_workout)
 
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Oura",
             device_model=None,

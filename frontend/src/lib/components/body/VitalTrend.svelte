@@ -4,7 +4,7 @@
 	import Sparkline from '$lib/components/charts/Sparkline.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
-	import { seriesColour, unitLabel, type Series } from '$lib/timeseries/samples';
+	import { unitLabel, type Series } from '$lib/timeseries/samples';
 	import { showDecimal } from '$lib/utils/format';
 
 	let {
@@ -27,7 +27,8 @@
 	const latest = $derived(series.points[series.points.length - 1]);
 
 	const show = (value: number) => showDecimal(value, digits);
-	const colour = $derived(seriesColour(series.type));
+	// One measure per panel, so the accent: a colour per type would tell nothing apart.
+	const colour = 'var(--color-primary)';
 </script>
 
 <div class="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">

@@ -46,6 +46,24 @@ APPLE_PRODUCT_TYPE_PREFIXES: list[tuple[str, DeviceType]] = [
     ("iPad", DeviceType.TABLET),
 ]
 
+# Bundle id prefix of HealthKit sources written by Apple's own devices, whose productType is the
+# producing device. Observed in SDK payloads (com.apple.health.<UUID>), not documented by Apple.
+APPLE_SOURCE_APP_PREFIX = "com.apple.health."
+APPLE_HARDWARE_PREFIXES = (*(prefix for prefix, _ in APPLE_PRODUCT_TYPE_PREFIXES), "iPod")
+
+
+def is_apple_own_source(source_app_id: str | None) -> bool:
+    """HealthKit source written by an Apple device itself rather than a third-party app."""
+    return source_app_id is not None and source_app_id.startswith(APPLE_SOURCE_APP_PREFIX)
+
+
+def is_host_model(source_app_id: str | None, device_model: str | None) -> bool:
+    """Apple hardware code on a third-party writer's row: the iPhone/Watch that relayed it, not the producer."""
+    if not source_app_id or is_apple_own_source(source_app_id) or not device_model:
+        return False
+    return device_model.startswith(APPLE_HARDWARE_PREFIXES)
+
+
 # Samsung model code prefix (SM-X...); SM-R is skipped as it mixes watches, bands and buds
 SAMSUNG_MODEL_CODE = re.compile(r"^SM-([A-Z])\d")
 SAMSUNG_MODEL_PREFIX_DEVICE_TYPE: dict[str, DeviceType] = {
@@ -147,9 +165,22 @@ def _match_keywords(value: str, rules: list[tuple[re.Pattern[str], DeviceType]])
     return None
 
 
+# Values providers send when the device is unknown; treated as no device model
+DEVICE_MODEL_PLACEHOLDERS = frozenset({"", "unknown"})
+
+
+def normalize_device_model(device_model: str | None) -> str | None:
+    """Strip whitespace and map placeholders (e.g. Garmin's "unknown" on edited activities) to None."""
+    if device_model is None:
+        return None
+    stripped = device_model.strip()
+    return None if stripped.lower() in DEVICE_MODEL_PLACEHOLDERS else stripped
+
+
 def infer_device_type_from_model(device_model: str | None) -> DeviceType:
     """Infer device type from a device model string (Apple productType codes, Samsung codes, keywords)."""
-    if not device_model or device_model.strip().lower() == "unknown":
+    device_model = normalize_device_model(device_model)
+    if device_model is None:
         return DeviceType.UNKNOWN
 
     for prefix, device_type in APPLE_PRODUCT_TYPE_PREFIXES:
@@ -186,8 +217,12 @@ def infer_device_type(
     device_model: str | None,
     original_source_name: str | None = None,
     reported_type: DeviceType | None = None,
+    source_app_id: str | None = None,
 ) -> DeviceType:
     """Resolve device type: single-device provider, then the reported type, then inference."""
+    # The iOS SDK derives both from the relaying iPhone/Watch, so only the source name is left
+    if is_host_model(source_app_id, device_model):
+        device_model, reported_type = None, None
     device_type = _resolve_device_type(provider, device_model, original_source_name, reported_type)
     if device_type == DeviceType.OTHER:
         log_structured(
