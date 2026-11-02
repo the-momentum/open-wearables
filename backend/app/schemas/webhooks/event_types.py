@@ -81,7 +81,7 @@ class WebhookEventType(StrEnum):
     SERIES_HEART_RATE = "series.heart_rate.created"
     SERIES_RESTING_HEART_RATE = "series.resting_heart_rate.created"
     SERIES_HEART_RATE_RECOVERY_ONE_MINUTE = "series.heart_rate_recovery_one_minute.created"
-    SERIES_WALKING_HEART_RATE_AVERAGE = "series.walking_heart_rate_average.created"
+    SERIES_WALKING_HEART_RATE = "series.walking_heart_rate.created"
     SERIES_ATRIAL_FIBRILLATION_BURDEN = "series.atrial_fibrillation_burden.created"
 
     # HRV
@@ -150,7 +150,6 @@ class WebhookEventType(StrEnum):
     SERIES_EXERCISE_TIME = "series.exercise_time.created"
     SERIES_PHYSICAL_EFFORT = "series.physical_effort.created"
     SERIES_FLIGHTS_CLIMBED = "series.flights_climbed.created"
-    SERIES_AVERAGE_MET = "series.average_met.created"
     SERIES_ACTIVE_TIME = "series.active_time.created"
     SERIES_PUSH_COUNT = "series.push_count.created"
     SERIES_NUMBER_OF_TIMES_FALLEN = "series.number_of_times_fallen.created"
@@ -250,7 +249,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_HEART_RATE: "Continuous heart-rate samples were ingested.",
     WebhookEventType.SERIES_RESTING_HEART_RATE: "Resting heart-rate samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE: "1-minute heart-rate recovery samples were ingested.",
-    WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE: "Walking heart-rate average samples were ingested.",
+    WebhookEventType.SERIES_WALKING_HEART_RATE: "Walking heart-rate samples were ingested.",
     WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN: "Atrial fibrillation burden samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_VARIABILITY_SDNN: "HRV SDNN samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_VARIABILITY_RMSSD: "HRV RMSSD samples were ingested.",
@@ -301,7 +300,6 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_EXERCISE_TIME: "Exercise time samples were ingested.",
     WebhookEventType.SERIES_PHYSICAL_EFFORT: "Physical effort samples were ingested.",
     WebhookEventType.SERIES_FLIGHTS_CLIMBED: "Flights climbed samples were ingested.",
-    WebhookEventType.SERIES_AVERAGE_MET: "Average MET samples were ingested.",
     WebhookEventType.SERIES_ACTIVE_TIME: "Active time samples were ingested.",
     WebhookEventType.SERIES_PUSH_COUNT: "Wheelchair push count samples were ingested.",
     WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN: "Fall count samples were ingested.",
@@ -352,7 +350,7 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_HEART_RATE,
         WebhookEventType.SERIES_RESTING_HEART_RATE,
         WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE,
-        WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE,
+        WebhookEventType.SERIES_WALKING_HEART_RATE,
         WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN,
     ],
     WebhookEventType.HEART_RATE_VARIABILITY_CREATED: [
@@ -423,7 +421,6 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_EXERCISE_TIME,
         WebhookEventType.SERIES_PHYSICAL_EFFORT,
         WebhookEventType.SERIES_FLIGHTS_CLIMBED,
-        WebhookEventType.SERIES_AVERAGE_MET,
         WebhookEventType.SERIES_ACTIVE_TIME,
         WebhookEventType.SERIES_PUSH_COUNT,
         WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN,

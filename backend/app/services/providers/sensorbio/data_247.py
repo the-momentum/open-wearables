@@ -12,8 +12,8 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import HealthScoreCategory, ProviderName
-from app.schemas.model_crud.activities import HealthScoreCreate, SleepStage
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
+from app.schemas.model_crud.activities import CalendarPeriod, HealthScoreCreate, SleepStage
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
@@ -38,7 +38,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.conversion import energy_difference
+from app.utils.conversion import energy_difference, seconds_to_minutes
 from app.utils.dates import as_utc
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -241,10 +241,10 @@ class SensorBio247Data(Base247DataTemplate):
             "is_nap": False,
             "stage_timestamps": self._extract_sleep_stages(raw_sleep, user_id, start_dt, end_dt),
             "stages": {
-                "deep_seconds": int((parsed.deep_sleep_mins or 0) * 60),
-                "light_seconds": int((parsed.light_sleep_mins or 0) * 60),
-                "rem_seconds": int((parsed.rem_sleep_mins or 0) * 60),
-                "awake_seconds": int((parsed.awake_time_mins or 0) * 60),
+                "deep_seconds": int(parsed.deep_sleep_mins * 60) if parsed.deep_sleep_mins is not None else None,
+                "light_seconds": int(parsed.light_sleep_mins * 60) if parsed.light_sleep_mins is not None else None,
+                "rem_seconds": int(parsed.rem_sleep_mins * 60) if parsed.rem_sleep_mins is not None else None,
+                "awake_seconds": int(parsed.awake_time_mins * 60) if parsed.awake_time_mins is not None else None,
             },
             "average_heart_rate": (biometrics.bpm if biometrics else None) or parsed.avg_heart_rate,
             "average_hrv": biometrics.hrv if biometrics else None,
@@ -273,7 +273,7 @@ class SensorBio247Data(Base247DataTemplate):
 
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Sensor Bio",
             device_model=None,
@@ -288,20 +288,20 @@ class SensorBio247Data(Base247DataTemplate):
         )
 
         stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=total_sleep_seconds // 60,
+            sleep_total_duration_minutes=seconds_to_minutes(deep_seconds, light_seconds, rem_seconds),
             sleep_time_in_bed_minutes=(normalized_sleep.get("duration_seconds") or 0) // 60,
             sleep_efficiency_score=Decimal(str(normalized_sleep["efficiency_percent"]))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             sleep_stages=normalized_sleep.get("stage_timestamps"),
             is_nap=normalized_sleep.get("is_nap", False),
         )
@@ -309,7 +309,7 @@ class SensorBio247Data(Base247DataTemplate):
         try:
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
-            event_record_service.create_detail(db, detail, detail_type="sleep")
+            event_record_service.create_detail(db, detail, detail_type=EventCategory.SLEEP)
             return True
         except Exception as e:
             log_structured(
@@ -434,6 +434,7 @@ class SensorBio247Data(Base247DataTemplate):
                     recorded_at=timestamp,
                     value=Decimal(str(value)),
                     series_type=series_type,
+                    period=CalendarPeriod.of_date(timestamp.date()),
                 )
             )
 
@@ -757,6 +758,7 @@ class SensorBio247Data(Base247DataTemplate):
                     value=Decimal(str(value)),
                     series_type=series_type,
                     is_daily_total=True,
+                    period=CalendarPeriod.of_date(timestamp.date()),
                 )
             )
 

@@ -12,10 +12,12 @@ from app.config import settings
 from app.constants.withings_requests import WORKOUTS
 from app.constants.workout_types.withings import OFFICIAL_WITHINGS_CATEGORY_IDS, get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.providers.withings.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.withings.handlers.rpc_client import paginate
 from app.services.providers.withings.handlers.timezone import zone_offset_at
 from app.utils.sentry_helpers import log_and_capture_error
@@ -121,7 +123,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             id=record_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Withings",
             duration_seconds=duration_seconds,
@@ -141,6 +143,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             heart_rate_max=data.hr_max,
             steps_count=data.steps,
             energy_burned=Decimal(str(data.calories)) if data.calories is not None else None,
+            energy_series=WORKOUT_ENERGY_SERIES,
             distance=Decimal(str(data.distance)) if data.distance is not None else None,
         )
         return record, detail

@@ -121,7 +121,7 @@ def test_reauth_required_fails_delivery_without_retry(user_id: str) -> None:
         result = task.process_webhook_push.run("strava", {}, "trace")
 
     retry.assert_not_called()
-    assert result == {"status": "error", "error": "reconnection required", "user_id": user_id}
+    assert result == {"status": "error", "error": "reauth_required", "user_id": user_id}
     assert calls[0]["status"] == SyncStatus.FAILED
 
 

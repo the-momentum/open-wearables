@@ -33,6 +33,10 @@ class ResourceAlreadyExistsError(Exception):
         super().__init__(detail)
 
 
+# Error code a dead grant is reported under, in sync logs and per-notification results
+REAUTH_REQUIRED = "reauth_required"
+
+
 class ReauthRequiredError(HTTPException):
     """The stored grant can no longer produce an access token; the user has to reconnect."""
 

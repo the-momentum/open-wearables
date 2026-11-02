@@ -123,3 +123,6 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
 
 # sleep_score is excluded because it has no HealthScore mapping.
 HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset()
+
+# getworkouts ``data.calories``: "Active calories burned (in Kcal)" (developer.withings.com openapi.yaml).
+WORKOUT_ENERGY_SERIES = SeriesType.active_energy

@@ -183,7 +183,7 @@ class SuuntoStrategy(BaseProviderStrategy):
 - Set `self.webhooks = None` (default) if your provider has no incoming webhooks
 - Set `self.oauth = None` for SDK/file-upload-only providers like Apple Health
 
-<img src="/images/providers/provider-strategy.png" alt="Provider strategy class diagram showing capabilities, components, and their relationships" />
+<img src="/images/providers/provider-strategy.png" alt="SuuntoStrategy extends BaseProviderStrategy: shared repositories, abstract and default properties in the base class, and the properties and components Suunto implements" />
 
 <Check>
 Inherited `BaseProviderStrategy` will init all required repositories so you don't need to take care about database manipulations. You can read more about repositories role in our [System Overview](/architecture/system-overview).

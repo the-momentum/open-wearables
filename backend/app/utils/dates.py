@@ -172,3 +172,28 @@ def offset_to_iso(offset_seconds: int | None) -> str | None:
     hours, remainder = divmod(total, 3600)
     minutes = remainder // 60
     return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def iso_to_timezone(offset: str) -> timezone:
+    """Convert an ISO 8601 offset to a fixed timezone (e.g. '-05:30' -> UTC-05:30)."""
+    sign = -1 if offset.startswith("-") else 1
+    hours, minutes = offset[1:].split(":")
+    return timezone(sign * timedelta(hours=int(hours), minutes=int(minutes)))
+
+
+def local_date(dt: datetime, zone_offset: str | None) -> date:
+    """The calendar day of an instant at its offset, as SQL readers compute it; no offset is UTC."""
+    return dt.astimezone(iso_to_timezone(zone_offset or "+00:00")).date()
+
+
+def offset_of(dt: datetime) -> str | None:
+    """The ISO 8601 offset of an aware datetime, None for a naive one."""
+    offset = dt.utcoffset()
+    return None if offset is None else offset_to_iso(int(offset.total_seconds()))
+
+
+def window_seconds(start: datetime | None, end: datetime | None) -> int | None:
+    """Width of a value reported over [start, end); None for an instant, a span under a second or a missing end."""
+    if start is None or end is None or end <= start:
+        return None
+    return int((end - start).total_seconds()) or None

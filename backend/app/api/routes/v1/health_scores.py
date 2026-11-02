@@ -28,7 +28,13 @@ def list_health_scores(
     limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PaginatedResponse[HealthScoreResponse]:
-    """Returns health scores (sleep, recovery, readiness, etc.) for a user."""
+    """Returns health scores (sleep, recovery, readiness, etc.) for a user.
+
+    One OW score (provider `internal`) per category and day, from the highest-priority source.
+
+    Scores computed by Open Wearables (`provider: internal`) are deprecated: no new ones are
+    computed starting November 6, 2026. Previously computed scores are still returned.
+    """
     params = HealthScoreQueryParams(
         start_datetime=parse_query_datetime(start_date) if start_date else None,
         end_datetime=parse_query_end_datetime(end_date) if end_date else None,
@@ -37,9 +43,7 @@ def list_health_scores(
         limit=limit,
         offset=offset,
     )
-    scores, total_count = health_score_service.get_scores_with_filters(db, user_id, params)
-
-    data = [HealthScoreResponse.model_validate(s) for s in scores]
+    data, total_count = health_score_service.get_scores_with_filters(db, user_id, params)
     has_more = (offset + len(data)) < total_count
 
     return PaginatedResponse(

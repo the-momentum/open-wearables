@@ -23,7 +23,7 @@ from app.algorithms.config_algorithms import resilience_config
 from app.algorithms.resilience import calculate_hrv_cv
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord
+from app.models import EventRecord, SeriesSample
 from app.repositories import DataPointSeriesRepository, EventRecordRepository
 from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -45,7 +45,7 @@ class ResilienceScoreService:
 
     def __init__(self, log: Logger):
         self.logger = log
-        self._data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self._data_point_repo = DataPointSeriesRepository(SeriesSample)
         self._event_record_repo = EventRecordRepository(EventRecord)
 
     # ------------------------------------------------------------------
@@ -70,7 +70,7 @@ class ResilienceScoreService:
         start_dt: datetime,
         end_dt: datetime,
     ) -> list[tuple[datetime, float]]:
-        """Query raw (recorded_at, value) pairs from DataPointSeries via the repository."""
+        """Query raw (recorded_at, value) pairs from SeriesSample via the repository."""
         return self._data_point_repo.query_series(db_session, user_id, type_id, start_dt, end_dt)
 
     def _extract_asleep_windows(
@@ -264,6 +264,12 @@ class ResilienceScoreService:
 
         # Group all filtered points by UTC date once; reused for every reference_date.
         by_day = self._group_by_day(filtered_hrv)
+        # Most wearables send a night's HRV as one value per sleep, not as readings inside it: a night
+        # without readings takes its sleep's session value, the provider's where it sent one, else ours.
+        for day, value in self._event_record_repo.sleep_values_by_day(
+            db_session, user_id, rmssd_type_id, start_dt, end_dt
+        ).items():
+            by_day.setdefault(day, [value])
 
         results: dict[date, HrvCvScoreResult] = {}
         for ref_date in reference_dates:

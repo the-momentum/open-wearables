@@ -21,7 +21,7 @@ from app.services import sync_status_service
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.sync_247_result import error_code_of
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
-from app.utils.exceptions import ReauthRequiredError
+from app.utils.exceptions import REAUTH_REQUIRED, ReauthRequiredError
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -87,7 +87,9 @@ def _emit_final_failure(
                 {"status": "error", "error": error_code_of(exc), "user_id": str(connection.user_id)},
             )
     except Exception as emit_exc:  # pragma: no cover - sync log must never break processing
-        logger.debug("Failed to emit final webhook failure: %s", emit_exc, exc_info=True)
+        log_structured(
+            logger, "debug", "Failed to emit final webhook failure", provider=provider_name, error=str(emit_exc)
+        )
 
 
 def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
@@ -148,7 +150,7 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
                 metadata=breakdown,
             )
     except Exception as exc:  # pragma: no cover - sync log must never break processing
-        logger.debug("Failed to emit webhook sync status: %s", exc, exc_info=True)
+        log_structured(logger, "debug", "Failed to emit webhook sync status", provider=provider_name, error=str(exc))
 
 
 @shared_task(
@@ -207,7 +209,7 @@ def process_webhook_push(
             provider_user_id=provider_user_id,
             error=str(exc.detail),
         )
-        result = {"status": "error", "error": str(exc.detail), "user_id": str(exc.user_id)}
+        result = {"status": "error", "error": REAUTH_REQUIRED, "user_id": str(exc.user_id)}
         _emit_webhook_sync_status(provider_name, result)
         return result
     except HTTPException as exc:

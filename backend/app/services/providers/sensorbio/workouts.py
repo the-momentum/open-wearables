@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.sensorbio import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -200,7 +201,7 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
         duration_seconds = int(raw_workout.get("duration") or max(int((end_date - start_date).total_seconds()), 0))
         metrics = self._build_metrics(raw_workout)
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Sensor Bio",
             device_model=None,

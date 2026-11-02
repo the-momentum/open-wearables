@@ -257,6 +257,17 @@ class BaseProviderStrategy(ABC):
         return self.oauth is not None
 
     @property
+    def credentials_configured(self) -> bool:
+        """False when a cloud provider is missing its OAuth client ID or secret.
+
+        SDK-only providers need no credentials, so they always count as configured.
+        """
+        if self.oauth is None:
+            return True
+        credentials = self.oauth.credentials
+        return bool(credentials.client_id and credentials.client_secret)
+
+    @property
     def live_sync_configurable(self) -> bool:
         """True when the admin can choose between pull and webhook live sync.
 

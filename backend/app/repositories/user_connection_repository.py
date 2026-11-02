@@ -234,6 +234,8 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         )
         result: dict[tuple[str, str], list[UUID]] = {}
         for provider, provider_user_id, linked_user_id in rows:
+            if provider_user_id is None:
+                continue
             result.setdefault((provider, provider_user_id), []).append(linked_user_id)
         return result
 
