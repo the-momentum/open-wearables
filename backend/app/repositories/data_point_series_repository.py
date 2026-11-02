@@ -63,6 +63,7 @@ from app.repositories.repositories import (
     utc_bucket_start,
 )
 from app.repositories.series_aggregate_repository import LOCAL_DAY
+from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     BUCKET_SIZES,
@@ -852,6 +853,7 @@ class DataPointSeriesRepository(
         winner from what the request actually asked for rather than from everything owned."""
         query = db_session.query(DataSource).filter(
             DataSource.user_id == user_id,
+            NOT_RECONCILED_SOURCE,
             *source_filter_conditions(params, DataSource.id),
         )
         return sorted(query.all(), key=lambda s: (*ranking.rank(s.provider, s.device_type), s.id))

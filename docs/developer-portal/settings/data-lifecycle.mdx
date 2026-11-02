@@ -49,6 +49,19 @@ Every 15 minutes, the days whose samples changed are rolled up into one row a da
 
 Turning it off drops what is queued at the next run, and every day that changes after it. Turned back on, rollup covers only the days that change from then on; the days in between keep the rows they had. Keep it on unless every connected provider sends its own day and session values.
 
+### Reconciled days
+
+Self-hosting: `source_selection=reconcile` on `/timeseries` merges a user's steps, distance, energy and other summed series across their devices per day, each moment counted once from the best-ranked device. Merging costs roughly 3–4 times a rollup of the same days, so it is off by default and bounded when on:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `RECONCILE_ENABLED` | `false` | The rollup stores merged days. Off, reads merge every day themselves. |
+| `RECONCILE_STORED_DAYS` | `30` | Days back from today the rollup stores; older days are stored once a read asks for them. |
+| `RECONCILE_SECONDS_PER_RUN` | `30` | Seconds each rollup run spends merging, after its own 60 and never taken from them; what does not fit waits for the next run. At most 50. |
+| `RECONCILE_ON_THE_FLY_MAX_DAYS` | `30` | Most days one page of a read may merge itself, 1 to 90. A page needing more is refused with `400`; lower `limit` or narrow the range. |
+
+A stored merged day reads as fast as any day row; merging on the fly takes in the order of a second per month of a user's days. Retention ends merging: once a day's samples are deleted, only a merged day stored before stays.
+
 ## Deletion
 
 When enabled, samples of local days older than **Delete samples older than N days** are permanently deleted, whole days at a time, at 03:00 UTC. Set the window between 1 and 7300 days; the number can be typed before the switch is turned on.

@@ -14,6 +14,7 @@ from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
+from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.model_crud.data_priority import DataSourceCreate, DataSourceUpdate
@@ -452,7 +453,8 @@ class DataSourceRepository(
     ) -> list[DataSource]:
         return (
             db_session.query(self.model)
-            .filter(self.model.user_id == user_id)
+            # The reconciled source holds merged values, not a device the user connected.
+            .filter(self.model.user_id == user_id, NOT_RECONCILED_SOURCE)
             .order_by(self.model.provider.asc(), self.model.device_model.asc())
             .all()
         )

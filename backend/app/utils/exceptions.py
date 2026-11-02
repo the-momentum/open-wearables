@@ -38,6 +38,16 @@ class InvalidCursorError(Exception):
         self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
 
 
+class ReconcileWindowTooLargeError(Exception):
+    def __init__(self, days: int, limit: int, queued: bool):
+        self.detail = (
+            f"source_selection=reconcile would merge {days} days on the fly for this page; at most {limit} are "
+            "allowed. Lower `limit` or narrow the range."
+        )
+        if queued:
+            self.detail += " Those days are queued to be stored, so the same read succeeds after the next rollup."
+
+
 class DatetimeParseError(ValueError):
     def __init__(self, value: str):
         self.detail = f"Invalid datetime format: '{value}'. Expected ISO 8601 format or Unix timestamp."
@@ -69,6 +79,11 @@ def _(exc: ResourceAlreadyExistsError, _: str) -> HTTPException:
 
 @handle_exception.register
 def _(exc: InvalidCursorError, _: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=exc.detail)
+
+
+@handle_exception.register
+def _(exc: ReconcileWindowTooLargeError, _: str) -> HTTPException:
     return HTTPException(status_code=400, detail=exc.detail)
 
 

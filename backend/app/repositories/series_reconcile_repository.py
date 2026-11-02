@@ -3,7 +3,8 @@ from datetime import date, datetime, timedelta
 from typing import NamedTuple
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, text
+from sqlalchemy import Date, Interval, and_, func, or_, text
+from sqlalchemy import cast as sql_cast
 
 from app.database import DbSession
 from app.models import DataSource, SeriesAggregate
@@ -20,10 +21,20 @@ from app.schemas.enums import (
 )
 from app.schemas.model_crud.activities import CalendarPeriod
 
-# The user's own source the reconciled day rows sit on: no device stands behind a value merged from several.
+# The user's own source the day values merged across their devices sit on (source_selection=reconcile): no device
+# stands behind such a value. Every other read leaves it out.
 RECONCILED_PROVIDER = ProviderName.INTERNAL
 RECONCILED_SOURCE = "reconciled"
 IS_RECONCILED_SOURCE = and_(DataSource.provider == RECONCILED_PROVIDER, DataSource.source == RECONCILED_SOURCE)
+# Not its negation: an internal source without a source name must not drop out with NOT (... AND NULL).
+NOT_RECONCILED_SOURCE = or_(
+    DataSource.provider != RECONCILED_PROVIDER, DataSource.source.is_distinct_from(RECONCILED_SOURCE)
+)
+
+# The local day of a series_aggregate row: its UTC start moved by its offset.
+_ROW_DAY = sql_cast(
+    func.timezone("UTC", SeriesAggregate.period_start) + sql_cast(SeriesAggregate.zone_offset, Interval), Date
+)
 
 # Summed series only: a step or a kilocalorie spread over a window can be split by time, a heart rate cannot.
 RECONCILED_TYPE_IDS = sorted(
@@ -196,6 +207,26 @@ class SeriesReconcileRepository:
             _MERGE, {**params, "source_ids": [s.id for s in ordered], "positions": list(range(len(ordered)))}
         )
         return [MergedDay(row.type_id, row.day, row.zone_offset, float(row.sum), row.count) for row in rows]
+
+    @staticmethod
+    def day_rows(
+        db_session: DbSession, source_id: UUID, type_ids: list[int], first_day: date, last_day: date
+    ) -> dict[tuple[int, date], SeriesAggregate]:
+        """The stored merged rows of the local days from ``first_day`` to ``last_day``, by (series type, day)."""
+        lo, hi = _bounds([first_day, last_day])
+        rows = (
+            db_session.query(SeriesAggregate, _ROW_DAY)
+            .filter(
+                SeriesAggregate.data_source_id == source_id,
+                SeriesAggregate.series_type_definition_id.in_(type_ids),
+                SeriesAggregate.period_kind == PeriodKind.DAY,
+                SeriesAggregate.period_start >= lo,
+                SeriesAggregate.period_start < hi,
+                _ROW_DAY.between(first_day, last_day),
+            )
+            .all()
+        )
+        return {(row.series_type_definition_id, day): row for row, day in rows}
 
     @staticmethod
     def reconciled_source(db_session: DbSession, user_id: UUID) -> DataSource | None:

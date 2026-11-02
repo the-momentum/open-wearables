@@ -24,6 +24,10 @@ IN_PROGRESS_KEY = "series_rollup:in_progress"
 # archival_settings.deleted_before moves, this is what freezes the days already gone.
 DELETED_BEFORE_KEY = "series_rollup:deleted_before"
 
+# (user, local day) pairs to merge across the user's sources for source_selection=reconcile, scored by the day so
+# a run takes the newest first. Filled by the rollup for recent days and by reads for the days they had to merge.
+RECONCILE_DAYS_KEY = "series_reconcile:queue"
+
 # One rollup at a time, whoever runs it: two rolling up the same day would leave whichever read its samples first.
 LOCK_KEY = "series_rollup:lock"
 # Longer than any holder may run, so a killed worker cannot hold the lock for good.
@@ -116,7 +120,20 @@ def roll_up_soon() -> None:
 
 def clear_dirty_days() -> None:
     """Drop the queue, while the rollup is off."""
-    get_redis_client().delete(DIRTY_DAYS_KEY, IN_PROGRESS_KEY)
+    get_redis_client().delete(DIRTY_DAYS_KEY, IN_PROGRESS_KEY, RECONCILE_DAYS_KEY)
+
+
+def queue_reconcile_days(days: Iterable[tuple[UUID, date]]) -> None:
+    """Queue (user, local day) pairs for the next rollup run to merge and store."""
+    if members := _members(days):
+        get_redis_client().zadd(RECONCILE_DAYS_KEY, _scored(members))
+
+
+def pop_reconcile_days(count: int) -> list[tuple[UUID, date]]:
+    """Take up to ``count`` queued (user, day) pairs, newest days first; what a run does not finish it queues
+    again. A run killed in between loses them: a read merges such a day itself and queues it again."""
+    members = cast(list[tuple[str, float]], get_redis_client().zpopmax(RECONCILE_DAYS_KEY, count))
+    return [(UUID(user_id), date.fromisoformat(day)) for user_id, day in (m.split(":", 1) for m, _ in members)]
 
 
 def source_deleted_before(source_id: UUID) -> date | None:
