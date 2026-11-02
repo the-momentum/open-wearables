@@ -94,9 +94,7 @@ def get_valid_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"User not connected to {provider_name}",
         )
-    # The session may hold this connection from before another worker refreshed it; only the token
-    # columns are reloaded, so unflushed changes to it stay.
-    db.refresh(connection, attribute_names=["access_token", "refresh_token", "token_expires_at"])
+    connection_repo.reload_tokens(db, connection)
 
     # SDK-based providers don't have access tokens
     if not connection.access_token:
@@ -120,7 +118,7 @@ def get_valid_token(
                     detail=f"No access token available for {provider_name} (SDK-based provider?)",
                 )
 
-            db.refresh(connection)
+            connection_repo.reload_tokens(db, connection)
 
             # 1. If the token never expires, return it directly
             # 2. If it expires in the future (> 5 min buffer), return existing token
@@ -206,7 +204,7 @@ def _reload_token_after_401(
         connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
         if not connection or not connection.access_token:
             return None
-        db.refresh(connection)
+        connection_repo.reload_tokens(db, connection)
         if connection.access_token != rejected_token:
             return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
         # Without a refresh token the grant can't be told apart from an endpoint the user didn't consent to

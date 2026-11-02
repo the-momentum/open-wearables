@@ -165,6 +165,18 @@ def test_an_unchanged_rejected_token_is_refreshed_once_and_retried(db: Session, 
     assert client.sent_auth == [f"Bearer {connection.access_token}", "Bearer refreshed"]
 
 
+def test_a_401_recovery_keeps_unflushed_changes_to_the_connection(db: Session, connection: Any, repo: Any) -> None:
+    oauth = MagicMock()
+    oauth.refresh_access_token.return_value.access_token = "refreshed"
+    connection.scope = "changed in this session"
+    client = _client_returning(_response(401), _response(200, json={"ok": True}))
+
+    with patch("app.services.providers.api_client.httpx.Client", return_value=client):
+        _request(db, connection, repo, oauth)
+
+    assert connection.scope == "changed in this session"
+
+
 def test_a_rejected_refresh_ends_the_request_as_reauth_required(db: Session, connection: Any, repo: Any) -> None:
     oauth = MagicMock()
     oauth.refresh_access_token.side_effect = ReauthRequiredError("whoop", connection.user_id, "reconnection required")
