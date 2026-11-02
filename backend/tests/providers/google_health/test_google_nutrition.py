@@ -11,8 +11,10 @@ from uuid import uuid4
 
 import pytest
 
+from app.constants.google_health_endpoints import NUTRITION_SCOPE
 from app.schemas.enums import SeriesType
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
+from app.services.providers.google_health.helpers import scope_granted
 from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition, civil_start_filter
 from app.services.providers.google_health.webhook_handler import GoogleWebhookHandler
 
@@ -52,9 +54,11 @@ def _point(name: str = "abc123", data_source: dict | None = None, **overrides: o
 
 @pytest.fixture
 def nutrition() -> GoogleHealthApiNutrition:
+    connection_repo = MagicMock()
+    connection_repo.get_by_user_and_provider.return_value.scope = None
     return GoogleHealthApiNutrition(
         oauth=MagicMock(),
-        connection_repo=MagicMock(),
+        connection_repo=connection_repo,
         api_base_url="https://health.googleapis.com",
     )
 
@@ -269,6 +273,21 @@ class TestLoadAndSave:
         upsert.assert_not_called()
         assert self.count == 0
 
+    def test_an_ungranted_nutrition_scope_skips_the_fetch(self, nutrition: GoogleHealthApiNutrition) -> None:
+        """Ren's OAuth client doesn't request nutrition scope; its connections must not 403."""
+        nutrition.connection_repo.get_by_user_and_provider.return_value.scope = (
+            "openid https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly"
+        )
+        with (
+            patch("app.services.providers.google_health.nutrition.make_authenticated_request") as request,
+            patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
+        ):
+            count = nutrition.load_and_save(MagicMock(), USER_ID, *WINDOW)
+
+        assert count == 0
+        request.assert_not_called()
+        event_record_service.upsert_meals.assert_not_called()
+
 
 class TestWebhookRouting:
     """nutrition-log notifications are routed to the nutrition handler, like sleep/exercise."""
@@ -291,3 +310,22 @@ class TestWebhookRouting:
         sync_data_type.assert_not_called()
         # Nothing wraps the handler on this path, so the batch must be committed here.
         db.commit.assert_called_once()
+
+
+class TestScopeGranted:
+    """The scope gate: granted covers, missing denies, unknown is attempted honestly."""
+
+    def test_a_recorded_scope_without_nutrition_denies_the_type(self) -> None:
+        repo = MagicMock()
+        repo.get_by_user_and_provider.return_value.scope = (
+            "openid https://www.googleapis.com/auth/googlehealth.sleep.readonly"
+        )
+        assert scope_granted(repo, MagicMock(), USER_ID, "google_health", NUTRITION_SCOPE) is False
+
+    def test_an_unrecorded_scope_attempts_the_type(self) -> None:
+        repo = MagicMock()
+        repo.get_by_user_and_provider.return_value.scope = None
+        assert scope_granted(repo, MagicMock(), USER_ID, "google_health", NUTRITION_SCOPE) is True
+
+        repo.get_by_user_and_provider.return_value = None
+        assert scope_granted(repo, MagicMock(), USER_ID, "google_health", NUTRITION_SCOPE) is True

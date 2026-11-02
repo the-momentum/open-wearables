@@ -40,13 +40,20 @@ def _point(name: str, start: datetime = START, nutrients: list[dict] | None = No
     }
 
 
+def _unscoped_repo() -> MagicMock:
+    """A connection repo whose connection predates scope tracking (scope unknown → types attempted)."""
+    repo = MagicMock()
+    repo.get_by_user_and_provider.return_value.scope = None
+    return repo
+
+
 def _existing_source(user) -> None:  # noqa: ANN001
     DataSourceFactory(user=user, device_model="Pixel Fold", source="google_health_api", provider="google_health")
 
 
 def _sync_like_data_247(db: Session, user_id: str, points: list[dict]) -> int:
     """Run the handler exactly as load_and_save_all does: under a savepoint, commit after."""
-    nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
+    nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=_unscoped_repo(), api_base_url=API)
     with (
         patch(
             "app.services.providers.google_health.nutrition.make_authenticated_request",
@@ -145,7 +152,7 @@ class TestWebhookPath:
         """No savepoint wraps the handler here, so _fetch_and_save must commit itself."""
         user = UserFactory()
         db.commit()
-        data_247 = GoogleHealth247Data(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
+        data_247 = GoogleHealth247Data(oauth=MagicMock(), connection_repo=_unscoped_repo(), api_base_url=API)
         handler = GoogleWebhookHandler(data_247=data_247, workouts=MagicMock())
 
         with (

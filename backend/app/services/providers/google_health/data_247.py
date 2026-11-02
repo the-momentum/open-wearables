@@ -20,6 +20,7 @@ from app.config import settings
 from app.constants.google_health_endpoints import (
     DAILY_ROLLUP_ENDPOINT,
     LIST_ENDPOINT,
+    NUTRITION_SCOPE,
     RECONCILE_ENDPOINT,
     ROLLUP_ENDPOINT,
 )
@@ -52,6 +53,7 @@ from app.services.providers.google_health.helpers import (
     physical_interval,
     read_level_sum,
     read_number,
+    scope_granted,
     zone_offset_from,
 )
 from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS, DERIVED_DAILY_METRICS, METRICS
@@ -115,6 +117,9 @@ class GoogleHealth247Data(Base247DataTemplate):
 
         if granularity_supported:
             for metric in METRICS:
+                if metric.required_scope and not self._scope_granted(db, user_id, metric.required_scope):
+                    run.result.skip(metric.data_type)
+                    continue
                 if metric.use_list(granularity):
                     build = partial(self._native_samples, db, user_id, metric, start_time, end_time)
                 else:
@@ -132,8 +137,11 @@ class GoogleHealth247Data(Base247DataTemplate):
         with run.step("sleep", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
             step.record(self.sleep.load_and_save(db, user_id, start_time, end_time))
 
-        with run.step("nutrition-log", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
-            step.record(self.nutrition.load_and_save(db, user_id, start_time, end_time))
+        if self._scope_granted(db, user_id, NUTRITION_SCOPE):
+            with run.step("nutrition-log", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
+                step.record(self.nutrition.load_and_save(db, user_id, start_time, end_time))
+        else:
+            run.result.skip("nutrition-log")
 
         # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — the caller marks
         # the sync FAILED off ``all_failed`` rather than treating it as an empty success.
@@ -167,6 +175,8 @@ class GoogleHealth247Data(Base247DataTemplate):
         metric = next((m for m in METRICS if m.data_type == data_type), None)
         if metric is None:
             return None
+        if metric.required_scope and not self._scope_granted(db, user_id, metric.required_scope):
+            return None
         granularity = (
             self.settings_repo.get_data_granularity(db, self.provider_name) or settings.default_data_granularity
         )
@@ -181,6 +191,9 @@ class GoogleHealth247Data(Base247DataTemplate):
         counts = timeseries_service.bulk_create_samples(db, samples)
         db.commit()
         return counts
+
+    def _scope_granted(self, db: DbSession, user_id: str, scope: str) -> bool:
+        return scope_granted(self.connection_repo, db, user_id, self.provider_name, scope)
 
     def _log_metric_failure(self, data_type: str, user_id: str, error: Exception) -> None:
         log_and_capture_error(

@@ -6,3 +6,8 @@ DAILY_ROLLUP_ENDPOINT = "/v4/users/me/dataTypes/{data_type}/dataPoints:dailyRoll
 RECONCILE_ENDPOINT = "/v4/users/me/dataTypes/{data_type}/dataPoints:reconcile"
 IDENTITY_ENDPOINT = "/v4/users/me/identity"
 SUBSCRIBERS_ENDPOINT = "/v4/projects/{project}/subscribers"
+
+# OAuth scope covering the nutrition data types (nutrition-log, hydration-log). Ren's
+# OAuth client deliberately does not request it, so a connection whose granted scope
+# lacks it must skip those types rather than sync 403s on every run.
+NUTRITION_SCOPE = "https://www.googleapis.com/auth/googlehealth.nutrition.readonly"

@@ -7,6 +7,7 @@ not ingested here; basal is derived from it in metrics/derived.py.
 
 from decimal import Decimal
 
+from app.constants.google_health_endpoints import NUTRITION_SCOPE
 from app.schemas.enums import SeriesType
 from app.schemas.providers.google import DataTypeMetric, ListSpec, RollupSpec, TimeShape
 
@@ -39,5 +40,6 @@ ACTIVITY_METRICS: tuple[DataTypeMetric, ...] = (
         value_key="hydrationLog",
         rollup_spec=RollupSpec("amountConsumed", subfield="millilitersSum"),
         list_spec=ListSpec("amountConsumed", TimeShape.INTERVAL, subfield="milliliters", session_interval=True),
+        required_scope=NUTRITION_SCOPE,
     ),
 )

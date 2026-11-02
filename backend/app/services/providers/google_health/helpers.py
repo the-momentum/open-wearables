@@ -7,6 +7,8 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.constants.devices_map import map_reported_device_type
+from app.database import DbSession
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import DeviceType
 from app.schemas.providers.google import DataPointsPage, LevelSum
 from app.utils.conversion import to_decimal
@@ -148,3 +150,22 @@ def parse_date(obj: dict[str, Any] | None) -> datetime | None:
         return datetime(int(obj["year"]), int(obj.get("month") or 1), int(obj.get("day") or 1), tzinfo=timezone.utc)
     except (KeyError, ValueError, TypeError):
         return None
+
+
+def scope_granted(
+    connection_repo: UserConnectionRepository,
+    db: DbSession,
+    user_id: str,
+    provider_name: str,
+    scope: str,
+) -> bool:
+    """Whether the connection's stored granted scope covers ``scope``.
+
+    A missing connection or an unrecorded scope means we cannot prove the grant was
+    never made, so the type is attempted and a genuine denial still surfaces as a
+    failure rather than being hidden as a skip.
+    """
+    connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
+    if connection is None or connection.scope is None:
+        return True
+    return scope in connection.scope.split()
