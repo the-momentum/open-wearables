@@ -37,6 +37,7 @@ from app.schemas.providers.mobile_sdk import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.sdk.device_resolution import extract_device_ids, extract_device_info, extract_device_type
+from app.utils.dates import as_utc
 from app.utils.sleep_stages import measured_stages
 from app.utils.structured_logging import log_structured
 
@@ -135,19 +136,14 @@ def delete_sleep_state(user_id: str, state: SleepState) -> None:
         get_redis_client().srem(active_users_key(), user_id)
 
 
-def _as_utc(moment: datetime) -> datetime:
-    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
-
-
 def is_ready_to_finish(state: SleepState, now: datetime) -> bool:
-    """Check if the sleep session ended, or if it holds Apple Watch sleep, none from other apps, and uploads stopped."""
-    if now - _as_utc(state.end_time) >= timedelta(minutes=settings.sleep_end_gap_minutes):
+    """True after the end gap, or for a session with Apple Watch sleep once its writer's uploads go quiet."""
+    if now - as_utc(state.end_time) >= timedelta(minutes=settings.sleep_end_gap_minutes):
         return True
     return (
         state.has_apple_watch_sleep
-        and not state.has_third_party_sleep
         and state.last_received_at is not None
-        and now - _as_utc(state.last_received_at) >= timedelta(minutes=settings.sleep_upload_quiet_minutes)
+        and now - as_utc(state.last_received_at) >= timedelta(minutes=settings.sleep_upload_quiet_minutes)
     )
 
 
@@ -242,9 +238,7 @@ def _apply_transition(
         state.zone_offset = zone_offset
     if device_type and not state.device_type and (source_name or "unknown") == state.source_name:
         state.device_type = device_type
-    if not is_apple_own_source(source_app_id):
-        state.has_third_party_sleep = True
-    elif device_type == DeviceType.WATCH:
+    if device_type == DeviceType.WATCH and is_apple_own_source(source_app_id):
         state.has_apple_watch_sleep = True
 
     duration_seconds = (end_time - start_time).total_seconds()
@@ -307,12 +301,11 @@ def handle_sleep_data(
     (e.g. from a bulk historical upload) accumulate stages into the same session instead
     of overwriting each other's state.
 
-    Stale detection uses ``end_time`` (the last sleep-sample timestamp), and for an Apple
-    Watch also ``last_received_at``.  When a bulk
-    historical upload finalizes a session whose ``end_time`` is in the past, the new
-    session is merged with any adjacent record already in the database, so consecutive
-    payloads within the same night are combined into a single session rather than being
-    stored as separate fragments.
+    Stale detection uses ``end_time`` (the last sleep-sample timestamp), and for a session
+    with Apple Watch sleep also ``last_received_at``.  When a bulk historical upload
+    finalizes a session whose ``end_time`` is in the past, the new session is merged with
+    any adjacent record already in the database, so consecutive payloads within the same
+    night are combined into a single session rather than being stored as separate fragments.
 
     Args:
         db_session: Database session for persisting finalized sleep records

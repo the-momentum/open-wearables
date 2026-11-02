@@ -161,7 +161,7 @@ class TestFinalizeStaleSleepsTask:
         db: Session,
         mock_celery_app: MagicMock,
     ) -> None:
-        """An Apple Watch night closes once its uploads go quiet, before the end gap."""
+        """An Apple Watch night closes once its uploads go quiet; another app's session waits for the end gap."""
         user_id = str(uuid4())
         now = datetime.now(timezone.utc)
         woke_up = now - timedelta(minutes=40)
@@ -185,7 +185,10 @@ class TestFinalizeStaleSleepsTask:
             last_received_at=now - timedelta(minutes=20),
             has_apple_watch_sleep=True,
         )
-        mock_load_state.return_value = {"apple:apple": mock_sleep_state}
+        oura_state = mock_sleep_state.model_copy(
+            update={"source_name": "Oura", "source_app_id": "com.ouraring.oura", "has_apple_watch_sleep": False}
+        )
+        mock_load_state.return_value = {"apple:apple": mock_sleep_state, "apple:com.ouraring.oura": oura_state}
 
         finalize_stale_sleeps()
 

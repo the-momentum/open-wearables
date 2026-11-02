@@ -95,8 +95,8 @@ See the [Flutter SDK documentation](/sdk/flutter#supported-health-data-types) fo
 HealthKit has no sleep session object, only stage samples, so Open Wearables builds sessions from them:
 
 1. The app with the SDK uploads new sleep samples when iOS wakes it (HealthKit background delivery or a background refresh). Samples an Apple Watch records usually reach the phone after waking, sometimes hours later: iOS decides when the watch syncs with the phone.
-2. Open Wearables collects a session's samples and closes it once it is complete:
-   - a night with Apple Watch sleep and none from other apps 15 minutes after the last upload with its sleep (`SLEEP_UPLOAD_QUIET_MINUTES`), since the watch writes the whole night after waking;
+2. Open Wearables keeps one open session per writer app (the Apple Watch and iPhone count as one, an app such as Oura as another) and closes it once it is complete:
+   - a session with Apple Watch sleep 15 minutes after the last upload that added to it (`SLEEP_UPLOAD_QUIET_MINUTES`), since the watch writes the whole night after waking;
    - any other session 2 hours after its last sample ended (`SLEEP_END_GAP_MINUTES`), since apps writing to HealthKit can send a night over several syncs;
    - a night uploaded later than that as soon as it arrives.
 

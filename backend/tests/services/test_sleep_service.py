@@ -866,7 +866,7 @@ class TestNoIntermediateRedisSaves:
 
 
 class TestReadyToFinish:
-    """A session closes after the end gap, and one with only Apple Watch and iPhone sleep also once uploads stop."""
+    """A session closes after the end gap, and one with Apple Watch sleep also once its writer's uploads stop."""
 
     NOW = _dt("2026-04-18T09:00:00Z")
     WATCH = {"appId": "com.apple.health.FA11388E", "deviceType": "watch", "deviceModel": "Watch7,1"}
@@ -874,9 +874,9 @@ class TestReadyToFinish:
     OURA = {"appId": "com.ouraring.oura", "deviceType": "phone", "deviceModel": "iPhone15,2"}
 
     def _state(
-        self, ended_ago: int, received_ago: int | None, watch_sleep: bool = True, third_party_sleep: bool = False
+        self, ended_ago: int, received_ago: int | None, watch_sleep: bool = True, now: datetime = NOW
     ) -> SleepState:
-        end = self.NOW - timedelta(minutes=ended_ago)
+        end = now - timedelta(minutes=ended_ago)
         return SleepState(
             uuid=str(uuid4()),
             source_name="Apple Watch",
@@ -886,9 +886,8 @@ class TestReadyToFinish:
             end_time=end,
             last_start_timestamp=end - timedelta(minutes=10),
             last_end_timestamp=end,
-            last_received_at=None if received_ago is None else self.NOW - timedelta(minutes=received_ago),
+            last_received_at=None if received_ago is None else now - timedelta(minutes=received_ago),
             has_apple_watch_sleep=watch_sleep,
-            has_third_party_sleep=third_party_sleep,
         )
 
     def _payload(self, samples: list[tuple[str, str, str, dict]]) -> SyncRequest:
@@ -927,10 +926,6 @@ class TestReadyToFinish:
 
     def test_a_session_without_apple_watch_sleep_waits_for_the_end_gap(self) -> None:
         assert not is_ready_to_finish(self._state(ended_ago=40, received_ago=30, watch_sleep=False), self.NOW)
-
-    def test_a_session_with_sleep_from_other_apps_waits_for_the_end_gap(self) -> None:
-        """Apps writing to HealthKit can send a night over several syncs hours apart."""
-        assert not is_ready_to_finish(self._state(ended_ago=40, received_ago=30, third_party_sleep=True), self.NOW)
 
     def test_a_state_without_an_upload_time_waits_for_the_end_gap(self) -> None:
         assert not is_ready_to_finish(self._state(ended_ago=40, received_ago=None), self.NOW)
@@ -976,10 +971,9 @@ class TestReadyToFinish:
 
         assert saved.device_type == DeviceType.PHONE
         assert saved.has_apple_watch_sleep
-        assert not saved.has_third_party_sleep
 
     @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_sleep_from_another_app_keeps_its_own_session(self, mock_redis_func: MagicMock) -> None:
+    def test_watch_sleep_marks_only_the_apple_session(self, mock_redis_func: MagicMock) -> None:
         mock_redis_func.return_value.get.return_value = None
 
         saved = self._upload(
@@ -992,6 +986,25 @@ class TestReadyToFinish:
 
         assert saved["apple:apple"].has_apple_watch_sleep
         assert not saved["apple:com.ouraring.oura"].has_apple_watch_sleep
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.finish_sleep")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_another_apps_upload_does_not_extend_the_watch_quiet_period(
+        self, mock_redis_func: MagicMock, mock_finish_sleep: MagicMock, mock_celery: MagicMock
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        watch_state = self._state(ended_ago=40, received_ago=20, now=now)
+        woke_up = watch_state.end_time
+        mock_redis_func.return_value.get.return_value = None
+        mock_redis_func.return_value.hgetall.return_value = {"apple:apple": watch_state.model_dump_json()}
+        sample = ("light", (woke_up - timedelta(hours=1)).isoformat(), woke_up.isoformat(), self.OURA)
+
+        handle_sleep_data(MagicMock(), self._payload([sample]), str(uuid4()))
+
+        finished = [c.args[2] for c in mock_finish_sleep.call_args_list]
+        assert [state.source_app_id for state in finished] == [self.WATCH["appId"]]
+        assert finished[0].last_received_at == watch_state.last_received_at
 
     @patch("app.services.sdk.sleep_service.get_redis_client")
     def test_an_upload_without_usable_sleep_keeps_the_upload_time(self, mock_redis_func: MagicMock) -> None:

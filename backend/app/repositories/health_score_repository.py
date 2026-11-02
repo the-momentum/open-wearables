@@ -18,7 +18,7 @@ from app.utils.pagination import decode_cursor
 
 def _utc_midnight(moment: datetime) -> datetime:
     """Start of the UTC day ``moment`` falls on; a naive moment is read as UTC."""
-    return datetime.combine(typing_cast(datetime, as_utc(moment)).date(), time.min, tzinfo=timezone.utc)
+    return datetime.combine(as_utc(moment).date(), time.min, tzinfo=timezone.utc)
 
 
 class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, HealthScoreUpdate]):
