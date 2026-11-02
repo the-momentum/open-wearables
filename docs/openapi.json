@@ -7828,7 +7828,58 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "additionalProperties": true,
+                                    "description": "Exercise segment of a workout (Health Connect `ExerciseSegment`).",
+                                    "properties": {
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "startDate": {
+                                        "format": "date-time",
+                                        "title": "Startdate",
+                                        "type": "string"
+                                      },
+                                      "endDate": {
+                                        "format": "date-time",
+                                        "title": "Enddate",
+                                        "type": "string"
+                                      },
+                                      "repetitions": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Repetitions"
+                                      },
+                                      "metadata": {
+                                        "anyOf": [
+                                          {
+                                            "additionalProperties": true,
+                                            "type": "object"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Metadata"
+                                      }
+                                    },
+                                    "required": [
+                                      "startDate",
+                                      "endDate"
+                                    ],
+                                    "title": "WorkoutSegment",
                                     "type": "object"
                                   },
                                   "type": "array"
@@ -7843,7 +7894,102 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "additionalProperties": true,
+                                    "description": "Lap / segment / marker event of a workout.\n\niOS sends HealthKit workout events here (`type` is lap, segment or marker), Health Connect\nsends its laps without a `type`. Pool-swim laps carry the stroke fields; older iOS SDK builds\nonly put them in `metadata`, as stringified `HKSwimmingStrokeStyle` / `HKSWOLFScore`.",
+                                    "properties": {
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "startDate": {
+                                        "format": "date-time",
+                                        "title": "Startdate",
+                                        "type": "string"
+                                      },
+                                      "endDate": {
+                                        "format": "date-time",
+                                        "title": "Enddate",
+                                        "type": "string"
+                                      },
+                                      "duration": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Duration"
+                                      },
+                                      "distanceM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Distancem"
+                                      },
+                                      "strokeStyle": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Strokestyle"
+                                      },
+                                      "strokeCount": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Strokecount"
+                                      },
+                                      "swolf": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Swolf"
+                                      },
+                                      "metadata": {
+                                        "anyOf": [
+                                          {
+                                            "additionalProperties": true,
+                                            "type": "object"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Metadata"
+                                      }
+                                    },
+                                    "required": [
+                                      "startDate",
+                                      "endDate"
+                                    ],
+                                    "title": "WorkoutLap",
                                     "type": "object"
                                   },
                                   "type": "array"

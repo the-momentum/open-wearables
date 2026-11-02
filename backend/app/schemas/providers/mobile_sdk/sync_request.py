@@ -105,6 +105,35 @@ class WorkoutStatistic(BaseModel):
     value: float | int
 
 
+class WorkoutLap(BaseModel):
+    """Lap / segment / marker event of a workout.
+
+    iOS sends HealthKit workout events here (`type` is lap, segment or marker), Health Connect
+    sends its laps without a `type`. Pool-swim laps carry the stroke fields; older iOS SDK builds
+    only put them in `metadata`, as stringified `HKSwimmingStrokeStyle` / `HKSWOLFScore`.
+    """
+
+    type: str | None = None
+    startDate: datetime
+    endDate: datetime
+    duration: float | None = None
+    distanceM: float | None = None
+    strokeStyle: str | None = None  # freestyle | backstroke | breaststroke | butterfly | kickboard | mixed | unknown
+    strokeCount: float | None = None
+    swolf: float | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class WorkoutSegment(BaseModel):
+    """Exercise segment of a workout (Health Connect `ExerciseSegment`)."""
+
+    type: str | None = None
+    startDate: datetime
+    endDate: datetime
+    repetitions: int | None = None
+    metadata: dict[str, Any] | None = None
+
+
 class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
@@ -119,9 +148,10 @@ class Workout(BaseModel):
     notes: str | None = None
     values: list[WorkoutStatistic] | None = None
 
+    segments: list[WorkoutSegment] | None = None
+    laps: list[WorkoutLap] | None = None
+
     # everything below is unused for now
-    segments: list[dict[str, Any]] | None = None
-    laps: list[dict[str, Any]] | None = None
     route: list[dict[str, Any]] | None = None
     samples: list[dict[str, Any]] | None = None
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None

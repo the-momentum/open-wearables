@@ -56,6 +56,7 @@ from app.utils.structured_logging import log_structured
 
 from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from .sleep_service import handle_sleep_data
+from .workout_segments import build_workout_segments
 
 # Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
 # in mg/dL round-trip with a ~0.1% offset under this factor.
@@ -254,6 +255,7 @@ class ImportService:
 
             detail = EventRecordDetailCreate(
                 record_id=workout_id,
+                segments=build_workout_segments(wjson),
                 **metrics,
             )
 

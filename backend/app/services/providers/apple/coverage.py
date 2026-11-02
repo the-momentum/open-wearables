@@ -28,6 +28,7 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "elev_high",
         "elev_low",
         "entry_source",
+        "segments",
     }
 )
 
