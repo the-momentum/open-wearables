@@ -270,7 +270,8 @@ class ArchivalService:
         """Merge and store the queued (user, day) pairs, newest days first, a month of a user's days per commit,
         within ``budget_seconds``; what is left stays queued for the next run. Returns the user days merged.
 
-        A merge that fails is logged and its days dropped: a read merges them itself and queues them again.
+        A merge that fails is logged and its days are queued again once the run is done, not within it, so the
+        run does not retry them over and over; the next run tries them again.
         """
         started = time.monotonic()
 
@@ -278,6 +279,7 @@ class ArchivalService:
             return time.monotonic() - started >= budget_seconds
 
         merged, ranking = 0, None
+        failed: list[tuple[UUID, date]] = []
         while not out_of_time() and (batch := rollup_queue.pop_reconcile_days(RECONCILE_BATCH_SIZE)):
             ranking = ranking or priority_service.get_source_ranking(db)
             days_by_user: dict[UUID, set[date]] = defaultdict(set)
@@ -300,18 +302,20 @@ class ArchivalService:
                             raise
                         except Exception as exc:
                             db.rollback()
+                            failed.extend((user_id, day) for day in chunk)
                             log_and_capture_error(
                                 exc,
                                 self.logger,
-                                "Reconcile: skipped merging a user's sources",
+                                "Reconcile: failed merging a user's sources, queued for the next run",
                                 extra={"user_id": str(user_id), "days": [day.isoformat() for day in chunk]},
                             )
             except SoftTimeLimitExceeded:
                 # Killed next; merging again what is already committed is harmless.
                 db.rollback()
-                rollup_queue.queue_reconcile_days(batch)
+                rollup_queue.queue_reconcile_days([*batch, *failed])
                 raise
             rollup_queue.queue_reconcile_days(left)
+        rollup_queue.queue_reconcile_days(failed)
         return merged
 
     def _delete_before(self, db: DbSession, cutoff: date, rollup: bool, frozen_before: date | None) -> BatchedRun:

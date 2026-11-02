@@ -309,6 +309,24 @@ class TestReconcileInTheRollup:
 
         assert (self._stored(db, watch.user_id, DAY), pop_reconcile_days(10)) == ([], [(watch.user_id, DAY)])
 
+    def test_a_failed_merge_is_tried_once_per_run_and_queued_for_the_next(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        _walk(watch, phone, DAY)
+        queue_reconcile_days([(watch.user_id, DAY)])
+        calls = []
+
+        def failing(*args: object, **kwargs: object) -> int:
+            calls.append(args)
+            raise RuntimeError("merge failed")
+
+        monkeypatch.setattr(archival_service.reconcile_repo, "reconcile", failing)
+
+        archival_service.roll_up_queued_days(db)
+
+        assert (len(calls), pop_reconcile_days(10)) == (1, [(watch.user_id, DAY)])
+
     def test_the_backfill_rolls_up_without_merging(self, db: Session, devices: tuple) -> None:
         watch, phone = devices
         _walk(watch, phone, DAY)
