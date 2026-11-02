@@ -128,7 +128,7 @@ _HELD_SERIES_SPANS = f"""
     SELECT ds.user_id, ds.provider, std.code AS data_type, CAST(:series AS varchar) AS kind,
            min(s.first_at) AS coverage_start, max(s.last_at) AS coverage_end
     FROM (
-        {_pair_spans("data_point_series", "recorded_at")}
+        {_pair_spans("series_sample", "recorded_at")}
         UNION ALL
         {_pair_spans("data_point_series_archive", "bucket_start_at")}
     ) s

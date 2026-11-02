@@ -6,10 +6,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import DbSession
 from app.models import (
-    DataPointSeries,
     DataSource,
     EventRecord,
     ProviderSetting,
+    SeriesSample,
     TelemetryState,
     User,
     UserConnection,
@@ -105,7 +105,7 @@ class TelemetryRepository:
         return {provider: count for provider, count in rows}
 
     def count_data_points_by_provider(self, db: DbSession) -> dict[str, int]:
-        return self._count_by_provider(db, DataPointSeries)
+        return self._count_by_provider(db, SeriesSample)
 
     def count_events_by_provider(self, db: DbSession, category: EventCategory) -> dict[str, int]:
         return self._count_by_provider(db, EventRecord, category=category)
@@ -116,7 +116,7 @@ class TelemetryRepository:
     @staticmethod
     def _count_by_provider(
         db: DbSession,
-        model: type[DataPointSeries] | type[EventRecord],
+        model: type[SeriesSample] | type[EventRecord],
         category: str | None = None,
     ) -> dict[str, int]:
         query = (

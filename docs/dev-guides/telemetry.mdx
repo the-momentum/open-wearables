@@ -65,7 +65,7 @@ count below except `seed_users`, so test data never shows up as real usage.
 | `active_connections` | Provider connections with status `active` | `"11-100"` | Deployment size and connections per user |
 | `inactive_connections` | Provider connections with status `revoked` or `expired` | `"1-10"` | How often connections break, which drives reconnect and token refresh work |
 | `connections_by_provider` | Active connections per provider | `{"garmin": "11-100", "oura": "11-100"}` | Which providers to prioritise |
-| `data_points_by_provider` | Rows in `data_point_series` per provider | `{"garmin": "1M+"}` | Data volume per provider, drives storage and import performance work |
+| `data_points_by_provider` | Rows in `series_sample` per provider | `{"garmin": "1M+"}` | Data volume per provider, drives storage and import performance work |
 | `workouts_by_provider` | Workout event records per provider | `{"garmin": "1k-10k"}` | Which providers' workout pipelines matter most |
 | `sleep_sessions_by_provider` | Sleep event records per provider | `{"garmin": "1k-10k"}` | Same, for sleep |
 

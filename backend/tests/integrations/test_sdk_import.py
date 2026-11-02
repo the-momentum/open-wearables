@@ -15,8 +15,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.series_types.sdk import get_series_type_from_metric_type
-from app.models import DataPointSeries, DataSource, EventRecord, MealDetails, WorkoutDetails
-from app.schemas.enums import SeriesType
+from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
+from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
@@ -173,6 +173,55 @@ class TestAppleSDKImport:
         assert details.distance == Decimal("2165.35")
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
+
+    def test_workout_statistics_are_mirrored_onto_their_workout(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        rows = {row.series_type_definition_id: row for row in db.query(EventRecordAggregate)}
+        assert {row.record_id for row in rows.values()} == {workout.id}
+        heart_rate = rows[get_series_type_id(SeriesType.heart_rate)]
+        assert (heart_rate.min, heart_rate.avg, heart_rate.max) == (Decimal("77"), Decimal("121.49"), Decimal("141"))
+        assert rows[get_series_type_id(SeriesType.weather_temperature)].avg == Decimal("11.19")
+        assert rows[get_series_type_id(SeriesType.physical_effort)].avg == Decimal("1.6")
+        # Active plus basal energy is the workout's total energy.
+        assert rows[get_series_type_id(SeriesType.total_energy)].sum == Decimal("180.00")
+
+    def test_a_resent_workout_keeps_its_statistics_on_the_stored_record(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+        before = db.query(EventRecordAggregate).count()
+
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+
+        assert db.query(EventRecord).filter(EventRecord.category == "workout").count() == 1
+        assert db.query(EventRecordAggregate).count() == before
+
+    def test_a_record_spanning_minutes_keeps_its_width(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+        payload = {**SDK_ENVELOPE, "data": {"records": sample_sdk_payload["data"]["records"][:1]}}
+
+        import_service.load_data(db, payload, str(user.id))
+
+        # 23:56:11 to 00:02:58
+        assert [sample.window_seconds for sample in db.query(SeriesSample)] == [407]
 
     def test_import_workout_without_heart_rate(
         self,
@@ -667,6 +716,175 @@ class TestAppleSDKImportEdgeCases:
         assert details.energy_burned is None
 
 
+class TestSDKWorkoutStatisticMapping:
+    """Cycling, power and pedaling stats map onto workout detail fields, with a fixed precedence."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _ios_cycling_payload(values: list[dict[str, Any]]) -> dict[str, Any]:
+        """iOS 17+ outdoor ride, statistics as built by the iOS SDK's workout mapper."""
+        return {
+            **SDK_ENVELOPE,
+            "data": {
+                "workouts": [
+                    {
+                        "id": "6F1C2B9E-3D4A-4E8B-9C1D-2A7B5E8F0C31",
+                        "type": "cycling",
+                        "startDate": "2025-04-08T16:02:11Z",
+                        "endDate": "2025-04-08T17:14:40Z",
+                        "source": {
+                            "name": "Test Apple Watch",
+                            "bundleIdentifier": "com.apple.health",
+                            "deviceManufacturer": "Apple Inc.",
+                            "deviceModel": "Watch",
+                            "productType": "Watch7,5",
+                            "deviceSoftwareVersion": "11.2",
+                        },
+                        "values": values,
+                    }
+                ]
+            },
+        }
+
+    @staticmethod
+    def _samsung_session_payload(values: list[dict[str, Any]]) -> dict[str, Any]:
+        """Samsung Health cycling session; the Android SDK forwards every numeric ExerciseSession getter."""
+        return {
+            "provider": "samsung",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2025-04-10T12:00:00Z",
+            "data": {
+                "workouts": [
+                    {
+                        "id": "wrk-ride-001-s0",
+                        "parentId": "wrk-ride-001",
+                        "type": "cycling",
+                        "startDate": "2025-04-09T06:00:00Z",
+                        "endDate": "2025-04-09T07:10:00Z",
+                        "zoneOffset": "+02:00",
+                        "source": {
+                            "appId": "com.sec.android.app.shealth",
+                            "deviceId": "R9ZW30ABC12",
+                            "deviceName": "Galaxy Watch7",
+                            "deviceManufacturer": "Samsung",
+                            "deviceModel": "SM-R960",
+                            "deviceType": "watch",
+                        },
+                        "values": values,
+                    }
+                ]
+            },
+        }
+
+    @staticmethod
+    def _details(db: Session) -> WorkoutDetails:
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        return db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+
+    def test_ios_cycling_workout_maps_power_cadence_and_speed(self, db: Session, import_service: ImportService) -> None:
+        payload = self._ios_cycling_payload(
+            [
+                {"type": "duration", "unit": "s", "value": 4349.0},
+                {"type": "activeEnergyBurned", "unit": "kcal", "value": 712.3},
+                {"type": "distance", "unit": "m", "value": 34120.5},
+                {"type": "averageHeartRate", "unit": "bpm", "value": 148.2},
+                {"type": "averageCyclingPower", "unit": "W", "value": 182.4},
+                {"type": "averageCyclingCadence", "unit": "count/min", "value": 87.6},
+                {"type": "averageCyclingSpeed", "unit": "m/s", "value": 7.85},
+                {"type": "elevationAscended", "unit": "m", "value": 212.0},
+                {"type": "indoorWorkout", "unit": "bool", "value": 0},
+            ]
+        )
+
+        result = import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert result["workouts_saved"] == 1
+        details = self._details(db)
+        assert details.average_watts == Decimal("182.4")
+        assert details.average_cadence == Decimal("87.6")
+        assert details.average_speed == Decimal("7.85")
+        assert details.max_watts is None
+        assert details.moving_time_seconds is None
+
+    def test_samsung_session_maps_power_and_rpm(self, db: Session, import_service: ImportService) -> None:
+        payload = self._samsung_session_payload(
+            [
+                {"type": "duration", "value": 4200000, "unit": "ms"},
+                {"type": "calories", "value": 655.0, "unit": "kcal"},
+                {"type": "distance", "value": 30215.0, "unit": "m"},
+                {"type": "meanHeartRate", "value": 139.0, "unit": "bpm"},
+                {"type": "meanSpeed", "value": 7.19, "unit": "m/s"},
+                {"type": "maxSpeed", "value": 14.2, "unit": "m/s"},
+                {"type": "meanPower", "value": 171.5, "unit": ""},
+                {"type": "maxPower", "value": 612.0, "unit": ""},
+                {"type": "meanRpm", "value": 84.0, "unit": ""},
+                # Forwarded by the SDK but deliberately not stored yet
+                {"type": "maxRpm", "value": 118.0, "unit": ""},
+                {"type": "count", "value": 0, "unit": ""},
+                {"type": "meanCalorieBurnRate", "value": 9.4, "unit": ""},
+                {"type": "maxCalorieBurnRate", "value": 17.1, "unit": ""},
+                {"type": "inclineDistance", "value": 9100.0, "unit": ""},
+                {"type": "declineDistance", "value": 8700.0, "unit": ""},
+            ]
+        )
+
+        result = import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert result["workouts_saved"] == 1
+        details = self._details(db)
+        assert details.average_watts == Decimal("171.5")
+        assert details.max_watts == Decimal("612")
+        assert details.average_cadence == Decimal("84")
+        assert details.average_speed == Decimal("7.19")
+        assert details.max_speed == Decimal("14.2")
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_cycling_power_beats_running_power_in_any_order(
+        self, db: Session, import_service: ImportService, reverse: bool
+    ) -> None:
+        values = [
+            {"type": "averageRunningPower", "unit": "W", "value": 240.0},
+            {"type": "averageCyclingPower", "unit": "W", "value": 182.4},
+        ]
+        payload = self._ios_cycling_payload(values[::-1] if reverse else values)
+
+        import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert self._details(db).average_watts == Decimal("182.4")
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_workout_average_speed_beats_sensor_speeds_in_any_order(
+        self, db: Session, import_service: ImportService, reverse: bool
+    ) -> None:
+        values = [
+            {"type": "averageRunningSpeed", "unit": "m/s", "value": 3.1},
+            {"type": "averageCyclingSpeed", "unit": "m/s", "value": 7.85},
+            {"type": "averageSpeed", "unit": "m/s", "value": 7.4},
+        ]
+        payload = self._ios_cycling_payload(values[::-1] if reverse else values)
+
+        import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert self._details(db).average_speed == Decimal("7.4")
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_cycling_speed_beats_running_speed_in_any_order(
+        self, db: Session, import_service: ImportService, reverse: bool
+    ) -> None:
+        values = [
+            {"type": "averageRunningSpeed", "unit": "m/s", "value": 3.1},
+            {"type": "averageCyclingSpeed", "unit": "m/s", "value": 7.85},
+        ]
+        payload = self._ios_cycling_payload(values[::-1] if reverse else values)
+
+        import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert self._details(db).average_speed == Decimal("7.85")
+
+
 class TestSDKImportUnitConversion:
     """Unit conversions applied in `_build_statistic_bundles`.
 
@@ -1000,7 +1218,7 @@ class TestSDKImportPercentageScale:
 
         import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
 
-        stored = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).one()
+        stored = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).one()
         assert stored.value == expected
 
 
@@ -1133,8 +1351,8 @@ class TestSDKImportMealCorrelation:
             "data": {"records": records},
         }
 
-    def _user_samples(self, db: Session, user_id: UUID) -> list[DataPointSeries]:
-        return db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user_id).all()
+    def _user_samples(self, db: Session, user_id: UUID) -> list[SeriesSample]:
+        return db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user_id).all()
 
     def test_food_correlation_creates_meal_with_its_nutrients(self, db: Session, import_service: ImportService) -> None:
         """The correlation's nutrient records are stored on the meal, not as samples; a record
@@ -1397,7 +1615,7 @@ class TestSDKImportAndroidFoodCorrelation:
             "dietary_protein": 32.0,
             "dietary_caffeine": 40.0,
         }
-        assert db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
+        assert db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
 
         meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
         assert meals[0].calories_kcal == 550.0

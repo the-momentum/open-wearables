@@ -101,6 +101,35 @@ class TestProcessSDKUploadTask:
         assert result["status_code"] == 200
         mock_sdk_import_service.import_data_from_request.assert_called_once()
 
+    @pytest.mark.parametrize(("records_saved", "rolls_up"), [(3, True), (0, False)])
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
+    def test_a_saved_batch_rolls_its_days_up_right_away(
+        self,
+        mock_user_repo_class: MagicMock,
+        mock_session_local: MagicMock,
+        mock_sdk_import_service: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+        records_saved: int,
+        rolls_up: bool,
+    ) -> None:
+        """The SDK sends no day values: its days and summaries are ours, so they wait for no 15-minute run."""
+        user = UserFactory()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_user_repo_class.return_value.get.return_value = user
+        mock_sdk_import_service.import_data_from_request.return_value.model_dump.return_value = {
+            "status_code": 200,
+            "records_saved": records_saved,
+        }
+
+        with patch("app.integrations.rollup_queue.roll_up_soon") as roll_up_soon:
+            process_sdk_upload(content="{}", content_type="application/json", user_id=str(user.id), provider="apple")
+
+        assert roll_up_soon.called is rolls_up
+
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
     def test_process_sdk_upload_user_check_uses_correct_uuid(
