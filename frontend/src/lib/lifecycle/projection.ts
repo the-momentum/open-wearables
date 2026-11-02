@@ -16,15 +16,18 @@ export const ROLLUP_RATIO_LABEL = `1/${Math.round(1 / ROLLUP_RATIO)}`;
 
 export const policyOf = (settings: ArchivalSettings): Policy => ({
 	rollup: settings.rollup_enabled,
+	history: settings.history_rollup_enabled,
 	retain: settings.delete_after_days
 });
 
 export const settingsOf = (policy: Policy): ArchivalSettings => ({
 	rollup_enabled: policy.rollup,
+	history_rollup_enabled: policy.history,
 	delete_after_days: policy.retain
 });
 
-export const samePolicy = (a: Policy, b: Policy) => a.rollup === b.rollup && a.retain === b.retain;
+export const samePolicy = (a: Policy, b: Policy) =>
+	a.rollup === b.rollup && a.history === b.history && a.retain === b.retain;
 
 /**
  * The draft as the save bar posts it and the action reads it back: blank for
@@ -32,12 +35,17 @@ export const samePolicy = (a: Policy, b: Policy) => a.rollup === b.rollup && a.r
  */
 export const toFields = (policy: Policy): Record<string, string> => ({
 	rollup: policy.rollup ? 'on' : '',
+	history: policy.history ? 'on' : '',
 	retain: policy.retain === null ? '' : String(policy.retain)
 });
 
 export function fromFields(form: FormData): Policy {
 	const raw = String(form.get('retain') ?? '').trim();
-	return { rollup: form.get('rollup') === 'on', retain: raw === '' ? null : Number(raw) };
+	return {
+		rollup: form.get('rollup') === 'on',
+		history: form.get('history') === 'on',
+		retain: raw === '' ? null : Number(raw)
+	};
 }
 
 /** The API's bound, so the form refuses what the PUT would. */
@@ -45,8 +53,11 @@ export const LIMITS = { retain: 7300 } as const;
 
 export type Growth = 'bounded' | 'linear_efficient' | 'linear';
 
+/** What storage growth depends on: the history's rollup runs once and adds no growth of its own. */
+type Growing = Pick<Policy, 'rollup' | 'retain'>;
+
 /** The same rule the backend uses for `growth_class`, applied to the draft. */
-export const growthOf = (policy: Policy): Growth =>
+export const growthOf = (policy: Growing): Growth =>
 	policy.retain === null ? 'linear' : policy.rollup ? 'linear_efficient' : 'bounded';
 
 export const liveBytes = (storage: StorageEstimate) =>
@@ -72,7 +83,7 @@ export const dailyIngest = (storage: StorageEstimate): number =>
  */
 export function project(
 	storage: StorageEstimate,
-	policy: Policy
+	policy: Growing
 ): { month: number; bytes: number }[] {
 	const start = liveBytes(storage) + aggregateBytes(storage);
 	const months = Array.from({ length: PROJECTION_MONTHS + 1 }, (_, month) => month);
@@ -99,6 +110,9 @@ export function project(
 
 /** What stops the draft being saved at all. */
 export function invalid(policy: Policy): string | null {
+	if (policy.history && !policy.rollup) {
+		return 'History rollup needs rollup on: the days after it would not be rolled up.';
+	}
 	if (policy.retain !== null && !isWholeIn(policy.retain, 1, LIMITS.retain)) {
 		return `Delete after must be a whole number of days, 1 to ${LIMITS.retain}.`;
 	}

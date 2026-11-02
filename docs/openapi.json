@@ -9946,7 +9946,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely.",
+        "description": "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -11608,6 +11608,12 @@
             "type": "boolean",
             "title": "Rollup Enabled",
             "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: activity and body summaries count them from the samples, day reads of sources without provider day values get no new days.",
+            "default": true
+          },
+          "history_rollup_enabled": {
+            "type": "boolean",
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too, once, in the background. Hours on a large instance; until it is done the summaries count those days from the samples.",
             "default": false
           },
           "delete_after_days": {
@@ -11630,10 +11636,28 @@
       "ArchivalSettingUpdate": {
         "properties": {
           "rollup_enabled": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Rollup Enabled",
-            "description": "Roll samples up into daily and per-session aggregates.",
-            "default": false
+            "description": "Roll samples up into daily and per-session aggregates. Left out or null: unchanged."
+          },
+          "history_rollup_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too; switched on, it starts in the background. Needs rollup_enabled. Left out or null: unchanged."
           },
           "delete_after_days": {
             "anyOf": [
@@ -11647,12 +11671,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before samples are deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely; left out: unchanged."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating data lifecycle settings."
+        "description": "Request schema for updating data lifecycle settings: a field left out keeps its saved value."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -11661,12 +11685,16 @@
           },
           "storage": {
             "$ref": "#/components/schemas/StorageEstimate"
+          },
+          "history_rollup": {
+            "$ref": "#/components/schemas/HistoryRollupStatus"
           }
         },
         "type": "object",
         "required": [
           "settings",
-          "storage"
+          "storage",
+          "history_rollup"
         ],
         "title": "ArchivalSettingWithEstimate",
         "description": "Combined archival settings + storage estimates response."
@@ -13581,6 +13609,65 @@
           "success"
         ],
         "title": "HistoricalDataTypeSyncEndEvent"
+      },
+      "HistoryRollupStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "running",
+              "done"
+            ],
+            "title": "State"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rollup_recent",
+                  "rollup_all"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "The pass running"
+          },
+          "sources_done": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Done",
+            "description": "Data sources the running pass has finished"
+          },
+          "sources_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Total",
+            "description": "Data sources the pass goes through"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "HistoryRollupStatus",
+        "description": "Where the history's rollup is. It goes through every data source twice, the last 30 days first."
       },
       "IntensityMinutes": {
         "properties": {
