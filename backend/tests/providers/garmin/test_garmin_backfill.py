@@ -353,6 +353,7 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TIMEOUT_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
             patch(f"{self.TASK_MODULE}.celery_app") as mock_celery,
             patch(f"{self.TASK_MODULE}.get_redis_client", return_value=mock_redis),
+            patch(f"{self.TASK_MODULE}.check_triggered_timeout"),
             patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
             patch(f"{self.TASK_MODULE}.record_requested_window") as mock_record_window,
         ):
