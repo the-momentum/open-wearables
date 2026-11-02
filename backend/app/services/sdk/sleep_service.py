@@ -37,6 +37,7 @@ from app.schemas.providers.mobile_sdk import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.sdk.device_resolution import extract_device_ids, extract_device_info, extract_device_type
+from app.utils.dates import as_utc
 from app.utils.sleep_stages import measured_stages
 from app.utils.structured_logging import log_structured
 
@@ -135,6 +136,17 @@ def delete_sleep_state(user_id: str, state: SleepState) -> None:
         get_redis_client().srem(active_users_key(), user_id)
 
 
+def is_ready_to_finish(state: SleepState, now: datetime) -> bool:
+    """True after the end gap, or for a session with Apple Watch sleep once its writer's uploads go quiet."""
+    if now - as_utc(state.end_time) >= timedelta(minutes=settings.sleep_end_gap_minutes):
+        return True
+    return (
+        state.has_apple_watch_sleep
+        and state.last_received_at is not None
+        and now - as_utc(state.last_received_at) >= timedelta(minutes=settings.sleep_upload_quiet_minutes)
+    )
+
+
 def _create_new_sleep_state(
     start_time: datetime,
     end_time: datetime,
@@ -226,6 +238,8 @@ def _apply_transition(
         state.zone_offset = zone_offset
     if device_type and not state.device_type and (source_name or "unknown") == state.source_name:
         state.device_type = device_type
+    if device_type == DeviceType.WATCH and is_apple_own_source(source_app_id):
+        state.has_apple_watch_sleep = True
 
     duration_seconds = (end_time - start_time).total_seconds()
 
@@ -287,11 +301,11 @@ def handle_sleep_data(
     (e.g. from a bulk historical upload) accumulate stages into the same session instead
     of overwriting each other's state.
 
-    Stale detection uses ``end_time`` (the last sleep-sample timestamp).  When a bulk
-    historical upload finalizes a session whose ``end_time`` is in the past, the new
-    session is merged with any adjacent record already in the database, so consecutive
-    payloads within the same night are combined into a single session rather than being
-    stored as separate fragments.
+    Stale detection uses ``end_time`` (the last sleep-sample timestamp), and for a session
+    with Apple Watch sleep also ``last_received_at``.  When a bulk historical upload
+    finalizes a session whose ``end_time`` is in the past, the new session is merged with
+    any adjacent record already in the database, so consecutive payloads within the same
+    night are combined into a single session rather than being stored as separate fragments.
 
     Args:
         db_session: Database session for persisting finalized sleep records
@@ -337,6 +351,7 @@ def handle_sleep_data(
                 seen.add(key_tuple)
                 unique_data.append(item)
 
+        received_fields: set[str] = set()
         for sjson in unique_data:
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(sjson.source)
@@ -387,13 +402,17 @@ def handle_sleep_data(
             )
 
             states[field] = current_state
+            received_fields.add(field)
 
             sleep_score = _extract_sleep_score(sjson.values)
             if sleep_score is not None:
                 current_state.sleep_score = sleep_score
 
         # Persist the accumulated state to Redis only once after processing the entire batch
-        for current_state in states.values():
+        now = datetime.now(timezone.utc)
+        for field, current_state in states.items():
+            if field in received_fields:
+                current_state.last_received_at = now
             save_sleep_state(user_id, current_state)
 
         # Finalise synchronously if the session is already stale.  Historical
@@ -402,10 +421,7 @@ def handle_sleep_data(
         # the DB — so each payload extends the growing record rather than
         # creating a separate session.
         for current_state in states.values():
-            session_end = current_state.end_time
-            if session_end.tzinfo is None:
-                session_end = session_end.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - session_end >= timedelta(minutes=settings.sleep_end_gap_minutes):
+            if is_ready_to_finish(current_state, now):
                 finish_sleep(db_session, user_id, current_state)
 
     finally:

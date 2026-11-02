@@ -12,7 +12,9 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+from app.schemas.enums import DeviceType
 from app.schemas.providers.mobile_sdk import SleepState
+from app.services.sdk.sleep_service import active_users_key
 
 
 class TestFinalizeStaleSleepsTask:
@@ -147,6 +149,52 @@ class TestFinalizeStaleSleepsTask:
         mock_load_state.assert_called_once_with(user_id)
         mock_finish_sleep.assert_not_called()  # Should not finalize recent sessions
 
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
+    def test_finalize_stale_sleeps_closes_a_quiet_apple_watch_session(
+        self,
+        mock_session_local: MagicMock,
+        mock_redis_client_func: MagicMock,
+        mock_load_state: MagicMock,
+        mock_finish_sleep: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        """An Apple Watch night closes once its uploads go quiet; another app's session waits for the end gap."""
+        user_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        woke_up = now - timedelta(minutes=40)
+
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_redis = MagicMock()
+        mock_redis.smembers.return_value = [user_id]
+        mock_redis_client_func.return_value = mock_redis
+        mock_sleep_state = SleepState(
+            uuid=str(uuid4()),
+            source_name="Apple Watch",
+            device_model="Watch7,1",
+            device_type=DeviceType.WATCH,
+            source_app_id="com.apple.health.FA11388E",
+            provider="apple",
+            start_time=woke_up - timedelta(hours=7),
+            end_time=woke_up,
+            last_start_timestamp=woke_up - timedelta(minutes=10),
+            last_end_timestamp=woke_up,
+            last_received_at=now - timedelta(minutes=20),
+            has_apple_watch_sleep=True,
+        )
+        oura_state = mock_sleep_state.model_copy(
+            update={"source_name": "Oura", "source_app_id": "com.ouraring.oura", "has_apple_watch_sleep": False}
+        )
+        mock_load_state.return_value = {"apple:apple": mock_sleep_state, "apple:com.ouraring.oura": oura_state}
+
+        finalize_stale_sleeps()
+
+        mock_finish_sleep.assert_called_once_with(db, user_id, mock_sleep_state)
+
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
@@ -177,6 +225,7 @@ class TestFinalizeStaleSleepsTask:
         # Assert
         assert result is None
         mock_load_state.assert_called_once_with(user_id)
+        mock_redis.srem.assert_called_once_with(active_users_key(), user_id)
 
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
