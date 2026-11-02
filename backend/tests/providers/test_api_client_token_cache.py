@@ -11,9 +11,11 @@ from freezegun import freeze_time
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
 from app.services.providers import api_client
 from app.services.providers.api_client import download_binary_content, get_valid_token, make_authenticated_request
+from app.utils.exceptions import ReauthRequiredError
 from tests.factories import UserConnectionFactory
 
 API_BASE_URL = "https://api.example.com"
@@ -50,12 +52,12 @@ def _response(status_code: int, json: Any = None) -> httpx.Response:
     return httpx.Response(status_code, json=json, request=httpx.Request("GET", f"{API_BASE_URL}/v1/data"))
 
 
-def _request(db: Session, connection: Any, repo: Any) -> Any:
+def _request(db: Session, connection: Any, repo: Any, oauth: Any = None) -> Any:
     return make_authenticated_request(
         db=db,
         user_id=connection.user_id,
         connection_repo=repo,
-        oauth=MagicMock(),
+        oauth=oauth or MagicMock(),
         api_base_url=API_BASE_URL,
         provider_name="whoop",
         endpoint="/v1/data",
@@ -150,14 +152,120 @@ def test_download_retries_with_token_refreshed_elsewhere(db: Session, connection
     assert sent_auth == [f"Bearer {stale_token}", "Bearer refreshed-by-another-worker"]
 
 
-def test_request_does_not_retry_when_token_is_unchanged(db: Session, connection: Any, repo: Any) -> None:
+def test_an_unchanged_rejected_token_is_refreshed_once_and_retried(db: Session, connection: Any, repo: Any) -> None:
+    """A grant revoked at the provider shows up only when its refresh token is rejected too."""
+    oauth = MagicMock()
+    oauth.refresh_access_token.return_value.access_token = "refreshed"
+    client = _client_returning(_response(401), _response(200, json={"ok": True}))
+
+    with patch("app.services.providers.api_client.httpx.Client", return_value=client):
+        result = _request(db, connection, repo, oauth)
+
+    assert result == {"ok": True}
+    assert client.sent_auth == [f"Bearer {connection.access_token}", "Bearer refreshed"]
+
+
+def test_a_401_recovery_keeps_unflushed_changes_to_the_connection(db: Session, connection: Any, repo: Any) -> None:
+    oauth = MagicMock()
+    oauth.refresh_access_token.return_value.access_token = "refreshed"
+    connection.scope = "changed in this session"
+    client = _client_returning(_response(401), _response(200, json={"ok": True}))
+
+    with patch("app.services.providers.api_client.httpx.Client", return_value=client):
+        _request(db, connection, repo, oauth)
+
+    assert connection.scope == "changed in this session"
+
+
+def test_a_rejected_refresh_ends_the_request_as_reauth_required(db: Session, connection: Any, repo: Any) -> None:
+    oauth = MagicMock()
+    oauth.refresh_access_token.side_effect = ReauthRequiredError("whoop", connection.user_id, "reconnection required")
+    client = _client_returning(_response(401))
+
+    with (
+        patch("app.services.providers.api_client.httpx.Client", return_value=client),
+        pytest.raises(ReauthRequiredError),
+    ):
+        _request(db, connection, repo, oauth)
+
+    assert client.request.call_count == 1
+
+
+def test_a_401_after_a_successful_refresh_is_not_a_dead_grant(db: Session, connection: Any, repo: Any) -> None:
+    """The refresh proved the grant alive, so the endpoint itself refused; nothing is revoked."""
+    oauth = MagicMock()
+    oauth.refresh_access_token.return_value.access_token = "refreshed"
+    client = _client_returning(_response(401), _response(401))
+
+    with (
+        patch("app.services.providers.api_client.httpx.Client", return_value=client),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        _request(db, connection, repo, oauth)
+
+    assert not isinstance(exc_info.value, ReauthRequiredError)
+    oauth.refresh_access_token.assert_called_once()
+    oauth.revoke_connection.assert_not_called()
+
+
+def test_without_a_refresh_token_a_401_is_not_retried(db: Session, connection: Any, repo: Any) -> None:
+    """Polar has no refresh tokens and answers 401 on endpoints the user didn't consent to."""
+    db.execute(text("UPDATE user_connection SET refresh_token = NULL WHERE id = :id"), {"id": connection.id})
+    oauth = MagicMock()
     client = _client_returning(_response(401), _response(200, json={"ok": True}))
 
     with (
         patch("app.services.providers.api_client.httpx.Client", return_value=client),
         pytest.raises(HTTPException) as exc_info,
     ):
-        _request(db, connection, repo)
+        _request(db, connection, repo, oauth)
 
     assert exc_info.value.status_code == 401
     assert client.request.call_count == 1
+    oauth.revoke_connection.assert_not_called()
+
+
+def _failing_since(connection: Any, hours_ago: float) -> str:
+    key = f"provider_auth_failing_since:whoop:{connection.user_id}"
+    get_redis_client().set(key, (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).timestamp())
+    return key
+
+
+def test_a_grant_that_only_fails_for_a_day_is_revoked(db: Session, connection: Any, repo: Any) -> None:
+    """A revoke at a provider without refresh tokens, or a lapsed Oura membership, looks just like this."""
+    _failing_since(connection, hours_ago=25)
+    oauth = MagicMock()
+    client = _client_returning(_response(403))
+
+    with (
+        patch("app.services.providers.api_client.httpx.Client", return_value=client),
+        pytest.raises(ReauthRequiredError),
+    ):
+        _request(db, connection, repo, oauth)
+
+    oauth.revoke_connection.assert_called_once_with(db, connection.user_id, reason="auth_failing")
+
+
+def test_a_recent_rejection_is_not_yet_a_dead_grant(db: Session, connection: Any, repo: Any) -> None:
+    oauth = MagicMock()
+    client = _client_returning(_response(403))
+
+    with (
+        patch("app.services.providers.api_client.httpx.Client", return_value=client),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        _request(db, connection, repo, oauth)
+
+    assert not isinstance(exc_info.value, ReauthRequiredError)
+    oauth.revoke_connection.assert_not_called()
+
+
+def test_a_success_ends_the_failing_streak(db: Session, connection: Any, repo: Any) -> None:
+    """Polar refuses some endpoints of a healthy grant; the others succeed, so it never adds up to a day."""
+    key = _failing_since(connection, hours_ago=25)
+    client = _client_returning(_response(200, json={"ok": True}))
+
+    with patch("app.services.providers.api_client.httpx.Client", return_value=client):
+        _request(db, connection, repo)
+
+    assert get_redis_client().get(key) is None
