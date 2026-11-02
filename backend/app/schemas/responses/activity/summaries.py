@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.algorithms.config_algorithms import sleep_config
 from app.schemas.utils import SourceMetadata
 
 
@@ -95,9 +96,9 @@ class SleepSummary(BaseModel):
     interruptions_count: int | None = Field(
         None,
         description=(
-            "Awakenings longer than 5 minutes within the main sleep (naps excluded), counted from the sleep stage"
-            " timeline. Null when the day has no main sleep or the timeline of one of its main sleep sessions has no"
-            " sleep stage (sleeping, light, deep or rem)"
+            f"Awakenings longer than {sleep_config.significant_wake_threshold_mins:g} minutes within the main sleep"
+            " (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the"
+            " timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)"
         ),
         example=2,
     )

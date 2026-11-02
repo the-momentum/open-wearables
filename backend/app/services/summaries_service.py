@@ -98,10 +98,7 @@ def _activity_key(row: dict) -> tuple:
 
 
 def _interruptions_count(sessions: list[dict]) -> int | None:
-    """Awakenings in the day's main sleep longer than the sleep score's threshold.
-
-    None without main sleep or when a main session's timeline has no sleep stage.
-    """
+    """Significant awakenings across the day's main sleeps; None without main sleep or a usable timeline."""
     main_sessions = [s for s in sessions if not s["is_nap"]]
     if not main_sessions:
         return None

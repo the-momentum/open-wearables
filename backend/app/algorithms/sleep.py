@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.algorithms.config_algorithms import sleep_config
 from app.algorithms.scoring_primitives import ScoreBounds, score_sigmoid, time_to_hours_past_noon
-from app.constants.sleep import SleepStageType
+from app.constants.sleep import ASLEEP_STAGES, SleepStageType
 from app.schemas.model_crud.activities.sleep import SleepStage
 
 
@@ -38,11 +38,6 @@ STAGE_SCORE_BOUNDS = ScoreBounds(0, 100)
 CONSISTENCY_SCORE_BOUNDS = ScoreBounds(0, 100)
 INTERRUPTIONS_SCORE_BOUNDS = ScoreBounds(0, 100)
 OVERALL_SCORE_BOUNDS = ScoreBounds(0, 100)
-
-# Stages that open and close the sleep period; awake, in_bed and unknown don't
-SLEEP_PERIOD_STAGES = frozenset(
-    {SleepStageType.SLEEPING, SleepStageType.LIGHT, SleepStageType.DEEP, SleepStageType.REM}
-)
 
 
 def _score_duration_hours(duration_hours: float) -> int:
@@ -142,20 +137,16 @@ def calculate_bedtime_consistency_score(
 
 
 def awakenings(stages: list[SleepStage]) -> list[float] | None:
-    """Minutes of each awakening between falling asleep and the final wake-up; None without a sleep stage.
-
-    Back-to-back awake blocks count as one awakening. Where blocks overlap, the earlier one keeps the overlap;
-    in_bed and unknown blocks take no part, as in the SDK's stage clean-up (an in_bed one can span the night).
-    """
+    """Minutes of each awakening between falling asleep and the final wake-up; None without a sleep stage."""
     # Clipped before the sleep period is found, so a block covered by an earlier one can't bound it
     clipped: list[SleepStage] = []
     for stage in sorted(stages, key=lambda stage: stage.start_time):
-        if stage.stage not in SLEEP_PERIOD_STAGES and stage.stage != SleepStageType.AWAKE:
+        if stage.stage not in ASLEEP_STAGES and stage.stage != SleepStageType.AWAKE:
             continue
         start = max(stage.start_time, clipped[-1].end_time) if clipped else stage.start_time
         if start < stage.end_time:
             clipped.append(stage.model_copy(update={"start_time": start}))
-    asleep = [i for i, stage in enumerate(clipped) if stage.stage in SLEEP_PERIOD_STAGES]
+    asleep = [i for i, stage in enumerate(clipped) if stage.stage in ASLEEP_STAGES]
     if not asleep:
         return None
     minutes: list[float] = []
