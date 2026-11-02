@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import Date, Interval, and_, func, or_, text
 from sqlalchemy import cast as sql_cast
 
+from app.config import settings
 from app.database import DbSession
 from app.models import DataSource, SeriesAggregate
 from app.repositories.aggregate_repository import AggregateRepository
@@ -93,9 +94,13 @@ _SOURCES_WITH_SAMPLES = text(f"""
     ) probe
 """)
 
-# Each sample counts for the share of its window no better-ranked source covers. Exact for two sources whose own
-# samples do not overlap; where three or more overlap, better sources' overlaps can add up past their union and are
-# capped at the window. Only (series, day) pairs two sources contributed to are returned.
+# Each sample counts for the share of its window no better-ranked source covers: the union of the better-ranked
+# samples' windows (a multirange) intersected with its own, so overlapping better samples never count a second twice.
+# Only (series, day) pairs two sources contributed to are returned.
+#
+# A better-ranked sample covers :tolerance seconds past each of its edges: two apps reading the same sensor record
+# the same steps in windows a few seconds apart (a phone's minutes starting at :19 next to the Fitbit app's on the
+# minute), and without it each partly covered minute would keep a share of steps that are duplicates.
 _MERGE = text(f"""
     WITH src(id, pos) AS (SELECT * FROM unnest(CAST(:source_ids AS uuid[]), CAST(:positions AS integer[]))),
     widest AS MATERIALIZED (
@@ -114,19 +119,26 @@ _MERGE = text(f"""
     JOIN src ON src.id = x.data_source_id
     CROSS JOIN LATERAL (SELECT {_length("x")}::numeric AS seconds) w
     LEFT JOIN LATERAL (
-        SELECT sum(extract(epoch FROM
-                least(x.recorded_at + w.seconds * interval '1 second',
-                      b.recorded_at + {_length("b")} * interval '1 second')
-                - greatest(x.recorded_at, b.recorded_at))) AS covered
-        FROM src better
-        JOIN widest ON widest.data_source_id = better.id
-            AND widest.series_type_definition_id = x.series_type_definition_id
-        JOIN series_sample b ON b.data_source_id = better.id
-            AND b.series_type_definition_id = x.series_type_definition_id
-            AND b.recorded_at < x.recorded_at + w.seconds * interval '1 second'
-            AND b.recorded_at > x.recorded_at - widest.seconds * interval '1 second'
-            AND b.recorded_at + {_length("b")} * interval '1 second' > x.recorded_at
-        WHERE better.pos < src.pos AND {_mergeable("b")}
+        SELECT sum(extract(epoch FROM upper(part) - lower(part))) AS covered
+        FROM (
+            SELECT range_agg(tstzrange(
+                b.recorded_at - :tolerance * interval '1 second',
+                b.recorded_at + ({_length("b")} + :tolerance) * interval '1 second'
+            )) AS better_windows
+            FROM src better
+            JOIN widest ON widest.data_source_id = better.id
+                AND widest.series_type_definition_id = x.series_type_definition_id
+            JOIN series_sample b ON b.data_source_id = better.id
+                AND b.series_type_definition_id = x.series_type_definition_id
+                AND b.recorded_at < x.recorded_at + (w.seconds + :tolerance) * interval '1 second'
+                AND b.recorded_at > x.recorded_at - (widest.seconds + :tolerance) * interval '1 second'
+                AND b.recorded_at + ({_length("b")} + :tolerance) * interval '1 second' > x.recorded_at
+            WHERE better.pos < src.pos AND {_mergeable("b")}
+        ) better
+        CROSS JOIN LATERAL unnest(
+            better.better_windows
+            * tstzmultirange(tstzrange(x.recorded_at, x.recorded_at + w.seconds * interval '1 second'))
+        ) AS part
     ) c ON true
     WHERE x.data_source_id = ANY(CAST(:source_ids AS uuid[])) AND x.series_type_definition_id = ANY(:type_ids)
         AND x.recorded_at >= :lo AND x.recorded_at < :hi AND {_mergeable("x")} AND {sample_day_sql("x")} = ANY(:days)
@@ -231,7 +243,13 @@ class SeriesReconcileRepository:
         # a user with 3 devices: 7 days 123 ms off vs 561 ms on, 30 days 449 vs 785, 90 days 1243 vs 1559.
         db_session.execute(text("SET LOCAL jit = off"))
         rows = db_session.execute(
-            _MERGE, {**params, "source_ids": [s.id for s in ordered], "positions": list(range(len(ordered)))}
+            _MERGE,
+            {
+                **params,
+                "source_ids": [s.id for s in ordered],
+                "positions": list(range(len(ordered))),
+                "tolerance": settings.reconcile_edge_tolerance_seconds,
+            },
         )
         return [MergedDay(row.type_id, row.day, row.zone_offset, float(row.sum), row.count) for row in rows]
 

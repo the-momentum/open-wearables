@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 from app.config import settings
 from app.integrations.rollup_queue import pop_reconcile_days, queue_reconcile_days, requeue_dirty_days
-from app.models import DataSource, ProviderPriority, SeriesTypeDefinition
+from app.models import DataSource, ProviderPriority, SeriesTypeDefinition, User
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
@@ -152,6 +152,72 @@ class TestReconcileReads:
         _read(db, watch, DAY, DAY)
 
         assert pop_reconcile_days(10) == []
+
+
+class TestEdgeTolerance:
+    """A better-ranked sample covers RECONCILE_EDGE_TOLERANCE_SECONDS past its edges, and coverage is the union of
+    the better samples' windows, so overlapping better samples never count a second twice."""
+
+    def _merged(self, db: Session, user_id: object) -> list[tuple[float, int]]:
+        merged = SeriesReconcileRepository().merge(db, user_id, [DAY], priority_service.get_source_ranking(db))
+        return [(round(m.sum), m.count) for m in merged if m.type_id == STEPS]
+
+    def _at(self, source: DataSource, hour: int, minute: int, second: int, seconds: int, value: int) -> None:
+        DataPointSeriesFactory(
+            mapping=source,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            recorded_at=datetime.combine(DAY, datetime.min.time(), timezone.utc)
+            + timedelta(hours=hour, minutes=minute, seconds=second),
+            window_seconds=seconds,
+            value=value,
+        )
+
+    def test_one_sensor_read_by_two_apps_a_few_seconds_apart_counts_once(self, db: Session, devices: tuple) -> None:
+        """The pattern seen on a real account: a phone's minutes start at :19, the Fitbit app's on the minute."""
+        watch, phone = devices
+        for minute in range(10):
+            self._at(watch, 9, minute, 19, 60, 100)
+            self._at(phone, 9, minute, 0, 60, 100)
+
+        assert self._merged(db, watch.user_id)[0][0] == 1000
+
+    def test_without_tolerance_the_offset_leaks_duplicates(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        monkeypatch.setattr(settings, "reconcile_edge_tolerance_seconds", 0)
+        for minute in range(10):
+            self._at(watch, 9, minute, 19, 60, 100)
+            self._at(phone, 9, minute, 0, 60, 100)
+
+        # The phone's first minute keeps its 19 uncovered seconds: 100 * 19 / 60.
+        assert self._merged(db, watch.user_id)[0][0] == 1032
+
+    def test_steps_well_away_from_a_better_device_stay(self, db: Session, devices: tuple) -> None:
+        """Watch 09:00-09:02 covers the phone's 09:00-09:05 up to 09:03 with the 60 s tolerance: 2 of 5 minutes stay."""
+        watch, phone = devices
+        self._at(watch, 9, 0, 0, 60, 100)
+        self._at(watch, 9, 1, 0, 60, 100)
+        self._at(phone, 9, 0, 0, 300, 300)
+
+        assert self._merged(db, watch.user_id) == [(320, 3)]
+
+    def test_overlapping_better_devices_count_their_seconds_once(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ring's 15:00-15:05 under a watch's 15:00-15:02 and a phone's 15:00-15:03: 15:03-15:05 is the ring's."""
+        watch, phone = devices
+        ring = DataSourceFactory(
+            user=db.get(User, watch.user_id), provider=ProviderName.OURA, source="oura", device_type="ring"
+        )
+        ProviderPriorityRepository(ProviderPriority).upsert(db, ProviderName.OURA, 3)
+        monkeypatch.setattr(settings, "reconcile_edge_tolerance_seconds", 0)
+        self._at(watch, 15, 0, 0, 120, 200)
+        self._at(phone, 15, 0, 0, 180, 300)
+        self._at(ring, 15, 0, 0, 300, 500)
+
+        # watch 200 + phone 300 * 1/3 + ring 500 * 2/5
+        assert self._merged(db, watch.user_id)[0][0] == 500
 
 
 class TestWhichSeriesAreMerged:
