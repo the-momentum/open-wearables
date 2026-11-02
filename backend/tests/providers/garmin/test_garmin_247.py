@@ -665,6 +665,34 @@ class TestGarmin247Data:
         samples = garmin_247._build_body_comp_samples(user_id, {"weightInGrams": 75000})
         assert samples == []
 
+    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
+    def test_process_items_batch_body_comp(
+        self,
+        mock_bulk_create: MagicMock,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_body_comp: dict[str, Any],
+    ) -> None:
+        """Test body composition is persisted through the batch entrypoint."""
+        user = UserFactory()
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
+
+        count = garmin_247.process_items_batch(db, user.id, "bodyComps", [sample_body_comp])
+
+        # Should create 4 data points: weight, body_fat, BMI, skeletal muscle mass
+        mock_bulk_create.assert_called_once()
+        assert len(mock_bulk_create.call_args[0][1]) == 4
+        assert count == 4
+
+    def test_process_items_batch_body_comp_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
+        """Test a body composition item without a timestamp writes nothing."""
+        user = UserFactory()
+        body_comp = {"summaryId": "bc_123", "weightInGrams": 75000}
+
+        count = garmin_247.process_items_batch(db, user.id, "bodyComps", [body_comp])
+
+        assert count == 0
+
     def test_build_blood_pressure_samples(
         self, garmin_247: Garmin247Data, sample_blood_pressure: dict[str, Any]
     ) -> None:
