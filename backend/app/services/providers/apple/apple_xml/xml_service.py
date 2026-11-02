@@ -9,7 +9,7 @@ from xml.etree import ElementTree as ET
 from app.config import settings
 from app.constants.series_types.sdk import SleepPhase, get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
-from app.schemas.enums import EventCategory, SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, SeriesType, daily_total_flag, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -210,6 +210,11 @@ class XMLService:
             value = converted
         else:
             self.stats.unconverted_units[f"{series_type.value}:{raw_unit}"] += 1
+
+        # HealthKit's "%" is a 0-1 fraction while percent series hold 0-100. Kept here
+        # rather than as a "%" unit alias, since Health Connect reports "%" as 0-100.
+        if raw_unit == "%" and get_series_type_unit(series_type) == "percent":
+            value *= 100
 
         device_info = self._extract_device_info(document.get("device", ""))
 

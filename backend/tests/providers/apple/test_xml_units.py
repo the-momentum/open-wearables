@@ -88,6 +88,48 @@ class TestAppleXmlRecordUnits:
         assert sample.value == Decimal("5")
         assert service.stats.unconverted_units == {"distance_walking_running:km/hr": 1}
 
+    @pytest.mark.parametrize(
+        ("record_type", "value", "series_type", "expected"),
+        [
+            ("HKQuantityTypeIdentifierOxygenSaturation", "0.97", SeriesType.oxygen_saturation, Decimal("97")),
+            ("HKQuantityTypeIdentifierBodyFatPercentage", "0.215", SeriesType.body_fat_percentage, Decimal("21.5")),
+            (
+                "HKQuantityTypeIdentifierWalkingDoubleSupportPercentage",
+                "0.28",
+                SeriesType.walking_double_support_percentage,
+                Decimal("28"),
+            ),
+            (
+                "HKQuantityTypeIdentifierWalkingAsymmetryPercentage",
+                "0.05",
+                SeriesType.walking_asymmetry_percentage,
+                Decimal("5"),
+            ),
+            ("HKQuantityTypeIdentifierAppleWalkingSteadiness", "0.86", SeriesType.walking_steadiness, Decimal("86")),
+        ],
+    )
+    def test_scales_healthkit_fraction_to_percent(
+        self,
+        service: XMLService,
+        record_type: str,
+        value: str,
+        series_type: SeriesType,
+        expected: Decimal,
+    ) -> None:
+        sample = service._create_record(_record(record_type, "%", value), uuid4())
+
+        assert sample is not None
+        assert sample.series_type == series_type
+        assert sample.value == expected
+        assert not service.stats.unconverted_units
+
+    def test_does_not_scale_percent_unit_on_non_percent_series(self, service: XMLService) -> None:
+        sample = service._create_record(_record("HKQuantityTypeIdentifierBloodAlcoholContent", "%", "0.08"), uuid4())
+
+        assert sample is not None
+        assert sample.series_type == SeriesType.blood_alcohol_content
+        assert sample.value == Decimal("0.08")
+
     def test_skipped_record_is_not_counted_as_unconverted(self, service: XMLService) -> None:
         document = _record("HKQuantityTypeIdentifierDistanceWalkingRunning", "furlong", "5")
         document["startDate"] = "not a date"
