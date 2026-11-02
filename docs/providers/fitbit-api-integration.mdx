@@ -1,6 +1,6 @@
 ---
 title: "Fitbit API Integration"
-description: "Legacy Fitbit Web API integration (workouts only), feature-frozen because Google turns the API off on October 30, 2026. For Fitbit devices use the Google Health API integration, which covers sleep, heart rate, HRV, 24/7 metrics and workouts."
+description: "Legacy Fitbit Web API integration (workouts only), feature-frozen because Google turns the API off on November 2, 2026. For Fitbit devices use the Google Health API integration, which covers sleep, heart rate, HRV, 24/7 metrics and workouts."
 keywords: ["fitbit api integration", "fitbit oauth", "fitbit health data", "fitbit api", "fitbit web api deprecation", "fitbit google health api migration"]
 "og:title": "Fitbit API Integration | Open Wearables"
 "og:description": "Legacy, feature-frozen Fitbit Web API integration. For Fitbit devices use the Google Health API integration."
@@ -14,7 +14,7 @@ keywords: ["fitbit api integration", "fitbit oauth", "fitbit health data", "fitb
 <Warning>
 **The Fitbit Web API is being sunset - this integration is feature-frozen.**
 
-Google is turning down the legacy Fitbit Web API. Support ended on **September 30, 2026** - the API still works, but Google no longer fixes bugs or provides support. On **October 30, 2026**, *"the Fitbit Web API will be turned off and will no longer function or sync data to or from Fitbit users"* ([About the Google Health API](https://developers.google.com/health/about), Google for Developers). Integrations must move to the [Google Health API](https://developers.google.com/health/migration) with Google OAuth 2.0 - existing Fitbit access and refresh tokens cannot be carried over, so every user has to re-consent.
+Google is turning down the legacy Fitbit Web API. Support ended on **September 30, 2026** - the API still works, but Google no longer fixes bugs or provides support. On **November 2, 2026**, *"the legacy Fitbit Web API and Fitbit OAuth endpoints will be turned off and will no longer function or sync data to or from Fitbit users"* ([About the Google Health API](https://developers.google.com/health/about), Google for Developers). Integrations must move to the [Google Health API](https://developers.google.com/health/migration) with Google OAuth 2.0 - existing Fitbit access and refresh tokens cannot be carried over, so every user has to re-consent.
 
 Because of this, Open Wearables **is no longer developing the Fitbit integration**. It stays available and supported as-is for now, but no new data types or features will be added. For Fitbit data going forward, use the [Google Health API integration](/providers/google-api-integration) - it already surfaces Fitbit as a source.
 </Warning>

@@ -290,7 +290,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
     ) -> dict[str, Any]:
         """Delete the EventRecord matching external_id.
 
-        Recovery is stored as DataPointSeries (no external_id index), so
+        Recovery is stored as SeriesSample (no external_id index), so
         recovery.deleted is logged but not actioned.
         """
         if event_type == WhoopWebhookNotificationType.RECOVERY_DELETED:

@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,8 +11,10 @@ from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdat
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.config_utils import EnvironmentType
 from app.utils.security import create_access_token, verify_password
+from app.utils.structured_logging import log_structured
 
 router = APIRouter()
+logger = getLogger(__name__)
 
 
 def _password_change_prompt(password: str) -> PasswordChangePrompt | None:
@@ -29,6 +32,25 @@ def login(
     db: DbSession,
 ) -> TokenResponse:
     """Authenticate developer and return access token with refresh token."""
+    # The default is public, so in production it must never yield a session - not even one
+    # that only allows a password change, since whoever logs in first could set their own.
+    # Checked before the account lookup so the response does not reveal who still uses it.
+    if settings.environment == EnvironmentType.PRODUCTION and form_data.password == DEFAULT_ADMIN_PASSWORD:
+        log_structured(
+            logger,
+            "warning",
+            "Rejected a production login with the default admin password",
+            action="default_admin_password_login_refused",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Signing in with the default password is disabled in production. Set the ADMIN_EMAIL and "
+                "ADMIN_PASSWORD environment variables on the backend (backend/config/.env or your hosting "
+                "provider's settings) to this account's email and a new password, then restart the backend."
+            ),
+        )
+
     developer = developer_service.get_by_email(db, form_data.username)
     if not developer:
         raise HTTPException(

@@ -36,6 +36,7 @@ from app.schemas.providers.mobile_sdk import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.sdk.device_resolution import extract_device_ids, extract_device_info, extract_device_type
+from app.utils.sleep_stages import measured_stages
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -548,6 +549,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     sleep_efficiency = (
         Decimal(str(total_sleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
     )
+    has_phases, has_awake = measured_stages(cleaned_stages)
 
     sleep_record = EventRecordCreate(
         id=uuid4(),
@@ -573,10 +575,10 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         record_id=sleep_record.id,
         sleep_total_duration_minutes=int(total_sleep_seconds // 60),
         sleep_time_in_bed_minutes=int(time_in_bed_seconds // 60),
-        sleep_deep_minutes=int(metrics["deep_seconds"] // 60),
-        sleep_rem_minutes=int(metrics["rem_seconds"] // 60),
-        sleep_light_minutes=int(metrics["light_seconds"] // 60),
-        sleep_awake_minutes=int(metrics["awake_seconds"] // 60),
+        sleep_deep_minutes=int(metrics["deep_seconds"] // 60) if has_phases else None,
+        sleep_rem_minutes=int(metrics["rem_seconds"] // 60) if has_phases else None,
+        sleep_light_minutes=int(metrics["light_seconds"] // 60) if has_phases else None,
+        sleep_awake_minutes=int(metrics["awake_seconds"] // 60) if has_awake else None,
         sleep_efficiency_score=sleep_efficiency,
         is_nap=False,
         sleep_stages=cleaned_stages or None,

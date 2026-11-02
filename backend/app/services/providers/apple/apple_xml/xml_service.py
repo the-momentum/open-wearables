@@ -25,7 +25,13 @@ from app.schemas.providers.mobile_sdk import (
     SyncRequest,
     SyncRequestData,
 )
+from app.utils.dates import window_seconds
 from app.utils.structured_logging import log_structured
+
+_ENERGY_SERIES = {
+    "hkquantitytypeidentifieractiveenergyburned": SeriesType.active_energy,
+    "hkquantitytypeidentifierbasalenergyburned": SeriesType.basal_energy,
+}
 
 
 class XMLService:
@@ -211,6 +217,7 @@ class XMLService:
             device_model=device_info.device_model,
             software_version=device_info.device_software_version,
             recorded_at=document["startDate"],
+            window_seconds=window_seconds(document["startDate"], document.get("endDate")),
             value=value,
             series_type=series_type,
             is_daily_total=daily_total_flag(series_type, is_daily=False),
@@ -304,6 +311,14 @@ class XMLService:
         if energy is not None:
             current = metrics["energy_burned"]
             metrics["energy_burned"] = energy if current is None else current + energy
+            series = _ENERGY_SERIES.get(lowered)
+            previous = metrics.get("energy_series")
+            if current is None:
+                metrics["energy_series"] = series
+            elif {previous, series} == {SeriesType.active_energy, SeriesType.basal_energy}:
+                metrics["energy_series"] = SeriesType.total_energy
+            else:
+                metrics["energy_series"] = None
 
     def _wrap_sleep_data(self, sleep_records: list[SleepRecord]) -> SyncRequest:
         """Wrap sleep data in a SyncRequest
