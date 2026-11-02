@@ -33,7 +33,10 @@ def finalize_stale_sleeps() -> None:
                     continue
 
                 try:
-                    for state in load_sleep_states(user_id).values():
+                    states = load_sleep_states(user_id)
+                    if not states:
+                        redis_client.srem(active_users_key(), user_id)
+                    for state in states.values():
                         if is_ready_to_finish(state, now):
                             finish_sleep(db, user_id, state)
                 finally:
