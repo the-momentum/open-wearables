@@ -1,8 +1,8 @@
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from logging import getLogger
-from typing import LiteralString, NamedTuple, overload
+from typing import Any, LiteralString, NamedTuple, overload
 from typing import cast as typing_cast
 from uuid import UUID
 
@@ -766,8 +766,12 @@ class DataPointSeriesRepository(
         types: list[SeriesType],
         user_id: UUID,
         ranking: SourceRanking,
+        sample_sources: Collection[UUID] | None = None,
     ) -> dict[int, UUID]:
         """Best-ranked data source per series type, among those holding data in the window.
+
+        Day, week and month reads look for day rows; of ``sample_sources`` also for samples, as the read counts
+        their days from samples where the rollup has not written rows (yet).
 
         Decided on source metadata plus one existence probe per (source, series type), so the
         cost tracks the number of devices a user owns rather than the number of samples. The
@@ -780,52 +784,32 @@ class DataPointSeriesRepository(
             return {}
 
         start, end = params.start_datetime, params.end_datetime
-        candidates = values(
-            column("type_id", Integer),
-            column("source_id", PGUUID(as_uuid=True)),
-            name="candidates",
-        ).data([(type_id, source.id) for type_id in type_ids for source in ranked])
+        pairs = [(type_id, source.id) for type_id in type_ids for source in ranked]
         if params.resolution in PERIOD_RESOLUTIONS:
             # Day, week and month reads come from the day rows, so that is where a source must hold
             # something: retention may have deleted its samples while its day rows stay, and a source
             # with only a provider day value (a Whoop cycle's steps) has exactly what these return.
-            source, series, at = (
-                SeriesAggregate.data_source_id,
-                SeriesAggregate.series_type_definition_id,
-                SeriesAggregate.period_start,
-            )
             # The same local days the read then returns: the UTC reach alone would crown a source on a row
             # just past the range, and the read would come back empty.
             available = [SeriesAggregate.period_kind == PeriodKind.DAY]
+            at = SeriesAggregate.period_start
             if start is not None:
                 available.extend([at >= start - OFFSET_REACH, start.date() <= LOCAL_DAY])
             if end is not None:
                 available.extend([at < end + OFFSET_REACH, (end - timedelta(microseconds=1)).date() >= LOCAL_DAY])
+            probe = (SeriesAggregate.data_source_id, SeriesAggregate.series_type_definition_id, at, available)
         else:
-            source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
-            available = [at >= start] if start is not None else []
-            if end is not None:
-                available.append(at < end)
-            if params.resolution is not Resolution.RAW:
-                # Bucketed reads drop daily totals, so a source holding only those has nothing to
-                # offer here and must not outrank one with real intraday samples.
-                available.append(self.model.is_daily_total.isnot(True))
-        probe = (
-            select(literal_column("1"))
-            .where(source == candidates.c.source_id, series == candidates.c.type_id, *available)
-            # Ordering on the index's trailing column lets the planner stop at the first match
-            # instead of costing this as a full scan once a non-indexed filter is present.
-            .order_by(at)
-            .limit(1)
-            .lateral("probe")
-        )
-        populated = db_session.execute(
-            select(candidates.c.type_id, candidates.c.source_id).select_from(candidates.join(probe, true()))
-        ).all()
+            probe = self._sample_probe(start, end, intraday_only=params.resolution is not Resolution.RAW)
+        # Each (series, source) pair with the probe that found it: a tie is broken by counting with that probe.
+        found = dict.fromkeys(self._populated(db_session, pairs, *probe), probe)
+        if params.resolution in PERIOD_RESOLUTIONS and sample_sources:
+            sample_probe = self._sample_probe(start, end, intraday_only=True)
+            unfound = [pair for pair in pairs if pair[1] in sample_sources and pair not in found]
+            found |= dict.fromkeys(self._populated(db_session, unfound, *sample_probe), sample_probe)
 
         rank_of = {s.id: ranking.rank(s.provider, s.device_type) for s in ranked}
         by_type: dict[int, list[UUID]] = {}
-        for type_id, source_id in populated:
+        for type_id, source_id in found:
             by_type.setdefault(type_id, []).append(source_id)
         winners: dict[int, UUID] = {}
         for type_id, source_ids in by_type.items():
@@ -836,11 +820,55 @@ class DataPointSeriesRepository(
                 continue
             # A tie goes to the source holding the most of the series here, not to the lowest random id: a phone
             # with one stray weight entry must not hide the scale relayed through the same provider.
-            counts = db_session.execute(
-                select(source, func.count()).where(series == type_id, source.in_(tied), *available).group_by(source)
-            ).all()
+            counts = []
+            for tie_probe in {id(found[(type_id, s)]): found[(type_id, s)] for s in tied}.values():
+                source, series, _, available = tie_probe
+                members = [s for s in tied if found[(type_id, s)] is tie_probe]
+                counts += db_session.execute(
+                    select(source, func.count())
+                    .where(series == type_id, source.in_(members), *available)
+                    .group_by(source)
+                ).all()
             winners[type_id] = min(counts, key=lambda row: (-row[1], str(row[0])))[0]
         return winners
+
+    def _sample_probe(self, start: datetime | None, end: datetime | None, intraday_only: bool) -> tuple:
+        """The source, series and instant columns of samples, and the conditions a sample in the window meets."""
+        at = self.model.recorded_at
+        available = [at >= start] if start is not None else []
+        if end is not None:
+            available.append(at < end)
+        if intraday_only:
+            # Bucketed and sample-counted day reads drop daily totals, so a source holding only those has
+            # nothing to offer there and must not outrank one with real intraday samples.
+            available.append(self.model.is_daily_total.isnot(True))
+        return self.model.data_source_id, self.model.series_type_definition_id, at, available
+
+    @staticmethod
+    def _populated(
+        db_session: DbSession, pairs: list[tuple[int, UUID]], source: Any, series: Any, at: Any, available: list
+    ) -> set[tuple[int, UUID]]:
+        """The (series type, source) pairs holding a row that meets ``available``: one index probe each."""
+        if not pairs:
+            return set()
+        candidates = values(
+            column("type_id", Integer),
+            column("source_id", PGUUID(as_uuid=True)),
+            name="candidates",
+        ).data(pairs)
+        probe = (
+            select(literal_column("1"))
+            .where(source == candidates.c.source_id, series == candidates.c.type_id, *available)
+            # Ordering on the index's trailing column lets the planner stop at the first match
+            # instead of costing this as a full scan once a non-indexed filter is present.
+            .order_by(at)
+            .limit(1)
+            .lateral("probe")
+        )
+        rows = db_session.execute(
+            select(candidates.c.type_id, candidates.c.source_id).select_from(candidates.join(probe, true()))
+        )
+        return {(row.type_id, row.source_id) for row in rows}
 
     def _ranked_sources(
         self,

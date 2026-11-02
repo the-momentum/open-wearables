@@ -182,6 +182,20 @@ class TestReconcileReads:
 
         assert refused.value.detail["queued"] is False
 
+    def test_a_stored_merged_day_whose_samples_changed_since_is_merged_again(self, db: Session, devices: tuple) -> None:
+        watch, phone = devices
+        _walk(watch, phone, DAY)
+        for source in devices:
+            SeriesRollupRepository().roll_up(db, source.id, [DAY])
+        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], priority_service.get_source_ranking(db))
+        db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
+        db.flush()
+        _steps(phone, DAY, 15, 20)  # walked on with the watch off; the rollup has not caught up yet
+        requeue_dirty_days([(phone.id, DAY)])
+
+        assert _read(db, watch, DAY, DAY) == [(DAY, 200, None)]
+
     def test_with_reconcile_off_nothing_is_queued(self, db: Session, devices: tuple) -> None:
         watch, phone = devices
         _walk(watch, phone, DAY)
