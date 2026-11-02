@@ -1301,6 +1301,44 @@ class TestNoAccountOrderRoute:
         assert response.json()["detail"] == "Withings declined the order (status=503)"
         assert "Via Roma" not in response.text
 
+    def test_an_address_refusal_is_422_with_the_refusal_header_and_never_withings_words(
+        self, client: TestClient, api_key_header: dict[str, str], withings_configured: None
+    ) -> None:
+        # Withings' envelope verbatim (staging, 2026-11-02).
+        error = WithingsDropshipmentError(
+            withings_status=503,
+            detail="Withings createorder failed (status=503)",
+            upstream_reason=f"Invalid Params: Addresses of orders [{_ORDER_REF}] are invalid",
+        )
+
+        with patch(_CREATE_ORDER, side_effect=error):
+            response = client.post(_ORDERS_URL, json=_valid_order_payload(), headers=api_key_header)
+
+        assert response.status_code == 422
+        assert response.headers["X-Withings-Refusal"] == "address_invalid"
+        assert response.json()["detail"] == "Withings refused the shipping address"
+        assert "Invalid Params" not in response.text
+
+    def test_another_invalid_params_stays_a_502_without_the_header(
+        self, client: TestClient, api_key_header: dict[str, str], withings_configured: None
+    ) -> None:
+        error = WithingsDropshipmentError(withings_status=503, upstream_reason="Invalid Params: [unit] Missing value")
+
+        with patch(_CREATE_ORDER, side_effect=error):
+            response = client.post(_ORDERS_URL, json=_valid_order_payload(), headers=api_key_header)
+
+        assert response.status_code == 502
+        assert "X-Withings-Refusal" not in response.headers
+
+    def test_a_malformed_request_is_never_mistaken_for_an_address_refusal(
+        self, client: TestClient, api_key_header: dict[str, str], withings_configured: None
+    ) -> None:
+        # This app answers request validation 400 (not FastAPI's default 422), and with no header.
+        response = client.post(_ORDERS_URL, json={"orders": "nope"}, headers=api_key_header)
+
+        assert response.status_code == 400
+        assert "X-Withings-Refusal" not in response.headers
+
     def test_a_transport_failure_is_502_with_this_codebases_own_message(
         self, client: TestClient, api_key_header: dict[str, str], withings_configured: None
     ) -> None:

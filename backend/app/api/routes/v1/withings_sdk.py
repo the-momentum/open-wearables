@@ -20,6 +20,7 @@ narrowed, it should be narrowed on purpose and not by someone reading a docstrin
 claimed it was.
 """
 
+import re
 from datetime import datetime, timezone
 from logging import getLogger
 from typing import Annotated, Any, Literal
@@ -477,6 +478,24 @@ def _refuse_if_already_placed(refs: list[str], *, client_id: str, client_secret:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_ALREADY_PLACED)
 
 
+# Withings' envelope `error` when createorder refuses the shipping address (measured on staging,
+# 2026-11-02): "Invalid Params: Addresses of orders [<customer_ref_id>] are invalid". It is how they
+# say the street does not match their own data for that town ("Via Generale Armando Diaz 2", Rho:
+# refused; "Via Armando Diaz 2": accepted) — a real address can be refused, so only they can say.
+_ADDRESS_REFUSAL = re.compile(r"\bAddresses of orders\b.*\bare invalid\b", re.IGNORECASE)
+
+# The header that tells the caller WHICH 422 this is, without it reading a body: robin-backend reads
+# no upstream body on this route by rule (a detail has quoted the signed payload back before), and
+# FastAPI's own request-validation 422 carries no such header.
+WITHINGS_REFUSAL_HEADER = "X-Withings-Refusal"
+ADDRESS_INVALID = "address_invalid"
+
+
+def _is_address_refusal(e: WithingsDropshipmentError) -> bool:
+    """Withings answered 503 because the shipping address is not one they will ship to. Nothing was placed."""
+    return e.withings_status == 503 and bool(e.upstream_reason) and bool(_ADDRESS_REFUSAL.search(e.upstream_reason))
+
+
 def _order_failure_detail(e: WithingsDropshipmentError, *, order: str) -> str:
     """The 502 detail for a failed order call, shaped the same on both order routes (contract C1).
 
@@ -744,6 +763,16 @@ def create_withings_order(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except WithingsDropshipmentError as e:
+        if _is_address_refusal(e):
+            # The member can fix this and nothing else can, so it is not a 502 to retry: the caller
+            # parks the order and asks them for another address (robin-backend withingsDeviceOrder).
+            # A fixed detail, never Withings' text: it names our order ref, not the address, but the
+            # rule on this route is that no upstream words reach a client.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Withings refused the shipping address",
+                headers={WITHINGS_REFUSAL_HEADER: ADDRESS_INVALID},
+            ) from e
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=_order_failure_detail(e, order="order")
         ) from e
