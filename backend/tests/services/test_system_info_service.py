@@ -9,8 +9,12 @@ Note: the total data-points count is served approximately (planner statistics / 
 an exact ``COUNT(*)``, so it is only asserted to be a valid non-negative integer.
 """
 
+from datetime import date
+from decimal import Decimal
+
 from sqlalchemy.orm import Session
 
+from app.schemas.enums import ProviderName, SeriesType
 from app.services.system_info_service import system_info_service
 from tests.factories import (
     DataPointSeriesFactory,
@@ -19,6 +23,7 @@ from tests.factories import (
     SeriesTypeDefinitionFactory,
     UserConnectionFactory,
     UserFactory,
+    provider_day,
 )
 
 
@@ -129,3 +134,15 @@ class TestSystemInfoServiceGetSystemInfo:
         assert info.total_users.count >= 0
         assert info.active_conn.count >= 0
         assert info.data_points.count >= 0
+
+
+class TestUserDataSummaryCountsDayValues:
+    def test_a_providers_day_value_counts_as_a_data_point(self, db: Session) -> None:
+        """Garmin's daily steps were one sample a day; as a day row they still count for the user's summary."""
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        provider_day(db, source, SeriesType.steps, date(2026, 3, 1), sum=Decimal("8000"))
+
+        summary = system_info_service.get_user_data_summary(db, source.user_id)
+
+        by_provider = {entry.provider: entry for entry in summary.by_provider}
+        assert (by_provider["garmin"].data_points, by_provider["garmin"].series_counts) == (1, {"steps": 1})

@@ -53,8 +53,8 @@
 						id={rangeId}
 						name="days"
 						value={preselected}
-						class="min-h-11 appearance-none rounded-l-lg bg-transparent pr-7 pl-3 text-sm
-							tabular-nums"
+						class="min-h-11 appearance-none rounded-l-lg bg-background pr-7 pl-3 text-sm
+							text-foreground tabular-nums"
 					>
 						{#each ranges as days (days)}
 							<option value={days}>{days} days</option>

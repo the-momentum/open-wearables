@@ -64,6 +64,8 @@ class TestSuuntoWorkouts:
             "totalDistance": 10000,
             "stepCount": 8500,
             "energyConsumption": 650,
+            "avgSpeed": 2.78,
+            "maxSpeed": 4.1,
             "hrdata": {
                 "workoutMaxHR": 175,
                 "workoutAvgHR": 145,
@@ -129,6 +131,8 @@ class TestSuuntoWorkouts:
         assert metrics["steps_count"] == 8500
         assert metrics["energy_burned"] == Decimal("650")
         assert metrics["distance"] == Decimal("10000")
+        assert metrics["average_speed"] == Decimal("2.78")
+        assert metrics["max_speed"] == Decimal("4.1")
 
     def test_build_metrics_with_missing_heart_rate(
         self,

@@ -24,8 +24,3 @@ export type User = {
 };
 
 export type PaginatedUsers = Paginated<User>;
-
-/** Mirrors backend `UserDetailRead`: the list projection plus the tab-gating flag. */
-export type UserDetail = User & {
-	has_womens_health_data: boolean;
-};

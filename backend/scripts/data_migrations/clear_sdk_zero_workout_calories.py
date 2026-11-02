@@ -11,7 +11,8 @@ a writer did report is cleared too.
 
 Cloud providers never had the bug: their zeros are what the provider reported and stay.
 
-Runs once per instance (``data_migration``): one pass collects the workouts, then committed batches\nclear them.
+Runs once per instance (``data_migration``): one pass collects the workouts, then committed
+batches clear them.
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py --dry-run

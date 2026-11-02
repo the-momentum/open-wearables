@@ -94,10 +94,13 @@ const late = (name: string, ms: number) =>
 let LIFECYCLE_ENABLED = true;
 let EMAIL_ENABLED = true;
 let WEBHOOKS_ENABLED = true;
-/** Lets a test see what an untouched archive looks like on the dashboard. */
-let EMPTY_ARCHIVE = false;
-/** What the default password earns at sign-in: `required` as in production. */
-let PASSWORD_CHANGE: 'required' | 'recommended' = 'required';
+/** Lets a test see what an instance with nothing rolled up yet looks like on the dashboard. */
+let EMPTY_AGGREGATES = false;
+/** What the default password earns at sign-in: a token with `required`/`recommended`, or a refusal. */
+let PASSWORD_CHANGE: 'required' | 'recommended' | 'refused' = 'required';
+
+const DEFAULT_PASSWORD_REFUSED =
+	"Signing in with the default password is disabled in production. Set the ADMIN_EMAIL and ADMIN_PASSWORD environment variables on the backend (backend/config/.env or your hosting provider's settings) to this account's email and a new password, then restart the backend.";
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8787);
 
@@ -129,7 +132,7 @@ const server = Bun.serve({
 			LIFECYCLE_ENABLED = true;
 			EMAIL_ENABLED = true;
 			WEBHOOKS_ENABLED = true;
-			EMPTY_ARCHIVE = false;
+			EMPTY_AGGREGATES = false;
 			PASSWORD_CHANGE = 'required';
 			resetWorkouts();
 			resetSleep();
@@ -144,8 +147,8 @@ const server = Bun.serve({
 			return new Response(null, { status: 204 });
 		}
 
-		if (pathname === '/__empty-archive') {
-			EMPTY_ARCHIVE = true;
+		if (pathname === '/__empty-aggregates') {
+			EMPTY_AGGREGATES = true;
 			return new Response(null, { status: 204 });
 		}
 
@@ -161,6 +164,11 @@ const server = Bun.serve({
 
 		if (pathname === '/__not-production') {
 			PASSWORD_CHANGE = 'recommended';
+			return new Response(null, { status: 204 });
+		}
+
+		if (pathname === '/__refuse-default-password') {
+			PASSWORD_CHANGE = 'refused';
 			return new Response(null, { status: 204 });
 		}
 
@@ -186,6 +194,10 @@ const server = Bun.serve({
 		if (pathname === '/api/v1/auth/login') {
 			const form = await request.formData();
 			const password = form.get('password');
+			// Like the API: refused before the account lookup, so any email gets the same answer.
+			if (password === DEFAULT_PASSWORD && PASSWORD_CHANGE === 'refused') {
+				return json({ detail: DEFAULT_PASSWORD_REFUSED }, 403);
+			}
 			if (form.get('username') !== CREDENTIALS.email) {
 				return json({ detail: 'Incorrect email or password' }, 401);
 			}
@@ -272,7 +284,7 @@ const server = Bun.serve({
 
 		if (pathname === '/api/v1/dashboard/stats') {
 			const info = makeSystemInfo();
-			if (EMPTY_ARCHIVE) info.data_points.archived = 0;
+			if (EMPTY_AGGREGATES) info.data_points.aggregated = 0;
 			return json(info);
 		}
 
@@ -340,7 +352,7 @@ const server = Bun.serve({
 				const out = (days: unknown, max: number) =>
 					days !== null &&
 					(!Number.isInteger(days) || (days as number) < 1 || (days as number) > max);
-				if (out(body.archive_after_days, 3650) || out(body.delete_after_days, 7300)) {
+				if (out(body.delete_after_days, 7300)) {
 					// FastAPI's shape: a list, no string `detail` to show.
 					return json({ detail: [{ loc: ['body'], msg: 'out of range' }] }, 422);
 				}
@@ -555,9 +567,7 @@ const server = Bun.serve({
 						last_synced_at: latest?.last_synced_at ?? null,
 						last_synced_provider: latest?.provider ?? null,
 						has_active_connection: connected,
-						connections: null,
-						// Only one user gates the tab on, so a test can assert both cases.
-						has_womens_health_data: user.first_name === 'Zofia'
+						connections: null
 					});
 				}
 				case '/connections':

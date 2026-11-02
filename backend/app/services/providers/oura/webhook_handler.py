@@ -38,6 +38,7 @@ from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.oura import OuraWebhookNotification
@@ -48,8 +49,6 @@ from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import LogContext, log_structured
 
 logger = logging.getLogger(__name__)
-
-_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 SUPPORTED_DATA_TYPES = [
     "workout",
@@ -146,7 +145,9 @@ class OuraWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="oura", payload=payload, trace_id=request_trace_id)
 
-        task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["oura", payload, request_trace_id], queue="webhook_sync")
+        task = celery_app.send_task(
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["oura", payload, request_trace_id], queue=CeleryQueue.WEBHOOK_SYNC
+        )
         log_structured(
             logger,
             "info",
@@ -246,9 +247,21 @@ class OuraWebhookHandler(BaseWebhookHandler):
             object_id=notification.object_id,
         )
 
-        self.connection_repo.update_last_synced_at(db, connection)
+        if not notification.object_id:
+            log_structured(
+                logger,
+                "warning",
+                "Oura webhook missing object_id; skipping fetch",
+                provider="oura",
+                trace_id=trace_id,
+                user_id=str(user_id),
+                provider_user_id=notification.user_id,
+                data_type=notification.data_type,
+                event_type=notification.event_type,
+            )
+            return {"status": "ignored", "reason": "missing_object_id", "user_id": str(user_id)}
 
-        count = self._dispatch_data_type(db, notification, user_id, trace_id)
+        count = self._dispatch_data_type(db, notification.object_id, notification, user_id, trace_id)
 
         if count is None:
             log_structured(
@@ -266,6 +279,9 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 "reason": f"unhandled_data_type: {notification.data_type}",
                 "user_id": str(user_id),
             }
+
+        # Only reached after a completed fetch: fetch errors propagate out of the dispatch.
+        self.connection_repo.update_last_synced_at(db, connection)
 
         log_structured(
             logger,
@@ -297,26 +313,12 @@ class OuraWebhookHandler(BaseWebhookHandler):
     def _dispatch_data_type(
         self,
         db: DbSession,
+        object_id: str,
         notification: OuraWebhookNotification,
         user_id: UUID,
         trace_id: str,
     ) -> int | None:
         data_type = notification.data_type
-        object_id = notification.object_id
-
-        if not object_id:
-            log_structured(
-                logger,
-                "warning",
-                "Oura webhook missing object_id; skipping fetch",
-                provider="oura",
-                trace_id=trace_id,
-                user_id=str(user_id),
-                provider_user_id=notification.user_id,
-                data_type=data_type,
-                event_type=notification.event_type,
-            )
-            return 0
 
         if data_type == "workout":
             return self.workouts.save_by_id(db, user_id, object_id, trace_id=trace_id)

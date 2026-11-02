@@ -46,6 +46,7 @@ INTRADAY_ACTIVITY = WithingsDataRequest(
         "steps",
         "distance",
         "calories",
+        "duration",
     ),
 )
 
