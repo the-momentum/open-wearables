@@ -594,7 +594,12 @@ class TimeSeriesService(
         days = sorted({day for _, day in needed})
         queued = bool(days) and settings.reconcile_enabled and not from_samples
         if queued:
-            rollup_queue.queue_reconcile_days((user_id, day) for day in days)
+            try:
+                rollup_queue.queue_reconcile_days((user_id, day) for day in days)
+            except Exception:
+                # Queueing only saves a later read the merge; this read merges the days itself all the same.
+                self.logger.warning("Reconcile: could not queue merged days to be stored", exc_info=True)
+                queued = False
         if len(days) > settings.reconcile_on_the_fly_max_days:
             raise ReconcileWindowTooLargeError(len(days), settings.reconcile_on_the_fly_max_days, queued)
 

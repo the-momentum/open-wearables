@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
 from app.config import settings
+from app.integrations import rollup_queue
 from app.integrations.rollup_queue import pop_reconcile_days, queue_reconcile_days, requeue_dirty_days
 from app.models import DataSource, ProviderPriority, SeriesTypeDefinition, User
 from app.models.archival_setting import ArchivalSetting
@@ -144,6 +145,42 @@ class TestReconcileReads:
 
         assert _read(db, watch, DAY, DAY) == [(DAY, 180, None)]
         assert pop_reconcile_days(10) == [(watch.user_id, DAY)]
+
+    def _rolled_up_with_reconcile_on(self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
+        for source in devices:
+            SeriesRollupRepository().roll_up(db, source.id, [DAY, DAY + timedelta(days=1)])
+        db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
+        db.flush()
+        monkeypatch.setattr(settings, "reconcile_enabled", True)
+
+        def unreachable(*_args: object) -> None:
+            raise ConnectionError("redis is down")
+
+        monkeypatch.setattr(rollup_queue, "queue_reconcile_days", unreachable)
+
+    def test_a_queue_that_cannot_be_reached_still_returns_the_merged_day(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        _walk(watch, phone, DAY)
+        self._rolled_up_with_reconcile_on(db, devices, monkeypatch)
+
+        assert _read(db, watch, DAY, DAY) == [(DAY, 180, None)]
+
+    def test_a_refused_page_does_not_claim_days_it_could_not_queue(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        for day in (DAY, DAY + timedelta(days=1)):
+            _walk(watch, phone, day)
+        self._rolled_up_with_reconcile_on(db, devices, monkeypatch)
+        monkeypatch.setattr(settings, "reconcile_on_the_fly_max_days", 1)
+
+        with pytest.raises(HTTPException) as refused:
+            _read(db, watch, DAY, DAY + timedelta(days=1))
+
+        assert refused.value.detail["queued"] is False
 
     def test_with_reconcile_off_nothing_is_queued(self, db: Session, devices: tuple) -> None:
         watch, phone = devices
