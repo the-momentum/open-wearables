@@ -136,3 +136,45 @@ When working on documentation in the `docs/` directory:
 - **RequestExample/ResponseExample** - For API endpoint documentation
 - **ParamField** - For API parameters, **ResponseField** - For API responses
 - **Expandable** - For nested object properties or hierarchical information
+
+## Fork-wins rules (upstream sync guardrails)
+
+This repo is the `frontbacklabs/open-wearables` fork of `the-momentum/open-wearables`,
+merged from upstream periodically. The rules below record deliberate fork divergences.
+**On every upstream merge and every review or edit touching these areas, preserve them —
+do not silently adopt upstream's version.** When upstream lands a feature that conflicts
+with a fork rule, gate or adapt the feature rather than dropping the rule.
+
+1. **String user IDs.** `User.id` and `FKUser` stay `Mapped[str]`/`String(255)` — the
+   canonical ID is a raw Firebase UID, never a `UUID`. New upstream code that arrives
+   with `user_id: UUID` annotations or `UUID(user_id)` conversions must be str-ified in
+   app code and tests (`str(uuid4())` / `fake_firebase_uid()`). Several upstream tests
+   assume UUID ids and are expected to fail on the fork rather than be "fixed" by
+   widening the model.
+2. **ECR base images.** `backend/Dockerfile` (and worker/beat) use
+   `public.ecr.aws/docker/library/python`, not upstream's Docker Hub base.
+   `frontend/Dockerfile` uses ECR `node:22-alpine` + `npm i -g bun@1.4`. Take upstream's
+   version bumps (e.g. Python 3.14) but keep the ECR bases.
+3. **Google Health scopes stay trimmed.** `google_default_scope` in `backend/app/config.py`
+   requests only `openid email`, `activity_and_fitness.readonly`,
+   `health_metrics_and_measurements.readonly`, and `sleep.readonly`.
+   `nutrition.readonly` and `settings.readonly` are deliberately absent — they were
+   removed to keep Google OAuth verification surface minimal. Upstream features that
+   call endpoints under a scope we do not grant (e.g. nutrition-log, hydration-log)
+   must be gated on the connection's granted scope and skipped when ungranted — see
+   `scope_granted()` in `google_health/helpers.py`. Re-adding a scope is a product
+   decision, not a merge accident.
+4. **API-key auth and Svix.** `api_key_service.py` stays synchronous `def`
+   (`_authenticate`, `_require_api_key`, `_require_api_key_detached`) — no `await`
+   call sites. Outgoing webhooks stay disabled by default; the self-hosted Svix
+   server wiring and the `ENV: test` CI block stay intact.
+5. **Ren branding.** Ren logotype (`frontend/src/lib/assets/logotype.svg` driving
+   `Wordmark.svelte`), nav **Overview** (not Dashboard), titles `Ren — Open Wearables
+   Platform` / `· Ren`, fork login copy, and fork favicons win over upstream branding.
+   `sort_order` stays on summaries and their service layer.
+6. **No fork migration is ever deleted**, and never edit a migration already on `main`.
+   Two alembic heads after a sync are resolved with a new merge revision at the end
+   of the chain (see `81ea20b3c94c`), not by repointing an existing revision.
+7. **`app.sh` startup.** No `alembic upgrade head` at container start; keep the
+   `$PORT` fallback. Upstream additions (extension install, data-migration scripts,
+   `exec`) are fine to adopt alongside.
