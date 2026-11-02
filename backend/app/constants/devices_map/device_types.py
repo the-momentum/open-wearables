@@ -217,8 +217,12 @@ def infer_device_type(
     device_model: str | None,
     original_source_name: str | None = None,
     reported_type: DeviceType | None = None,
+    source_app_id: str | None = None,
 ) -> DeviceType:
     """Resolve device type: single-device provider, then the reported type, then inference."""
+    # The iOS SDK derives both from the relaying iPhone/Watch, so only the source name is left
+    if is_host_model(source_app_id, device_model):
+        device_model, reported_type = None, None
     device_type = _resolve_device_type(provider, device_model, original_source_name, reported_type)
     if device_type == DeviceType.OTHER:
         log_structured(

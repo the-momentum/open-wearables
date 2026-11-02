@@ -30,9 +30,11 @@ def init_provider_settings() -> None:
                 strategy = factory.get_provider(provider_name)
             except ValueError:
                 continue
+            setting = all_settings.get(provider_name)
+            if setting and setting.is_enabled and not strategy.credentials_configured:
+                print(f"  ⚠ {provider_name}: enabled but OAuth client ID or secret is not set")
             if not strategy.capabilities.webhook_inbound_secret:
                 continue
-            setting = all_settings.get(provider_name)
             if setting and setting.live_sync_mode == LiveSyncMode.WEBHOOK and not setting.webhook_secret:
                 print(f"  ⚠ {provider_name}: webhook mode active but no inbound secret stored — re-register to fix")
 

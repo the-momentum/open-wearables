@@ -216,7 +216,8 @@ class UserConnectionService(
             return
 
         try:
-            access_token = get_valid_token(db_session, user_id, provider, self.crud, oauth)
+            # The disconnect revokes the connection itself; revoking here first would skip its webhook
+            access_token = get_valid_token(db_session, user_id, provider, self.crud, oauth, revoke_on_failure=False)
             oauth.deregister_user(
                 access_token,
                 provider_user_id=connection.provider_user_id,

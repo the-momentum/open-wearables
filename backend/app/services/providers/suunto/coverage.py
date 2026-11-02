@@ -1,5 +1,6 @@
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
+from app.schemas.model_crud.activities import StatColumn
 
 # Timeseries mappings (handler key → SeriesType) consumed directly by data_247.py.
 ACTIVITY_SERIES: dict[str, SeriesType] = {
@@ -15,17 +16,18 @@ DAILY_STAT_SERIES: dict[str, SeriesType] = {
     "energyconsumption": SeriesType.active_energy,
 }
 # Per-night scalars carried inside a sleep entry (normalized key → SeriesType).
-SLEEP_SERIES: dict[str, SeriesType] = {
-    "min_heart_rate_bpm": SeriesType.resting_heart_rate,
-    "avg_hrv_ms": SeriesType.heart_rate_variability_rmssd,
-    "max_spo2_percent": SeriesType.oxygen_saturation,
+# The statistic is set where Suunto reports one other than the series' own (the night's highest SpO2).
+SLEEP_SERIES: dict[str, tuple[SeriesType, StatColumn | None]] = {
+    "min_heart_rate_bpm": (SeriesType.resting_heart_rate, None),
+    "avg_hrv_ms": (SeriesType.heart_rate_variability_rmssd, None),
+    "max_spo2_percent": (SeriesType.oxygen_saturation, "max"),
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *ACTIVITY_SERIES.values(),  # /247samples/activity
         *DAILY_STAT_SERIES.values(),  # /247/daily-activity-statistics
-        *SLEEP_SERIES.values(),  # /247samples/sleep
+        *(series_type for series_type, _ in SLEEP_SERIES.values()),  # /247samples/sleep
     }
 )
 

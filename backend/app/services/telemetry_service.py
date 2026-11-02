@@ -17,6 +17,7 @@ from app import __version__
 from app.config import settings
 from app.models import TelemetryState
 from app.repositories.telemetry_repository import TelemetryRepository
+from app.schemas.enums import EventCategory
 from app.services.endpoint_usage import endpoint_usage, usage_bucket
 
 logger = getLogger(__name__)
@@ -72,8 +73,8 @@ class TelemetryService:
             "inactive_connections": count_bucket(self.repo.count_inactive_connections(db)),
             "connections_by_provider": _bucket_values(connections_by_provider),
             "data_points_by_provider": _bucket_values(self.repo.count_data_points_by_provider(db)),
-            "workouts_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "workout")),
-            "sleep_sessions_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "sleep")),
+            "workouts_by_provider": _bucket_values(self.repo.count_events_by_provider(db, EventCategory.WORKOUT)),
+            "sleep_sessions_by_provider": _bucket_values(self.repo.count_events_by_provider(db, EventCategory.SLEEP)),
             "providers": [
                 {
                     "provider": provider_setting.provider,

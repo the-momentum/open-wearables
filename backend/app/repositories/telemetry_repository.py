@@ -6,15 +6,16 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import DbSession
 from app.models import (
-    DataPointSeries,
     DataSource,
     EventRecord,
     ProviderSetting,
+    SeriesSample,
     TelemetryState,
     User,
     UserConnection,
 )
 from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import EventCategory
 
 _ACTIVE = UserConnection.status == ConnectionStatus.ACTIVE
 # Users made by the seed data generator. A small set served by the partial index
@@ -104,9 +105,9 @@ class TelemetryRepository:
         return {provider: count for provider, count in rows}
 
     def count_data_points_by_provider(self, db: DbSession) -> dict[str, int]:
-        return self._count_by_provider(db, DataPointSeries)
+        return self._count_by_provider(db, SeriesSample)
 
-    def count_events_by_provider(self, db: DbSession, category: str) -> dict[str, int]:
+    def count_events_by_provider(self, db: DbSession, category: EventCategory) -> dict[str, int]:
         return self._count_by_provider(db, EventRecord, category=category)
 
     def get_provider_settings(self, db: DbSession) -> list[ProviderSetting]:
@@ -115,7 +116,7 @@ class TelemetryRepository:
     @staticmethod
     def _count_by_provider(
         db: DbSession,
-        model: type[DataPointSeries] | type[EventRecord],
+        model: type[SeriesSample] | type[EventRecord],
         category: str | None = None,
     ) -> dict[str, int]:
         query = (

@@ -6,8 +6,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
 from app.mappings import FKEventRecord
+from app.schemas.enums import EventCategory
 
-DetailType = Literal["workout", "sleep", "menstrual_cycle", "meal"]
+DetailType = Literal[
+    EventCategory.WORKOUT,
+    EventCategory.SLEEP,
+    EventCategory.MENSTRUAL_CYCLE,
+    EventCategory.MEAL,
+]
 
 
 class EventRecordDetail(BaseDbModel):
