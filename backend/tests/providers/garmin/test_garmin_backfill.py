@@ -310,8 +310,9 @@ class TestBackfillTaskStopChain:
     def _run_task(
         self,
         *,
-        side_effect: Exception | None = None,
+        side_effect: Exception | list[dict] | None = None,
         return_value: dict | None = None,
+        window: tuple[datetime, datetime] | None = None,
     ) -> dict:
         """Run trigger_backfill_for_type with a mocked backfill service.
 
@@ -337,10 +338,7 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TASK_MODULE}.get_current_window", return_value=0),
             patch(
                 f"{self.TASK_MODULE}.get_window_date_range",
-                return_value=(
-                    datetime.now(timezone.utc) - timedelta(days=30),
-                    datetime.now(timezone.utc),
-                ),
+                return_value=window or (datetime.now(timezone.utc) - timedelta(days=30), datetime.now(timezone.utc)),
             ),
             patch(f"{self.TASK_MODULE}.get_trace_id", return_value="test-trace"),
             patch(f"{self.TASK_MODULE}.set_type_trace_id", return_value="test-type-trace"),
@@ -353,9 +351,9 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TIMEOUT_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
             patch(f"{self.TASK_MODULE}.celery_app") as mock_celery,
             patch(f"{self.TASK_MODULE}.get_redis_client", return_value=mock_redis),
-            patch(f"{self.TASK_MODULE}.check_triggered_timeout"),
             patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
             patch(f"{self.TASK_MODULE}.record_requested_window") as mock_record_window,
+            patch(f"{self.TASK_MODULE}.check_triggered_timeout"),
         ):
             # Setup DB session context manager
             mock_db = MagicMock()
@@ -369,11 +367,12 @@ class TestBackfillTaskStopChain:
                 GarminBackfillService,
                 "trigger_backfill",
                 **backfill_patch_kwargs,
-            ):
+            ) as mock_trigger:
                 result = trigger_backfill_for_type(self.USER_ID, "sleeps")
 
             return {
                 "result": result,
+                "mock_trigger": mock_trigger,
                 "mock_mark_failed": shared_mark_failed,
                 "mock_send_task": mock_celery.send_task,
                 "mock_record_window": mock_record_window,
@@ -485,6 +484,22 @@ class TestBackfillTaskStopChain:
         assert "activities" in failed_types
 
         ctx["mock_send_task"].assert_not_called()
+
+    def test_shorter_range_retry_stays_inside_a_reconnect_gap(self) -> None:
+        """Before the gap Garmin already sent the data; asking again only earns a 409."""
+        now = datetime.now(timezone.utc)
+        gap_start = now - timedelta(days=3)
+        min_start_error = {
+            "triggered": [],
+            "failed": {"sleeps": "before min start time"},
+            "duplicate": [],
+            "failed_status_codes": {"sleeps": 400},
+        }
+        accepted = {"triggered": ["sleeps"], "failed": {}, "duplicate": []}
+
+        ctx = self._run_task(side_effect=[min_start_error, accepted], window=(gap_start, now))
+
+        assert ctx["mock_trigger"].call_args_list[1].kwargs["start_time"] == gap_start
 
     def test_500_does_not_stop_chain(self) -> None:
         """500 should NOT stop the chain — next type should still be triggered."""

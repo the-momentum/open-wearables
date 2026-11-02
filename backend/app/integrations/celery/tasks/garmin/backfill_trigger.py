@@ -144,7 +144,8 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 # Retry "min start time" errors with a shorter date range before giving up
                 if status_code == 400 and "min start time" in error.lower():
                     fallback_days = 14 if data_type in ACTIVITY_API_TYPES else 31
-                    start_time_fallback = end_time - timedelta(days=fallback_days)
+                    # Never before the window start: on a reconnect that is the end of what Garmin already sent
+                    start_time_fallback = max(start_time, end_time - timedelta(days=fallback_days))
                     log_structured(
                         logger,
                         "info",
