@@ -1,6 +1,6 @@
 """Withings 24/7 data: body measures (``getmeas``), daily activity (``getactivity``),
 intraday activity (``getintradayactivity``) and sleep (``getsummary`` for the night's
-totals, ``get`` for its hypnogram). Continuous metrics become ``DataPointSeries``
+totals, ``get`` for its hypnogram). Continuous metrics become ``SeriesSample``
 samples; sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
 """
 
@@ -19,10 +19,12 @@ from app.constants.withings_requests import ACTIVITY, INTRADAY_ACTIVITY, MEASURE
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.schemas.enums import SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
+    SessionValue,
     SleepStage,
     TimeSeriesSampleCreate,
 )
@@ -270,6 +272,7 @@ class Withings247Data(Base247DataTemplate):
                 action="activity_timezone_invalid",
                 user_id=str(user_id),
             )
+            period = CalendarPeriod.of_date(activity.date, zone_offset)
             for field, series_type in ACTIVITY_FIELD_MAP.items():
                 value = getattr(activity, field)
                 if value is None:
@@ -287,6 +290,7 @@ class Withings247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=True),
+                        period=period,
                     )
                 )
             if activity.totalcalories is not None and activity.calories is not None:
@@ -305,6 +309,7 @@ class Withings247Data(Base247DataTemplate):
                             value=passive_calories,
                             series_type=SeriesType.basal_energy,
                             is_daily_total=daily_total_flag(SeriesType.basal_energy, is_daily=True),
+                            period=period,
                         )
                     )
         return samples
@@ -426,6 +431,7 @@ class Withings247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=False),
+                        window_seconds=activity_slice.duration or None,
                     )
                 )
         return samples
@@ -745,7 +751,7 @@ class Withings247Data(Base247DataTemplate):
         sleep_stages = self._stages_within(window.stages, start_dt, end_dt)
         record = EventRecordCreate(
             id=record_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Withings",
             duration_seconds=time_in_bed_seconds,
@@ -772,7 +778,9 @@ class Withings247Data(Base247DataTemplate):
             sleep_stages=sleep_stages,
         )
         try:
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            stored = event_record_service.create_or_merge_sleep(
+                db, user_id, record, detail, settings.sleep_end_gap_minutes
+            )
         except Exception as e:
             db.rollback()
             log_and_capture_error(
@@ -792,12 +800,12 @@ class Withings247Data(Base247DataTemplate):
             user_id=str(user_id),
             sleep_id=summary.id,
         )
-        readings: list[tuple[datetime, SeriesType, float]] = [
-            reading for reading in window.hrv if start_dt <= reading.at < end_dt
+        readings: list[tuple[datetime, SeriesType, float, SessionValue | None]] = [
+            (*reading, None) for reading in window.hrv if start_dt <= reading.at < end_dt
         ]
         # Withings publishes no resting heart rate; the night's lowest is what Oura and Suunto map too.
         if data.hr_min is not None:
-            readings.append((start_dt, SeriesType.resting_heart_rate, data.hr_min))
+            readings.append((start_dt, SeriesType.resting_heart_rate, data.hr_min, SessionValue(record_id=stored.id)))
         return [
             TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -818,8 +826,9 @@ class Withings247Data(Base247DataTemplate):
                 ),
                 value=value,
                 series_type=series_type,
+                session=session,
             )
-            for recorded_at, series_type, value in readings
+            for recorded_at, series_type, value, session in readings
         ]
 
     # ---------------------- Combined load ----------------------

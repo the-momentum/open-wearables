@@ -267,7 +267,7 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.APPLE_HEART_RATE_VARIABILITY_RMSSD: SeriesType.heart_rate_variability_rmssd,
     SDKMetricType.ANDROID_HEART_RATE_VARIABILITY: SeriesType.heart_rate_variability_rmssd,
     SDKMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: SeriesType.heart_rate_recovery_one_minute,
-    SDKMetricType.WALKING_HEART_RATE_AVERAGE: SeriesType.walking_heart_rate_average,
+    SDKMetricType.WALKING_HEART_RATE_AVERAGE: SeriesType.walking_heart_rate,
     # Blood & Respiratory
     SDKMetricType.APPLE_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
     SDKMetricType.ANDROID_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
@@ -377,8 +377,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.UV_EXPOSURE: SeriesType.uv_exposure,
     # Wheelchair Metrics
     SDKMetricType.PUSH_COUNT: SeriesType.push_count,
-    # Apple-specific Temperature
-    SDKMetricType.APPLE_SLEEPING_WRIST_TEMPERATURE: SeriesType.body_temperature,
+    # Apple-specific Temperature: overnight wrist skin reading (~34-35 °C), not core body temperature
+    SDKMetricType.APPLE_SLEEPING_WRIST_TEMPERATURE: SeriesType.skin_temperature,
     # Atrial Fibrillation
     SDKMetricType.ATRIAL_FIBRILLATION_BURDEN: SeriesType.atrial_fibrillation_burden,
     # Workout Metrics

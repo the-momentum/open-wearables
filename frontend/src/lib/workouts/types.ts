@@ -30,7 +30,7 @@ export type Workout = {
 	avg_pace_sec_per_km: number | null;
 	elevation_gain_meters: number | null;
 	steps_count: number | null;
-	/** Unit differs per provider - Suunto stores km/h, the rest m/s. Do not format. */
+	/** m/s for every provider (Suunto's km/h history is converted by the backfill). Do not format. */
 	average_speed: number | null;
 	max_speed: number | null;
 	average_cadence: number | null;

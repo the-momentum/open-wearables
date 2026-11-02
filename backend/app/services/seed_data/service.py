@@ -8,9 +8,10 @@ from datetime import date, datetime, timedelta, timezone
 from faker import Faker
 from sqlalchemy.orm import Session
 
-from app.models import PersonalRecord, ProviderPriority, UserConnection
+from app.models import DataSource, PersonalRecord, ProviderPriority, UserConnection
 from app.repositories import CrudRepository, ProviderPriorityRepository
-from app.schemas.enums import ProviderName, SeriesType, WorkoutType
+from app.repositories.series_rollup_repository import SeriesRollupRepository
+from app.schemas.enums import EventCategory, ProviderName, SeriesType, WorkoutType
 from app.schemas.model_crud.user_management import UserConnectionUpdate, UserCreate
 from app.schemas.utils.seed_data import SeedDataRequest
 from app.services.event_record_service import event_record_service
@@ -101,6 +102,11 @@ def _resolve_time_series_window(
         start = last_synced_at - timedelta(days=date_range_months * 30)
         end = last_synced_at
     return start, end
+
+
+rollup_repo = SeriesRollupRepository()
+# Past any day a seed writes.
+_ALL_DAYS = date(9000, 1, 1)
 
 
 class SeedDataService:
@@ -221,7 +227,7 @@ class SeedDataService:
                         user.id, fake, prov, provider_sync_times[prov], profile.sleep_config
                     )
                     event_record_service.create(db, record)
-                    event_record_service.create_detail(db, detail, detail_type="sleep")
+                    event_record_service.create_detail(db, detail, detail_type=EventCategory.SLEEP)
                     summary["sleeps"] += 1
 
             # Only providers that actually deliver meals, so seed data doesn't claim a capability they lack.
@@ -277,6 +283,10 @@ class SeedDataService:
                         health_score_service.bulk_create(db, scores)
                         summary["health_scores"] += len(scores)
 
+            db.commit()
+            # Summaries read the day aggregates; a seeded user should not wait for the next rollup run.
+            for source in db.query(DataSource).filter(DataSource.user_id == user.id):
+                rollup_repo.roll_up(db, source.id, rollup_repo.days_before(db, source.id, _ALL_DAYS))
             db.commit()
             logger.info(
                 "Seed user %d/%d created (workouts=%d, sleeps=%d, meals=%d, ts=%d, health_scores=%d)",

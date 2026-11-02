@@ -1286,7 +1286,7 @@ export const makeSystemInfo = () => ({
 	active_conn: { count: 902 },
 	// Both approximate in the real thing - a cached count with a planner estimate
 	// behind it, and the archive count straight from planner statistics.
-	data_points: { count: 1_452_310, archived: 318_004 },
+	data_points: { count: 1_452_310, archived: 318_004, aggregated: 266_000 },
 	event_records: { count: 20_418, workouts: 8432, sleep: 11_766, menstrual_cycles: 220 },
 	connections_coverage: {
 		users_with_active: 902,
@@ -1670,16 +1670,16 @@ const MB = 1024 ** 2;
 
 /** Proportions like a real install: the live series is nearly all of it. */
 const buildLifecycle = () => ({
-	settings: { archive_after_days: null as number | null, delete_after_days: null as number | null },
+	settings: { rollup_enabled: true, delete_after_days: null as number | null },
 	storage: {
 		live_data_bytes: 38 * MB,
 		live_index_bytes: 420 * MB,
-		archive_data_bytes: 8 * 1024,
-		archive_index_bytes: 48 * 1024,
+		aggregate_data_bytes: 8 * 1024,
+		aggregate_index_bytes: 48 * 1024,
 		other_tables_bytes: 17 * MB,
 		total_bytes: 475 * MB,
 		live_row_count: 1946,
-		archive_row_count: 0,
+		aggregate_row_count: 0,
 		live_data_span_days: 324
 	}
 });
@@ -1701,7 +1701,7 @@ export const readLifecycle = () => {
 };
 
 export const saveLifecycle = (body: {
-	archive_after_days: number | null;
+	rollup_enabled: boolean;
 	delete_after_days: number | null;
 }) => {
 	LIFECYCLE_SCANS += 1;
