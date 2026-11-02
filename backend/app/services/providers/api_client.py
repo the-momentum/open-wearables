@@ -26,15 +26,32 @@ RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30
 # Tokens are refreshed this long before they expire.
 TOKEN_REFRESH_BUFFER = timedelta(minutes=5)
 
-# Session.info key of the per-session token cache: (user_id, provider) -> (access_token, token_expires_at).
-# A sync makes many provider requests on one session; without the cache each of them re-reads user_connection.
-# A cached token doesn't see a revoke or disconnect made elsewhere: the sync keeps using it until its session
-# ends or the provider rejects it.
+# A sync makes many provider requests on one session, so the token is kept on the session instead of
+# re-reading user_connection each time; only this long, so a disconnect made elsewhere stops the sync.
+TOKEN_CACHE_TTL_SECONDS = 60.0
+
+# Session.info key of that cache: (user_id, provider) -> (access_token, token_expires_at, cached at).
 _TOKEN_CACHE_KEY = "provider_access_tokens"
 
 
-def _token_cache(db: DbSession) -> dict[tuple[UUID, str], tuple[str, datetime | None]]:
+def _token_cache(db: DbSession) -> dict[tuple[UUID, str], tuple[str, datetime | None, float]]:
     return db.info.setdefault(_TOKEN_CACHE_KEY, {})
+
+
+def _cached_token(db: DbSession, key: tuple[UUID, str]) -> str | None:
+    cache = _token_cache(db)
+    if (entry := cache.get(key)) is None:
+        return None
+    token, expires_at, cached_at = entry
+    if time.monotonic() - cached_at < TOKEN_CACHE_TTL_SECONDS and _is_token_fresh(expires_at):
+        return token
+    del cache[key]
+    return None
+
+
+def _cache_token(db: DbSession, key: tuple[UUID, str], token: str, expires_at: datetime | None) -> str:
+    _token_cache(db)[key] = (token, expires_at, time.monotonic())
+    return token
 
 
 def _is_token_fresh(token_expires_at: datetime | None) -> bool:
@@ -58,16 +75,11 @@ def get_valid_token(
     """Get a valid access token, refreshing if necessary.
 
     Used by make_authenticated_request and by calls that send the token outside
-    of it, e.g. provider deregistration. A fresh token is cached on the session,
-    so repeated calls within one sync don't query user_connection again.
+    of it, e.g. provider deregistration.
     """
-    cache = _token_cache(db)
     cache_key = (user_id, provider_name)
-    if cached := cache.get(cache_key):
-        cached_token, cached_expires_at = cached
-        if _is_token_fresh(cached_expires_at):
-            return cached_token
-        del cache[cache_key]
+    if cached := _cached_token(db, cache_key):
+        return cached
 
     connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
     if not connection:
@@ -75,9 +87,8 @@ def get_valid_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"User not connected to {provider_name}",
         )
-    # The query returns the instance already in the session without reloading it, so a token
-    # written by another worker would stay unseen. Only the token columns are reloaded, to keep
-    # any unflushed changes to the connection.
+    # The session may hold this connection from before another worker refreshed it; only the token
+    # columns are reloaded, so unflushed changes to it stay.
     db.refresh(connection, attribute_names=["access_token", "refresh_token", "token_expires_at"])
 
     # SDK-based providers don't have access tokens
@@ -87,7 +98,6 @@ def get_valid_token(
             detail=f"No access token available for {provider_name} (SDK-based provider?)",
         )
 
-    # Check if token is expired (with 5 minute buffer)
     if not _is_token_fresh(connection.token_expires_at):
         # Scope distributed lock per user/provider to avoid concurrent refresh race conditions.
 
@@ -113,8 +123,7 @@ def get_valid_token(
             # 1. If the token never expires, return it directly
             # 2. If it expires in the future (> 5 min buffer), return existing token
             if _is_token_fresh(connection.token_expires_at):
-                cache[cache_key] = (connection.access_token, connection.token_expires_at)
-                return connection.access_token
+                return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
 
             now = datetime.now(timezone.utc)
 
@@ -132,14 +141,13 @@ def get_valid_token(
                     f"Token expired and no refresh token available for {provider_name}; reconnection required",
                 )
 
-            # Not cached: the next call reads the refreshed connection once and caches it.
             token_response = oauth.refresh_access_token(
                 db, user_id, connection.refresh_token, revoke_on_failure=revoke_on_failure
             )
-            return token_response.access_token
+            # The refresh stored the new expiry on this session's connection
+            return _cache_token(db, cache_key, token_response.access_token, connection.token_expires_at)
 
-    cache[cache_key] = (connection.access_token, connection.token_expires_at)
-    return connection.access_token
+    return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
 
 
 def _reload_token_after_401(

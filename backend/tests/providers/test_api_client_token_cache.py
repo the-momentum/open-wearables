@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.repositories import UserConnectionRepository
+from app.services.providers import api_client
 from app.services.providers.api_client import download_binary_content, get_valid_token, make_authenticated_request
 from tests.factories import UserConnectionFactory
 
@@ -78,6 +79,38 @@ def test_cached_token_close_to_expiry_is_refreshed(db: Session, connection: Any,
 
     assert token == "refreshed"
     oauth.refresh_access_token.assert_called_once()
+
+
+def test_a_refreshed_token_is_reused(db: Session, connection: Any, repo: Any) -> None:
+    def refresh(db_session: Session, _user_id: Any, refresh_token: str, **_: Any) -> Any:
+        repo.update_tokens(db_session, connection, "refreshed", refresh_token, 3600)
+        return MagicMock(access_token="refreshed")
+
+    oauth = MagicMock()
+    oauth.refresh_access_token.side_effect = refresh
+
+    with freeze_time(datetime.now(timezone.utc) + timedelta(minutes=58)):
+        tokens = [get_valid_token(db, connection.user_id, "whoop", repo, oauth) for _ in range(3)]
+
+    assert tokens == ["refreshed"] * 3
+    oauth.refresh_access_token.assert_called_once()
+    # Both reads belong to the refresh itself: one before the lock, one inside it
+    assert repo.get_by_user_and_provider.call_count == 2
+
+
+def test_a_disconnect_made_elsewhere_is_seen_once_the_cached_token_ages(
+    db: Session, connection: Any, repo: Any
+) -> None:
+    """A sync must not outlive a disconnect, or it writes back the data a purge just deleted."""
+    clock = MagicMock()
+    clock.monotonic.return_value = 0.0
+    with patch.object(api_client, "time", clock):
+        get_valid_token(db, connection.user_id, "whoop", repo, MagicMock())
+        db.execute(text("UPDATE user_connection SET access_token = NULL WHERE id = :id"), {"id": connection.id})
+        clock.monotonic.return_value = api_client.TOKEN_CACHE_TTL_SECONDS + 1
+
+        with pytest.raises(HTTPException):
+            get_valid_token(db, connection.user_id, "whoop", repo, MagicMock())
 
 
 def test_request_retries_with_token_refreshed_elsewhere(db: Session, connection: Any, repo: Any) -> None:
