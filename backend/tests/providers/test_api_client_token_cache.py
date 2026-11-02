@@ -11,6 +11,7 @@ from freezegun import freeze_time
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
 from app.services.providers import api_client
 from app.services.providers.api_client import download_binary_content, get_valid_token, make_authenticated_request
@@ -210,3 +211,49 @@ def test_without_a_refresh_token_a_401_is_not_retried(db: Session, connection: A
     assert exc_info.value.status_code == 401
     assert client.request.call_count == 1
     oauth.revoke_connection.assert_not_called()
+
+
+def _failing_since(connection: Any, hours_ago: float) -> str:
+    key = f"provider_auth_failing_since:whoop:{connection.user_id}"
+    get_redis_client().set(key, (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).timestamp())
+    return key
+
+
+def test_a_grant_that_only_fails_for_a_day_is_revoked(db: Session, connection: Any, repo: Any) -> None:
+    """A revoke at a provider without refresh tokens, or a lapsed Oura membership, looks just like this."""
+    _failing_since(connection, hours_ago=25)
+    oauth = MagicMock()
+    client = _client_returning(_response(403))
+
+    with (
+        patch("app.services.providers.api_client.httpx.Client", return_value=client),
+        pytest.raises(ReauthRequiredError),
+    ):
+        _request(db, connection, repo, oauth)
+
+    oauth.revoke_connection.assert_called_once_with(db, connection.user_id, reason="auth_failing")
+
+
+def test_a_recent_rejection_is_not_yet_a_dead_grant(db: Session, connection: Any, repo: Any) -> None:
+    oauth = MagicMock()
+    client = _client_returning(_response(403))
+
+    with (
+        patch("app.services.providers.api_client.httpx.Client", return_value=client),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        _request(db, connection, repo, oauth)
+
+    assert not isinstance(exc_info.value, ReauthRequiredError)
+    oauth.revoke_connection.assert_not_called()
+
+
+def test_a_success_ends_the_failing_streak(db: Session, connection: Any, repo: Any) -> None:
+    """Polar refuses some endpoints of a healthy grant; the others succeed, so it never adds up to a day."""
+    key = _failing_since(connection, hours_ago=25)
+    client = _client_returning(_response(200, json={"ok": True}))
+
+    with patch("app.services.providers.api_client.httpx.Client", return_value=client):
+        _request(db, connection, repo)
+
+    assert get_redis_client().get(key) is None

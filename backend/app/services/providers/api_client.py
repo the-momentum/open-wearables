@@ -33,6 +33,13 @@ TOKEN_CACHE_TTL_SECONDS = 60.0
 # Session.info key of that cache: (user_id, provider) -> (access_token, token_expires_at, cached at).
 _TOKEN_CACHE_KEY = "provider_access_tokens"
 
+# A grant that answers only 401/403 for this long is dead: a revoke at a provider without refresh tokens
+# (Polar) or a lapsed Oura membership. A single success resets it, so a refused endpoint alone never counts.
+DEAD_GRANT_AFTER = timedelta(days=1)
+
+# Session.info key of the grants this session has already seen succeed.
+_AUTH_OK_KEY = "provider_auth_ok"
+
 
 def _token_cache(db: DbSession) -> dict[tuple[UUID, str], tuple[str, datetime | None, float]]:
     return db.info.setdefault(_TOKEN_CACHE_KEY, {})
@@ -143,6 +150,33 @@ def get_valid_token(
             return _cache_token(db, cache_key, token_response.access_token, connection.token_expires_at)
 
     return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
+
+
+def _failing_since_key(provider_name: str, user_id: UUID) -> str:
+    return f"provider_auth_failing_since:{provider_name}:{user_id}"
+
+
+def _note_auth_success(db: DbSession, user_id: UUID, provider_name: str) -> None:
+    seen = db.info.setdefault(_AUTH_OK_KEY, set())
+    if (user_id, provider_name) not in seen:
+        get_redis_client().delete(_failing_since_key(provider_name, user_id))
+        seen.add((user_id, provider_name))
+
+
+def _note_auth_failure(db: DbSession, user_id: UUID, provider_name: str, oauth: BaseOAuthTemplate) -> None:
+    """Revoke the grant and raise ReauthRequiredError once it has failed without a success for DEAD_GRANT_AFTER."""
+    db.info.setdefault(_AUTH_OK_KEY, set()).discard((user_id, provider_name))
+    redis_client = get_redis_client()
+    key = _failing_since_key(provider_name, user_id)
+    now = time.time()
+    redis_client.set(key, now, nx=True, ex=int(2 * DEAD_GRANT_AFTER.total_seconds()))
+    if now - float(redis_client.get(key) or now) < DEAD_GRANT_AFTER.total_seconds():
+        return
+    redis_client.delete(key)
+    oauth.revoke_connection(db, user_id, reason="auth_failing")
+    raise ReauthRequiredError(
+        provider_name, user_id, f"{provider_name} rejected every request for a day; reconnection required"
+    )
 
 
 def _refresh_lock(provider_name: str, user_id: UUID) -> Any:
@@ -293,6 +327,7 @@ def make_authenticated_request(
                 )
 
             response.raise_for_status()
+            _note_auth_success(db, user_id, provider_name)
 
             # Handle non-JSON responses (e.g., 202 Accepted with empty body)
             if not expect_json:
@@ -350,6 +385,8 @@ def make_authenticated_request(
                     access_token = new_token
                     request_headers["Authorization"] = f"Bearer {access_token}"
                     continue
+            if e.response.status_code in (401, 403):
+                _note_auth_failure(db, user_id, provider_name, oauth)
 
             log_structured(
                 logger,
@@ -433,7 +470,10 @@ def download_binary_content(
             )
             time.sleep(backoff_delay)
             continue
+        if response.status_code in (401, 403):
+            _note_auth_failure(db, user_id, provider_name, oauth)
         response.raise_for_status()
+        _note_auth_success(db, user_id, provider_name)
         return response.content
 
     raise HTTPException(status_code=500, detail=f"Failed to download binary content from {provider_name}")
