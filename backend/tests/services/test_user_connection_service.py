@@ -500,8 +500,9 @@ class TestUserConnectionServiceDeregisterFromProvider:
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
+        # The disconnect revokes the connection itself, with its own webhook
         oauth.refresh_access_token.assert_called_once_with(
-            db, user.id, connection.refresh_token, revoke_on_failure=True
+            db, user.id, connection.refresh_token, revoke_on_failure=False
         )
         oauth.deregister_user.assert_called_once_with("fresh", provider_user_id=connection.provider_user_id)
 
@@ -533,3 +534,21 @@ class TestUserConnectionServiceDeregisterFromProvider:
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
         oauth.deregister_user.assert_not_called()
+
+    def test_expired_token_without_refresh_token_is_left_for_the_disconnect_to_revoke(self, db: Session) -> None:
+        """Revoking here would leave the disconnect nothing to update, so user_disconnected would never go out."""
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            refresh_token=None,
+            token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+        oauth = MagicMock()
+
+        user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
+
+        oauth.revoke_connection.assert_not_called()
+        oauth.deregister_user.assert_not_called()
+        db.refresh(connection)
+        assert connection.status == ConnectionStatus.ACTIVE

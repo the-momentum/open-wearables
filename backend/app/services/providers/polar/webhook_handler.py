@@ -48,6 +48,7 @@ from app.schemas.enums import ProviderName
 from app.schemas.providers.polar import PolarWebhookEvent, PolarWebhookEventType
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import ReauthRequiredError
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -227,16 +228,18 @@ class PolarWebhookHandler(BaseWebhookHandler):
                 if not self.workouts:
                     return {"status": "error", "error": "workouts service not initialised"}
                 saved = self.workouts.fetch_and_save_exercise(db, user_id, path)
-                db.commit()
+                # Commits the saved data too, so a failure here can't log FAILED over saved data
                 self.connection_repo.update_last_synced_at(db, connection)
                 return {"status": "accepted", "user_id": str(user_id), "saved": {"exercises": saved}}
 
             if not self.data_247:
                 return {"status": "error", "error": "data_247 service not initialised"}
             saved = self.data_247.fetch_and_save_from_webhook(db, user_id, event.event, path)
-            db.commit()
             self.connection_repo.update_last_synced_at(db, connection)
             return {"status": "accepted", "user_id": str(user_id), "saved": saved}
+        except ReauthRequiredError:
+            db.rollback()
+            raise
         except Exception as exc:
             db.rollback()
             log_and_capture_error(

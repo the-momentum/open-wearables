@@ -108,7 +108,7 @@ def test_dead_connection_fails_and_is_revoked(db: Session) -> None:
     assert http_called is False
     assert result["status"] == "error"
     assert emitted[0]["status"] == SyncStatus.FAILED
-    assert "reconnection required" in emitted[0]["error"]
+    assert emitted[0]["error"] == "reauth_required"
     assert connection.last_synced_at == before
     assert connection.status == ConnectionStatus.REVOKED
 
