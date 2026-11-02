@@ -178,3 +178,9 @@ with a fork rule, gate or adapt the feature rather than dropping the rule.
 7. **`app.sh` startup.** No `alembic upgrade head` at container start; keep the
    `$PORT` fallback. Upstream additions (extension install, data-migration scripts,
    `exec`) are fine to adopt alongside.
+8. **Sleep latency.** `sleep_latency_seconds` is a fork-only field: the
+   `sleep_details` column and its migration, `SleepSummary.sleep_latency_seconds`,
+   the summaries-service population from the longest main-sleep session, the Oura
+   ingest that fills it (`providers/oura/data_247.py`, `coverage.py`), and the
+   event-record merge logic that preserves it. Upstream has no equivalent field —
+   keep it through merges rather than resolving conflicts toward upstream's shape.
