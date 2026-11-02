@@ -37,7 +37,10 @@ class TestTcpKeepaliveOptions:
         options = transport_options["socket_keepalive_options"]
         assert options
 
-        # Same calls redis-py makes before connecting to the broker.
+        # Deliberately not mocked: these are the same setsockopt calls redis-py makes before
+        # connecting to the broker, run against the real OS. The result therefore depends on the
+        # platform running the tests, which is the point: hard-coded Linux option numbers fail
+        # here with ENOPROTOOPT on macOS.
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             for option, value in options.items():
