@@ -92,8 +92,7 @@ class TestPolarWorkoutsDateExtraction:
             duration="PT1H0M0S",  # 1 hour
         )
 
-        # Assert: 08:00 local at +1 is 07:00 UTC. Only the duration was asserted
-        # before, which is how the sign could be wrong without a test noticing.
+        # Assert: 08:00 local at +1 is 07:00 UTC
         assert start_date == datetime(2024, 1, 15, 7, 0, 0)
         assert end_date == datetime(2024, 1, 15, 8, 0, 0)
 

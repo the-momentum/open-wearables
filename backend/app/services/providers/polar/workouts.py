@@ -66,12 +66,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         start_time_utc_offset: int,
         duration: str,
     ) -> tuple[datetime, datetime]:
-        """Convert Polar's local wall-clock start into the UTC instant it happened at.
-
-        ``start_time`` is naive LOCAL time and ``start_time_utc_offset`` is that zone's
-        offset in minutes, so UTC is local MINUS the offset. Adding it instead put every
-        exercise ``2 x offset`` in the future (four hours in a UTC+2 summer).
-        """
+        """Start and end in UTC: ``start_time`` is naive local time, ``start_time_utc_offset`` its offset in minutes."""
         local_start = isodate.parse_datetime(start_time)
         offset = timedelta(minutes=start_time_utc_offset)
         start_date = local_start - offset
