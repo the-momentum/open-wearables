@@ -106,6 +106,13 @@ echo 'Running data source merge...'
 uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
     || echo "Warning: data source merge failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves Polar workouts stored twice their UTC offset in the future to their real time, before the
+# aggregate backfill reads them. Runs once per instance (data_migration).
+echo 'Running Polar workout time fix...'
+uv run python scripts/data_migrations/fix_polar_workout_utc_offset.py \
+    || echo "Warning: Polar workout time fix failed — will retry on next startup."
+
 # Queues the one-off copy of the history into the aggregate tables; it runs in Celery, not here.
 # A run waits for the data source merge's data_migration row, since beat queues it too.
 echo 'Queueing aggregate backfill...'
