@@ -388,7 +388,7 @@ class TestOAuthTokenErrors:
         mock_post.return_value = self._response(status_code, '{"error": "invalid_grant"}')
 
         with (
-            patch.object(garmin_oauth, "_revoke_connection") as mock_revoke,
+            patch.object(garmin_oauth, "revoke_connection") as mock_revoke,
             pytest.raises(ProviderReauthorizationRequiredError),
         ):
             garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "dead-refresh-token")
@@ -401,7 +401,7 @@ class TestOAuthTokenErrors:
     ) -> None:
         mock_post.return_value = self._response(503, "maintenance")
 
-        with patch.object(garmin_oauth, "_revoke_connection") as mock_revoke, pytest.raises(ProviderError) as exc_info:
+        with patch.object(garmin_oauth, "revoke_connection") as mock_revoke, pytest.raises(ProviderError) as exc_info:
             garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "refresh-token")
 
         assert (exc_info.value.status_code, exc_info.value.upstream_status) == (502, 503)

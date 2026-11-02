@@ -16,6 +16,7 @@ from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDeta
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.providers.withings.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.withings.handlers.rpc_client import paginate
 from app.services.providers.withings.handlers.timezone import zone_offset_at
 from app.utils.structured_logging import get_logger
@@ -137,6 +138,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             heart_rate_max=data.hr_max,
             steps_count=data.steps,
             energy_burned=Decimal(str(data.calories)) if data.calories is not None else None,
+            energy_series=WORKOUT_ENERGY_SERIES,
             distance=Decimal(str(data.distance)) if data.distance is not None else None,
         )
         return record, detail

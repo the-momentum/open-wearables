@@ -189,8 +189,6 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             resource_id=resource_id,
         )
 
-        self.connection_repo.update_last_synced_at(db, connection)
-
         if notification.type.is_delete_type:
             result = self._handle_deleted(db, notification.type, user_id, resource_id)
         elif notification.type.is_update_type:
@@ -205,6 +203,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             )
             result = {"status": "ignored", "reason": f"unhandled_event_type: {notification.type}"}
 
+        self.connection_repo.update_last_synced_at(db, connection)
         result.setdefault("user_id", str(user_id))
         return result
 
@@ -268,7 +267,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
     ) -> dict[str, Any]:
         """Delete the EventRecord matching external_id.
 
-        Recovery is stored as DataPointSeries (no external_id index), so
+        Recovery is stored as SeriesSample (no external_id index), so
         recovery.deleted is logged but not actioned.
         """
         if event_type == WhoopWebhookNotificationType.RECOVERY_DELETED:

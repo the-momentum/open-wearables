@@ -18,6 +18,7 @@ from app.schemas.providers.whoop import WhoopWorkoutCollectionJSON, WhoopWorkout
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.providers.whoop.coverage import WORKOUT_ENERGY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.conversion import kilojoules_to_kcal
 from app.utils.dates import to_rfc3339
@@ -132,17 +133,17 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
     def load_single_workout(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
         """Fetch a single workout by ID, normalize, and save to database. Returns 1 on success."""
+        raw = self.get_workout_detail_from_api(db, user_id, workout_id)
+        store_raw_payload(
+            source="api_response",
+            provider="whoop",
+            payload=raw,
+            user_id=str(user_id),
+            trace_id=f"/v2/activity/workout/{workout_id}",
+        )
+        if not isinstance(raw, dict) or not raw:
+            return 0
         try:
-            raw = self.get_workout_detail_from_api(db, user_id, workout_id)
-            store_raw_payload(
-                source="api_response",
-                provider="whoop",
-                payload=raw,
-                user_id=str(user_id),
-                trace_id=f"/v2/activity/workout/{workout_id}",
-            )
-            if not isinstance(raw, dict) or not raw:
-                return 0
             workout = WhoopWorkoutJSON(**raw)
             if workout.score_state != "SCORED" and workout.score is None:
                 return 0
@@ -216,6 +217,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         # Energy: Convert kilojoule to kcal
         if score.kilojoule is not None:
             metrics["energy_burned"] = kilojoules_to_kcal(score.kilojoule)
+            metrics["energy_series"] = WORKOUT_ENERGY_SERIES
 
         # Distance: Keep in meters (or convert to km if schema expects km)
         # Based on schema, distance is Decimal, so we'll keep in meters

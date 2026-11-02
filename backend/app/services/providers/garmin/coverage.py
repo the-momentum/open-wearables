@@ -121,3 +121,6 @@ HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset(
         HealthScoreCategory.BODY_BATTERY,
     }
 )
+
+# Activity ``activeKilocalories`` includes BMR despite its name (Activity API 1.2.4), unlike the dailies field.
+WORKOUT_ENERGY_SERIES = SeriesType.total_energy

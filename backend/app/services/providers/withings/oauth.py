@@ -75,7 +75,7 @@ class WithingsOAuth(BaseOAuthTemplate):
             token_response = self._request_token(payload, task="refresh_access_token")
         except ProviderReauthorizationRequiredError:
             if revoke_on_failure:
-                self._revoke_connection(db, user_id, reason="refresh_failed")
+                self.revoke_connection(db, user_id, reason="refresh_failed")
             raise
 
         connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.provider_name)

@@ -9,8 +9,8 @@ deliveries with no resolvable user (or from self-reporting Garmin) are dropped.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from unittest.mock import ANY, MagicMock, patch
+from uuid import UUID, uuid4
 
 import pytest
 from celery.exceptions import Retry
@@ -27,6 +27,7 @@ from app.utils.exceptions import (
     ProviderNotConnectedError,
     ProviderRateLimitError,
     ProviderReauthorizationRequiredError,
+    ReauthRequiredError,
 )
 
 
@@ -246,3 +247,53 @@ def test_skipped_integrity_error_is_logged_without_the_payloads_values() -> None
     assert kwargs["error_type"] == "ForeignKeyViolation"
     assert "exc_info" not in kwargs
     assert "187" not in str(kwargs)
+
+
+def test_reauth_required_fails_delivery_without_retry(user_id: str) -> None:
+    """A dead grant raised out of the handler is logged FAILED and not retried."""
+    calls, fake = _capture()
+    handler = MagicMock()
+    handler.extract_user_id.return_value = "athlete-1"
+    handler.process_payload.side_effect = ReauthRequiredError("strava", UUID(user_id), "reconnection required")
+    with (
+        patch.object(task, "SessionLocal"),
+        patch.object(task, "ProviderFactory") as factory,
+        patch.object(task.process_webhook_push, "retry") as retry,
+        patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake),
+    ):
+        factory.return_value.get_provider.return_value.webhooks = handler
+        result = task.process_webhook_push.run("strava", {}, "trace")
+
+    retry.assert_not_called()
+    assert result == {"status": "error", "error": "reauth_required", "user_id": user_id}
+    assert calls[0]["status"] == SyncStatus.FAILED
+
+
+@pytest.mark.parametrize(("retries", "expect_failed"), [(0, False), (3, True)])
+def test_failed_run_logged_only_when_retries_run_out(retries: int, expect_failed: bool, user_id: str) -> None:
+    """A retriable error logs nothing until the last attempt, which is logged FAILED."""
+    calls, fake = _capture()
+    handler = MagicMock()
+    handler.extract_user_id.return_value = "athlete-1"
+    handler.process_payload.side_effect = RuntimeError("upstream timeout")
+    handler.find_connection.return_value = MagicMock(user_id=UUID(user_id))
+    with (
+        patch.object(task, "SessionLocal"),
+        patch.object(task, "ProviderFactory") as factory,
+        patch.object(task.process_webhook_push, "retry", side_effect=RuntimeError("retry")),
+        patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake),
+    ):
+        factory.return_value.get_provider.return_value.webhooks = handler
+        task.process_webhook_push.push_request(retries=retries)
+        try:
+            with pytest.raises(RuntimeError, match="retry"):
+                task.process_webhook_push.run("strava", {}, "trace")
+        finally:
+            task.process_webhook_push.pop_request()
+
+    if expect_failed:
+        handler.find_connection.assert_called_once_with(ANY, "athlete-1")
+        assert calls[0]["status"] == SyncStatus.FAILED
+        assert calls[0]["error"] == "RuntimeError"
+    else:
+        assert calls == []
