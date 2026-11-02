@@ -1,6 +1,8 @@
 """Schemas for data lifecycle / archival settings."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ArchivalSettingRead(BaseModel):
@@ -9,10 +11,15 @@ class ArchivalSettingRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     rollup_enabled: bool = Field(
-        False,
+        True,
         description="Roll changed days of samples up into daily and per-session aggregates every 15 minutes. "
         "Off, the days that change are dropped: activity and body summaries count them from the samples, day "
         "reads of sources without provider day values get no new days.",
+    )
+    history_rollup_enabled: bool = Field(
+        False,
+        description="Roll the days before up too, once, in the background. Hours on a large instance; until it is "
+        "done the summaries count those days from the samples.",
     )
     delete_after_days: int | None = Field(
         None,
@@ -23,13 +30,31 @@ class ArchivalSettingRead(BaseModel):
 class ArchivalSettingUpdate(BaseModel):
     """Request schema for updating data lifecycle settings."""
 
-    rollup_enabled: bool = Field(False, description="Roll samples up into daily and per-session aggregates.")
+    rollup_enabled: bool = Field(True, description="Roll samples up into daily and per-session aggregates.")
+    history_rollup_enabled: bool = Field(
+        False, description="Roll the days before up too; switched on, it starts in the background."
+    )
     delete_after_days: int | None = Field(
         None,
         ge=1,
         le=7300,
         description="Days before samples are deleted. NULL to keep indefinitely.",
     )
+
+    @model_validator(mode="after")
+    def _history_needs_the_rollup(self) -> Self:
+        if self.history_rollup_enabled and not self.rollup_enabled:
+            raise ValueError("history_rollup_enabled needs rollup_enabled: the days after it would not be rolled up")
+        return self
+
+
+class HistoryRollupStatus(BaseModel):
+    """Where the history's rollup is. It goes through every data source twice, the last 30 days first."""
+
+    state: Literal["off", "running", "done"]
+    step: Literal["rollup_recent", "rollup_all"] | None = Field(None, description="The pass running")
+    sources_done: int | None = Field(None, description="Data sources the running pass has finished")
+    sources_total: int | None = Field(None, description="Data sources the pass goes through")
 
 
 class StorageEstimate(BaseModel):
@@ -62,3 +87,4 @@ class ArchivalSettingWithEstimate(BaseModel):
 
     settings: ArchivalSettingRead
     storage: StorageEstimate
+    history_rollup: HistoryRollupStatus

@@ -1,7 +1,7 @@
 """API endpoints for data lifecycle / archival settings.
 
-Admin-only endpoints to switch the nightly rollup of samples into daily and per-session
-aggregates, and to set when old samples are permanently deleted.
+Admin-only endpoints to switch the rollup of samples into daily and per-session aggregates, start the
+history's rollup, and set when old samples are permanently deleted.
 """
 
 from logging import getLogger
@@ -45,8 +45,9 @@ def get_archival_settings(
     "/settings/archival",
     summary="Update data lifecycle settings",
     description=(
-        "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) "
-        "and delete_after_days (when old samples are permanently removed, rolled up first). "
+        "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), "
+        "history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; "
+        "needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). "
         "Set delete_after_days to null to keep samples indefinitely."
     ),
 )

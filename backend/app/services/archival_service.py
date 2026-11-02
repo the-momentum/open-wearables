@@ -64,21 +64,27 @@ class ArchivalService:
     @handle_exceptions
     def get_settings(self, db: DbSession) -> ArchivalSettingWithEstimate:
         """Return current archival configuration together with table-size estimates."""
-        setting = self.settings_repo.get(db)
-        storage = self._get_storage(db, setting)
-        return ArchivalSettingWithEstimate(
-            settings=ArchivalSettingRead.model_validate(setting),
-            storage=storage,
-        )
+        return self._settings_with_estimate(db, self.settings_repo.get(db))
 
     @handle_exceptions
     def update_settings(self, db: DbSession, update: ArchivalSettingUpdate) -> ArchivalSettingWithEstimate:
-        """Persist new archival settings and return updated estimates."""
-        setting = self.settings_repo.update(db, update.rollup_enabled, update.delete_after_days)
-        storage = self._get_storage(db, setting)
+        """Persist new archival settings and return updated estimates; switching the history's rollup on starts
+        the backfill that runs it, not waiting for the next restart or beat."""
+        # Imported here: the task package imports this module.
+        from app.integrations.celery.tasks.aggregate_backfill_task import run_aggregate_backfill
+
+        setting = self.settings_repo.update(
+            db, update.rollup_enabled, update.history_rollup_enabled, update.delete_after_days
+        )
+        if setting.history_rollup_enabled and not aggregate_backfill_service.is_done(db):
+            run_aggregate_backfill.delay()
+        return self._settings_with_estimate(db, setting)
+
+    def _settings_with_estimate(self, db: DbSession, setting: ArchivalSetting) -> ArchivalSettingWithEstimate:
         return ArchivalSettingWithEstimate(
             settings=ArchivalSettingRead.model_validate(setting),
-            storage=storage,
+            storage=self._get_storage(db, setting),
+            history_rollup=aggregate_backfill_service.history_rollup_status(db),
         )
 
     # ── Daily job (called by Celery) ──────────────────────────────
