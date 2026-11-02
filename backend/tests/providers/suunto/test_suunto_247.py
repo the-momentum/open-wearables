@@ -1,7 +1,7 @@
 """Tests for Suunto247Data — focused on resting_heart_rate emission from sleep."""
 
 from collections.abc import Generator
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod, SessionValue
 from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.utils.dates import parse_iso_datetime
@@ -104,11 +105,11 @@ class TestSuuntoSleepAwakeTime:
 
         assert result["stages"]["awake_seconds"] == 1200
 
-    def test_nap_payload_reports_no_awake_time(self, data_247: Suunto247Data) -> None:
-        """Suunto scores neither stages nor quality for a session it calls a nap.
+    def test_unscored_nap_reports_no_stages(self, data_247: Suunto247Data) -> None:
+        """Suunto scores neither stages nor quality for most naps and sends 0 for every stage.
 
         It can later revise the same SleepId into a full night, so the nap normalizes
-        to the zero awake time it reports rather than to its whole Duration.
+        to unreported stages rather than to an awake time of its whole Duration.
         """
         raw = {
             "timestamp": "2025-01-05T23:00:00.000+01:00",
@@ -128,10 +129,41 @@ class TestSuuntoSleepAwakeTime:
 
         result = data_247.normalize_sleep(raw, uuid4())
 
-        assert result["stages"]["awake_seconds"] == 0
+        assert result["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": None,
+            "awake_seconds": None,
+        }
         assert result["duration_seconds"] == 3600
         assert result["is_nap"] is True
         assert result["efficiency_percent"] is None
+
+    def test_scored_nap_keeps_its_zero_stages(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "timestamp": "2025-01-06T12:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-06T12:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T12:32:00.000+01:00",
+                "Duration": 1920.0,
+                "DeepSleepDuration": 0.0,
+                "LightSleepDuration": 1920.0,
+                "REMSleepDuration": 0.0,
+                "WakeAfterSleepOnsetDuration": 0.0,
+                "WakeBeforeOffBedDuration": 0.0,
+                "IsNap": True,
+                "SleepId": 7,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"] == {
+            "deep_seconds": 0,
+            "light_seconds": 1920,
+            "rem_seconds": 0,
+            "awake_seconds": 0,
+        }
 
     def test_awake_is_zero_when_stages_fill_the_whole_duration(self, data_247: Suunto247Data) -> None:
         raw = {
@@ -178,7 +210,7 @@ class TestSuuntoSleepAwakeTime:
 
         assert result["stages"]["awake_seconds"] == 1200
 
-    def test_awake_defaults_to_zero_when_wake_fields_absent(self, data_247: Suunto247Data) -> None:
+    def test_awake_is_unreported_when_wake_fields_absent(self, data_247: Suunto247Data) -> None:
         raw = {
             "timestamp": "2025-01-05T23:00:00.000+01:00",
             "entryData": {
@@ -194,7 +226,32 @@ class TestSuuntoSleepAwakeTime:
 
         result = data_247.normalize_sleep(raw, uuid4())
 
-        assert result["stages"]["awake_seconds"] == 0
+        assert result["stages"]["awake_seconds"] is None
+
+    def test_null_stage_durations_stay_unreported(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "timestamp": "2025-01-05T23:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-05T23:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T07:00:00.000+01:00",
+                "Duration": 28800.0,
+                "DeepSleepDuration": None,
+                "LightSleepDuration": None,
+                "REMSleepDuration": None,
+                "WakeAfterSleepOnsetDuration": None,
+                "WakeBeforeOffBedDuration": 0.0,
+                "SleepId": 6,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": None,
+            "awake_seconds": 0,
+        }
 
 
 class TestSuuntoSleepWindowFallback:
@@ -355,6 +412,8 @@ class TestSuuntoSleepSeriesPersistence:
         assert by_type[SeriesType.heart_rate_variability_rmssd].value == Decimal("49.0")
         assert by_type[SeriesType.oxygen_saturation].value == Decimal("98.0")
         assert all(s.is_daily_total is True for s in samples)
+        # Nightly values belong to the sleep, not to a calendar day: they wait for the session table.
+        assert {s.period for s in samples} == {None}
 
     def test_skips_nap_sessions(
         self,
@@ -439,6 +498,19 @@ class TestSuuntoSleepSyncStats:
         mock_event.create_or_merge_sleep.assert_called_once()
 
     @patch("app.services.providers.suunto.data_247.event_record_service")
+    def test_save_sleep_data_keeps_unreported_stages_none(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+        stages = {"deep_seconds": None, "light_seconds": None, "rem_seconds": None, "awake_seconds": 0}
+
+        data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep(stages=stages))
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_total_duration_minutes is None
+        assert detail.sleep_awake_minutes == 0
+
+    @patch("app.services.providers.suunto.data_247.event_record_service")
     def test_save_sleep_data_reports_skip_for_missing_window(
         self, mock_event: MagicMock, data_247: Suunto247Data
     ) -> None:
@@ -478,3 +550,34 @@ class TestSuuntoSleepSyncStats:
 
         assert results.outcomes["sleep"].rows_written == 2
         assert results.outcomes["sleep"].skipped == 3
+
+
+class TestSuuntoSleepSessionValues:
+    def test_nightly_values_point_at_the_stored_sleep(
+        self, data_247: Suunto247Data, base_sleep: dict, timeseries_service_mock: MagicMock
+    ) -> None:
+        record_id = uuid4()
+        night = {**base_sleep, "max_spo2_percent": 98.0}
+
+        data_247._persist_sleep_series(
+            MagicMock(), base_sleep["user_id"], night, datetime(2025, 1, 6, 7, tzinfo=timezone.utc), record_id
+        )
+
+        samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
+        assert {s.series_type: s.session for s in samples} == {
+            SeriesType.resting_heart_rate: SessionValue(record_id=record_id),
+            # Suunto reports the night's highest SpO2, not its average.
+            SeriesType.oxygen_saturation: SessionValue(record_id=record_id, stat="max"),
+        }
+
+
+class TestSuuntoDailyActivityStatistics:
+    def test_daily_values_carry_the_local_day(
+        self, data_247: Suunto247Data, timeseries_service_mock: MagicMock
+    ) -> None:
+        stats = [{"type": "stepcount", "daily_values": [{"date": "2025-01-06T00:00:00.000+02:00", "value": 8000}]}]
+
+        data_247.save_daily_activity_statistics(MagicMock(), uuid4(), stats)
+
+        samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
+        assert [s.period for s in samples] == [CalendarPeriod.of_date(date(2025, 1, 6), "+02:00")]

@@ -1,7 +1,7 @@
 from typing import ClassVar
 from uuid import UUID
 
-from fastapi import status
+from fastapi import HTTPException, status
 from psycopg import Error as PsycopgError
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
@@ -28,6 +28,19 @@ class AppError(Exception):
     @property
     def is_client_error(self) -> bool:
         return 400 <= self.status_code < 500
+
+
+# Error code a dead grant is reported under, in sync logs and per-notification results
+REAUTH_REQUIRED = "reauth_required"
+
+
+class ReauthRequiredError(HTTPException):
+    """The stored grant can no longer produce an access token; the user has to reconnect."""
+
+    def __init__(self, provider: str, user_id: UUID, detail: str):
+        self.provider = provider
+        self.user_id = user_id
+        super().__init__(status_code=401, detail=detail)
 
 
 class InvalidInputError(AppError):

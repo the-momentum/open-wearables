@@ -29,6 +29,9 @@
 {:else if trends.length === 0}
 	<p class={NOTE}>No vital was recorded on more than one day in this period.</p>
 {:else}
+	{#if fetched.current?.truncated}
+		<p class={NOTE}>The period holds more days than one page shows; the newest are left out.</p>
+	{/if}
 	<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 		{#each trends as series (series.label)}
 			{@const vital = VITALS[series.type]}

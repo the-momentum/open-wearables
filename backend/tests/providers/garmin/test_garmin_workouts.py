@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import EntrySource, WorkoutType
+from app.schemas.enums import EntrySource, SeriesType, WorkoutType
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -127,6 +127,7 @@ class TestGarminWorkouts:
         assert metrics["heart_rate_min"] is None
         assert metrics["steps_count"] == 8500
         assert metrics["energy_burned"] == Decimal("650")
+        assert metrics["energy_series"] == SeriesType.total_energy
         assert metrics["distance"] == Decimal("10000")
 
     def test_build_metrics_with_missing_values(self, garmin_workouts: GarminWorkouts) -> None:

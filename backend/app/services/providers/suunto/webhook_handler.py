@@ -25,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
+from app.models import UserConnection
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.suunto.workout_import import REQUESTED_WORKOUT_EXTENSIONS
 from app.services.providers.suunto.data_247 import Suunto247Data
@@ -62,6 +63,9 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
     # BaseWebhookHandler interface
     # ------------------------------------------------------------------
+
+    def find_connection(self, db: DbSession, provider_user_id: str) -> UserConnection | None:
+        return self.connection_repo.get_by_provider_username(db, "suunto", provider_user_id)
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
         secret = settings.suunto_webhook_secret
@@ -182,7 +186,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
             )
             result["status"] = "unknown_event_type"
 
-        self.connection_repo.update_last_synced_at(db, connection)
+        if result.get("status") in ("saved", "ignored"):
+            self.connection_repo.update_last_synced_at(db, connection)
         db.commit()
 
         return result

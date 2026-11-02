@@ -18,7 +18,16 @@ from app.database import SessionLocal
 from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import INTEGRITY_ERRORS, AppError, app_error_from_integrity_error, describe_integrity_error
+from app.services.providers.sync_247_result import error_code_of
+from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.utils.exceptions import (
+    INTEGRITY_ERRORS,
+    REAUTH_REQUIRED,
+    AppError,
+    ReauthRequiredError,
+    app_error_from_integrity_error,
+    describe_integrity_error,
+)
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -67,6 +76,24 @@ def _extract_breakdown(result: dict[str, Any], count: Any) -> dict[str, int] | N
     if inserted is None and updated is None:
         return None
     return {"inserted": inserted or 0, "updated": updated or 0}
+
+
+def _emit_final_failure(
+    provider_name: str, handler: BaseWebhookHandler | None, provider_user_id: str | None, exc: Exception
+) -> None:
+    """Record a delivery that ran out of retries as FAILED"""
+    if handler is None or not provider_user_id:
+        return
+    try:
+        with SessionLocal() as db:
+            connection = handler.find_connection(db, str(provider_user_id))
+        if connection:
+            _emit_webhook_sync_status(
+                provider_name,
+                {"status": "error", "error": error_code_of(exc), "user_id": str(connection.user_id)},
+            )
+    except Exception as emit_exc:  # pragma: no cover - sync log must never break processing
+        logger.debug("Failed to emit final webhook failure", provider=provider_name, error=str(emit_exc))
 
 
 def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
@@ -189,6 +216,19 @@ def process_webhook_push(
             error=str(exc),
         )
         raise
+    except ReauthRequiredError as exc:
+        # The grant is dead (and already revoked): no retry can fetch anything until the
+        # user reconnects, so fail the delivery instead of retrying it.
+        logger.warning(
+            "Webhook push task failed - reconnection required",
+            provider=provider_name,
+            trace_id=request_trace_id,
+            provider_user_id=provider_user_id,
+            error=str(exc.detail),
+        )
+        result = {"status": "error", "error": REAUTH_REQUIRED, "user_id": str(exc.user_id)}
+        _emit_webhook_sync_status(provider_name, result)
+        return result
     except HTTPException as exc:
         # Non-retriable upstream 4xx (deleted/unqueryable object): ack so the task
         # drops instead of retrying forever. 5xx and 401/429 fall through to retry.
@@ -216,6 +256,8 @@ def process_webhook_push(
             attempt=self.request.retries,
             max_retries=self.max_retries,
         )
+        if self.request.retries >= self.max_retries:
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
         raise self.retry(exc=exc)
     except Exception as exc:
         if _is_client_error(exc):
@@ -247,4 +289,6 @@ def process_webhook_push(
             attempt=self.request.retries,
             max_retries=self.max_retries,
         )
+        if self.request.retries >= self.max_retries:
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
         raise self.retry(exc=exc)

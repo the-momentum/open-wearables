@@ -1,6 +1,6 @@
 """Redis-backed cache for the expensive dashboard total-data-points count.
 
-A full ``COUNT(*)`` over ``data_point_series`` is a multi-second sequential scan, so the exact
+A full ``COUNT(*)`` over ``series_sample`` is a multi-second sequential scan, so the exact
 figure is cached and served stale-while-revalidate:
 
 * fresh cache hit -> return the exact cached value;
