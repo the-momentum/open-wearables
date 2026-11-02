@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
@@ -9,20 +9,23 @@ from sqlalchemy.orm import Query
 
 from app.config import settings
 from app.database import DbSession
+from app.integrations.rollup_queue import mark_dirty_days
 from app.models import (
-    DataPointSeries,
     DataSource,
     DetailType,
     EventRecord,
+    EventRecordAggregate,
     EventRecordDetail,
     HealthScore,
     MealDetails,
     MenstrualCycleDetails,
     ProviderPriority,
+    SeriesSample,
     SleepDetails,
     WorkoutDetails,
 )
 from app.repositories import (
+    AggregateRepository,
     DataPointSeriesRepository,
     DataSourceRepository,
     EventRecordDetailRepository,
@@ -33,6 +36,7 @@ from app.repositories import (
 from app.repositories.data_point_series_repository import WorkoutWindow
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
+from app.repositories.event_record_repository import local_days
 from app.schemas.enums import EventCategory, HealthScoreCategory, SeriesType, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -76,9 +80,10 @@ from app.services.outgoing_webhooks.events import (
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
-from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
+from app.utils.conversion import as_dict_list, as_float, as_int, as_model, minutes_to_seconds, sum_optional
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+from app.utils.sleep_stages import measured_stages
 
 
 def _meal_summary(nutrients: dict[SeriesType, float]) -> tuple[float | None, Macros | None, float | None]:
@@ -104,12 +109,17 @@ def _nutrient_values(nutrients: dict[SeriesType, float]) -> dict[str, NutrientVa
 def pace_sec_per_km(distance_meters: float | None, seconds: int | None) -> float | None:
     """Average pace in seconds per kilometre.
 
-    Derived from distance and time rather than ``average_speed``, whose unit is not
-    consistent across providers (Suunto stores km/h, Garmin/Strava/Google m/s).
+    Derived from distance and time rather than ``average_speed``: every provider stores m/s now,
+    but a pace from the workout's own distance and time needs no speed at all.
     """
     if distance_meters is None or seconds is None or distance_meters <= 0 or seconds <= 0:
         return None
     return round(seconds / (distance_meters / 1000), 1)
+
+
+def _first_number(*values: Decimal | None) -> float | None:
+    """The first value that is set, so a provider's 0 kcal is kept rather than skipped."""
+    return next((float(value) for value in values if value is not None), None)
 
 
 class EventRecordService(
@@ -120,8 +130,9 @@ class EventRecordService(
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
+        self.aggregate_repo = AggregateRepository(EventRecordAggregate)
         self.data_source_repo = DataSourceRepository()
-        self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_series_repo = DataPointSeriesRepository(SeriesSample)
         self.health_score_repo = HealthScoreRepository(HealthScore)
         self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         self.device_type_priority_repo = DeviceTypePriorityRepository()
@@ -130,20 +141,22 @@ class EventRecordService(
         self,
         db_session: DbSession,
         records: list[EventRecord],
+        statistics: dict[UUID, dict[str, Decimal | None]],
     ) -> dict[UUID, int | None]:
         """Return avg HR for each workout record.
 
-        Uses stored heart_rate_avg where available, falls back to a single batch query
-        against data_point_series for records that don't have it: the workout's own source
-        first, then the other sources of the same writer.
+        Uses the workout's heart rate aggregate (the provider's, else ours from its own samples) where
+        available, falls back to a single batch query against series_sample of the other sources of the
+        same writer.
         """
         result: dict[UUID, int | None] = {}
         missing = []
 
         for r in records:
-            details = r.workout_detail
-            if details and details.heart_rate_avg is not None:
-                result[r.id] = round(details.heart_rate_avg)
+            average = statistics.get(r.id, {}).get("heart_rate_avg")
+            if average is not None:
+                # Half up, as the SQL fallback below rounds: 72.5 is 73 either way.
+                result[r.id] = int(Decimal(average).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
             else:
                 result[r.id] = None
                 missing.append(r)
@@ -332,12 +345,13 @@ class EventRecordService(
         if inserted:
             eff = final_detail.sleep_efficiency_score
             has_stages = any(
-                [
+                minutes is not None
+                for minutes in (
                     final_detail.sleep_awake_minutes,
                     final_detail.sleep_light_minutes,
                     final_detail.sleep_deep_minutes,
                     final_detail.sleep_rem_minutes,
-                ]
+                )
             )
             device_type = None
             if svix_service.is_enabled() and result.data_source_id is not None:
@@ -403,13 +417,26 @@ class EventRecordService(
             # retry, score update).  Replace the detail with fresh values instead
             # of accumulating them on top of the existing ones.
             if record.external_id is not None and adjacent.external_id == record.external_id:
-                old_start, old_zone = adjacent.start_datetime, adjacent.zone_offset
+                old_start, old_end, old_zone = adjacent.start_datetime, adjacent.end_datetime, adjacent.zone_offset
                 for field in ("start_datetime", "end_datetime", "zone_offset"):
                     new_val = getattr(record, field, None)
                     if new_val is not None:
                         setattr(adjacent, field, new_val)
                 adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
                 db_session.flush()
+                # Its session rows are rolled up over the window it has now, on the days it left and joined.
+                mark_dirty_days(
+                    db_session,
+                    [
+                        *local_days(adjacent.data_source_id, old_start, old_end, old_zone),
+                        *local_days(
+                            adjacent.data_source_id,
+                            adjacent.start_datetime,
+                            adjacent.end_datetime,
+                            adjacent.zone_offset,
+                        ),
+                    ],
+                )
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, EventCategory.SLEEP)
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
@@ -429,8 +456,11 @@ class EventRecordService(
 
             adj_detail: SleepDetails | None = adjacent.sleep_detail
 
+            def _adj_opt_int(attr: str) -> int | None:
+                return getattr(adj_detail, attr) if adj_detail else None
+
             def _adj_int(attr: str) -> int:
-                return (getattr(adj_detail, attr) or 0) if adj_detail else 0
+                return _adj_opt_int(attr) or 0
 
             adj_in_bed = _adj_int("sleep_time_in_bed_minutes")
             new_in_bed = detail.sleep_time_in_bed_minutes or 0
@@ -495,17 +525,23 @@ class EventRecordService(
                     elif stage_str == "sleeping":
                         sleeping_secs += dur
                     last_end = s_end
-                merged_deep = int(deep_secs / 60)
-                merged_light = int(light_secs / 60)
-                merged_rem = int(rem_secs / 60)
-                merged_awake = int(awake_secs / 60)
-                merged_total = merged_deep + merged_light + merged_rem + int(sleeping_secs / 60)
+                deep_min, light_min, rem_min = int(deep_secs / 60), int(light_secs / 60), int(rem_secs / 60)
+                merged_total = deep_min + light_min + rem_min + int(sleeping_secs / 60)
+                # A merged hypnogram of only sleeping segments still reports no phases
+                has_phases, has_awake = measured_stages(merged_stages)
+                merged_deep = deep_min if has_phases else None
+                merged_light = light_min if has_phases else None
+                merged_rem = rem_min if has_phases else None
+                merged_awake = int(awake_secs / 60) if has_awake else None
             else:
-                merged_deep = _adj_int("sleep_deep_minutes") + (detail.sleep_deep_minutes or 0)
-                merged_light = _adj_int("sleep_light_minutes") + (detail.sleep_light_minutes or 0)
-                merged_rem = _adj_int("sleep_rem_minutes") + (detail.sleep_rem_minutes or 0)
-                merged_awake = _adj_int("sleep_awake_minutes") + (detail.sleep_awake_minutes or 0)
-                merged_total = _adj_int("sleep_total_duration_minutes") + (detail.sleep_total_duration_minutes or 0)
+                # A side without stages adds nothing; the other side's minutes are kept
+                merged_deep = sum_optional(_adj_opt_int("sleep_deep_minutes"), detail.sleep_deep_minutes)
+                merged_light = sum_optional(_adj_opt_int("sleep_light_minutes"), detail.sleep_light_minutes)
+                merged_rem = sum_optional(_adj_opt_int("sleep_rem_minutes"), detail.sleep_rem_minutes)
+                merged_awake = sum_optional(_adj_opt_int("sleep_awake_minutes"), detail.sleep_awake_minutes)
+                merged_total = sum_optional(
+                    _adj_opt_int("sleep_total_duration_minutes"), detail.sleep_total_duration_minutes
+                )
 
             self.logger.info(
                 "Merging adjacent sleep records: %s (%s – %s) + %s (%s – %s)",
@@ -589,6 +625,9 @@ class EventRecordService(
                 detail_type=EventCategory.SLEEP,
             )
             adj_start, adj_zone = adjacent.start_datetime, adjacent.zone_offset
+            # The first segment's session values (the provider's lowest heart rate, our rollup) would go with
+            # its record; they move to the merged night, where the next segment's values combine with them.
+            self.aggregate_repo.move_record(db_session, adjacent.id, created_record.id)
             self.crud.delete_flush(db_session, adjacent)
             self._recompute_sleep_scores(
                 db_session,
@@ -629,12 +668,13 @@ class EventRecordService(
             case EventCategory.SLEEP:
                 eff = detail.sleep_efficiency_score
                 has_stages = any(
-                    [
+                    minutes is not None
+                    for minutes in (
                         detail.sleep_awake_minutes,
                         detail.sleep_light_minutes,
                         detail.sleep_deep_minutes,
                         detail.sleep_rem_minutes,
-                    ]
+                    )
                 )
                 on_sleep_created(
                     record_id=record.id,
@@ -897,11 +937,16 @@ class EventRecordService(
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
-        computed_hr = self._resolve_avg_hr(db_session, [r for r, _ in records])
+        statistics = self.crud.get_workout_statistics(db_session, [r.id for r, _ in records])
+        computed_hr = self._resolve_avg_hr(db_session, [r for r, _ in records], statistics)
 
         data = []
         for record, data_source in records:
             details: WorkoutDetails | None = record.workout_detail
+            stats = statistics.get(record.id, {})
+            calories = _first_number(
+                stats.get("provider_energy"), details.energy_burned if details else None, stats.get("own_energy")
+            )
             moving_seconds = (
                 details.moving_time_seconds
                 if details and details.moving_time_seconds is not None
@@ -918,24 +963,23 @@ class EventRecordService(
                 source=self._map_source(data_source),
                 entry_source=details.entry_source if details else None,
                 intensity=details.intensity if details else None,
-                calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
-                distance_meters=float(details.distance) if details and details.distance else None,
+                calories_kcal=calories,
+                distance_meters=as_float(stats.get("distance")),
                 avg_heart_rate_bpm=computed_hr.get(record.id),
-                max_heart_rate_bpm=details.heart_rate_max if details else None,
-                avg_pace_sec_per_km=pace_sec_per_km(as_float(details.distance) if details else None, moving_seconds),
-                elevation_gain_meters=float(details.total_elevation_gain)
-                if details and details.total_elevation_gain
-                else None,
-                heart_rate_min=details.heart_rate_min if details else None,
-                steps_count=details.steps_count if details else None,
-                average_speed=as_float(details.average_speed) if details else None,
-                max_speed=as_float(details.max_speed) if details else None,
-                average_cadence=as_float(details.average_cadence) if details else None,
-                average_watts=as_float(details.average_watts) if details else None,
-                max_watts=as_float(details.max_watts) if details else None,
+                max_heart_rate_bpm=as_int(stats.get("heart_rate_max")),
+                avg_pace_sec_per_km=pace_sec_per_km(as_float(stats.get("distance")), moving_seconds),
+                elevation_gain_meters=as_float(stats.get("total_elevation_gain")),
+                heart_rate_min=as_int(stats.get("heart_rate_min")),
+                steps_count=as_int(stats.get("steps_count")),
+                average_speed=as_float(stats.get("average_speed")),
+                max_speed=as_float(stats.get("max_speed")),
+                average_cadence=as_float(stats.get("average_cadence")),
+                average_watts=as_float(stats.get("average_watts")),
+                max_watts=as_float(stats.get("max_watts")),
+                average_met=as_float(stats.get("average_met")),
                 moving_time_seconds=details.moving_time_seconds if details else None,
-                elev_high=as_float(details.elev_high) if details else None,
-                elev_low=as_float(details.elev_low) if details else None,
+                elev_high=as_float(stats.get("elev_high")),
+                elev_low=as_float(stats.get("elev_low")),
                 hr_zones=as_model(HRZones, details.hr_zones) if details and with_zones else None,
                 power_zones=as_model(PowerZones, details.power_zones) if details and with_zones else None,
                 segments=as_dict_list(details.segments) if details and with_segments else None,

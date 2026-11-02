@@ -19,6 +19,8 @@ from app.constants.series_types.sdk import (
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
+from app.constants.series_types.sdk.workout_statistics import WORKOUT_ENERGY_SERIES, WORKOUT_STATISTIC_STAT
+from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SERIES
 from app.constants.workout_types import get_unified_sdk_workout_type
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -29,6 +31,7 @@ from app.schemas.model_crud.activities import (
     EventRecordMetrics,
     HeartRateSampleCreate,
     MealDetailCreate,
+    SessionValue,
     StepSampleCreate,
     TimeSeriesSampleCreate,
 )
@@ -47,6 +50,7 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import window_seconds
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -214,6 +218,7 @@ class ImportService:
                 device_id,
                 source_app_id,
                 device_manufacturer,
+                workout_id,
             )
 
             if duration is None:
@@ -368,6 +373,7 @@ class ImportService:
                 provider=provider,
                 recorded_at=rjson.startDate,
                 zone_offset=rjson.zoneOffset,
+                window_seconds=window_seconds(rjson.startDate, rjson.endDate),
                 value=value,
                 series_type=series_type,
                 is_daily_total=daily_total_flag(series_type, is_daily=False),
@@ -405,6 +411,7 @@ class ImportService:
         device_id: str | None = None,
         source_app_id: str | None = None,
         device_manufacturer: str | None = None,
+        record_id: UUID | None = None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
         """
         Returns a tuple with the metrics, time series samples, and duration.
@@ -415,6 +422,7 @@ class ImportService:
         stats_dict: dict[str, Decimal | int] = {}
         time_series_samples: list[TimeSeriesSampleCreate] = []
         duration: float | None = None
+        energy_statistics: set[str] = set()
 
         for stat in stats:
             value = self._dec(stat.value)
@@ -441,6 +449,9 @@ class ImportService:
                         value=value,
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=False),
+                        session=SessionValue(record_id=record_id, stat=WORKOUT_STATISTIC_STAT.get(stat.type))
+                        if record_id and series_type not in UNDECIDED_WORKOUT_SERIES
+                        else None,
                     )
                 )
                 continue
@@ -458,6 +469,7 @@ class ImportService:
                     # Summed across the energy statistics, and left unset when the payload reports none
                     energy = stats_dict.get("energy_burned")
                     stats_dict["energy_burned"] = value if energy is None else energy + value
+                    energy_statistics.add(stat.type)
                 case _:
                     detail_field = get_detail_field_from_workout_statistic_type(stat.type)
                     if detail_field:
@@ -466,7 +478,10 @@ class ImportService:
                             value = int(value)
                         stats_dict[detail_field] = value
 
-        return EventRecordMetrics(**stats_dict), time_series_samples, duration
+        metrics = EventRecordMetrics(**stats_dict)
+        if energy_series := WORKOUT_ENERGY_SERIES.get(frozenset(energy_statistics)):
+            metrics["energy_series"] = energy_series
+        return metrics, time_series_samples, duration
 
     def load_data(
         self,
@@ -526,12 +541,19 @@ class ImportService:
         if workout_bundles:
             workout_records = [record for record, _, _ in workout_bundles]
             details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
-            # Flatten all time series samples from all workouts into a single list
-            time_series_samples = [sample for _, _, samples in workout_bundles for sample in samples]
-
             # Bulk create records - returns only IDs that were actually inserted
             inserted_ids = self.event_record_service.bulk_create(db_session, workout_records)
             db_session.flush()
+
+            # A workout already stored keeps its own id, so its statistics cannot point at the new one.
+            inserted = set(inserted_ids)
+            time_series_samples = [
+                sample
+                if sample.session is None or sample.session.record_id in inserted
+                else sample.model_copy(update={"session": None})
+                for _, _, samples in workout_bundles
+                for sample in samples
+            ]
 
             # Filter details to only those records that were actually inserted (avoid FK violation)
             details_to_insert = [details_by_id[rid] for rid in inserted_ids if rid in details_by_id]
