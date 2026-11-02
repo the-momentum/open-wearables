@@ -12,7 +12,7 @@ from app.services.sdk.sleep_service import (
     active_users_key,
     finish_sleep,
     is_ready_to_finish,
-    load_sleep_state,
+    load_sleep_states,
 )
 from app.utils.sentry_helpers import log_and_capture_error
 
@@ -33,9 +33,9 @@ def finalize_stale_sleeps() -> None:
                     continue
 
                 try:
-                    state = load_sleep_state(user_id)
-                    if state and is_ready_to_finish(state, now):
-                        finish_sleep(db, user_id, state)
+                    for state in load_sleep_states(user_id).values():
+                        if is_ready_to_finish(state, now):
+                            finish_sleep(db, user_id, state)
                 finally:
                     with contextlib.suppress(Exception):
                         lock.release()

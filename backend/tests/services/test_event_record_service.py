@@ -10,6 +10,7 @@ Tests cover:
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
@@ -665,6 +666,107 @@ class TestCreateOrMergeSleep:
         assert d.sleep_awake_minutes == 52  # 22 + 30
         assert d.sleep_total_duration_minutes == 378  # 8 + 370
 
+    def _unstaged_detail(self, record_id: UUID, stages: list[SleepStage] | None = None) -> EventRecordDetailCreate:
+        return self._detail(record_id).model_copy(
+            update={
+                "sleep_deep_minutes": None,
+                "sleep_light_minutes": None,
+                "sleep_rem_minutes": None,
+                "sleep_awake_minutes": None,
+                "sleep_total_duration_minutes": None,
+                "sleep_stages": stages,
+            }
+        )
+
+    def _existing_sleep(self, data_source: DataSource, start: datetime, end: datetime, **detail: Any) -> None:
+        existing = EventRecordFactory(
+            mapping=data_source, category="sleep", type_="sleep_session", start_datetime=start, end_datetime=end
+        )
+        SleepDetailsFactory(event_record=existing, **{"sleep_total_duration_minutes": 30, **detail})
+
+    def test_merge_keeps_stages_unreported_on_both_sides_none(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        self._existing_sleep(
+            data_source,
+            self._dt(20, 56),
+            self._dt(21, 26),
+            sleep_deep_minutes=None,
+            sleep_light_minutes=None,
+            sleep_rem_minutes=None,
+            sleep_awake_minutes=None,
+            sleep_total_duration_minutes=None,
+        )
+        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+
+        result = event_record_service.create_or_merge_sleep(
+            db, user.id, record, self._unstaged_detail(record.id), self.THRESHOLD
+        )
+
+        db.refresh(result)
+        d = result.sleep_detail
+        assert d.sleep_deep_minutes is None
+        assert d.sleep_light_minutes is None
+        assert d.sleep_rem_minutes is None
+        assert d.sleep_awake_minutes is None
+        assert d.sleep_total_duration_minutes is None
+
+    def test_merge_takes_stages_reported_by_one_side(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        self._existing_sleep(
+            data_source,
+            self._dt(20, 56),
+            self._dt(21, 26),
+            sleep_deep_minutes=None,
+            sleep_light_minutes=None,
+            sleep_rem_minutes=None,
+            sleep_awake_minutes=None,
+            sleep_total_duration_minutes=None,
+        )
+        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+        detail = self._detail(record.id, deep=30, light=200, rem=0, awake=0)
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        db.refresh(result)
+        d = result.sleep_detail
+        assert d.sleep_deep_minutes == 30
+        assert d.sleep_light_minutes == 200
+        assert d.sleep_rem_minutes == 0
+        assert d.sleep_awake_minutes == 0
+        assert d.sleep_total_duration_minutes == 230
+
+    def test_overlapping_merge_of_sleeping_only_hypnograms_reports_no_stages(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        self._existing_sleep(
+            data_source,
+            self._dt(1, 0),
+            self._dt(5, 0),
+            sleep_deep_minutes=None,
+            sleep_light_minutes=None,
+            sleep_rem_minutes=None,
+            sleep_awake_minutes=None,
+            sleep_stages=[
+                {"stage": "sleeping", "start_time": self._dt(1, 0).isoformat(), "end_time": self._dt(5, 0).isoformat()}
+            ],
+        )
+        record = self._record(data_source, self._dt(4, 0), self._dt(8, 0))
+        detail = self._unstaged_detail(
+            record.id, [SleepStage(stage="sleeping", start_time=self._dt(4, 0), end_time=self._dt(8, 0))]
+        )
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        db.refresh(result)
+        d = result.sleep_detail
+        assert d.sleep_total_duration_minutes == 420
+        assert d.sleep_deep_minutes is None
+        assert d.sleep_light_minutes is None
+        assert d.sleep_rem_minutes is None
+        assert d.sleep_awake_minutes is None
+
     def test_merge_calculates_weighted_efficiency(self, db: Session) -> None:
         """Efficiency is a time-in-bed weighted average of both sessions."""
         user = UserFactory()
@@ -1020,6 +1122,35 @@ class TestCreateOrMergeSleep:
         assert kwargs["device_type"] == "ring"
         assert kwargs["sleep_duration_seconds"] == detail.sleep_total_duration_minutes * 60
         assert kwargs["sleep_stage_intervals"] == [stage.model_dump(mode="json")]
+
+    @pytest.mark.parametrize(
+        ("minutes", "stages"),
+        [
+            (None, None),
+            (0, {"awake_minutes": 0, "light_minutes": 0, "deep_minutes": 0, "rem_minutes": 0}),
+        ],
+    )
+    def test_webhook_stages_are_null_only_when_none_is_reported(
+        self, db: Session, minutes: int | None, stages: dict[str, int] | None
+    ) -> None:
+        data_source = DataSourceFactory(source="oura", device_type="ring")
+        record = self._record(data_source, self._dt(1, 35), self._dt(8, 51))
+        detail = self._detail(record.id).model_copy(
+            update={
+                "sleep_deep_minutes": minutes,
+                "sleep_light_minutes": minutes,
+                "sleep_rem_minutes": minutes,
+                "sleep_awake_minutes": minutes,
+            }
+        )
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_sleep_created") as mock_sleep,
+        ):
+            event_record_service.create_or_merge_sleep(db, data_source.user_id, record, detail, self.THRESHOLD)
+
+        assert mock_sleep.call_args.kwargs["stages"] == stages
 
     def test_skips_data_source_lookup_when_svix_disabled(self, db: Session) -> None:
         """No device_type lookup (and no webhook) happens when Svix is not configured."""

@@ -50,8 +50,8 @@ SDK_SHARED_FILES = (
 EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_service.py"),)}
 
 # Fields the shared SDK pipeline sets, but only from inputs this provider never sends:
-# Samsung has no `stepCount`/`recordingMethod`, and nothing yields moving time.
-SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "moving_time_seconds", "entry_source"}}
+# Samsung has no `stepCount`/`recordingMethod`.
+SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "entry_source"}}
 
 # EventRecordDetail fields that are NOT part of the coverage matrix.
 STRUCTURAL_DETAIL_FIELDS = {"record_id", "energy_series"}

@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import patch
 from uuid import UUID
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, SeriesSample
@@ -17,6 +18,7 @@ from app.schemas.providers.polar import PolarWebhookEventType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.polar.webhook_handler import PolarWebhookHandler
+from app.utils.exceptions import ReauthRequiredError
 from tests.factories import UserConnectionFactory, UserFactory
 
 POLAR_USER_ID = "475"
@@ -112,6 +114,21 @@ def test_process_payload_rolls_back_on_error(db: Session) -> None:
 
     assert result["status"] == "error"
     assert rolled_back == ["rollback"]
+
+
+def test_process_payload_passes_a_dead_grant_to_the_task(db: Session) -> None:
+    """The push task fails the delivery without a retry; caught here it went to Sentry instead."""
+    user = UserFactory()
+    UserConnectionFactory(user_id=user.id, provider="polar", provider_user_id=POLAR_USER_ID)
+    handler = PolarStrategy().webhooks
+    assert isinstance(handler, PolarWebhookHandler)
+    dead_grant = ReauthRequiredError("polar", UUID(str(user.id)), "reconnection required")
+
+    with (
+        patch.object(Polar247Data, "fetch_and_save_from_webhook", side_effect=dead_grant),
+        pytest.raises(ReauthRequiredError),
+    ):
+        handler.process_payload(db, _webhook_payload(), "test-trace")
 
 
 def test_activity_summary_webhook_requests_activity_zones(db: Session) -> None:

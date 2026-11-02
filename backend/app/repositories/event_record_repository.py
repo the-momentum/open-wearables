@@ -27,6 +27,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
+from app.constants.devices_map.device_types import APPLE_SOURCE_APP_PREFIX, is_apple_own_source
 from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.integrations.rollup_queue import mark_dirty_days
@@ -1401,6 +1402,7 @@ class EventRecordRepository(
         threshold_minutes: int,
         source: str | None = None,
         provider: str | None = None,
+        source_app_id: str | None = None,
     ) -> EventRecord | None:
         """Return the most-recent sleep session adjacent to [start_time, end_time].
 
@@ -1413,6 +1415,8 @@ class EventRecordRepository(
         DataSource has the same provider, preventing cross-provider merges
         (e.g. Oura sessions being merged with Garmin sessions).
         When *source* is provided an additional filter on DataSource.source is applied.
+        When *source_app_id* is provided only the same writer app matches, Apple's own
+        sources counting as one, like the open sessions in Redis.
         """
         threshold = timedelta(minutes=threshold_minutes)
         filters = [
@@ -1426,6 +1430,12 @@ class EventRecordRepository(
             filters.append(DataSource.provider == provider)
         if source is not None:
             filters.append(DataSource.source == source)
+        if source_app_id is not None:
+            filters.append(
+                DataSource.source_app_id.startswith(APPLE_SOURCE_APP_PREFIX)
+                if is_apple_own_source(source_app_id)
+                else DataSource.source_app_id == source_app_id
+            )
         return (
             db_session.query(self.model)
             .join(DataSource, self.model.data_source_id == DataSource.id)
