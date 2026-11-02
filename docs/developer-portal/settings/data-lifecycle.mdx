@@ -51,7 +51,7 @@ Turning it off drops what is queued at the next run, and every day that changes 
 
 ### Reconciled days
 
-Self-hosting: `source_selection=reconcile` on `/timeseries` merges a user's steps, distance, energy and other summed series across their devices per day, each moment counted once from the best-ranked device. Merging costs roughly 3–4 times a rollup of the same days, so it is off by default and bounded when on:
+Self-hosting: `source_selection=reconcile` on `/timeseries` merges a user's steps, distance, active energy and other movement series across their devices per day, each moment counted once from the best-ranked device. Merging costs roughly 3–4 times a rollup of the same days, so it is off by default and bounded when on:
 
 | Variable | Default | Effect |
 |----------|---------|--------|

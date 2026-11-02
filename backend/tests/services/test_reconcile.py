@@ -10,17 +10,25 @@ from starlette.testclient import TestClient
 
 from app.config import settings
 from app.integrations.rollup_queue import pop_reconcile_days, queue_reconcile_days, requeue_dirty_days
-from app.models import DataSource, ProviderPriority
+from app.models import DataSource, ProviderPriority, SeriesTypeDefinition
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.repositories import SourceRanking
-from app.repositories.series_reconcile_repository import SeriesReconcileRepository
+from app.repositories.series_reconcile_repository import RECONCILED_SERIES, SeriesReconcileRepository
 from app.repositories.series_rollup_repository import SeriesRollupRepository
-from app.schemas.enums import ProviderName, Resolution, SeriesType, SourceSelection, get_series_type_id
+from app.schemas.enums import (
+    AGGREGATION_METHOD_BY_TYPE,
+    AggregationMethod,
+    ProviderName,
+    Resolution,
+    SeriesType,
+    SourceSelection,
+    get_series_type_id,
+)
 from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.services.archival_service import archival_service
+from app.services.priority_service import priority_service
 from app.services.timeseries_service import timeseries_service
 from tests.factories import (
     ApiKeyFactory,
@@ -93,7 +101,7 @@ class TestReconcileReads:
     ) -> None:
         watch, phone = devices
         _walk(watch, phone, DAY)
-        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], SourceRanking.load(db))
+        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], priority_service.get_source_ranking(db))
 
         def no_merging(*_args: object) -> None:
             raise AssertionError("merged on the fly")
@@ -114,7 +122,13 @@ class TestReconcileReads:
             _read(db, watch, DAY, DAY + timedelta(days=1))
 
         assert refused.value.status_code == 400
-        assert "would merge 2 days" in refused.value.detail
+        assert refused.value.detail | {"message": None} == {
+            "code": "reconcile_too_many_days",
+            "message": None,
+            "days": 2,
+            "max_days": 1,
+            "queued": False,
+        }
 
     def test_with_reconcile_on_the_days_merged_on_the_fly_are_queued_to_be_stored(
         self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
@@ -140,13 +154,43 @@ class TestReconcileReads:
         assert pop_reconcile_days(10) == []
 
 
+class TestWhichSeriesAreMerged:
+    def test_only_summed_series_are_merged(self) -> None:
+        """A rate (heart rate) cannot be split by time; the allowlist must never name one."""
+        assert all(AGGREGATION_METHOD_BY_TYPE[t] is AggregationMethod.SUM for t in RECONCILED_SERIES)
+
+    def test_a_logged_series_reads_as_per_period(self, db: Session, devices: tuple) -> None:
+        """Two apps logging a meal minutes apart are not one meal: no merging, the best-ranked source's day."""
+        watch, phone = devices
+        energy = db.get(SeriesTypeDefinition, get_series_type_id(SeriesType.dietary_energy_consumed))
+        for source, hour, value in ((watch, 12, 600), (phone, 12, 650)):
+            DataPointSeriesFactory(
+                mapping=source,
+                series_type=energy,
+                recorded_at=datetime.combine(DAY, datetime.min.time(), timezone.utc) + timedelta(hours=hour),
+                window_seconds=60,
+                value=value,
+            )
+        query = TimeSeriesQueryParams(
+            start_datetime=datetime.combine(DAY, datetime.min.time(), timezone.utc),
+            end_datetime=datetime.combine(DAY + timedelta(days=1), datetime.min.time(), timezone.utc),
+            resolution=Resolution.ONE_DAY,
+        )
+
+        result = timeseries_service.get_timeseries(
+            db, watch.user_id, [SeriesType.dietary_energy_consumed], query, SourceSelection.RECONCILE
+        )
+
+        assert [(float(s.value), s.source.provider) for s in result.data] == [(600, "garmin")]
+
+
 class TestTheReconciledSourceIsNoDevice:
     def test_other_reads_leave_its_rows_out(self, db: Session, devices: tuple) -> None:
         watch, phone = devices
         _walk(watch, phone, DAY)
         for source in devices:
             SeriesRollupRepository().roll_up(db, source.id, [DAY])
-        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], SourceRanking.load(db))
+        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], priority_service.get_source_ranking(db))
         params = TimeSeriesQueryParams(
             start_datetime=datetime(2024, 3, 2, tzinfo=timezone.utc),
             end_datetime=datetime(2024, 3, 3, tzinfo=timezone.utc),

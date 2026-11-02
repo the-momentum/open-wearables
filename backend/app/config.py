@@ -116,15 +116,6 @@ class Settings(BaseSettings):
 
     # Share of a sleep or workout a better-ranked source's sessions must cover for per-session selection to drop it
     session_duplicate_overlap: float = Field(default=0.5, gt=0, le=1)
-    # Whether the rollup also stores a user's sources' summed series merged per day (source_selection=reconcile).
-    # Off, reconcile reads merge every day on the fly, up to reconcile_on_the_fly_max_days a page.
-    reconcile_enabled: bool = False
-    # How far back from today the rollup stores merged days; older days are merged when a read asks for them.
-    reconcile_stored_days: int = Field(default=30, ge=0)
-    # The most days one page of a reconcile read merges on the fly; a page needing more is refused (400).
-    reconcile_on_the_fly_max_days: int = Field(default=30, ge=1, le=90)
-    # Seconds a rollup run spends merging, after and on top of its own budget; kept under the task's soft limit.
-    reconcile_seconds_per_run: int = Field(default=30, ge=0, le=50)
 
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
@@ -330,6 +321,17 @@ class Settings(BaseSettings):
     # Master switch for time-series archival and retention: the admin panel tab, the
     # /settings/archival endpoints and the daily archival task.
     data_lifecycle_enabled: bool = True
+
+    # RECONCILE (merged days, stored by the 15-minute rollup)
+    # Whether the rollup also stores a user's sources' movement series merged per day (source_selection=reconcile).
+    # Off, reconcile reads merge every day on the fly, up to reconcile_on_the_fly_max_days a page.
+    reconcile_enabled: bool = False
+    # How far back from today the rollup stores merged days; older days are merged when a read asks for them.
+    reconcile_stored_days: int = Field(default=30, ge=0)
+    # The most days one page of a reconcile read merges on the fly; a page needing more is refused (400).
+    reconcile_on_the_fly_max_days: int = Field(default=30, ge=1, le=90)
+    # Seconds a rollup run spends merging, after and on top of its own budget; kept under the task's soft limit.
+    reconcile_seconds_per_run: int = Field(default=30, ge=0, le=50)
 
     # RAW PAYLOAD STORAGE
     raw_payload_storage: str = "disabled"  # disabled | log | s3

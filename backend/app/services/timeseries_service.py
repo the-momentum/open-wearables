@@ -1,5 +1,7 @@
 import threading
 from collections import defaultdict
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from logging import Logger, getLogger
@@ -17,7 +19,7 @@ from app.repositories import DataPointSeriesRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
 from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import SampleDay, SeriesAggregateRepository
-from app.repositories.series_reconcile_repository import RECONCILED_TYPE_IDS, SeriesReconcileRepository
+from app.repositories.series_reconcile_repository import RECONCILED_SERIES, SeriesReconcileRepository
 from app.schemas.enums import (
     BUCKET_SIZES,
     PERIOD_RESOLUTIONS,
@@ -49,6 +51,7 @@ from app.schemas.utils import (
 from app.services.aggregate_backfill_service import days_from_samples
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
+from app.services.priority_service import priority_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
 from app.utils.exceptions import ReconcileWindowTooLargeError, handle_exceptions
@@ -70,8 +73,26 @@ def _best_per_bucket(samples: list[AggregatedSample], ranking: SourceRanking) ->
     return [s for s in samples if best[(s.bucket, s.series_type_definition_id)] is s]
 
 
-# Stands in for the reconciled source of a user the rollup has not stored a merged day for yet.
-_MERGED_SOURCE_ID = UUID(int=0)
+@dataclass(frozen=True)
+class _MergedDayRow:
+    """A movement series' day merged across a user's sources (source_selection=reconcile), read like a day row:
+    no one device's, so it names no data source."""
+
+    series_type_definition_id: int
+    period_start: datetime
+    zone_offset: str
+    sum: Decimal
+    count: int
+    data_source_id: None = None
+    avg: None = None
+    min: None = None
+    max: None = None
+    last: None = None
+    computed_by: ComputedBy = ComputedBy.OPEN_WEARABLES
+
+
+# A day's value as a period read takes it: a source's day row, its day counted from samples, or a merged day.
+_DayRow = SeriesAggregate | SampleDay | _MergedDayRow
 
 
 def _best_per_day(
@@ -176,7 +197,7 @@ def _shift(period: date, kind: PeriodKind, periods: int) -> date:
     return period + timedelta(days=periods * (7 if kind is PeriodKind.WEEK else 1))
 
 
-def _combine(rows: list[SeriesAggregate | SampleDay]) -> SeriesStats:
+def _combine(rows: list[_DayRow]) -> SeriesStats:
     """One period's statistics from its days: sums add up, extremes stay extreme, the average is
     the mean of the daily averages, and the last value is the latest day's."""
 
@@ -350,7 +371,7 @@ class TimeSeriesService(
         params: TimeSeriesQueryParams,
     ) -> dict[int, UUID]:
         """Resolve one data source per series type, using the ranking sleep and summaries use."""
-        ranking = SourceRanking.load(db_session)
+        ranking = priority_service.get_source_ranking(db_session)
         return self.crud.winning_source_by_series_type(db_session, params, types, user_id, ranking)
 
     def _aggregated_timeseries(
@@ -414,7 +435,7 @@ class TimeSeriesService(
         Weeks start on Monday and months on the 1st, by the local day; a week or month is built from
         its days within the requested range. Pages hold ``limit`` periods; the cursor is a period's
         first day. With ``ranking``, each day keeps only its best-ranked source, and a week or month is
-        built from those days whichever source each came from. With ``reconcile`` too, a summed series' day two
+        built from those days whichever source each came from. With ``reconcile`` too, a merged series' day two
         sources hold is their merged value instead (see :meth:`_reconciled_days`).
         """
         kind = PERIOD_RESOLUTIONS[params.resolution]
@@ -466,14 +487,17 @@ class TimeSeriesService(
                 first_day,
                 min(last_day, _shift(_period_of(first_day, kind), kind, limit + 1) - timedelta(days=1)),
             )
-        rows = repo.day_rows_or_samples(db_session, user_id, types, *window, from_samples, params, source_by_type)
-        sources = self.crud._sources_by_id(db_session, {row.data_source_id for row, _ in rows})
+        device_rows = repo.day_rows_or_samples(
+            db_session, user_id, types, *window, from_samples, params, source_by_type
+        )
+        sources = self.crud._sources_by_id(db_session, {row.data_source_id for row, _ in device_rows})
+        rows: Sequence[tuple[_DayRow, date]] = device_rows
         if reconcile and ranking is not None:
-            rows = self._reconciled_days(db_session, user_id, types, rows, sources, ranking, from_samples)
+            rows = self._reconciled_days(db_session, user_id, types, device_rows, sources, ranking, from_samples)
         elif ranking is not None:
-            rows = _best_per_day(rows, sources, ranking)
+            rows = _best_per_day(device_rows, sources, ranking)
 
-        groups: dict[tuple[date, UUID | None, int], list[SeriesAggregate | SampleDay]] = defaultdict(list)
+        groups: dict[tuple[date, UUID | None, int], list[_DayRow]] = defaultdict(list)
         for row, day in rows:
             source_id = None if ranking is not None else row.data_source_id
             groups[(_period_of(day, kind), source_id, row.series_type_definition_id)].append(row)
@@ -493,7 +517,8 @@ class TimeSeriesService(
             # A period built from several sources' days names none of them.
             period_sources = {row.data_source_id for row in period_rows}
             # A merged day's source is no device: it is not among them.
-            source = sources.get(period_sources.pop()) if len(period_sources) == 1 else None
+            source_id = period_sources.pop() if len(period_sources) == 1 else None
+            source = sources.get(source_id) if source_id is not None else None
             zone_offset = period_rows[0].zone_offset
             stats = _combine(period_rows)
             data.append(
@@ -530,8 +555,8 @@ class TimeSeriesService(
         sources: dict[UUID, DataSource],
         ranking: SourceRanking,
         from_samples: bool,
-    ) -> list[tuple[SeriesAggregate | SampleDay, date]]:
-        """The devices' day rows of a page, with each summed series' day two of them hold replaced by its merged
+    ) -> Sequence[tuple[_DayRow, date]]:
+        """The devices' day rows of a page, with each RECONCILED_SERIES day two of them hold replaced by its merged
         value: the stored one, else merged now. Every other day keeps its best-ranked source's row.
 
         Merging on the fly costs far more than reading a stored row, so a page may merge at most
@@ -540,15 +565,15 @@ class TimeSeriesService(
         """
         if not rows:
             return rows
-        type_ids = [get_series_type_id(t) for t in types] if types else list(RECONCILED_TYPE_IDS)
-        summed = set(RECONCILED_TYPE_IDS) & set(type_ids)
-        if not summed:
+        merged_series = RECONCILED_SERIES & set(types) if types else RECONCILED_SERIES
+        if not merged_series:
             return _best_per_day(rows, sources, ranking)
+        merged_type_ids = {get_series_type_id(series_type) for series_type in merged_series}
         reconcile_repo = SeriesReconcileRepository()
         first_day, last_day = min(day for _, day in rows), max(day for _, day in rows)
         reconciled = reconcile_repo.reconciled_source(db_session, user_id)
         stored = (
-            reconcile_repo.day_rows(db_session, reconciled.id, sorted(summed), first_day, last_day)
+            reconcile_repo.day_rows(db_session, reconciled.id, sorted(merged_type_ids), first_day, last_day)
             if reconciled
             else {}
         )
@@ -561,7 +586,7 @@ class TimeSeriesService(
         needed = {
             key
             for key, source_ids in sources_of.items()
-            if key[0] in summed
+            if key[0] in merged_type_ids
             and key not in stored
             and len(source_ids) > 1
             and (frozen_before is None or key[1] >= frozen_before)
@@ -573,25 +598,19 @@ class TimeSeriesService(
         if len(days) > settings.reconcile_on_the_fly_max_days:
             raise ReconcileWindowTooLargeError(len(days), settings.reconcile_on_the_fly_max_days, queued)
 
-        merged: dict[tuple[int, date], SampleDay] = {}
+        merged: dict[tuple[int, date], _MergedDayRow] = {}
         for day in reconcile_repo.merge(db_session, user_id, days, ranking) if days else ():
             if (day.type_id, day.day) in needed:
-                merged[(day.type_id, day.day)] = SampleDay(
-                    # No device's: a value merged from several names none of them.
-                    data_source_id=reconciled.id if reconciled else _MERGED_SOURCE_ID,
+                merged[(day.type_id, day.day)] = _MergedDayRow(
                     series_type_definition_id=day.type_id,
                     period_start=CalendarPeriod.of_date(day.day, day.zone_offset).start,
-                    sum=Decimal(str(day.sum)),
-                    avg=None,
-                    min=None,
-                    max=None,
-                    count=day.count,
-                    last=None,
                     zone_offset=day.zone_offset,
+                    sum=Decimal(str(day.sum)),
+                    count=day.count,
                 )
         taken = stored.keys() | merged.keys()
         devices = [(row, day) for row, day in rows if (row.series_type_definition_id, day) not in taken]
-        result: list[tuple[SeriesAggregate | SampleDay, date]] = [
+        result: list[tuple[_DayRow, date]] = [
             *_best_per_day(devices, sources, ranking),
             *((row, key[1]) for key, row in stored.items()),
             *((row, key[1]) for key, row in merged.items()),
@@ -619,7 +638,7 @@ class TimeSeriesService(
         if source_selection is SourceSelection.PER_RANGE:
             source_by_type = self._winning_sources(db_session, user_id, types, params)
         ranked = source_selection in (SourceSelection.PER_PERIOD, SourceSelection.RECONCILE)
-        ranking = SourceRanking.load(db_session) if ranked else None
+        ranking = priority_service.get_source_ranking(db_session) if ranked else None
         if params.resolution in PERIOD_RESOLUTIONS:
             reconcile = source_selection is SourceSelection.RECONCILE
             return self._period_timeseries(db_session, user_id, types, params, source_by_type, ranking, reconcile)

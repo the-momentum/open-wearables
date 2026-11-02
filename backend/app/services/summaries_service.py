@@ -14,7 +14,6 @@ from app.repositories.data_point_series_repository import (
     IntensityMinutesResult,
 )
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import (
     ACTIVITY_METRIC_GROUPS,
     ACTIVITY_METRIC_KEYS,
@@ -48,6 +47,7 @@ from app.schemas.utils import (
     TimeseriesMetadata,
 )
 from app.services.aggregate_backfill_service import days_from_samples
+from app.services.priority_service import priority_service
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
@@ -129,7 +129,7 @@ class SummariesService:
         if not results:
             return results
 
-        ranking = SourceRanking.load(db_session)
+        ranking = priority_service.get_source_ranking(db_session)
 
         def sort_key(entry: dict) -> tuple[int, int, str]:
             provider = entry.get("provider") or entry.get("source")
@@ -205,7 +205,7 @@ class SummariesService:
         self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
 
         results = self.event_record_repo.get_sleep_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit, SourceRanking.load(db_session)
+            db_session, user_id, start_date, end_date, cursor, limit, priority_service.get_source_ranking(db_session)
         )
 
         # Check if there's more data
@@ -338,7 +338,7 @@ class SummariesService:
         resting_heart_rate, hrv_rmssd_milli, spo2_percentage.
         """
         results = self.health_score_repo.get_recovery_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit, SourceRanking.load(db_session)
+            db_session, user_id, start_date, end_date, cursor, limit, priority_service.get_source_ranking(db_session)
         )
 
         has_more = len(results) > limit
@@ -764,7 +764,7 @@ class SummariesService:
         if user and user.personal_record:
             birth_date = user.personal_record.birth_date
 
-        ranking = SourceRanking.load(db_session)
+        ranking = priority_service.get_source_ranking(db_session)
 
         # --- SLOW-CHANGING: the preferred source's reading on each metric's newest day ---
         slow_changing_values = self.data_point_repo.get_ranked_latest_values(

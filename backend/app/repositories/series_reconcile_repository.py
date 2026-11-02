@@ -12,11 +12,10 @@ from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.local_day import OFFSET_REACH, sample_day_sql, utc_midnight
 from app.repositories.repositories import SourceRanking
 from app.schemas.enums import (
-    AGGREGATION_METHOD_BY_TYPE,
-    AggregationMethod,
     ComputedBy,
     PeriodKind,
     ProviderName,
+    SeriesType,
     get_series_type_id,
 )
 from app.schemas.model_crud.activities import CalendarPeriod
@@ -36,12 +35,39 @@ _ROW_DAY = sql_cast(
     func.timezone("UTC", SeriesAggregate.period_start) + sql_cast(SeriesAggregate.zone_offset, Interval), Date
 )
 
-# Summed series only: a step or a kilocalorie spread over a window can be split by time, a heart rate cannot.
-RECONCILED_TYPE_IDS = sorted(
-    get_series_type_id(series_type)
-    for series_type, method in AGGREGATION_METHOD_BY_TYPE.items()
-    if method is AggregationMethod.SUM
+# The series reconcile merges: amounts that accumulate over time, where two devices recording the same moment
+# recorded the same thing, so that moment counts once. Every other series reads as per_period.
+RECONCILED_SERIES: frozenset[SeriesType] = frozenset(
+    {
+        # Movement: devices double-count the same walk, ride or swim.
+        SeriesType.steps,
+        SeriesType.distance,
+        SeriesType.distance_walking_running,
+        SeriesType.distance_cycling,
+        SeriesType.distance_swimming,
+        SeriesType.distance_downhill_snow_sports,
+        SeriesType.distance_other,
+        SeriesType.active_energy,
+        SeriesType.flights_climbed,
+        SeriesType.elevation_gain,
+        SeriesType.swimming_stroke_count,
+        SeriesType.push_count,
+        # Minutes of activity: a minute two devices counted is one minute.
+        SeriesType.active_time,
+        SeriesType.exercise_time,
+    }
 )
+# Left out on purpose:
+# - dietary_* and hydration: logged events, not spans; two apps logging a meal minutes apart are not one meal.
+# - insulin_delivery, inhaler_usage, number_of_times_fallen, number_of_alcoholic_beverages: discrete events,
+#   a merge could drop a real one.
+# - basal_energy, total_energy: each device's whole-day estimate; taking the best one is what per_period does.
+# - stand_time, time_in_daylight, uv_exposure, atrial_fibrillation_burden, sleeping_breathing_disturbances,
+#   nike_fuel: device-specific measures, not the same quantity across devices.
+# - Averaged series (heart rate and the like): a rate cannot be split by time.
+
+# What the SQL filters on.
+_RECONCILED_TYPE_IDS = sorted(get_series_type_id(series_type) for series_type in RECONCILED_SERIES)
 # The span given to a sample without a window, so an instant can still be covered.
 INSTANT_SECONDS = 60
 
@@ -118,7 +144,7 @@ _DELETE_DAYS = text("""
 
 
 class MergedDay(NamedTuple):
-    """A summed series' merged total on one local day."""
+    """A merged series' total on one local day."""
 
     type_id: int
     day: date
@@ -128,7 +154,7 @@ class MergedDay(NamedTuple):
 
 
 class SeriesReconcileRepository:
-    """Merges a user's sources' summed series per local day into rows on the user's reconciled source: each moment
+    """Merges a user's sources' RECONCILED_SERIES per local day into rows on the user's reconciled source: each moment
     counted once, from the best-ranked source that recorded it, as a phone's steps fill the hours a watch was off.
 
     Only days two sources hold samples on get a row; reads fall back to the best source's own day elsewhere.
@@ -185,12 +211,12 @@ class SeriesReconcileRepository:
     def merge(
         self, db_session: DbSession, user_id: UUID, days: Iterable[date], ranking: SourceRanking
     ) -> list[MergedDay]:
-        """Each summed series' merged total on each of ``days`` two of the user's sources hold samples on."""
+        """Each merged series' total on each of ``days`` two of the user's sources hold samples on."""
         days = sorted(set(days))
         if not days:
             return []
         lo, hi = _bounds(days)
-        params = {"lo": lo, "hi": hi, "days": days, "type_ids": RECONCILED_TYPE_IDS}
+        params = {"lo": lo, "hi": hi, "days": days, "type_ids": _RECONCILED_TYPE_IDS}
         sources = db_session.query(DataSource).filter(DataSource.user_id == user_id, ~IS_RECONCILED_SOURCE).all()
         with_samples = set(
             db_session.execute(_SOURCES_WITH_SAMPLES, {**params, "source_ids": [s.id for s in sources]}).scalars()
@@ -201,7 +227,8 @@ class SeriesReconcileRepository:
             (source for source in sources if source.id in with_samples),
             key=lambda source: (*ranking.rank(source.provider, source.device_type), str(source.id)),
         )
-        # The planner overestimates the merge and compiles it, which takes far longer than running it.
+        # The planner overestimates the merge and compiles it, which takes far longer than running it. Measured on
+        # a user with 3 devices: 7 days 123 ms off vs 561 ms on, 30 days 449 vs 785, 90 days 1243 vs 1559.
         db_session.execute(text("SET LOCAL jit = off"))
         rows = db_session.execute(
             _MERGE, {**params, "source_ids": [s.id for s in ordered], "positions": list(range(len(ordered)))}

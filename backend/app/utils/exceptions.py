@@ -39,13 +39,13 @@ class InvalidCursorError(Exception):
 
 
 class ReconcileWindowTooLargeError(Exception):
-    def __init__(self, days: int, limit: int, queued: bool):
-        self.detail = (
-            f"source_selection=reconcile would merge {days} days on the fly for this page; at most {limit} are "
-            "allowed. Lower `limit` or narrow the range."
-        )
-        if queued:
-            self.detail += " Those days are queued to be stored, so the same read succeeds after the next rollup."
+    """A source_selection=reconcile page would merge more days on the fly than the server allows."""
+
+    code = "reconcile_too_many_days"
+
+    def __init__(self, days: int, max_days: int, queued: bool):
+        self.days, self.max_days, self.queued = days, max_days, queued
+        super().__init__(f"{days} days to merge on the fly, at most {max_days}")
 
 
 class DatetimeParseError(ValueError):
@@ -84,7 +84,19 @@ def _(exc: InvalidCursorError, _: str) -> HTTPException:
 
 @handle_exception.register
 def _(exc: ReconcileWindowTooLargeError, _: str) -> HTTPException:
-    return HTTPException(status_code=400, detail=exc.detail)
+    # Structured, so a client can lower its page size by the numbers rather than parse a sentence.
+    return HTTPException(
+        status_code=400,
+        detail={
+            "code": exc.code,
+            "message": "source_selection=reconcile would merge more days on the fly than allowed for one page; "
+            "lower `limit` or narrow the range.",
+            "days": exc.days,
+            "max_days": exc.max_days,
+            # Queued to be stored by the rollup; not a promise of when, as its budget decides.
+            "queued": exc.queued,
+        },
+    )
 
 
 @handle_exception.register

@@ -5,7 +5,6 @@ from app.database import DbSession
 from app.models import DataSource, HealthScore
 from app.repositories import HealthScoreRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.repositories.repositories import SourceRanking
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import (
     HealthScoreCreate,
@@ -14,6 +13,7 @@ from app.schemas.model_crud.activities import (
     HealthScoreUpdate,
 )
 from app.schemas.utils.metadata import SourceMetadata
+from app.services.priority_service import priority_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
@@ -67,7 +67,7 @@ class HealthScoreService(
             db_session,
             user_id,
             params,
-            SourceRanking.load(db_session),
+            priority_service.get_source_ranking(db_session),
         )
         return [self._to_response(score, data_source) for score, data_source in rows], total_count
 

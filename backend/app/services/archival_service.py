@@ -37,6 +37,7 @@ from app.schemas.utils import (
     StorageEstimate,
 )
 from app.services.aggregate_backfill_service import aggregate_backfill_service
+from app.services.priority_service import priority_service
 from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -278,7 +279,7 @@ class ArchivalService:
 
         merged, ranking = 0, None
         while not out_of_time() and (batch := rollup_queue.pop_reconcile_days(RECONCILE_BATCH_SIZE)):
-            ranking = ranking or SourceRanking.load(db)
+            ranking = ranking or priority_service.get_source_ranking(db)
             days_by_user: dict[UUID, set[date]] = defaultdict(set)
             for user_id, day in batch:
                 # Retention has emptied these days: they cannot be merged again, so their rows stay as they are.
@@ -325,7 +326,7 @@ class ArchivalService:
         def out_of_budget() -> bool:
             return deleted >= MAX_ROWS_PER_RUN or time.monotonic() - started >= MAX_SECONDS_PER_RUN
 
-        ranking = SourceRanking.load(db) if rollup and settings.reconcile_enabled else None
+        ranking = priority_service.get_source_ranking(db) if rollup and settings.reconcile_enabled else None
         before, after = utc_midnight(cutoff) + OFFSET_REACH, _FIRST_ID
         while sources := self.archive_repo.sources_with_samples_before(db, before, after, RETENTION_SOURCES_PER_QUERY):
             for source_id in sources:

@@ -61,19 +61,6 @@ class SourceRanking:
     provider_order: Mapping[ProviderName, int]
     device_type_order: Mapping[DeviceType, int]
 
-    @classmethod
-    def load(cls, db_session: DbSession) -> "SourceRanking":
-        """The priorities as configured now."""
-        # Imported here: the provider priority repository builds on this module.
-        from app.models import ProviderPriority
-        from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
-        from app.repositories.provider_priority_repository import ProviderPriorityRepository
-
-        return cls(
-            ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session),
-            DeviceTypePriorityRepository().get_priority_order(db_session),
-        )
-
     def rank(self, provider: str | None, device_type: str | None) -> tuple[int, int]:
         """A source's place by its provider and device type, lowest first."""
         return self.provider_order.get(provider, UNRANKED_PRIORITY), self.device_type_order.get(

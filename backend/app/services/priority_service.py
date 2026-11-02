@@ -1,4 +1,3 @@
-import contextlib
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -7,6 +6,7 @@ from app.database import DbSession
 from app.models import DataSource, ProviderPriority
 from app.repositories import DataSourceRepository, ProviderPriorityRepository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
+from app.repositories.repositories import SourceRanking
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.data_priority import (
     DataSourceListResponse,
@@ -18,7 +18,6 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityListResponse,
     ProviderPriorityResponse,
 )
-from app.services.providers.factory import ProviderFactory
 from app.utils.exceptions import handle_exceptions
 
 
@@ -29,14 +28,17 @@ class PriorityService:
         self.device_type_priority_repo = DeviceTypePriorityRepository()
         self.data_source_repo = DataSourceRepository(DataSource)
 
+    def get_source_ranking(self, db_session: DbSession) -> SourceRanking:
+        """The provider and device type priorities as configured now, to rank a user's data sources by."""
+        return SourceRanking(
+            self.priority_repo.get_priority_order(db_session),
+            self.device_type_priority_repo.get_priority_order(db_session),
+        )
+
     def _to_provider_response(self, priority: ProviderPriority) -> ProviderPriorityResponse:
-        """Enrich a priority row with the strategy's display name and icon, like provider settings do."""
-        response = ProviderPriorityResponse.model_validate(priority)
-        with contextlib.suppress(ValueError):
-            strategy = ProviderFactory().get_provider(str(priority.provider))
-            response.name = strategy.display_name
-            response.icon_url = strategy.icon_url
-        return response
+        # The display name and icon are added by the priorities routes: the provider strategies they come from
+        # import the services that read get_source_ranking, so importing them here would be circular.
+        return ProviderPriorityResponse.model_validate(priority)
 
     @handle_exceptions
     def get_provider_priorities(
