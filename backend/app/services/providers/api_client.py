@@ -99,12 +99,7 @@ def get_valid_token(
         )
 
     if not _is_token_fresh(connection.token_expires_at):
-        # Scope distributed lock per user/provider to avoid concurrent refresh race conditions.
-
-        redis_client = get_redis_client()
-        lock_key = f"token_refresh_lock:{provider_name}:{user_id}"
-
-        with redis_client.lock(lock_key, timeout=60, blocking_timeout=10, sleep=0.2):
+        with _refresh_lock(provider_name, user_id):
             # Fetch and refresh connection instance inside the lock
             connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
             if not connection:
@@ -150,6 +145,13 @@ def get_valid_token(
     return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
 
 
+def _refresh_lock(provider_name: str, user_id: UUID) -> Any:
+    """Per user and provider, so concurrent refreshes can't race each other."""
+    return get_redis_client().lock(
+        f"token_refresh_lock:{provider_name}:{user_id}", timeout=60, blocking_timeout=10, sleep=0.2
+    )
+
+
 def _reload_token_after_401(
     db: DbSession,
     user_id: UUID,
@@ -158,14 +160,26 @@ def _reload_token_after_401(
     oauth: BaseOAuthTemplate,
     rejected_token: str,
 ) -> str | None:
-    """Re-read the token after the provider rejected it; return it only if it changed.
+    """A token to retry with after the provider rejected one, or None when there is none.
 
-    The rejected token may come from the session cache while another worker has
-    already refreshed the connection, which revokes the old access token at some providers.
+    Another worker may have refreshed the connection since, which voids the old token at some
+    providers. Otherwise the token is refreshed early: a grant the user revoked at the provider
+    rejects its refresh token as well, which revokes the connection and raises ReauthRequiredError.
     """
     invalidate_cached_token(db, user_id, provider_name)
-    token = get_valid_token(db, user_id, provider_name, connection_repo, oauth)
-    return token if token != rejected_token else None
+    cache_key = (user_id, provider_name)
+    with _refresh_lock(provider_name, user_id):
+        connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
+        if not connection or not connection.access_token:
+            return None
+        db.refresh(connection)
+        if connection.access_token != rejected_token:
+            return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
+        # Without a refresh token the grant can't be told apart from an endpoint the user didn't consent to
+        if not connection.refresh_token:
+            return None
+        token_response = oauth.refresh_access_token(db, user_id, connection.refresh_token)
+        return _cache_token(db, cache_key, token_response.access_token, connection.token_expires_at)
 
 
 def make_authenticated_request(
