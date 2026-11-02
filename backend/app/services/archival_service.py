@@ -12,6 +12,7 @@ from logging import Logger, getLogger
 from uuid import UUID
 
 from celery.exceptions import SoftTimeLimitExceeded
+from fastapi import HTTPException
 
 from app.database import DbSession
 from app.integrations import rollup_queue
@@ -73,9 +74,13 @@ class ArchivalService:
         # Imported here: the task package imports this module.
         from app.integrations.celery.tasks.aggregate_backfill_task import run_aggregate_backfill
 
-        setting = self.settings_repo.update(
-            db, update.rollup_enabled, update.history_rollup_enabled, update.delete_after_days
-        )
+        new = update.applied_to(ArchivalSettingRead.model_validate(self.settings_repo.get(db)))
+        if new.history_rollup_enabled and not new.rollup_enabled:
+            raise HTTPException(
+                status_code=422,
+                detail="history_rollup_enabled needs rollup_enabled: the days after it would not be rolled up",
+            )
+        setting = self.settings_repo.update(db, new.rollup_enabled, new.history_rollup_enabled, new.delete_after_days)
         if setting.history_rollup_enabled and not aggregate_backfill_service.is_done(db):
             run_aggregate_backfill.delay()
         return self._settings_with_estimate(db, setting)

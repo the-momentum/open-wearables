@@ -48,7 +48,7 @@ def get_archival_settings(
         "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), "
         "history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; "
         "needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). "
-        "Set delete_after_days to null to keep samples indefinitely."
+        "Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value."
     ),
 )
 def update_archival_settings(

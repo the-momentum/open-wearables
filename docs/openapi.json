@@ -9946,7 +9946,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely.",
+        "description": "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -11636,16 +11636,28 @@
       "ArchivalSettingUpdate": {
         "properties": {
           "rollup_enabled": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Rollup Enabled",
-            "description": "Roll samples up into daily and per-session aggregates.",
-            "default": true
+            "description": "Roll samples up into daily and per-session aggregates. Left out or null: unchanged."
           },
           "history_rollup_enabled": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "History Rollup Enabled",
-            "description": "Roll the days before up too; switched on, it starts in the background.",
-            "default": false
+            "description": "Roll the days before up too; switched on, it starts in the background. Needs rollup_enabled. Left out or null: unchanged."
           },
           "delete_after_days": {
             "anyOf": [
@@ -11659,12 +11671,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before samples are deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely; left out: unchanged."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating data lifecycle settings."
+        "description": "Request schema for updating data lifecycle settings: a field left out keeps its saved value."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {

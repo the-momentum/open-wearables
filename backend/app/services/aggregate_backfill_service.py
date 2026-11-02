@@ -70,7 +70,8 @@ class AggregateBackfillService:
 
     def steps(self, db: DbSession) -> list[BackfillStep]:
         # Our day and session rows from the history's samples join once the admin switches them on: hours on a
-        # large instance. Turned off again, the run stops after its current chunk and resumes where it left off.
+        # large instance. Turned off again, it stops with the running task, within about four minutes;
+        # switched back on, it resumes where it left off.
         history = ArchivalSettingRepository().get(db).history_rollup_enabled
         return [
             BackfillStep("suunto_speed", self._suunto_speed),

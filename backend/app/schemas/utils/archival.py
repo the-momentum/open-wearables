@@ -1,8 +1,8 @@
 """Schemas for data lifecycle / archival settings."""
 
-from typing import Literal, Self
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ArchivalSettingRead(BaseModel):
@@ -28,24 +28,28 @@ class ArchivalSettingRead(BaseModel):
 
 
 class ArchivalSettingUpdate(BaseModel):
-    """Request schema for updating data lifecycle settings."""
+    """Request schema for updating data lifecycle settings: a field left out keeps its saved value."""
 
-    rollup_enabled: bool = Field(True, description="Roll samples up into daily and per-session aggregates.")
-    history_rollup_enabled: bool = Field(
-        False, description="Roll the days before up too; switched on, it starts in the background."
+    rollup_enabled: bool | None = Field(
+        None, description="Roll samples up into daily and per-session aggregates. Left out or null: unchanged."
+    )
+    history_rollup_enabled: bool | None = Field(
+        None,
+        description="Roll the days before up too; switched on, it starts in the background. Needs rollup_enabled. "
+        "Left out or null: unchanged.",
     )
     delete_after_days: int | None = Field(
         None,
         ge=1,
         le=7300,
-        description="Days before samples are deleted. NULL to keep indefinitely.",
+        description="Days before samples are deleted. NULL to keep indefinitely; left out: unchanged.",
     )
 
-    @model_validator(mode="after")
-    def _history_needs_the_rollup(self) -> Self:
-        if self.history_rollup_enabled and not self.rollup_enabled:
-            raise ValueError("history_rollup_enabled needs rollup_enabled: the days after it would not be rolled up")
-        return self
+    def applied_to(self, saved: ArchivalSettingRead) -> ArchivalSettingRead:
+        sent = self.model_dump(exclude_unset=True)
+        return saved.model_copy(
+            update={field: value for field, value in sent.items() if value is not None or field == "delete_after_days"}
+        )
 
 
 class HistoryRollupStatus(BaseModel):

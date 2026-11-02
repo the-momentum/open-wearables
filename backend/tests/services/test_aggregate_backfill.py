@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import ValidationError
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -323,9 +323,32 @@ class TestHistoryRollupSwitch:
 
         delay.assert_not_called()
 
-    def test_it_needs_the_current_rollup(self) -> None:
-        with pytest.raises(ValidationError):
-            ArchivalSettingUpdate(rollup_enabled=False, history_rollup_enabled=True)
+    def test_it_needs_the_current_rollup(self, db: Session) -> None:
+        with pytest.raises(HTTPException) as refused:
+            archival_service.update_settings(
+                db, ArchivalSettingUpdate(rollup_enabled=False, history_rollup_enabled=True)
+            )
+        assert refused.value.status_code == 422
+
+    def test_it_needs_the_saved_current_rollup_too(self, db: Session) -> None:
+        archival_service.update_settings(db, ArchivalSettingUpdate(rollup_enabled=False))
+
+        with pytest.raises(HTTPException):
+            archival_service.update_settings(db, ArchivalSettingUpdate(history_rollup_enabled=True))
+
+    @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")
+    def test_a_field_left_out_keeps_its_saved_value(self, delay: MagicMock, db: Session) -> None:
+        archival_service.update_settings(
+            db, ArchivalSettingUpdate(rollup_enabled=True, history_rollup_enabled=True, delete_after_days=90)
+        )
+
+        settings = archival_service.update_settings(db, ArchivalSettingUpdate(delete_after_days=None)).settings
+
+        assert (settings.rollup_enabled, settings.history_rollup_enabled, settings.delete_after_days) == (
+            True,
+            True,
+            None,
+        )
 
 
 class TestBackfillTask:
