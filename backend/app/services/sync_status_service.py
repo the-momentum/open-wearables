@@ -36,6 +36,7 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.database import DbSession, SessionLocal
 from app.extensions import events as extension_events
+from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
 from app.models import SyncRun
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
@@ -338,6 +339,24 @@ def list_stored_runs(
         covered_to=covered_to,
     )
     return [SyncRunRecord.model_validate(run) for run in runs]
+
+
+def record_requested_window(run_key: str, window_start: datetime, window_end: datetime) -> None:
+    """Store the window a provider accepted a backfill request for, best effort like try_persist_run."""
+    if not settings.sync_run_tracking_enabled:
+        return
+    try:
+        with SessionLocal() as db:
+            sync_run_repository.record_window(db, run_key, window_start, window_end)
+    except Exception as exc:
+        logger.warning(
+            "Failed to record requested window", action="sync_run_window_failed", run_id=run_key, error=str(exc)
+        )
+
+
+def last_backfill_requested_until(db: DbSession, user_id: UUID, provider: str) -> datetime | None:
+    """End of the latest window the provider accepted a backfill request for."""
+    return sync_run_repository.last_window_end(db, user_id, provider, SyncSource.BACKFILL)
 
 
 def get_stored_run(db: DbSession, run_key: str) -> SyncRunDetail | None:
@@ -829,6 +848,9 @@ def emit_sync_completed(
     Finished is not the same as succeeded: pass status=PARTIAL when some types failed,
     or SKIPPED when the run was a no-op. FAILED belongs on emit_sync_failed instead.
     """
+    if scope == SyncScope.HISTORICAL:
+        # History just landed: rolled up now, not at the next 15-minute run.
+        rollup_queue.roll_up_soon()
     return emit_event(
         user_id=user_id,
         provider=provider,

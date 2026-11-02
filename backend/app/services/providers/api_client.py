@@ -15,8 +15,8 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.exceptions import (
     ProviderError,
     ProviderNotConnectedError,
-    ProviderReauthorizationRequiredError,
     ProviderTokenUnavailableError,
+    ReauthRequiredError,
     provider_error_from_response,
     provider_label,
 )
@@ -27,6 +27,52 @@ logger = get_logger(__name__)
 # Rate limiting configuration (Garmin: 100 req / 60s window)
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
+
+# Tokens are refreshed this long before they expire.
+TOKEN_REFRESH_BUFFER = timedelta(minutes=5)
+
+# A sync makes many provider requests on one session, so the token is kept on the session instead of
+# re-reading user_connection each time; only this long, so a disconnect made elsewhere stops the sync.
+TOKEN_CACHE_TTL_SECONDS = 60.0
+
+# Session.info key of that cache: (user_id, provider) -> (access_token, token_expires_at, cached at).
+_TOKEN_CACHE_KEY = "provider_access_tokens"
+
+# A grant that answers only 401/403 for this long is dead: a revoke at a provider without refresh tokens
+# (Polar) or a lapsed Oura membership. A single success resets it, so a refused endpoint alone never counts.
+DEAD_GRANT_AFTER = timedelta(days=1)
+
+# Session.info key of the grants this session has already seen succeed.
+_AUTH_OK_KEY = "provider_auth_ok"
+
+
+def _token_cache(db: DbSession) -> dict[tuple[UUID, str], tuple[str, datetime | None, float]]:
+    return db.info.setdefault(_TOKEN_CACHE_KEY, {})
+
+
+def _cached_token(db: DbSession, key: tuple[UUID, str]) -> str | None:
+    cache = _token_cache(db)
+    if (entry := cache.get(key)) is None:
+        return None
+    token, expires_at, cached_at = entry
+    if time.monotonic() - cached_at < TOKEN_CACHE_TTL_SECONDS and _is_token_fresh(expires_at):
+        return token
+    del cache[key]
+    return None
+
+
+def _cache_token(db: DbSession, key: tuple[UUID, str], token: str, expires_at: datetime | None) -> str:
+    _token_cache(db)[key] = (token, expires_at, time.monotonic())
+    return token
+
+
+def _is_token_fresh(token_expires_at: datetime | None) -> bool:
+    return not token_expires_at or token_expires_at >= datetime.now(timezone.utc) + TOKEN_REFRESH_BUFFER
+
+
+def invalidate_cached_token(db: DbSession, user_id: UUID, provider_name: str) -> None:
+    """Drop the session's cached token, so the next get_valid_token reads the connection again."""
+    _token_cache(db).pop((user_id, provider_name), None)
 
 
 def _body_status(result: dict[str, Any]) -> int:
@@ -53,24 +99,21 @@ def get_valid_token(
     Used by make_authenticated_request and by calls that send the token outside
     of it, e.g. provider deregistration.
     """
+    cache_key = (user_id, provider_name)
+    if cached := _cached_token(db, cache_key):
+        return cached
+
     connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
     if not connection:
         raise ProviderNotConnectedError(provider_name)
+    connection_repo.reload_tokens(db, connection)
 
     # SDK-based providers don't have access tokens
     if not connection.access_token:
         raise ProviderTokenUnavailableError(provider_name)
 
-    # Check if token is expired (with 5 minute buffer)
-    if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
-        if not connection.refresh_token:
-            raise ProviderReauthorizationRequiredError(provider_name)
-        # Scope distributed lock per user/provider to avoid concurrent refresh race conditions.
-
-        redis_client = get_redis_client()
-        lock_key = f"token_refresh_lock:{provider_name}:{user_id}"
-
-        with redis_client.lock(lock_key, timeout=60, blocking_timeout=10, sleep=0.2):
+    if not _is_token_fresh(connection.token_expires_at):
+        with _refresh_lock(provider_name, user_id):
             # Fetch and refresh connection instance inside the lock
             connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
             if not connection:
@@ -78,24 +121,96 @@ def get_valid_token(
             if not connection.access_token:
                 raise ProviderTokenUnavailableError(provider_name)
 
-            db.refresh(connection)
+            connection_repo.reload_tokens(db, connection)
 
             # 1. If the token never expires, return it directly
             # 2. If it expires in the future (> 5 min buffer), return existing token
-            now = datetime.now(timezone.utc)
-            if not connection.token_expires_at or connection.token_expires_at >= now + timedelta(minutes=5):
-                return connection.access_token
+            if _is_token_fresh(connection.token_expires_at):
+                return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
 
-            # Guard against missing refresh token before attempting OAuth refresh
+            now = datetime.now(timezone.utc)
+
+            # Expired with nothing to refresh it with: the grant is dead, so revoke it like a
+            # rejected refresh token (stops retries, emits connection.revoked).
             if not connection.refresh_token:
-                raise ProviderReauthorizationRequiredError(provider_name)
+                # Inside the refresh buffer but not yet expired: keep using the token until it dies.
+                if connection.token_expires_at and connection.token_expires_at > now:
+                    return connection.access_token
+                if revoke_on_failure:
+                    oauth.revoke_connection(db, user_id, reason="no_refresh_token")
+                raise ReauthRequiredError(provider_name, user_id, "Token expired and no refresh token available")
 
             token_response = oauth.refresh_access_token(
                 db, user_id, connection.refresh_token, revoke_on_failure=revoke_on_failure
             )
-            return token_response.access_token
+            # The refresh stored the new expiry on this session's connection
+            return _cache_token(db, cache_key, token_response.access_token, connection.token_expires_at)
 
-    return connection.access_token
+    return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
+
+
+def _failing_since_key(provider_name: str, user_id: UUID) -> str:
+    return f"provider_auth_failing_since:{provider_name}:{user_id}"
+
+
+def _note_auth_success(db: DbSession, user_id: UUID, provider_name: str) -> None:
+    seen = db.info.setdefault(_AUTH_OK_KEY, set())
+    if (user_id, provider_name) not in seen:
+        get_redis_client().delete(_failing_since_key(provider_name, user_id))
+        seen.add((user_id, provider_name))
+
+
+def _note_auth_failure(db: DbSession, user_id: UUID, provider_name: str, oauth: BaseOAuthTemplate) -> None:
+    """Revoke the grant and raise ReauthRequiredError once it has failed without a success for DEAD_GRANT_AFTER."""
+    db.info.setdefault(_AUTH_OK_KEY, set()).discard((user_id, provider_name))
+    redis_client = get_redis_client()
+    key = _failing_since_key(provider_name, user_id)
+    now = time.time()
+    redis_client.set(key, now, nx=True, ex=int(2 * DEAD_GRANT_AFTER.total_seconds()))
+    if now - float(redis_client.get(key) or now) < DEAD_GRANT_AFTER.total_seconds():
+        return
+    redis_client.delete(key)
+    oauth.revoke_connection(db, user_id, reason="auth_failing")
+    raise ReauthRequiredError(
+        provider_name, user_id, f"{provider_name} rejected every request for a day; reconnection required"
+    )
+
+
+def _refresh_lock(provider_name: str, user_id: UUID) -> Any:
+    """Per user and provider, so concurrent refreshes can't race each other."""
+    return get_redis_client().lock(
+        f"token_refresh_lock:{provider_name}:{user_id}", timeout=60, blocking_timeout=10, sleep=0.2
+    )
+
+
+def _reload_token_after_401(
+    db: DbSession,
+    user_id: UUID,
+    provider_name: str,
+    connection_repo: UserConnectionRepository,
+    oauth: BaseOAuthTemplate,
+    rejected_token: str,
+) -> str | None:
+    """A token to retry with after the provider rejected one, or None when there is none.
+
+    Another worker may have refreshed the connection since, which voids the old token at some
+    providers. Otherwise the token is refreshed early: a grant the user revoked at the provider
+    rejects its refresh token as well, which revokes the connection and raises ReauthRequiredError.
+    """
+    invalidate_cached_token(db, user_id, provider_name)
+    cache_key = (user_id, provider_name)
+    with _refresh_lock(provider_name, user_id):
+        connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
+        if not connection or not connection.access_token:
+            return None
+        connection_repo.reload_tokens(db, connection)
+        if connection.access_token != rejected_token:
+            return _cache_token(db, cache_key, connection.access_token, connection.token_expires_at)
+        # Without a refresh token the grant can't be told apart from an endpoint the user didn't consent to
+        if not connection.refresh_token:
+            return None
+        token_response = oauth.refresh_access_token(db, user_id, connection.refresh_token)
+        return _cache_token(db, cache_key, token_response.access_token, connection.token_expires_at)
 
 
 def make_authenticated_request(
@@ -166,6 +281,7 @@ def make_authenticated_request(
 
     # Make request with retry logic for rate limiting
     url = f"{api_base_url}{endpoint}"
+    token_reloaded = False
 
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -203,6 +319,7 @@ def make_authenticated_request(
                 raise provider_error_from_response(provider_name, response.status_code, response.text)
 
             response.raise_for_status()
+            _note_auth_success(db, user_id, provider_name)
 
             # Handle non-JSON responses (e.g., 202 Accepted with empty body)
             if not expect_json:
@@ -254,6 +371,17 @@ def make_authenticated_request(
                 time.sleep(backoff_delay)
                 continue
 
+            if e.response.status_code == 401 and not token_reloaded and attempt < MAX_RETRIES:
+                token_reloaded = True
+                if new_token := _reload_token_after_401(
+                    db, user_id, provider_name, connection_repo, oauth, access_token
+                ):
+                    access_token = new_token
+                    request_headers["Authorization"] = f"Bearer {access_token}"
+                    continue
+            if e.response.status_code in (401, 403):
+                _note_auth_failure(db, user_id, provider_name, oauth)
+
             logger.error(
                 "API error",
                 provider_name=provider_name,
@@ -290,6 +418,7 @@ def download_binary_content(
     """
     access_token = get_valid_token(db, user_id, provider_name, connection_repo, oauth)
     headers = {"Authorization": f"Bearer {access_token}"}
+    token_reloaded = False
 
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -298,6 +427,12 @@ def download_binary_content(
             )
         except httpx.RequestError as e:
             raise ProviderError(provider_name) from e
+        if response.status_code == 401 and not token_reloaded and attempt < MAX_RETRIES:
+            token_reloaded = True
+            if new_token := _reload_token_after_401(db, user_id, provider_name, connection_repo, oauth, access_token):
+                access_token = new_token
+                headers["Authorization"] = f"Bearer {access_token}"
+                continue
         if response.status_code == 429 and attempt < MAX_RETRIES:
             backoff_delay = RETRY_BASE_DELAY * (2**attempt)
             logger.warning(
@@ -309,8 +444,11 @@ def download_binary_content(
             )
             time.sleep(backoff_delay)
             continue
+        if response.status_code in (401, 403):
+            _note_auth_failure(db, user_id, provider_name, oauth)
         if response.is_error:
             raise provider_error_from_response(provider_name, response.status_code, response.text)
+        _note_auth_success(db, user_id, provider_name)
         return response.content
 
     raise ProviderError(provider_name, f"Failed to download binary content from {provider_label(provider_name)}")

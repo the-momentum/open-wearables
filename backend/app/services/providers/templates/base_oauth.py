@@ -28,7 +28,7 @@ from app.services.outgoing_webhooks.events import on_connection_created, on_conn
 from app.utils.exceptions import (
     InvalidInputError,
     ProviderError,
-    ProviderReauthorizationRequiredError,
+    ReauthRequiredError,
     provider_error_from_response,
     provider_label,
 )
@@ -183,8 +183,8 @@ class BaseOAuthTemplate(ABC):
             # 400/401 = refresh token is dead so revoke + notify
             if e.response.status_code in (HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED):
                 if revoke_on_failure:
-                    self._revoke_connection(db, user_id, reason="refresh_failed")
-                raise ProviderReauthorizationRequiredError(self.provider_name) from e
+                    self.revoke_connection(db, user_id, reason="refresh_failed")
+                raise ReauthRequiredError(self.provider_name, user_id, "Refresh token rejected") from e
             raise provider_error_from_response(self.provider_name, e.response.status_code, e.response.text) from e
         except (httpx.RequestError, ValueError) as e:
             # no response, or one that isn't a token (ValueError covers bad JSON and validation)
@@ -196,7 +196,7 @@ class BaseOAuthTemplate(ABC):
             )
             raise ProviderError(self.provider_name, f"{provider_label(self.provider_name)} token refresh failed") from e
 
-    def _revoke_connection(self, db: DbSession, user_id: UUID, *, reason: str) -> None:
+    def revoke_connection(self, db: DbSession, user_id: UUID, *, reason: str) -> None:
         """Mark the connection revoked and emit a connection.revoked webhook."""
         connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.provider_name)
         if not connection or connection.status == ConnectionStatus.REVOKED:

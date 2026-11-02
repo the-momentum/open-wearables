@@ -28,7 +28,7 @@ def _token_args(connection: Any) -> dict[str, Any]:
     connection_repo = MagicMock()
     connection_repo.get_by_user_and_provider.return_value = connection
     return {
-        "db": MagicMock(),
+        "db": MagicMock(info={}),
         "user_id": uuid4(),
         "provider_name": "garmin",
         "connection_repo": connection_repo,
@@ -38,7 +38,7 @@ def _token_args(connection: Any) -> dict[str, Any]:
 
 def _request_args() -> dict[str, Any]:
     return {
-        "db": MagicMock(),
+        "db": MagicMock(info={}),
         "user_id": uuid4(),
         "connection_repo": MagicMock(),
         "oauth": MagicMock(),
@@ -88,7 +88,10 @@ class TestMakeAuthenticatedRequest:
         request.side_effect = list(responses)
         return request
 
-    def test_rejected_token_means_the_user_must_reconnect(self, mock_client: MagicMock, mock_token: MagicMock) -> None:
+    @patch("app.services.providers.api_client._reload_token_after_401", return_value=None)
+    def test_rejected_token_means_the_user_must_reconnect(
+        self, mock_reload: MagicMock, mock_client: MagicMock, mock_token: MagicMock
+    ) -> None:
         self._answer(mock_client, _response(401, text="invalid_token"))
 
         with pytest.raises(ProviderReauthorizationRequiredError):

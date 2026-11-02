@@ -127,26 +127,14 @@ class TestLogin:
         assert response.status_code == 200
         assert response.json()["password_change"] is None
 
-    @pytest.mark.parametrize(
-        ("environment", "expected"),
-        [
-            (EnvironmentType.PRODUCTION, "required"),
-            (EnvironmentType.LOCAL, "recommended"),
-        ],
-    )
-    def test_login_with_default_password_asks_for_a_change(
-        self,
-        client: TestClient,
-        db: Session,
-        api_v1_prefix: str,
-        environment: EnvironmentType,
-        expected: str,
+    def test_login_with_default_password_recommends_a_change_outside_production(
+        self, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
         # Arrange
         DeveloperFactory(email="admin@admin.com", password=DEFAULT_ADMIN_PASSWORD)
 
         # Act
-        with patch.object(settings, "environment", environment):
+        with patch.object(settings, "environment", EnvironmentType.LOCAL):
             response = client.post(
                 f"{api_v1_prefix}/auth/login",
                 data={"username": "admin@admin.com", "password": DEFAULT_ADMIN_PASSWORD},
@@ -154,7 +142,27 @@ class TestLogin:
 
         # Assert
         assert response.status_code == 200
-        assert response.json()["password_change"] == expected
+        assert response.json()["password_change"] == "recommended"
+
+    @pytest.mark.parametrize("email", ["admin@admin.com", "nobody@example.com"])
+    def test_login_with_default_password_is_refused_in_production(
+        self, client: TestClient, db: Session, api_v1_prefix: str, email: str
+    ) -> None:
+        """No session at all, and the same answer whether or not the account exists."""
+        # Arrange
+        DeveloperFactory(email="admin@admin.com", password=DEFAULT_ADMIN_PASSWORD)
+
+        # Act
+        with patch.object(settings, "environment", EnvironmentType.PRODUCTION):
+            response = client.post(
+                f"{api_v1_prefix}/auth/login",
+                data={"username": email, "password": DEFAULT_ADMIN_PASSWORD},
+            )
+
+        # Assert
+        assert response.status_code == 403
+        assert "ADMIN_PASSWORD" in response.json()["detail"]
+        assert "access_token" not in response.json()
 
 
 class TestLogout:

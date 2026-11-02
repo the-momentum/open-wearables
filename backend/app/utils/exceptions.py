@@ -34,6 +34,10 @@ class AppError(Exception):
         return 400 <= self.status_code < 500
 
 
+# Error code a dead grant is reported under, in sync logs and per-notification results
+REAUTH_REQUIRED = "reauth_required"
+
+
 class InvalidInputError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
     code = "BAD_REQUEST"
@@ -247,6 +251,18 @@ class InvitationWithdrawnError(InvalidInputError):
 
     def __init__(self, invitation_status: str) -> None:
         super().__init__(f"Invitation is {invitation_status}")
+
+
+class ReauthRequiredError(ProviderReauthorizationRequiredError):
+    """The grant is dead and the connection revoked: nothing fetches until the user reconnects.
+
+    ``reason`` says why, for logs; the client gets the generic ``detail``.
+    """
+
+    def __init__(self, provider: str, user_id: UUID, reason: str) -> None:
+        self.user_id = user_id
+        self.reason = reason
+        super().__init__(provider)
 
 
 def integrity_violation(exc: IntegrityError | PsycopgIntegrityError) -> BaseException | None:

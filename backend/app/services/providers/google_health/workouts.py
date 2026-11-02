@@ -17,15 +17,21 @@ from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
+from app.schemas.providers.google import TimeShape
 from app.services.event_record_service import event_record_service
+from app.services.providers.google_health.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    SESSION_PAGE_SIZE,
     extract_form_factor,
     extract_source,
+    next_page_token,
     parse_duration_seconds,
     parse_interval,
+    parse_page,
     parse_rfc3339,
     read_number,
+    time_filter,
     zone_offset_from,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -43,7 +49,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
     """Fetches Google Health API Exercise sessions and stores them as workout EventRecords."""
 
     LIST_ENDPOINT = DATAPOINTS_LIST_ENDPOINT.format(data_type="exercise")
-    PAGE_SIZE = 1000
+    PAGE_SIZE = SESSION_PAGE_SIZE
 
     def __init__(
         self,
@@ -65,21 +71,23 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
     ) -> list[dict[str, Any]]:
         """List Exercise DataPoints and keep those starting within the sync window.
 
-        list has no range parameter, so we filter client-side on the exercise interval.
+        civil_start_time carries no offset, so the filter is padded a day and gated below.
         """
+        point_filter = time_filter("exercise", TimeShape.INTERVAL, start_date, end_date, session_interval=True)
         kept: list[dict[str, Any]] = []
-        for point in self._fetch_points(db, user_id):
+        for point in self._fetch_points(db, user_id, point_filter):
             interval = (point.get("exercise") or {}).get("interval") or {}
             start = parse_rfc3339(interval.get("startTime"))
             if start is not None and start_date <= start < end_date:
                 kept.append(point)
         return kept
 
-    def _fetch_points(self, db: DbSession, user_id: UUID) -> list[dict[str, Any]]:
+    def _fetch_points(self, db: DbSession, user_id: UUID, point_filter: str) -> list[dict[str, Any]]:
         points: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen: set[str] = set()
         while True:
-            params: dict[str, Any] = {"pageSize": self.PAGE_SIZE}
+            params: dict[str, Any] = {"pageSize": self.PAGE_SIZE, "filter": point_filter}
             if page_token:
                 params["pageToken"] = page_token
             response = self._make_api_request(db, user_id, self.LIST_ENDPOINT, method="GET", params=params)
@@ -90,10 +98,9 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
                 user_id=str(user_id),
                 trace_id=self.LIST_ENDPOINT,
             )
-            if not isinstance(response, dict):
-                break
-            points.extend(response.get("dataPoints", []))
-            page_token = response.get("nextPageToken")
+            page = parse_page(response, self.LIST_ENDPOINT)
+            points.extend(page.data_points)
+            page_token = next_page_token(page, seen, self.LIST_ENDPOINT)
             if not page_token:
                 break
         return points
@@ -143,6 +150,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
             record_id=workout_id,
             moving_time_seconds=as_int(parse_duration_seconds(exercise.get("activeDuration"))),
             energy_burned=read_number(metrics, "caloriesKcal"),
+            energy_series=WORKOUT_ENERGY_SERIES,
             distance=read_number(metrics, "distanceMillimeters", scale=_MM_TO_M),
             steps_count=as_int(read_number(metrics, "steps")),
             average_speed=read_number(metrics, "averageSpeedMillimetersPerSecond", scale=_MM_TO_M),
