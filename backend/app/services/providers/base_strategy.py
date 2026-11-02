@@ -6,6 +6,7 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -42,6 +43,7 @@ class ProviderCoverage:
     sleep_fields:           EventRecordDetail fields populated in sleep records
     menstrual_cycle_fields: EventRecordDetail fields populated in menstrual-cycle records
     health_scores:          HealthScoreCategory values produced by this provider
+    meal_fields:            EventRecordDetail fields populated in meal records
 
     Define the frozensets in the provider's coverage.py and assign here in
     strategy.py — keeps implementation files free of metadata declarations.
@@ -54,6 +56,7 @@ class ProviderCoverage:
     sleep_fields: frozenset[str] = field(default_factory=frozenset)
     menstrual_cycle_fields: frozenset[str] = field(default_factory=frozenset)
     health_scores: frozenset[HealthScoreCategory] = field(default_factory=frozenset)
+    meal_fields: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -84,8 +87,9 @@ class ProviderCapabilities:
         ``True``). Oura, Strava, Fitbit, Polar.
     webhook_registration_api:
         Provider exposes an API to programmatically register and update
-        webhook subscriptions. When ``True``, switching to webhook live-sync
-        mode triggers the ``register_provider_webhooks`` Celery task.
+        webhook subscriptions. When ``True``, any live-sync mode change
+        triggers the ``reconcile_provider_webhooks`` Celery task, which
+        registers on ``webhook`` and deletes on ``pull``.
         Polar, Oura, Strava, Withings.
     webhook_subscription_per_user:
         Subscriptions are created with a connection's own bearer token, so one
@@ -192,6 +196,22 @@ class BaseProviderStrategy(ABC):
                 )
         """
 
+    def apply_live_sync_mode(self, mode: LiveSyncMode) -> None:
+        """Bring this provider's webhook subscriptions in line with a new live-sync mode.
+
+        Dispatched rather than run inline: reconciliation talks to the provider's
+        API and, for per-user providers, fans out one task per connection.
+        Override for a provider that reconciles by some other means.
+        """
+        if not self.capabilities.webhook_registration_api:
+            return
+
+        celery_app.send_task(
+            CeleryTask.RECONCILE_PROVIDER_WEBHOOKS,
+            args=[self.name, mode],
+            queue=CeleryQueue.WEBHOOK_SYNC,
+        )
+
     def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
         """Dispatch an async historical data sync.
 
@@ -207,7 +227,7 @@ class BaseProviderStrategy(ABC):
         start_date = end_date - timedelta(days=days)
 
         task = celery_app.send_task(
-            "app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data",
+            CeleryTask.SYNC_VENDOR_DATA,
             kwargs={
                 "user_id": str(user_id),
                 "start_date": start_date.isoformat(),
@@ -235,6 +255,17 @@ class BaseProviderStrategy(ABC):
     def has_cloud_api(self) -> bool:
         """Returns True if provider uses cloud OAuth API."""
         return self.oauth is not None
+
+    @property
+    def credentials_configured(self) -> bool:
+        """False when a cloud provider is missing its OAuth client ID or secret.
+
+        SDK-only providers need no credentials, so they always count as configured.
+        """
+        if self.oauth is None:
+            return True
+        credentials = self.oauth.credentials
+        return bool(credentials.client_id and credentials.client_secret)
 
     @property
     def live_sync_configurable(self) -> bool:

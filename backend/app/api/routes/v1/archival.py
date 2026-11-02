@@ -1,27 +1,38 @@
 """API endpoints for data lifecycle / archival settings.
 
-Admin-only endpoints to configure when live time-series data is archived
-(aggregated into daily rows) and when old data is permanently deleted.
+Admin-only endpoints to switch the nightly rollup of samples into daily and per-session
+aggregates, and to set when old samples are permanently deleted.
 """
 
 from logging import getLogger
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.config import settings
 from app.database import DbSession
 from app.integrations.celery.tasks.archival_task import run_daily_archival
 from app.schemas.utils import ArchivalSettingUpdate, ArchivalSettingWithEstimate
 from app.services import DeveloperDep
 from app.services.archival_service import archival_service
 
-router = APIRouter()
 logger = getLogger(__name__)
+
+
+def _require_data_lifecycle_enabled(_developer: DeveloperDep) -> None:
+    if not settings.data_lifecycle_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Data lifecycle is not enabled (set DATA_LIFECYCLE_ENABLED=true in the backend environment).",
+        )
+
+
+router = APIRouter(dependencies=[Depends(_require_data_lifecycle_enabled)])
 
 
 @router.get(
     "/settings/archival",
     summary="Get data lifecycle settings",
-    description="Returns current archival/retention configuration and storage size estimates.",
+    description="Returns current rollup/retention configuration and storage size estimates.",
 )
 def get_archival_settings(
     db: DbSession,
@@ -34,9 +45,9 @@ def get_archival_settings(
     "/settings/archival",
     summary="Update data lifecycle settings",
     description=(
-        "Configure archive_after_days (when live data is aggregated) and "
-        "delete_after_days (when old data is permanently removed). "
-        "Set to null to disable."
+        "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) "
+        "and delete_after_days (when old samples are permanently removed, rolled up first). "
+        "Set delete_after_days to null to keep samples indefinitely."
     ),
 )
 def update_archival_settings(
@@ -50,8 +61,8 @@ def update_archival_settings(
 @router.post(
     "/settings/archival/run",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Trigger archival job manually",
-    description="Dispatches the daily archival + retention job via Celery. Returns immediately with the task ID.",
+    summary="Trigger the data lifecycle job manually",
+    description="Dispatches the daily rollup + retention job via Celery. Returns immediately with the task ID.",
 )
 def trigger_archival(
     _developer: DeveloperDep,

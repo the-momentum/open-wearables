@@ -17,6 +17,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
+from app.models import EventRecord, HealthScore
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -31,6 +33,7 @@ from app.services.sdk.sleep_service import (
     finish_sleep,
     handle_sleep_data,
 )
+from tests.factories import UserFactory
 
 
 def _dt(iso: str) -> datetime:
@@ -449,10 +452,11 @@ class TestFinishSleep:
 
         # Total duration should include sleeping time
         assert detail.sleep_total_duration_minutes > 0
-        # Deep/rem/light should all be 0 (no breakdown available)
-        assert detail.sleep_deep_minutes == 0
-        assert detail.sleep_rem_minutes == 0
-        assert detail.sleep_light_minutes == 0
+        # No breakdown available, so the stages are unreported
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_awake_minutes is None
         # Stages should be present
         assert detail.sleep_stages is not None
         assert len(detail.sleep_stages) == 3
@@ -526,10 +530,77 @@ class TestFinishSleep:
         assert detail.sleep_total_duration_minutes == 245  # light+deep+rem (no sleeping)
 
 
+def _stage(stage: SleepStageType, start: str, end: str) -> SleepStateStage:
+    return SleepStateStage(stage=stage, start_time=_dt(start), end_time=_dt(end))
+
+
+class TestFinishSleepUnreportedStages:
+    """Phases a source did not measure are saved as None; measured zeros stay 0."""
+
+    @staticmethod
+    def _finish(db: Session, stages: list[SleepStateStage]) -> EventRecordDetailCreate:
+        with (
+            patch("app.services.sdk.sleep_service.event_record_service") as mock_event_service,
+            patch("app.services.sdk.sleep_service.delete_sleep_state"),
+        ):
+            mock_event_service.create.return_value = MagicMock(id=uuid4())
+            mock_event_service.find_adjacent_sleep_record.return_value = None
+            state = SleepState(
+                uuid=str(uuid4()),
+                source_name="iPhone",
+                provider="apple",
+                start_time=stages[0].start_time,
+                end_time=stages[-1].end_time,
+                last_start_timestamp=stages[-1].start_time,
+                last_end_timestamp=stages[-1].end_time,
+                stages=stages,
+            )
+            finish_sleep(db, str(uuid4()), state)
+            return mock_event_service.create_detail.call_args[0][1]
+
+    def test_only_in_bed_leaves_all_stages_none(self, db: Session) -> None:
+        detail = self._finish(db, [_stage(SleepStageType.IN_BED, "2026-03-15T23:00:00Z", "2026-03-16T07:00:00Z")])
+
+        assert detail.sleep_total_duration_minutes == 480
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_awake_minutes is None
+
+    def test_sleeping_and_awake_keep_awake_minutes(self, db: Session) -> None:
+        detail = self._finish(
+            db,
+            [
+                _stage(SleepStageType.SLEEPING, "2026-03-15T23:00:00Z", "2026-03-16T02:00:00Z"),
+                _stage(SleepStageType.AWAKE, "2026-03-16T02:00:00Z", "2026-03-16T02:20:00Z"),
+                _stage(SleepStageType.SLEEPING, "2026-03-16T02:20:00Z", "2026-03-16T06:00:00Z"),
+            ],
+        )
+
+        assert detail.sleep_awake_minutes == 20
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+
+    def test_detailed_stages_without_rem_or_awake_report_zero(self, db: Session) -> None:
+        detail = self._finish(
+            db,
+            [
+                _stage(SleepStageType.LIGHT, "2026-03-15T23:00:00Z", "2026-03-16T01:00:00Z"),
+                _stage(SleepStageType.DEEP, "2026-03-16T01:00:00Z", "2026-03-16T02:00:00Z"),
+            ],
+        )
+
+        assert detail.sleep_light_minutes == 120
+        assert detail.sleep_deep_minutes == 60
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_awake_minutes == 0
+
+
 class TestHandleSleepDataIntegration:
     """Integration tests for handle_sleep_data with real payload structures."""
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps")
+    @patch("app.services.sdk.sleep_service.celery_app")
     @patch("app.services.sdk.sleep_service.event_record_service")
     @patch("app.services.sdk.sleep_service.get_redis_client")
     def test_handle_real_payload_sleeping_stages(
@@ -562,11 +633,11 @@ class TestHandleSleepDataIntegration:
         handle_sleep_data(db, request, user_id)
 
         # Sleep state should be saved to Redis (session not yet finalized —
-        # that happens via finalize_stale_sleeps.delay())
+        # that happens via the dispatched finalize_stale_sleeps task)
         assert mock_redis.set.called
 
         # The finalize task should be dispatched
-        mock_finalize.delay.assert_called_once()
+        mock_finalize.send_task.assert_called_once()
 
         # Verify saved state: grab the last set() call's value
         last_set_call = mock_redis.set.call_args_list[-1]
@@ -585,7 +656,7 @@ class TestHandleSleepDataIntegration:
         assert len(sleeping_stages) >= 1
         assert len(in_bed_stages) == 1
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps")
+    @patch("app.services.sdk.sleep_service.celery_app")
     @patch("app.services.sdk.sleep_service.event_record_service")
     @patch("app.services.sdk.sleep_service.get_redis_client")
     def test_handle_detailed_stages_payload(
@@ -692,7 +763,7 @@ class TestNoIntermediateRedisSaves:
     prevents this race condition.
     """
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps")
+    @patch("app.services.sdk.sleep_service.celery_app")
     @patch("app.services.sdk.sleep_service.event_record_service")
     @patch("app.services.sdk.sleep_service.get_redis_client")
     def test_redis_set_called_once_per_batch(
@@ -748,7 +819,7 @@ class TestHistoricalBulkUploadMerging:
     regardless of how many payloads Apple sends.
     """
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps")
+    @patch("app.services.sdk.sleep_service.celery_app")
     @patch("app.services.sdk.sleep_service.event_record_service")
     @patch("app.services.sdk.sleep_service.get_redis_client")
     def test_second_payload_merges_with_adjacent_db_record(
@@ -839,3 +910,181 @@ class TestHistoricalBulkUploadMerging:
         assert SleepStageType.LIGHT in stage_types
         assert SleepStageType.DEEP in stage_types
         assert SleepStageType.REM in stage_types
+
+
+class TestProviderSleepScore:
+    """Samsung sends SleepType.SLEEP_SCORE as a `sleepScore` value on every sleep entry."""
+
+    # Shaped like SamsungHealthManager.convertSleep output (UnifiedSleep.toMap)
+    SAMSUNG_SOURCE = {
+        "appId": "com.sec.android.app.shealth",
+        "deviceId": "samsung-watch-1",
+        "deviceName": "Galaxy Watch7",
+        "deviceManufacturer": "Samsung",
+        "deviceModel": "SM-L315F",
+        "deviceType": "watch",
+        "recordingMethod": None,
+    }
+    SAMSUNG_PAYLOAD = {
+        "provider": "samsung",
+        "sdkVersion": "1.0.0",
+        "syncTimestamp": "2026-03-23T08:00:01Z",
+        "data": {
+            "records": [],
+            "workouts": [],
+            "sleep": [
+                {
+                    "id": "S1-s0-0",
+                    "parentId": "S1",
+                    "stage": "light",
+                    "startDate": "2026-03-22T23:00:00Z",
+                    "endDate": "2026-03-23T01:00:00Z",
+                    "zoneOffset": "+01:00",
+                    "source": SAMSUNG_SOURCE,
+                    "values": [{"type": "sleepScore", "value": 82, "unit": "score"}],
+                    "metadata": None,
+                },
+                {
+                    "id": "S1-s0-1",
+                    "parentId": "S1",
+                    "stage": "deep",
+                    "startDate": "2026-03-23T01:00:00Z",
+                    "endDate": "2026-03-23T06:00:00Z",
+                    "zoneOffset": "+01:00",
+                    "source": SAMSUNG_SOURCE,
+                    "values": [{"type": "sleepScore", "value": 82, "unit": "score"}],
+                    "metadata": None,
+                },
+            ],
+        },
+    }
+
+    @staticmethod
+    def _state(provider: str, sleep_score: float | None) -> SleepState:
+        return SleepState(
+            uuid=str(uuid4()),
+            source_name="Galaxy Watch",
+            provider=provider,
+            zone_offset="+01:00",
+            start_time=_dt("2026-03-22T23:00:00Z"),
+            end_time=_dt("2026-03-23T06:00:00Z"),
+            last_start_timestamp=_dt("2026-03-23T01:00:00Z"),
+            last_end_timestamp=_dt("2026-03-23T06:00:00Z"),
+            sleep_score=sleep_score,
+            stages=[
+                SleepStateStage(
+                    stage=SleepStageType.LIGHT,
+                    start_time=_dt("2026-03-22T23:00:00Z"),
+                    end_time=_dt("2026-03-23T06:00:00Z"),
+                ),
+            ],
+        )
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_sleep_score_value_is_kept_in_state(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None
+        mock_redis_func.return_value = mock_redis
+        mock_event_service.find_adjacent_sleep_record.return_value = None
+
+        with patch("app.services.sdk.sleep_service.finish_sleep") as mock_finish:
+            handle_sleep_data(db, SyncRequest.model_validate(self.SAMSUNG_PAYLOAD), user_id=str(uuid4()))
+
+        state = SleepState.model_validate_json(mock_redis.set.call_args_list[-1][0][1])
+        assert state.sleep_score == 82
+        finished_state: SleepState = mock_finish.call_args[0][2]
+        assert finished_state.sleep_score == 82
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_sleep_score_is_not_attached_to_other_provider_state(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = self._state("apple", None).model_dump_json()
+        mock_redis_func.return_value = mock_redis
+        mock_event_service.find_adjacent_sleep_record.return_value = None
+
+        with patch("app.services.sdk.sleep_service.finish_sleep") as mock_finish:
+            handle_sleep_data(db, SyncRequest.model_validate(self.SAMSUNG_PAYLOAD), user_id=str(uuid4()))
+
+        finished_state: SleepState = mock_finish.call_args[0][2]
+        assert finished_state.provider == "apple"
+        assert finished_state.sleep_score is None
+
+    @patch("app.services.sdk.sleep_service.health_score_service")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.delete_sleep_state")
+    def test_finish_sleep_saves_provider_sleep_score(
+        self,
+        mock_delete_state: MagicMock,
+        mock_event_service: MagicMock,
+        mock_score_service: MagicMock,
+        db: Session,
+    ) -> None:
+        user_id = str(uuid4())
+        mock_record = MagicMock()
+        mock_record.id = uuid4()
+        mock_record.data_source_id = uuid4()
+        mock_event_service.create.return_value = mock_record
+        mock_event_service.find_adjacent_sleep_record.return_value = None
+
+        finish_sleep(db, user_id, self._state("samsung", 82))
+
+        mock_score_service.bulk_create.assert_called_once()
+        [score] = mock_score_service.bulk_create.call_args[0][1]
+        assert score.provider == ProviderName.SAMSUNG
+        assert score.category == HealthScoreCategory.SLEEP
+        assert score.value == 82
+        assert score.event_record_id == mock_record.id
+        assert score.data_source_id == mock_record.data_source_id
+        assert score.recorded_at == _dt("2026-03-22T23:00:00Z")
+        assert score.zone_offset == "+01:00"
+
+    @patch("app.services.sdk.sleep_service.health_score_service")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.delete_sleep_state")
+    def test_finish_sleep_without_score_saves_none(
+        self,
+        mock_delete_state: MagicMock,
+        mock_event_service: MagicMock,
+        mock_score_service: MagicMock,
+        db: Session,
+    ) -> None:
+        mock_event_service.create.return_value = MagicMock(id=uuid4())
+        mock_event_service.find_adjacent_sleep_record.return_value = None
+
+        finish_sleep(db, str(uuid4()), self._state("apple", None))
+
+        mock_score_service.bulk_create.assert_not_called()
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    def test_samsung_sleep_score_is_persisted(self, mock_finalize: MagicMock, db: Session) -> None:
+        """End to end against the DB: a historical Samsung night lands as a session with its sleep score."""
+        user = UserFactory()
+
+        handle_sleep_data(db, SyncRequest.model_validate(self.SAMSUNG_PAYLOAD), str(user.id))
+
+        scores = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        samsung_scores = [s for s in scores if s.provider == ProviderName.SAMSUNG]
+        assert len(samsung_scores) == 1
+        score = samsung_scores[0]
+        assert score.category == HealthScoreCategory.SLEEP
+        assert score.value == 82
+        assert score.zone_offset == "+01:00"
+        session = db.get(EventRecord, score.event_record_id)
+        assert session is not None
+        assert session.category == "sleep"

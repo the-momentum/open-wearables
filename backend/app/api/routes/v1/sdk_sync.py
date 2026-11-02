@@ -2,16 +2,17 @@ import json
 import uuid
 from logging import getLogger
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from app.config import settings
-from app.constants.sdk_providers import normalize_sdk_provider, sdk_providers
+from app.constants.sdk_providers import SDK_PROVIDERS, normalize_sdk_provider
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.raw_payload_storage import put_payload_to_s3, store_raw_payload
 from app.utils.api_utils import inline_schema_defs
 from app.utils.auth import SDKAuthDep
+from app.utils.sdk_request_metadata import sdk_request_metadata
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -34,6 +35,7 @@ def sync_sdk_data(
     user_id: str,
     body: dict,
     auth: SDKAuthDep,
+    request: Request,
 ) -> UploadDataResponse:
     """Import health data from SDK provider asynchronously via Celery.
 
@@ -78,7 +80,7 @@ def sync_sdk_data(
     if provider is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported provider: {raw_provider}. Supported: {', '.join(sorted(sdk_providers()))}",
+            detail=f"Unsupported provider: {raw_provider}. Supported: {', '.join(sorted(SDK_PROVIDERS))}",
         )
     # The worker and import service re-read the provider from the payload, so the
     # canonical slug has to replace the alias here rather than travel alongside it.
@@ -110,6 +112,7 @@ def sync_sdk_data(
         workouts_count=workouts_count,
         sleep_count=sleep_count,
         total_items=records_count + workouts_count + sleep_count,
+        **sdk_request_metadata(request.headers, body.get("sdkVersion")),
     )
 
     content_str = json.dumps(body)

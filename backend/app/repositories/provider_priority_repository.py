@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import asc, func
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
@@ -21,7 +21,7 @@ class ProviderPriorityRepository(
         super().__init__(model)
 
     def get_all_ordered(self, db_session: DbSession) -> list[ProviderPriority]:
-        return db_session.query(self.model).order_by(asc(self.model.priority)).all()
+        return db_session.query(self.model).order_by(self.model.priority.asc()).all()
 
     def get_by_provider(self, db_session: DbSession, provider: ProviderName) -> ProviderPriority | None:
         return db_session.query(self.model).filter(self.model.provider == provider).one_or_none()
@@ -43,6 +43,28 @@ class ProviderPriorityRepository(
 
         priority = DEFAULT_PROVIDER_PRIORITY.get(provider, self.get_next_priority(db_session))
         return self.upsert(db_session, provider, priority)
+
+    def seed_missing_providers(
+        self,
+        db_session: DbSession,
+        providers: list[ProviderName],
+    ) -> list[ProviderPriority]:
+        """Create priority rows for providers that have none yet.
+
+        Existing rows are never modified. Missing providers are appended after
+        the highest priority already in the table, in the order given, so a
+        deployment's configured order stays intact. On an empty table this
+        yields exactly the order of ``providers``.
+        """
+        existing = {ProviderName(p.provider) for p in self.get_all_ordered(db_session)}
+        next_priority = self.get_next_priority(db_session)
+        created: list[ProviderPriority] = []
+        for provider in providers:
+            if provider in existing:
+                continue
+            created.append(self.upsert(db_session, provider, next_priority))
+            next_priority += 1
+        return created
 
     def upsert(
         self,

@@ -26,7 +26,6 @@ from app.config import settings
 from app.constants.google_health_endpoints import SUBSCRIBERS_ENDPOINT
 from app.schemas.responses.incoming_webhooks import (
     GoogleWebhookSubscription,
-    ProviderWebhookSubscription,
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
@@ -57,6 +56,7 @@ GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES = frozenset(
         "daily-oxygen-saturation",
         "daily-respiratory-rate",
         "daily-resting-heart-rate",
+        "daily-sleep-temperature-derivations",
         "distance",
         "exercise",
         "floors",
@@ -77,7 +77,7 @@ GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES = frozenset(
 # AUTOMATIC lets Google create per-user subscriptions itself as users connect.
 GOOGLE_WEBHOOK_DATA_TYPES = [
     data_type
-    for data_type in ([m.data_type for m in METRICS] + ["sleep", "exercise"])
+    for data_type in ([m.data_type for m in METRICS] + ["sleep", "exercise", "nutrition-log"])
     if data_type in GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES
 ]
 
@@ -138,7 +138,16 @@ class GoogleWebhookService(BaseWebhookService):
                     url, headers=headers, params={"subscriberId": SUBSCRIBER_ID}, json=body, timeout=30.0
                 )
                 if response.status_code == 409:
-                    return [{"status": "skipped", "subscriber_id": SUBSCRIBER_ID}]
+                    # Registered before: bring its data types up to date, or a type added since never arrives.
+                    response = await client.patch(
+                        f"{url}/{SUBSCRIBER_ID}",
+                        headers=headers,
+                        params={"updateMask": "subscriberConfigs"},
+                        json={"subscriberConfigs": body["subscriberConfigs"]},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    return [{"status": "updated", "subscriber_id": SUBSCRIBER_ID}]
                 response.raise_for_status()
             except httpx.HTTPError as e:
                 response_body = e.response.text if isinstance(e, httpx.HTTPStatusError) else None
@@ -156,7 +165,11 @@ class GoogleWebhookService(BaseWebhookService):
 
         return [{"status": "created", "subscriber_id": SUBSCRIBER_ID, "response": response.json()}]
 
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete the subscriber registered under our fixed id, leaving any other one alone."""
+        return [await self.delete_subscription(SUBSCRIBER_ID)]
+
+    async def list_subscriptions(self) -> list[GoogleWebhookSubscription]:
         """List the project's Health API subscribers."""
         headers = {"Authorization": f"Bearer {self._project_token()}"}
         try:
@@ -174,9 +187,9 @@ class GoogleWebhookService(BaseWebhookService):
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            return []
+            raise
 
-        result: list[ProviderWebhookSubscription] = []
+        result: list[GoogleWebhookSubscription] = []
         for item in raw.get("subscribers", []):
             try:
                 result.append(GoogleWebhookSubscription.model_validate(item))
@@ -229,11 +242,15 @@ class GoogleWebhookService(BaseWebhookService):
         return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.UPDATED)
 
     async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
-        """Delete a subscriber by id."""
+        """Delete a subscriber by id; a 404 is reported as skipped, not as a failure."""
         headers = {"Authorization": f"Bearer {self._project_token()}"}
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.delete(f"{_subscribers_url()}/{subscription_id}", headers=headers, timeout=30.0)
+                if response.status_code == 404:
+                    return WebhookOperationResult(
+                        subscription_id=subscription_id, status=WebhookSubscriptionStatus.SKIPPED
+                    )
                 response.raise_for_status()
         except httpx.HTTPError as e:
             return _error_result(subscription_id, "delete", e)

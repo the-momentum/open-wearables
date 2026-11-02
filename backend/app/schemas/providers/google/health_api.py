@@ -58,6 +58,20 @@ class SeriesField:
 
 
 @dataclass(frozen=True)
+class DerivedSeriesField:
+    """A series computed as ``field - against`` within one value object.
+
+    Google publishes a nightly value and the baseline it should be read against, never the
+    difference; providers that do report a deviation report exactly that subtraction.
+    """
+
+    series_type: SeriesType
+    field: str
+    against: str
+    scale: Decimal = Decimal(1)
+
+
+@dataclass(frozen=True)
 class RollupSpec:
     """How to read one data type's value from a dataPoints:rollUp response.
 
@@ -86,6 +100,7 @@ class ListSpec:
     is_daily_total: True for once-per-day summaries (Daily types), False for raw samples.
     session_interval: True for SessionTimeInterval types (filter on interval.civil_start_time).
     extra:          additional series emitted from the same value object, if any.
+    derived:        series computed from two fields of the same value object, if any.
     """
 
     field: str
@@ -95,6 +110,21 @@ class ListSpec:
     is_daily_total: bool = False
     session_interval: bool = False
     extra: tuple[SeriesField, ...] | None = None
+    derived: tuple[DerivedSeriesField, ...] | None = None
+
+
+@dataclass(frozen=True)
+class LevelSum:
+    """A sum over the per-level list of a ``*RollupValue`` object, keeping only some levels.
+
+    level_key:   key naming each entry's level (e.g. ``activityLevel``).
+    value_field: key of each entry's number (e.g. ``activeMinutesSum``).
+    levels:      levels included in the sum.
+    """
+
+    level_key: str
+    value_field: str
+    levels: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -102,9 +132,11 @@ class DailyRollupSpec:
     """How to read one data type's civil-day total from a dataPoints:dailyRollUp response.
 
     data_type/value_key: the type to request and the union key its value lands under.
-    field:               key of the scalar within the ``*RollupValue`` object (e.g. ``kcalSum``).
+    field:               key of the scalar within the ``*RollupValue`` object (e.g. ``kcalSum``),
+                         or of the per-level list when ``level_sum`` is set.
     scale:               unit factor applied to the value.
-    max_range_days:      dailyRollUp's per-request range cap (14 for total-calories, else 90).
+    max_range_days:      dailyRollUp's per-request range cap (14 for total-calories and active-minutes, else 90).
+    level_sum:           which levels of the ``field`` list to add up, for per-level types.
     """
 
     data_type: str
@@ -112,6 +144,7 @@ class DailyRollupSpec:
     field: str
     scale: Decimal = Decimal(1)
     max_range_days: int = 90
+    level_sum: LevelSum | None = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +165,20 @@ class DerivedDailyMetric:
     left: DailyRollupSpec
     right: DailyRollupSpec
     operation: Callable[[Decimal, Decimal], Decimal]
+    data_source_family: str = "users/me/dataSourceFamilies/google-sources"
+
+
+@dataclass(frozen=True)
+class DailyRollupMetric:
+    """A civil-day total read straight from one data type's dailyRollUp.
+
+    data_source_family keeps the total to first-party sources, since points from several
+    sources on one civil day are summed and would otherwise count the same minutes twice.
+    """
+
+    name: str
+    series_type: SeriesType
+    spec: DailyRollupSpec
     data_source_family: str = "users/me/dataSourceFamilies/google-sources"
 
 
@@ -166,11 +213,12 @@ class DataTypeMetric:
         return True
 
     def series_types(self) -> frozenset[SeriesType]:
-        """Every series this metric can emit — primary plus any extra bindings."""
+        """Every series this metric can emit — primary, extra bindings and derived ones."""
         extra = (
             sf.series_type
             for spec in (self.rollup_spec, self.list_spec)
             if spec is not None and spec.extra
             for sf in spec.extra
         )
-        return frozenset({self.series_type, *extra})
+        derived = (df.series_type for df in self.list_spec.derived or ()) if self.list_spec else ()
+        return frozenset({self.series_type, *extra, *derived})

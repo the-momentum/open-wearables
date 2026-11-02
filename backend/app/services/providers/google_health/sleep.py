@@ -1,7 +1,7 @@
 """Google Health API sleep handler.
 
 Fetches Sleep sessions via the dataPoints ``list`` operation and stores them as
-``EventRecord(category="sleep")`` via ``create_or_merge_sleep`` (merges fragmented
+``EventRecord(category=EventCategory.SLEEP)`` via ``create_or_merge_sleep`` (merges fragmented
 sessions). Composed into GoogleHealth247Data.load_and_save_all.
 """
 
@@ -17,7 +17,7 @@ from app.constants.series_types.google.sleep_stages import GOOGLE_SLEEP_STAGE_MA
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
@@ -25,6 +25,7 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     SESSION_PAGE_SIZE,
+    extract_form_factor,
     extract_source,
     next_page_token,
     parse_interval,
@@ -120,16 +121,18 @@ class GoogleHealthApiSleep:
     ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
         record_id = uuid4()
         source_name, device_model = extract_source(point.get("dataSource"))
+        device_type = extract_form_factor(point.get("dataSource"))
         zone_offset = zone_offset_from(interval.get("startUtcOffset"))
         metadata = sleep.get("metadata") or {}
 
         record = EventRecordCreate(
             id=record_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
             device_model=device_model,
+            device_type=device_type,
             external_id=point.get("name") or metadata.get("externalId"),
             start_datetime=start,
             end_datetime=end,

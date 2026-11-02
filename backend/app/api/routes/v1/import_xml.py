@@ -22,10 +22,10 @@ from app.schemas.providers.apple.apple_xml import (
 )
 from app.schemas.responses.upload import UploadDataResponse
 from app.services import ApiKeyDep
-from app.services.apple.apple_xml.aws_service import require_bucket_name
-from app.services.apple.apple_xml.multipart_upload_service import multipart_upload_service
-from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
-from app.services.apple.apple_xml.sns_service import sns_service
+from app.services.providers.apple.apple_xml.aws_service import require_bucket_name
+from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
+from app.services.providers.apple.apple_xml.presigned_url_service import presigned_url_service
+from app.services.providers.apple.apple_xml.sns_service import sns_service
 
 router = APIRouter()
 

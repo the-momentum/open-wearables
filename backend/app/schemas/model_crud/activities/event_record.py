@@ -4,9 +4,10 @@ from enum import StrEnum
 from typing import Literal, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.enums import EntrySource, WorkoutIntensity, WorkoutType
+from app.constants.devices_map import normalize_device_model
+from app.schemas.enums import DeviceType, EntrySource, EventCategory, SeriesType, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -34,6 +35,7 @@ class EventRecordMetrics(TypedDict, total=False):
     heart_rate_avg: Decimal | None
     steps_count: int | None
     energy_burned: Decimal | None
+    energy_series: SeriesType | None
     distance: Decimal | None
     max_speed: Decimal | None
     max_watts: Decimal | None
@@ -60,7 +62,7 @@ class EventRecordMetrics(TypedDict, total=False):
 class EventRecordBase(BaseModel):
     """Base schema for event record."""
 
-    category: str = Field("workout", description="High-level category such as workout or sleep")
+    category: EventCategory = Field(EventCategory.WORKOUT, description="High-level category such as workout or sleep")
     type: str | None = Field(None, description="Provider-specific subtype, e.g. running")
 
     source_name: str = Field(description="Source/app name")
@@ -74,6 +76,8 @@ class EventRecordBase(BaseModel):
     end_datetime: datetime
     zone_offset: ZoneOffset = None
 
+    _normalize_device_model = field_validator("device_model")(normalize_device_model)
+
 
 class EventRecordCreate(EventRecordBase):
     id: UUID
@@ -84,6 +88,10 @@ class EventRecordCreate(EventRecordBase):
     user_connection_id: UUID | None = None
     data_source_id: UUID | None = None
     software_version: str | None = None
+    device_type: DeviceType | None = None
+    device_id: str | None = None
+    source_app_id: str | None = None
+    device_manufacturer: str | None = None
 
 
 class EventRecordUpdate(EventRecordBase):
@@ -113,8 +121,8 @@ class EventRecordQueryParams(SourceFilterParams):
     end_datetime: datetime | None = Field(None, description="End datetime for filtering records")
 
     # Category and type filtering
-    category: str | None = Field(
-        "workout",
+    category: EventCategory | None = Field(
+        EventCategory.WORKOUT,
         description="Record category (workout, sleep, etc). Defaults to workout.",
     )
     record_type: str | None = Field(
@@ -124,6 +132,9 @@ class EventRecordQueryParams(SourceFilterParams):
 
     # Source filtering (provider, source, device_model, data_source_id come from SourceFilterParams)
     source_name: str | None = Field(None, description="Filter by source/app name")
+
+    # Sleep filtering
+    is_nap: bool | None = Field(None, description="Sleep only: true for naps, false for main sleep, None for both")
 
     # Duration filtering
     min_duration: int | None = Field(None, description="Minimum duration in seconds")

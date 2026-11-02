@@ -24,6 +24,7 @@ from fastapi import HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.suunto.workout_import import REQUESTED_WORKOUT_EXTENSIONS
@@ -42,8 +43,6 @@ SUPPORTED_EVENT_TYPES: list[str] = [
     "SUUNTO_247_SLEEP_CREATED",
     "SUUNTO_247_RECOVERY_CREATED",
 ]
-
-_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 
 class SuuntoWebhookHandler(BaseWebhookHandler):
@@ -120,7 +119,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         store_raw_payload(source="webhook", provider="suunto", payload=payload, trace_id=request_trace_id)
 
         task = celery_app.send_task(
-            _PROCESS_PUSH_TASK, args=["suunto", payload, request_trace_id], queue="webhook_sync"
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["suunto", payload, request_trace_id], queue=CeleryQueue.WEBHOOK_SYNC
         )
         log_structured(
             logger,

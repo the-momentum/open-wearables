@@ -44,6 +44,7 @@ def _drive(data_247: GoogleHealth247Data, granularity: DataGranularity, calls: l
             side_effect=fake_request,
         ),
         patch.object(data_247.sleep, "load_and_save", return_value=3),
+        patch.object(data_247.nutrition, "load_and_save", return_value=0),
         patch.object(data_247.settings_repo, "get_data_granularity", return_value=granularity),
         patch("app.services.providers.google_health.data_247.store_raw_payload"),
     ):

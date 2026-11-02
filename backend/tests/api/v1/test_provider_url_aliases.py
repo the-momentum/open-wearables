@@ -22,8 +22,9 @@ class TestUrlSlugMapping:
     def test_every_other_provider_is_untouched(self, provider: ProviderName) -> None:
         assert from_url_slug(provider.value) == provider.value
 
-    def test_redirect_uri_defaults_to_the_legacy_path(self) -> None:
+    def test_redirect_uri_defaults_to_the_legacy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default keeps an upgrade from having to touch the registered OAuth client."""
+        monkeypatch.setattr(settings, "google_legacy_oauth_path", True)
         uri = settings.oauth_redirect_uri(ProviderName.GOOGLE_HEALTH)
         assert uri.endswith("/api/v1/oauth/google/callback")
 

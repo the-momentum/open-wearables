@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from app.config import settings
 from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
+from app.integrations.celery.tasks import start_garmin_full_backfill, sync_vendor_data
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
 from app.schemas.model_crud.data_priority import (
@@ -16,13 +17,12 @@ from app.schemas.model_crud.data_priority import (
     ProviderSettingUpdate,
 )
 from app.services import DeveloperDep, user_connection_service
-from app.services.provider_settings_service import ProviderSettingsService
+from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
 factory = ProviderFactory()
-settings_service = ProviderSettingsService()
 
 
 def resolve_provider(slug: str) -> ProviderName:
@@ -68,6 +68,12 @@ def authorize_provider(
     return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
 
+@router.head("/{provider}/callback", tags=["System: OAuth"])
+def probe_oauth_callback(provider: str) -> None:
+    """Answer the reachability probe Withings sends when the callback URL is registered."""
+    get_oauth_strategy(resolve_provider(provider))
+
+
 @router.get("/{provider}/callback", tags=["System: OAuth"])
 def oauth_callback(
     provider: str,
@@ -110,13 +116,8 @@ def oauth_callback(
     if settings.historical_sync_on_connect:
         caps = strategy.capabilities
         if caps.webhook_callback:
-            # this code is going to be removed later, so leave inner imports heres
-            from app.integrations.celery.tasks import start_garmin_full_backfill
-
             start_garmin_full_backfill.delay(str(oauth_state.user_id))
         elif caps.rest_pull:
-            from app.integrations.celery.tasks import sync_vendor_data
-
             now = datetime.now(timezone.utc)
             start_date = (now - timedelta(days=90)).isoformat()
             sync_vendor_data.delay(
@@ -178,7 +179,7 @@ def get_providers(
 
     Returns full provider details including name, icon_url, has_cloud_api, is_enabled.
     """
-    all_providers = settings_service.get_all_providers(db)
+    all_providers = provider_settings_service.get_all_providers(db)
 
     return [p for p in all_providers if (not enabled_only or p.is_enabled) and (not cloud_only or p.has_cloud_api)]
 
@@ -192,7 +193,7 @@ def update_provider_setting(
 ):
     """Update is_enabled and/or live_sync_mode for a single provider."""
     try:
-        return settings_service.update_provider_setting(db, provider, update)
+        return provider_settings_service.update_provider_setting(db, provider, update)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -209,4 +210,4 @@ def bulk_update_providers(
     Accepts a map of provider_id -> is_enabled and updates all providers at once.
     This is the primary endpoint for the admin UI to save checkbox states.
     """
-    return settings_service.bulk_update_providers(db, updates.providers)
+    return provider_settings_service.bulk_update_providers(db, updates.providers)

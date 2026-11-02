@@ -22,24 +22,63 @@ Invitation links expire after the number of days set in `INVITATION_EXPIRE_DAYS`
 
 ## Email delivery
 
-Invitation emails are sent through [Resend](https://resend.com). Without it, invitations are still created but no email goes out. Configure these variables in the backend environment:
+Invitation emails are sent either through any SMTP server or through [Resend](https://resend.com). Without one of them, invitations are still created but no email goes out. If `SMTP_HOST` is set, SMTP is used; otherwise Resend.
+
+These variables apply to both:
 
 ```bash
-RESEND_API_KEY=re_...
 EMAIL_FROM_ADDRESS=invites@yourdomain.com
 EMAIL_FROM_NAME="Open Wearables"
 FRONTEND_URL=https://portal.yourdomain.com
 ```
 
-- `RESEND_API_KEY` - API key from the Resend dashboard. Required for any email to be sent.
-- `EMAIL_FROM_ADDRESS` - sender address. It must belong to a domain verified in Resend. For local testing you can use `onboarding@resend.dev`, which Resend allows only for sending to your own account email.
+- `EMAIL_FROM_ADDRESS` - sender address. Your email provider has to accept it as a sender (for Resend, it must belong to a verified domain).
 - `EMAIL_FROM_NAME` - display name of the sender.
 - `FRONTEND_URL` - public URL of the developer portal. It is used to build the acceptance link inside the email, so with the default `http://localhost:3000` the link only works on your machine.
+
+### SMTP
+
+Works with any provider that offers SMTP: Google Workspace, Microsoft 365, Amazon SES, Mailgun, Postmark, SendGrid, your own relay, and so on.
+
+```bash
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=invites@yourdomain.com
+SMTP_PASSWORD=...
+SMTP_SECURITY=starttls
+```
+
+- `SMTP_HOST` - SMTP server hostname. Setting it switches delivery to SMTP.
+- `SMTP_PORT` - default `587`.
+- `SMTP_USERNAME`, `SMTP_PASSWORD` - credentials. Leave both empty for a server that doesn't require authentication, e.g. a relay that allows your server by IP address (a Postfix container next to the backend, a Microsoft 365 connector, Google Workspace SMTP relay).
+- `SMTP_SECURITY` - `starttls` (default, usually port 587), `ssl` for implicit TLS (usually port 465), or `none` for an unencrypted connection, e.g. a local [Mailpit](https://mailpit.axllent.org) on port 1025. With `none`, `SMTP_USERNAME` and `SMTP_PASSWORD` must be empty: Open Wearables won't send credentials over an unencrypted connection and skips sending with a warning instead. With `starttls` and `ssl`, the server certificate is verified.
+
+Cloud email services:
+
+| Service | `SMTP_HOST` | Credentials |
+|---|---|---|
+| [Amazon SES](https://docs.aws.amazon.com/ses/latest/dg/send-email-smtp.html) | `email-smtp.<region>.amazonaws.com` | SMTP credentials created in the SES console. They are not your IAM access keys. |
+| [Azure Communication Services](https://learn.microsoft.com/en-us/azure/communication-services/quickstarts/email/send-email-smtp/smtp-authentication) | `smtp.azurecomm.net` | Username `<ACS resource name>.<Entra app ID>.<Entra tenant ID>`, password is the Entra app client secret. |
+| Google Cloud | - | Google Cloud has no email sending service. Use [Google Workspace SMTP relay](https://support.google.com/a/answer/2956491) or a third-party provider. |
+
+<Warning>
+Some hosting platforms block outbound SMTP ports, for example Railway on Free, Trial and Hobby plans and DigitalOcean Droplets by default. There, use Resend, which sends over HTTPS.
+</Warning>
+
+### Resend
+
+```bash
+RESEND_API_KEY=re_...
+```
+
+- `RESEND_API_KEY` - API key from the Resend dashboard. For local testing you can set `EMAIL_FROM_ADDRESS=onboarding@resend.dev`, which Resend allows only for sending to your own account email.
+
+### Delivery and retries
 
 Delivery is handled by a Celery task, so the worker must be running. Failed sends are retried up to `EMAIL_MAX_RETRIES` times (default 5), after which the invitation is marked **failed** and can be re-sent from the developer portal.
 
 <Note>
-If `RESEND_API_KEY`, `EMAIL_FROM_ADDRESS`, or `EMAIL_FROM_NAME` is missing, the invitation stays **pending** and the backend logs a warning instead of sending. `EMAIL_FROM_NAME` defaults to "Open Wearables", so in practice only the first two need to be set. Use **Copy invite link** on the pending invitation and share the link manually.
+If neither `SMTP_HOST` nor `RESEND_API_KEY` is set, or `EMAIL_FROM_ADDRESS` or `EMAIL_FROM_NAME` is missing, the invitation stays **pending** and the backend logs a warning instead of sending. `EMAIL_FROM_NAME` defaults to "Open Wearables". Use **Copy invite link** on the pending invitation and share the link manually.
 </Note>
 
 ## Pending Invitations

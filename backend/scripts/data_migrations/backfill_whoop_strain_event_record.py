@@ -39,7 +39,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import TextClause
 
-from app.database import SessionLocal
+from app.database import engine
+from app.services.data_migration_service import data_migration_service
 
 # Legacy rows in scope: Whoop strain, unlinked, carrying the workout-only marker.
 _ELIGIBLE = """
@@ -145,13 +146,22 @@ def backfill_whoop_strain(db: Session, *, dry_run: bool) -> int:
     return linked
 
 
-def main(dry_run: bool) -> None:
-    with SessionLocal() as db:
-        linked = backfill_whoop_strain(db, dry_run=dry_run)
-        if dry_run or not linked:
-            return
+def _migrate(db: Session, dry_run: bool) -> bool:
+    linked = backfill_whoop_strain(db, dry_run=dry_run)
+    if dry_run:
+        return False
+    if linked:
         db.commit()
         print("Done.")
+    # Scores that cannot be linked never resolve on their own, so they do not keep the migration open
+    return True
+
+
+def main(dry_run: bool) -> None:
+    with engine.connect() as connection, Session(bind=connection) as db:
+        data_migration_service.run(
+            db, "backfill_whoop_strain_event_record", lambda: _migrate(db, dry_run), dry_run=dry_run
+        )
 
 
 if __name__ == "__main__":

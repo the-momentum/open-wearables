@@ -6,10 +6,11 @@ from billiard.einfo import ExceptionInfo
 from celery import Task, shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.models import Invitation
 from app.schemas.model_crud.user_management import InvitationStatus
-from app.utils.email_client import _is_email_configured, send_invitation_email
+from app.utils.email_client import get_email_config_error, send_invitation_email
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -68,6 +69,7 @@ class EmailTaskBase(Task):
 
 
 @shared_task(
+    name=CeleryTask.SEND_INVITATION_EMAIL,
     bind=True,
     base=EmailTaskBase,
     autoretry_for=(ConnectionError, TimeoutError, EmailSendError),
@@ -139,11 +141,11 @@ def send_invitation_email_task(
             raise ValueError(f"Invitation {invitation_id} has invalid status: {invitation.status}")
 
         # Skip sending if email is not configured (allow manual invite links)
-        if not _is_email_configured():
+        if config_error := get_email_config_error():
             log_structured(
                 logger,
                 "warning",
-                f"Email not configured, skipping send for invitation {invitation_id}",
+                f"{config_error}, skipping send for invitation {invitation_id}",
                 provider="email",
                 task="send_invitation_email_task",
             )

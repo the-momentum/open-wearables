@@ -177,9 +177,7 @@ except Exception as e:
 try:
     process_item(item)
 except Exception as e:
-    log_and_capture_error(
-        e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id, "error": str(e)}
-    )
+    log_and_capture_error(e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id})
     continue
 ```
 
@@ -188,6 +186,8 @@ except Exception as e:
 - ✅ Batch processing where you want to continue despite errors
 - ✅ Multi-provider sync where one provider failure shouldn't stop others
 - ❌ Don't use if exception is re-raised or allowed to propagate naturally
+
+**Keep health data and PII out of Sentry:** `extra` is sent to Sentry as event context. Put only identifiers and categories in it (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise and to `logger.error(...)` text, since both become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
 
 ### Logging
 
@@ -215,6 +215,7 @@ log_structured(
 
 - Pass the message as a stable, human-readable string and put the variable parts in `**attributes` (don't f-string them into the message).
 - `trace_id` is injected automatically from context when not supplied.
+- Output format follows `LOG_FORMAT` (`legacy` default, `json`, `text`) and `LOG_LEVEL` (see `app/utils/logging_setup.py`). Keep attribute values JSON-serializable: an unserializable value raises `TypeError` at the call site in every mode, also when `LOG_LEVEL` filters the call out.
 - For handled exceptions in background tasks you still want in Sentry, use `log_and_capture_error` (see above) rather than plain `logger.error`. Keep its `message` stable there too and pass variables via `extra` - note that `extra` becomes Sentry event context, not queryable log attributes.
 
 ### Provider Strategy Pattern
@@ -260,6 +261,16 @@ zero-downtime Alembic migration live in `scripts/data_migrations/`. Each must be
 idempotent and support a `--dry-run` flag, and its **module docstring is the source
 of truth** for the rationale (the problem it fixes, what it changes, and any details
 such as conflict handling) — put it there, not in the docs.
+
+A script whose idle run is expensive (it has to scan a large table to find there is nothing
+to do) runs through `data_migration_service.run`, which records a clean run in the
+`data_migration` table and skips the script afterwards. Cheap scripts stay unrecorded, so they
+keep catching rows an old pod writes during a rolling deploy.
+
+`data_type_coverage` holds the span of data we hold per user, provider and type, and only the
+write paths widen it. A script that deletes series or event rows, or moves them to another
+type, provider or user, must narrow the coverage of the keys it touched in the same
+transaction (`DataTypeCoverageRepository` has the primitives).
 
 See `docs/dev-guides/data-migrations.mdx` for how to run them and how they're wired
 into startup.

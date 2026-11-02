@@ -9,8 +9,12 @@ Tests cover:
 - Repository initialization
 """
 
+import contextlib
+
 import pytest
 
+from app.constants.sdk_providers import SDK_PROVIDERS
+from app.schemas.enums import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
@@ -159,13 +163,29 @@ class TestProviderFactory:
         assert strategy.oauth is None
         assert strategy.has_cloud_api is False
 
-    def test_provider_apple_has_workouts(self, factory: ProviderFactory) -> None:
-        """Should initialize workouts component for Apple."""
+    def test_sdk_providers_have_no_components(self, factory: ProviderFactory) -> None:
+        """SDK-only providers are metadata; ingestion runs through app/services/sdk/."""
+        for name in ("apple", "samsung", "health_connect"):
+            # Act
+            strategy = factory.get_provider(name)
+
+            # Assert
+            assert strategy.workouts is None
+            assert strategy.data_247 is None
+            assert strategy.webhooks is None
+            assert strategy.capabilities.client_sdk is True
+
+    def test_sdk_providers_constant_matches_capabilities(self, factory: ProviderFactory) -> None:
+        """SDK_PROVIDERS is hardcoded to keep repositories free of strategy imports."""
         # Act
-        strategy = factory.get_provider("apple")
+        client_sdk = set()
+        for provider in ProviderName:
+            with contextlib.suppress(ValueError):  # sentinel members have no strategy
+                if factory.get_provider(provider.value).capabilities.client_sdk:
+                    client_sdk.add(provider.value)
 
         # Assert
-        assert strategy.workouts is not None
+        assert client_sdk == SDK_PROVIDERS
 
     def test_provider_polar_has_oauth(
         self,

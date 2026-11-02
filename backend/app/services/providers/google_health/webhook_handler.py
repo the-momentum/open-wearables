@@ -36,6 +36,7 @@ from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.google import GoogleWebhookNotification
@@ -51,11 +52,10 @@ from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
-_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
-
 # Notification dataTypes that map to a session handler rather than a 24/7 metric.
 _SLEEP_DATA_TYPE = "sleep"
 _EXERCISE_DATA_TYPE = "exercise"
+_NUTRITION_DATA_TYPE = "nutrition-log"
 
 _SUPPORTED_OPERATIONS = ["UPSERT", "DELETE"]
 
@@ -149,7 +149,9 @@ class GoogleWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="google_health", payload=payload, trace_id=trace_id)
 
-        task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["google_health", payload, trace_id], queue="webhook_sync")
+        task = celery_app.send_task(
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["google_health", payload, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
+        )
         log_structured(
             logger,
             "info",
@@ -283,6 +285,12 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return self.workouts.load_data(db, user_id, start_date=start, end_date=end)
         if data_type == _SLEEP_DATA_TYPE:
             return self.data_247.sleep.load_and_save(db, user_id, start, end)
+        if data_type == _NUTRITION_DATA_TYPE:
+            # The nutrition handler never commits (it runs under a savepoint in the 24/7 sync);
+            # here nothing wraps it, so the notification's batch is committed once, right after.
+            saved = self.data_247.nutrition.load_and_save(db, user_id, start, end)
+            db.commit()
+            return saved
         try:
             return int(self.data_247.sync_data_type(db, user_id, data_type, start, end) or 0)
         except UnsupportedGranularityError as e:

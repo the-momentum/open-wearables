@@ -9,14 +9,16 @@ as recommended in gap-analysis card t_38e552b2 finding #8.
 t_5912f22f adds: ACTIVITY + SLEEP HealthScore extraction from /v1/scores (parity with Oura).
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
 
 # ---------------------------------------------------------------------------
@@ -25,6 +27,7 @@ from app.services.providers.sensorbio.data_247 import SensorBio247Data
 
 USER_ID = uuid4()
 DB = MagicMock()
+_SEPT_10 = datetime(2026, 9, 10, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -69,6 +72,22 @@ class TestSensorBio247SleepNormalization:
         assert result["average_hrv"] == 45.0
         assert result["average_spo2"] == 97.0
         assert result["resting_heart_rate"] == 52.0
+
+    def test_unreported_stages_stay_none_and_zero_stays_zero(self, data_247: SensorBio247Data) -> None:
+        raw = {
+            "start_timestamp": 1_700_000_000,
+            "end_timestamp": 1_700_028_800,
+            "total_sleep_mins": 420.0,
+            "rem_sleep_mins": 0.0,
+        }
+        result = data_247.normalize_sleep(raw, USER_ID)
+        assert result is not None
+        assert result["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": 0,
+            "awake_seconds": None,
+        }
 
     def test_is_nap_always_false_without_api_flag(self, data_247: SensorBio247Data) -> None:
         """Sensor Bio has no nap flag; short sessions stay is_nap=False."""
@@ -167,6 +186,25 @@ class TestSensorBio247SaveSleepData:
         mock_svc.create.assert_called_once()
         mock_svc.create_detail.assert_called_once()
 
+    def test_persists_unreported_stages_as_none(self, data_247: SensorBio247Data) -> None:
+        normalized = {
+            "id": uuid4(),
+            "start_time": datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
+            "end_time": datetime(2024, 1, 15, 8, 0, 0, tzinfo=timezone.utc),
+            "duration_seconds": 28800,
+            "stages": {"deep_seconds": None, "light_seconds": None, "rem_seconds": 0, "awake_seconds": None},
+        }
+        with patch("app.services.providers.sensorbio.data_247.event_record_service") as mock_svc:
+            mock_svc.create.return_value = MagicMock(id=normalized["id"])
+            data_247.save_sleep_data(MagicMock(), USER_ID, normalized)
+
+        detail = mock_svc.create_detail.call_args[0][1]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_total_duration_minutes == 0
+
 
 # ---------------------------------------------------------------------------
 # 2. normalize_recovery + save_recovery_data (including recovery.value extraction)
@@ -234,11 +272,16 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 3
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
+            mock_hs.bulk_create.return_value = WriteCounts(1, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 3, "scores_synced": 1}
+        assert counts == 4  # 3 metrics + 1 score
+        assert counts.inserted == 4
         mock_ts.bulk_create_samples.assert_called_once()
+        assert {s.period for s in mock_ts.bulk_create_samples.call_args[0][1]} == {
+            CalendarPeriod.of_date(date(2024, 1, 15))
+        }
         mock_hs.bulk_create.assert_called_once()
         scores = mock_hs.bulk_create.call_args[0][1]
         from app.schemas.enums import HealthScoreCategory
@@ -259,7 +302,7 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 1
+            mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             data_247.save_recovery_data(db, USER_ID, normalized)
 
         mock_hs.bulk_create.assert_not_called()
@@ -272,7 +315,7 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
-        assert counts == {"metrics_synced": 0, "scores_synced": 0}
+        assert counts == 0
         mock_ts.bulk_create_samples.assert_not_called()
         mock_hs.bulk_create.assert_not_called()
 
@@ -483,7 +526,7 @@ class TestSensorBio247DailyActivityNormalization:
         assert result is not None
         assert result["steps"] == 8200
         assert result["distance"] == 6.1
-        assert result["energy"] == 312
+        assert "energy" not in result  # active energy comes from /v1/calorie/details
         assert result["timestamp"] == datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
 
     def test_missing_metrics_keys(self, data_247: SensorBio247Data) -> None:
@@ -496,7 +539,6 @@ class TestSensorBio247DailyActivityNormalization:
         assert result is not None
         assert result["steps"] == 5000
         assert result["distance"] is None
-        assert result["energy"] is None
 
     def test_missing_date(self, data_247: SensorBio247Data) -> None:
         raw = {"metrics": [{"name": "Steps", "value": 5000}]}
@@ -523,6 +565,7 @@ class TestSensorBio247SaveDailyActivity:
             "energy": 312.0,
         }
         with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
         assert count == 3
@@ -542,6 +585,7 @@ class TestSensorBio247SaveDailyActivity:
             "energy": None,
         }
         with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+            mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
         assert count == 1
@@ -668,9 +712,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 2}
+        assert counts == 2
         mock_hs.bulk_create.assert_called_once()
         from app.schemas.enums import HealthScoreCategory
 
@@ -694,9 +739,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 2}
+        assert counts == 2
         from app.schemas.enums import HealthScoreCategory
 
         scores = mock_hs.bulk_create.call_args[0][1]
@@ -722,10 +768,11 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 3
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
+            mock_hs.bulk_create.return_value = WriteCounts(3, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 3, "scores_synced": 3}
+        assert counts == 6  # 3 metrics + 3 scores
         assert mock_hs.bulk_create.call_count == 1
         from app.schemas.enums import HealthScoreCategory
 
@@ -746,9 +793,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(1, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 1}
+        assert counts == 1
         from app.schemas.enums import HealthScoreCategory
 
         scores = mock_hs.bulk_create.call_args[0][1]
@@ -768,5 +816,80 @@ class TestSensorBio247SaveRecoveryDataScores:
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 0}
+        assert counts == 0
         mock_hs.bulk_create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Sleep stage intervals (/v1/sleep/details/day)
+# ---------------------------------------------------------------------------
+
+DETAILS_DAY = {
+    "date": "2026-09-10",
+    "sleep_stages": [
+        {"start_time": "2026-09-10T00:10:00Z", "end_time": "2026-09-10T02:00:00Z", "status": "light"},
+        {"start_time": "2026-09-10T02:00:00Z", "end_time": "2026-09-10T02:20:00Z", "status": "awake"},
+        {"start_time": "2026-09-10T13:00:00Z", "end_time": "2026-09-10T13:40:00Z", "status": "light"},
+    ],
+}
+# 2026-09-10: night 00:00-03:00 UTC, nap 12:30-14:00 UTC.
+NIGHT = {"id": "night", "start_timestamp": 1788998400, "end_timestamp": 1789009200, "total_sleep_mins": 110.0}
+NAP = {"id": "nap", "start_timestamp": 1789043400, "end_timestamp": 1789048800, "total_sleep_mins": 40.0}
+
+
+class TestSensorBio247SleepStageIntervals:
+    """A day's stage intervals are fetched once and split between that day's sessions."""
+
+    def test_night_keeps_only_its_own_intervals(self, data_247: SensorBio247Data) -> None:
+        normalized = data_247.normalize_sleep({**NIGHT, "stage_intervals": DETAILS_DAY["sleep_stages"]}, USER_ID)
+
+        assert normalized is not None
+        assert [stage.stage.value for stage in normalized["stage_timestamps"]] == ["light", "awake"]
+
+    def test_nap_keeps_only_its_own_intervals(self, data_247: SensorBio247Data) -> None:
+        normalized = data_247.normalize_sleep({**NAP, "stage_intervals": DETAILS_DAY["sleep_stages"]}, USER_ID)
+
+        assert normalized is not None
+        assert [stage.stage.value for stage in normalized["stage_timestamps"]] == ["light"]
+
+    def test_sleep_without_intervals_has_no_timeline(self, data_247: SensorBio247Data) -> None:
+        normalized = data_247.normalize_sleep(NIGHT, USER_ID)
+
+        assert normalized is not None
+        assert normalized["stage_timestamps"] is None
+
+    def test_intervals_are_attached_to_every_session_of_the_day(self, data_247: SensorBio247Data) -> None:
+        def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
+            return {"data": [NIGHT, NAP]} if endpoint == "/v1/sleep" else DETAILS_DAY
+
+        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+            records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
+
+        assert [len(record["stage_intervals"]) for record in records] == [3, 3]
+
+    def test_failing_details_call_leaves_the_session_without_intervals(self, data_247: SensorBio247Data) -> None:
+        def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
+            if endpoint == "/v1/sleep":
+                return {"data": [NIGHT]}
+            raise RuntimeError("boom")
+
+        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+            records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
+
+        assert records[0].get("stage_intervals") is None
+
+    def test_a_malformed_entry_does_not_drop_the_day(self, data_247: SensorBio247Data) -> None:
+        def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
+            return {"data": ["nonsense", NIGHT]} if endpoint == "/v1/sleep" else DETAILS_DAY
+
+        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+            records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
+
+        assert [record for record in records if isinstance(record, dict)][0]["id"] == "night"
+
+    def test_an_interval_running_past_the_session_is_clipped(self, data_247: SensorBio247Data) -> None:
+        overrunning = [{"start_time": "2026-09-10T02:50:00Z", "end_time": "2026-09-10T04:00:00Z", "status": "awake"}]
+        normalized = data_247.normalize_sleep({**NIGHT, "stage_intervals": overrunning}, USER_ID)
+
+        assert normalized is not None
+        assert normalized["stage_timestamps"][0].end_time == datetime(2026, 9, 10, 3, tzinfo=timezone.utc)

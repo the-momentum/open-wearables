@@ -3,20 +3,22 @@ from .aggregation_method import (
     AggregationMethod,
     daily_total_flag,
 )
+from .computed_by import ComputedBy
 from .data_granularity import (
     BUCKET_SIZES,
     GRANULARITY_WINDOW_SECONDS,
+    PERIOD_RESOLUTIONS,
     DataGranularity,
     Resolution,
 )
 from .device_type import (
     DEFAULT_DEVICE_TYPE_PRIORITY,
     DeviceType,
-    infer_device_type_from_model,
-    infer_device_type_from_source_name,
 )
 from .entry_source import EntrySource
+from .event_category import EventCategory
 from .health_score_category import HealthScoreCategory
+from .period_kind import PeriodKind
 from .provider import (
     DEFAULT_PROVIDER_PRIORITY,
     ProviderName,
@@ -43,16 +45,17 @@ from .workout_types import (
 __all__ = [
     "DeviceType",
     "DEFAULT_DEVICE_TYPE_PRIORITY",
-    "infer_device_type_from_model",
-    "infer_device_type_from_source_name",
+    "ComputedBy",
     "AggregationMethod",
     "AGGREGATION_METHOD_BY_TYPE",
     "daily_total_flag",
     "DataGranularity",
     "Resolution",
     "BUCKET_SIZES",
+    "PERIOD_RESOLUTIONS",
     "GRANULARITY_WINDOW_SECONDS",
     "EntrySource",
+    "EventCategory",
     "SeriesType",
     "SERIES_TYPE_DEFINITIONS",
     "SERIES_TYPE_ID_BY_ENUM",
@@ -65,6 +68,7 @@ __all__ = [
     "ProviderName",
     "DEFAULT_PROVIDER_PRIORITY",
     "HealthScoreCategory",
+    "PeriodKind",
     "SdkConnectionOutcome",
     "TimelineBucket",
     "TimelineGroupBy",

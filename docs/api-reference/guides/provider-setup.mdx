@@ -238,3 +238,22 @@ curl -X GET "http://localhost:8000/api/v1/oauth/providers?enabled_only=true" \
 <Note>
   `icon_url` is a **relative URL** (e.g., `/static/provider-icons/garmin.svg`). Resolve it against your API base URL to get the full path - for example, `https://your-api.example.com/static/provider-icons/garmin.svg`.
 </Note>
+
+---
+
+## Live Sync Mode
+
+Providers where `live_sync_configurable` is `true` support both periodic REST polling and webhook delivery. An instance admin can switch between them with `PUT /api/v1/oauth/providers/{provider}` - this endpoint takes a **developer JWT** (the dashboard login), not an API key:
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/oauth/providers/suunto" \
+  -H "Authorization: Bearer YOUR_DEVELOPER_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"live_sync_mode": "webhook"}'
+```
+
+The body also accepts `is_enabled`. Omit a field to keep its current value - an explicit `null` for `live_sync_mode` is rejected with `400`, and so is setting it on a provider with `live_sync_configurable: false` (e.g. Garmin, which is webhook-only).
+
+<Note>
+  **Pull mode and late revisions.** In `pull` mode each periodic sync starts from the connection's last synced time, so a day the provider revises *after* it was fetched (e.g. Oura finalising a step count once the ring finishes uploading) is not re-fetched. Set the `PULL_SYNC_LOOKBACK` env var (compact duration - `2d`, `20h`, `90m`, `1d12h`; disabled by default, capped per provider by its `max_historical_days`) to re-fetch a trailing window on every pull. Re-fetched days are upserted. `webhook` mode is unaffected.
+</Note>

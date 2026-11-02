@@ -10,22 +10,34 @@ Tests cover:
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord, HealthScore
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.integrations.rollup_queue import pop_dirty_days
+from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
+from app.repositories import AggregateRepository, data_point_series_repository
+from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordQueryParams,
+    MealDetailCreate,
     SleepInclude,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
+from app.schemas.responses.activity import Meal, NutrientValue
 from app.services.event_record_service import event_record_service
-from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
+from tests.factories import (
+    DataPointSeriesFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    SleepDetailsFactory,
+    UserFactory,
+)
 
 
 class TestEventRecordServiceCreateDetail:
@@ -224,6 +236,43 @@ class TestEventRecordServiceBulkCreateDetails:
 
         mock_workout.assert_not_called()
 
+    def test_bulk_create_details_emits_meal_webhook_with_nutrients(self, db: Session) -> None:
+        data_source = DataSourceFactory(source="apple")
+        meal = EventRecordFactory(mapping=data_source, category="meal", type_=None)
+        details = [
+            MealDetailCreate(
+                record_id=meal.id,
+                title="Chicken Salad",
+                meal_type="lunch",
+                nutrients={
+                    SeriesType.dietary_energy_consumed: 650.0,
+                    SeriesType.dietary_protein: 40.0,
+                    SeriesType.hydration: 250.0,
+                },
+            )
+        ]
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            event_record_service.bulk_create_details(db, details, detail_type="meal")
+            db.commit()
+
+        mock_meal.assert_called_once()
+        kwargs = mock_meal.call_args.kwargs
+        assert kwargs["record_id"] == meal.id
+        assert kwargs["title"] == "Chicken Salad"
+        assert kwargs["meal_type"] == "lunch"
+        assert kwargs["calories_kcal"] == 650.0
+        assert kwargs["macros"]["protein_g"] == 40.0
+        assert kwargs["water_ml"] == 250.0
+        assert kwargs["nutrients"] == {
+            "dietary_energy_consumed": {"value": 650.0, "unit": "kcal"},
+            "dietary_protein": {"value": 40.0, "unit": "g"},
+            "hydration": {"value": 250.0, "unit": "mL"},
+        }
+
 
 class TestEventRecordServiceGetRecordsResponse:
     """Test getting formatted event records."""
@@ -366,6 +415,126 @@ class TestEventRecordServiceGetRecordsResponse:
         assert records == []
 
 
+class TestUpsertMeals:
+    """A meal is identified by (data source, external_id): meals sharing a time window are
+    separate, and a re-synced meal is refreshed in place, nutrients included."""
+
+    START = datetime(2026, 10, 5, 8, 0, tzinfo=timezone.utc)
+    END = datetime(2026, 10, 5, 20, 0, tzinfo=timezone.utc)
+
+    def _meal(
+        self,
+        data_source: DataSource,
+        external_id: str,
+        meal_type: str,
+        nutrients: dict[SeriesType, float],
+        start: datetime | None = None,
+    ) -> tuple[EventRecordCreate, MealDetailCreate]:
+        start = start or self.START
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="meal",
+            source_name="com.myfitnesspal.android",
+            source=data_source.source,
+            device_model=data_source.device_model,
+            user_id=data_source.user_id,
+            provider=data_source.provider,
+            external_id=external_id,
+            start_datetime=start,
+            end_datetime=self.END,
+            duration_seconds=int((self.END - start).total_seconds()),
+        )
+        return record, MealDetailCreate(record_id=record.id, meal_type=meal_type, nutrients=nutrients)
+
+    def _meals_by_type(self, db: Session, data_source: DataSource) -> dict[str, Meal]:
+        response = event_record_service.get_meals(db, data_source.user_id, EventRecordQueryParams())
+        return {m.meal_type: m for m in response.data if m.meal_type}
+
+    def test_meals_with_the_same_window_are_separate(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        inserted = event_record_service.upsert_meals(
+            db,
+            [
+                self._meal(data_source, "dp-1", "breakfast", {SeriesType.dietary_carbohydrates: 10}),
+                self._meal(data_source, "dp-2", "lunch", {SeriesType.dietary_carbohydrates: 106.393}),
+            ],
+        )
+        db.commit()
+
+        assert inserted == 2
+        meals = self._meals_by_type(db, data_source)
+        assert meals["breakfast"].macros.carbohydrates_g == 10.0
+        assert meals["lunch"].macros.carbohydrates_g == 106.393
+
+    def test_resync_refreshes_window_type_and_nutrients_in_place(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        event_record_service.upsert_meals(
+            db,
+            [
+                self._meal(
+                    data_source,
+                    "dp-1",
+                    "snack",
+                    {SeriesType.dietary_protein: 6, SeriesType.dietary_sugar: 10},
+                )
+            ],
+        )
+        db.commit()
+
+        inserted = event_record_service.upsert_meals(
+            db,
+            [
+                self._meal(
+                    data_source,
+                    "dp-1",
+                    "breakfast",
+                    {SeriesType.dietary_protein: 7},
+                    start=self.START - timedelta(hours=1),
+                )
+            ],
+        )
+        db.commit()
+
+        assert inserted == 0
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        db.refresh(meal)
+        assert meal.start_datetime == self.START - timedelta(hours=1)
+        meals = self._meals_by_type(db, data_source)
+        assert set(meals) == {"breakfast"}
+        assert meals["breakfast"].nutrients == {"dietary_protein": NutrientValue(value=7.0, unit="g")}
+
+    def test_all_nutrients_are_returned_with_their_units(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        nutrients = {
+            SeriesType.dietary_energy_consumed: 934.38,
+            SeriesType.dietary_sodium: 35.8,
+            SeriesType.dietary_vitamin_c: 0.5,
+            SeriesType.hydration: 250,
+        }
+        event_record_service.upsert_meals(db, [self._meal(data_source, "dp-1", "lunch", nutrients)])
+        db.commit()
+
+        lunch = self._meals_by_type(db, data_source)["lunch"]
+
+        assert lunch.calories_kcal == 934.38
+        assert lunch.water_ml == 250.0
+        assert lunch.macros is None
+        assert {k: (v.value, v.unit) for k, v in lunch.nutrients.items()} == {
+            "dietary_energy_consumed": (934.38, "kcal"),
+            "dietary_sodium": (35.8, "mg"),
+            "dietary_vitamin_c": (0.5, "mg"),
+            "hydration": (250.0, "mL"),
+        }
+
+    def test_meal_without_external_id_is_skipped(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        record, detail = self._meal(data_source, "dp-1", "lunch", {})
+        record = record.model_copy(update={"external_id": None})
+
+        assert event_record_service.upsert_meals(db, [(record, detail)]) == 0
+        assert db.query(EventRecord).filter(EventRecord.category == "meal").count() == 0
+
+
 class TestCreateOrMergeSleep:
     """Test create_or_merge_sleep adjacent session merging."""
 
@@ -497,6 +666,107 @@ class TestCreateOrMergeSleep:
         assert d.sleep_awake_minutes == 52  # 22 + 30
         assert d.sleep_total_duration_minutes == 378  # 8 + 370
 
+    def _unstaged_detail(self, record_id: UUID, stages: list[SleepStage] | None = None) -> EventRecordDetailCreate:
+        return self._detail(record_id).model_copy(
+            update={
+                "sleep_deep_minutes": None,
+                "sleep_light_minutes": None,
+                "sleep_rem_minutes": None,
+                "sleep_awake_minutes": None,
+                "sleep_total_duration_minutes": None,
+                "sleep_stages": stages,
+            }
+        )
+
+    def _existing_sleep(self, data_source: DataSource, start: datetime, end: datetime, **detail: Any) -> None:
+        existing = EventRecordFactory(
+            mapping=data_source, category="sleep", type_="sleep_session", start_datetime=start, end_datetime=end
+        )
+        SleepDetailsFactory(event_record=existing, **{"sleep_total_duration_minutes": 30, **detail})
+
+    def test_merge_keeps_stages_unreported_on_both_sides_none(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        self._existing_sleep(
+            data_source,
+            self._dt(20, 56),
+            self._dt(21, 26),
+            sleep_deep_minutes=None,
+            sleep_light_minutes=None,
+            sleep_rem_minutes=None,
+            sleep_awake_minutes=None,
+            sleep_total_duration_minutes=None,
+        )
+        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+
+        result = event_record_service.create_or_merge_sleep(
+            db, user.id, record, self._unstaged_detail(record.id), self.THRESHOLD
+        )
+
+        db.refresh(result)
+        d = result.sleep_detail
+        assert d.sleep_deep_minutes is None
+        assert d.sleep_light_minutes is None
+        assert d.sleep_rem_minutes is None
+        assert d.sleep_awake_minutes is None
+        assert d.sleep_total_duration_minutes is None
+
+    def test_merge_takes_stages_reported_by_one_side(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        self._existing_sleep(
+            data_source,
+            self._dt(20, 56),
+            self._dt(21, 26),
+            sleep_deep_minutes=None,
+            sleep_light_minutes=None,
+            sleep_rem_minutes=None,
+            sleep_awake_minutes=None,
+            sleep_total_duration_minutes=None,
+        )
+        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+        detail = self._detail(record.id, deep=30, light=200, rem=0, awake=0)
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        db.refresh(result)
+        d = result.sleep_detail
+        assert d.sleep_deep_minutes == 30
+        assert d.sleep_light_minutes == 200
+        assert d.sleep_rem_minutes == 0
+        assert d.sleep_awake_minutes == 0
+        assert d.sleep_total_duration_minutes == 230
+
+    def test_overlapping_merge_of_sleeping_only_hypnograms_reports_no_stages(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        self._existing_sleep(
+            data_source,
+            self._dt(1, 0),
+            self._dt(5, 0),
+            sleep_deep_minutes=None,
+            sleep_light_minutes=None,
+            sleep_rem_minutes=None,
+            sleep_awake_minutes=None,
+            sleep_stages=[
+                {"stage": "sleeping", "start_time": self._dt(1, 0).isoformat(), "end_time": self._dt(5, 0).isoformat()}
+            ],
+        )
+        record = self._record(data_source, self._dt(4, 0), self._dt(8, 0))
+        detail = self._unstaged_detail(
+            record.id, [SleepStage(stage="sleeping", start_time=self._dt(4, 0), end_time=self._dt(8, 0))]
+        )
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        db.refresh(result)
+        d = result.sleep_detail
+        assert d.sleep_total_duration_minutes == 420
+        assert d.sleep_deep_minutes is None
+        assert d.sleep_light_minutes is None
+        assert d.sleep_rem_minutes is None
+        assert d.sleep_awake_minutes is None
+
     def test_merge_calculates_weighted_efficiency(self, db: Session) -> None:
         """Efficiency is a time-in-bed weighted average of both sessions."""
         user = UserFactory()
@@ -555,6 +825,76 @@ class TestCreateOrMergeSleep:
         event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         assert event_record_service.get(db, old_id) is None
+
+    def test_merge_keeps_the_first_segments_session_values(self, db: Session) -> None:
+        """Oura reports a lowest heart rate per sleep segment; the merged night keeps the lower one."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(20, 56),
+            end_datetime=self._dt(21, 26),
+        )
+        SleepDetailsFactory(event_record=existing)
+        heart_rate = get_series_type_id(SeriesType.heart_rate)
+        aggregates = AggregateRepository(EventRecordAggregate)
+        aggregates.upsert(
+            db,
+            [
+                {
+                    "record_id": existing.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "min": Decimal("48"),
+                    "count": 1,
+                }
+            ],
+        )
+        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+
+        merged = event_record_service.create_or_merge_sleep(
+            db, user.id, record, self._detail(record.id), self.THRESHOLD
+        )
+        # The second segment's own value arrives after the merge, on the record the save returned.
+        aggregates.upsert(
+            db,
+            [
+                {
+                    "record_id": merged.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "min": Decimal("52"),
+                    "count": 1,
+                }
+            ],
+        )
+
+        row = db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == merged.id).one()
+        assert row.min == Decimal("48")
+
+    def test_a_reingested_sleep_queues_the_days_it_left_and_joined(self, db: Session) -> None:
+        """Its session rows are rolled up over the new window; the days on both sides change."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            external_id="night-1",
+            start_datetime=self._dt(22, 0),
+            end_datetime=self._dt(6, 0, day=22),
+        )
+        pop_dirty_days(100)
+        record = self._record(data_source, self._dt(23, 0), self._dt(7, 0, day=22)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        event_record_service.create_or_merge_sleep(db, user.id, record, self._detail(record.id), self.THRESHOLD)
+        db.commit()
+
+        assert {day for _, day in pop_dirty_days(100)} == {self._dt(22, 0).date(), self._dt(6, 0, day=22).date()}
 
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""
@@ -782,6 +1122,35 @@ class TestCreateOrMergeSleep:
         assert kwargs["device_type"] == "ring"
         assert kwargs["sleep_duration_seconds"] == detail.sleep_total_duration_minutes * 60
         assert kwargs["sleep_stage_intervals"] == [stage.model_dump(mode="json")]
+
+    @pytest.mark.parametrize(
+        ("minutes", "stages"),
+        [
+            (None, None),
+            (0, {"awake_minutes": 0, "light_minutes": 0, "deep_minutes": 0, "rem_minutes": 0}),
+        ],
+    )
+    def test_webhook_stages_are_null_only_when_none_is_reported(
+        self, db: Session, minutes: int | None, stages: dict[str, int] | None
+    ) -> None:
+        data_source = DataSourceFactory(source="oura", device_type="ring")
+        record = self._record(data_source, self._dt(1, 35), self._dt(8, 51))
+        detail = self._detail(record.id).model_copy(
+            update={
+                "sleep_deep_minutes": minutes,
+                "sleep_light_minutes": minutes,
+                "sleep_rem_minutes": minutes,
+                "sleep_awake_minutes": minutes,
+            }
+        )
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_sleep_created") as mock_sleep,
+        ):
+            event_record_service.create_or_merge_sleep(db, data_source.user_id, record, detail, self.THRESHOLD)
+
+        assert mock_sleep.call_args.kwargs["stages"] == stages
 
     def test_skips_data_source_lookup_when_svix_disabled(self, db: Session) -> None:
         """No device_type lookup (and no webhook) happens when Svix is not configured."""
@@ -1074,6 +1443,78 @@ class TestGetSleepSessions:
         assert session.duration_seconds == 28800
         assert session.sleep_duration_seconds is None
 
+    def _nap_mix(self, mapping: DataSource) -> dict[str, EventRecord]:
+        """One nap plus main sleeps flagged False, flagged NULL and without a detail row."""
+        base = datetime(2026, 4, 10, 23, 0, tzinfo=timezone.utc)
+        records = {
+            key: EventRecordFactory(
+                mapping=mapping,
+                category="sleep",
+                type_="sleep",
+                start_datetime=base + timedelta(days=day),
+                end_datetime=base + timedelta(days=day, hours=1),
+            )
+            for day, key in enumerate(("nap", "main", "unflagged", "no_details"))
+        }
+        SleepDetailsFactory(event_record=records["nap"], is_nap=True)
+        SleepDetailsFactory(event_record=records["main"], is_nap=False)
+        SleepDetailsFactory(event_record=records["unflagged"], is_nap=None)
+        return records
+
+    def test_is_nap_filter_splits_naps_from_main_sleep(self, db: Session) -> None:
+        """Omitted returns everything; true/false partition it, treating NULL or missing details as main sleep."""
+        user = UserFactory()
+        records = self._nap_mix(DataSourceFactory(user=user, source="oura"))
+
+        def fetch(**overrides) -> set[UUID]:
+            params = EventRecordQueryParams(
+                start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                **overrides,
+            )
+            response = event_record_service.get_sleep_sessions(db, user.id, params)
+            assert response.pagination.total_count == len(response.data)
+            return {s.id for s in response.data}
+
+        ids = {key: record.id for key, record in records.items()}
+        assert fetch() == set(ids.values())
+        assert fetch(is_nap=True) == {ids["nap"]}
+        assert fetch(is_nap=False) == {ids["main"], ids["unflagged"], ids["no_details"]}
+
+    def test_is_nap_filter_applies_before_priority(self, db: Session) -> None:
+        """A nap from the top source must not hide another source's main sleep that night, and vice versa."""
+        from app.services.priority_service import priority_service
+
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin_nap = EventRecordFactory(
+            mapping=garmin,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 4, 11, 13, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 11, 14, 0, tzinfo=timezone.utc),
+        )
+        SleepDetailsFactory(event_record=garmin_nap, is_nap=True)
+        oura_night = self._sleep_record(oura)
+        SleepDetailsFactory(event_record=oura_night, is_nap=False)
+
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.OURA, 2)
+
+        def fetch(is_nap: bool) -> set[UUID]:
+            params = EventRecordQueryParams(
+                start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                is_nap=is_nap,
+            )
+            return {
+                s.id for s in event_record_service.get_sleep_sessions(db, user.id, params, filter_by_priority=True).data
+            }
+
+        assert fetch(is_nap=False) == {oura_night.id}
+        assert fetch(is_nap=True) == {garmin_nap.id}
+
     def _sleep_record(self, mapping: DataSource) -> EventRecord:
         """Create a sleep session ending 2026-04-11 (UTC) for the given source."""
         return EventRecordFactory(
@@ -1127,3 +1568,111 @@ class TestGetSleepSessions:
         ids = {s.id for s in response.data}
         assert garmin_record.id in ids
         assert oura_record.id not in ids
+
+
+class TestResolveAvgHr:
+    """Workout avg HR falls back to HR samples of the same writer when the workout's own source has none."""
+
+    START = datetime(2026, 9, 1, 7, tzinfo=timezone.utc)
+
+    def _workout(self, data_source: DataSource) -> EventRecord:
+        return EventRecordFactory(
+            data_source=data_source,
+            category="workout",
+            start_datetime=self.START,
+            end_datetime=self.START + timedelta(hours=1),
+        )
+
+    def _hr(self, data_source: DataSource, value: int) -> None:
+        for minute in (10, 20):
+            DataPointSeriesFactory(
+                data_source=data_source, recorded_at=self.START + timedelta(minutes=minute), value=value
+            )
+
+    def _avg_hr(self, db: Session, workout: EventRecord) -> int | None:
+        db.flush()
+        statistics = event_record_service.crud.get_workout_statistics(db, [workout.id])
+        return event_record_service._resolve_avg_hr(db, [workout], statistics)[workout.id]
+
+    def test_our_average_rounds_half_up_like_the_sql_fallback(self, db: Session) -> None:
+        workout = self._workout(DataSourceFactory())
+
+        resolved = event_record_service._resolve_avg_hr(
+            db, [workout], {workout.id: {"heart_rate_avg": Decimal("72.5")}}
+        )
+
+        assert resolved[workout.id] == 73
+
+    def test_own_source_wins_over_writer_siblings(self, db: Session) -> None:
+        user = UserFactory()
+        app = {"user": user, "provider": ProviderName.HEALTH_CONNECT, "source_app_id": "com.fitbit.FitbitMobile"}
+        tracker = DataSourceFactory(**app, device_model="Fitbit Air", source="com.fitbit.FitbitMobile")
+        unknown = DataSourceFactory(**app, device_model=None, source="com.fitbit.FitbitMobile")
+        self._hr(tracker, 100)
+        self._hr(unknown, 150)
+
+        assert self._avg_hr(db, self._workout(tracker)) == 100
+
+    def test_falls_back_to_the_same_app_split_by_model(self, db: Session) -> None:
+        user = UserFactory()
+        app = {"user": user, "provider": ProviderName.HEALTH_CONNECT, "source_app_id": "com.fitbit.FitbitMobile"}
+        tracker = DataSourceFactory(**app, device_model="Fitbit Air", source="com.fitbit.FitbitMobile")
+        unknown = DataSourceFactory(**app, device_model=None, source="com.fitbit.FitbitMobile")
+        self._hr(unknown, 150)
+
+        assert self._avg_hr(db, self._workout(tracker)) == 150
+
+    def test_falls_back_to_cloud_dailies_of_the_same_provider(self, db: Session) -> None:
+        user = UserFactory()
+        watch = DataSourceFactory(
+            user=user, provider=ProviderName.GARMIN, device_model="Garmin fenix 8", source="garmin"
+        )
+        dailies = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model=None, source="garmin")
+        self._hr(dailies, 140)
+
+        assert self._avg_hr(db, self._workout(watch)) == 140
+
+    def test_other_writer_is_not_used(self, db: Session) -> None:
+        user = UserFactory()
+        tracker = DataSourceFactory(
+            user=user,
+            provider=ProviderName.HEALTH_CONNECT,
+            source_app_id="com.fitbit.FitbitMobile",
+            device_model="Fitbit Air",
+            source="com.fitbit.FitbitMobile",
+        )
+        other_app = DataSourceFactory(
+            user=user,
+            provider=ProviderName.HEALTH_CONNECT,
+            source_app_id="com.google.android.apps.fitness",
+            device_model=None,
+            source="com.google.android.apps.fitness",
+        )
+        self._hr(other_app, 150)
+
+        assert self._avg_hr(db, self._workout(tracker)) is None
+
+    def test_workouts_are_split_into_chunks_without_splitting_a_writer(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(data_point_series_repository, "_MAX_WINDOW_ROWS", 3)
+        user = UserFactory()
+        watch = DataSourceFactory(
+            user=user, provider=ProviderName.GARMIN, device_model="Garmin fenix 8", source="garmin"
+        )
+        dailies = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model=None, source="garmin")
+        workouts = []
+        for day in range(3):
+            start = self.START + timedelta(days=day)
+            workouts.append(
+                EventRecordFactory(
+                    data_source=watch, category="workout", start_datetime=start, end_datetime=start + timedelta(hours=1)
+                )
+            )
+            DataPointSeriesFactory(data_source=dailies, recorded_at=start + timedelta(minutes=10), value=130 + day)
+        db.flush()
+
+        statistics = event_record_service.crud.get_workout_statistics(db, [w.id for w in workouts])
+        result = event_record_service._resolve_avg_hr(db, workouts, statistics)
+
+        assert [result[w.id] for w in workouts] == [130, 131, 132]

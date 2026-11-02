@@ -14,9 +14,9 @@ keywords: ["react native wearables sdk", "react native healthkit", "react native
 
 ## Introduction
 
-The Open Wearables React Native SDK (`open-wearables-react-native-sdk`) enables secure background synchronization of health data from **Apple HealthKit** (iOS), **Samsung Health**, and **Health Connect** (Android) to the Open Wearables platform.
+The Open Wearables React Native SDK (`open-wearables`) enables secure background synchronization of health data from **Apple HealthKit** (iOS), **Samsung Health**, and **Health Connect** (Android) to the Open Wearables platform.
 
-The SDK is built with the [Expo Module API](https://docs.expo.dev/modules/module-api/) enabling install the app in Expo Project as well as in React Native CLI projects. 
+The SDK is built with the [Expo Module API](https://docs.expo.dev/modules/module-api/), so it works in Expo projects as well as in bare React Native projects with Expo modules installed.
 
 On iOS, the React Native SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`open_wearables_ios_sdk`). On Android, it wraps the **[native Android SDK](/sdk/android)** (`open_wearables_android_sdk`). This means all the core sync logic — background execution, streaming uploads, secure storage, and retry mechanisms — is handled by the native implementations under the hood. The React Native layer provides a convenient TypeScript API for cross-platform apps.
 
@@ -49,86 +49,47 @@ On iOS, the React Native SDK is a **wrapper around the [native iOS SDK](/sdk/ios
   <Tab title="iOS">
     | Requirement | Details |
     |-------------|---------|
-    | iOS Version | iOS 15.0+ |
-    | Xcode | Xcode 14+ |
-    | Apple Developer Account | Required for HealthKit entitlement |
-    | HealthKit Capability | Must be enabled in Xcode |
-    | Physical Device | HealthKit doesn't work in iOS Simulator |
+    | iOS Version | iOS 15.1+ |
+    | Apple Developer Account | Required for the HealthKit entitlement |
+    | Physical Device | HealthKit doesn't work in the iOS Simulator |
   </Tab>
   <Tab title="Android">
     | Requirement | Details |
     |-------------|---------|
     | Min SDK | Android 10 (API 29+) |
-    | Samsung Health SDK | For Samsung Health provider |
-    | Health Connect | For Health Connect provider |
-    | Permissions | See Android configuration below |
+    | Health Connect or Samsung Health | Installed on the device |
   </Tab>
   <Tab title="React Native">
     | Requirement | Details |
     |-------------|---------|
-    | Node.js | 18+ |
-    | React Native | 0.70+ |
-    | TypeScript | 4.0+ |
-    | Expo CLI | 50.0.0+ |
+    | Expo | Built and tested with Expo SDK 54 / React Native 0.81 |
+    | Bare React Native | Requires [Expo modules](https://docs.expo.dev/bare/installing-expo-modules/) |
   </Tab>
 </Tabs>
 
 ## Installation
 
+<Warning>
+  **Temporary setup.** The package is not published to npm yet, and its Android native dependency is only available through Maven Local. We're working on publishing the package to npm and serving the Android dependency from a public repository - steps 1 and 3 below will then become a plain `npm install`.
+</Warning>
+
 <Steps>
-  <Step title="Add the dependency">
-    Currently, the SDK is only available locally. You can install it using the following command from the project root folder:
-
-    ```
-    npm install 
-    ```
-    
-    When we publish the package to npm (not available yet), you will use the following command:
-
-    ```
-    npm install open-wearables
+  <Step title="Install the package from GitHub">
+    ```bash
+    npm install github:the-momentum/open-wearables-react-native-sdk#<commit-sha>
     ```
 
+    npm builds the package during install. Pin a commit so updates are deliberate. The package is imported as `open-wearables`.
   </Step>
 
-  <Step title="Run the app">
+  <Step title="Add the config plugin">
+    Required for Expo projects - it sets the iOS HealthKit entitlements, `Info.plist` keys and background modes, and the Android Health Connect activity aliases. Set the Android `minSdkVersion` in the same file, which needs `expo-build-properties`:
 
-    Depending if you are using Expo or React Native CLI, follow the instructions below:
+    ```bash
+    npx expo install expo-build-properties
+    ```
 
-    #### Using Expo
-      Expo projects using the Expo Modules API automatically link native dependencies.
-      After installing the package, simply run your project.
-
-      ```
-      npx expo run:ios
-      ```
-
-      If your project does not yet contain native directories (ios/ and android/), Expo will automatically generate them.
-
-      You can also generate them manually using:
-
-      ```
-      npx expo prebuild 
-      ```
-
-    #### Using React Native CLI
-      For bare React Native projects, you must ensure that you have installed and configured the expo package before continuing.
-      After installing the package, install the iOS CocoaPods dependencies:
-
-      ```
-      npx pod-install
-      ```
-      or manually:
-
-      ```
-      cd ios && pod install
-      ```
-  </Step>
-
-  <Step title="Config Plugin (optional)">
-    You can customize the permission messages displayed to users by configuring the plugin in your app.json or app.config.js.
-
-    ```json
+    ```json app.json
     {
       "expo": {
         "plugins": [
@@ -138,39 +99,66 @@ On iOS, the React Native SDK is a **wrapper around the [native iOS SDK](/sdk/ios
               "healthShareUsage": "Allow $(PRODUCT_NAME) to read your health data.",
               "healthUpdateUsage": "Allow $(PRODUCT_NAME) to write health data."
             }
-          ]
+          ],
+          ["expo-build-properties", { "android": { "minSdkVersion": 29 } }]
         ]
       }
     }
     ```
+
+    Bare React Native projects set these by hand - see [Expo and bare React Native setup](/sdk/react-native/integration#expo-and-bare-react-native-setup).
+  </Step>
+
+  <Step title="Android: publish the native SDK to Maven Local">
+    ```bash
+    git clone https://github.com/the-momentum/open_wearables_android_sdk
+    cd open_wearables_android_sdk
+    git checkout v0.11.2
+    ./gradlew publishToMavenLocal
+    ```
+
+    This also installs the Samsung Health SDK the native SDK depends on. Then run `npx expo prebuild` in your app and add `mavenLocal()` as the **first** repository in `android/build.gradle`:
+
+    ```gradle android/build.gradle
+    allprojects {
+      repositories {
+        mavenLocal()
+        // ...
+      }
+    }
+    ```
+
+    Repeat this on every machine that builds the app, including CI. `npx expo prebuild --clean` regenerates `android/`, so add `mavenLocal()` again afterwards.
+  </Step>
+
+  <Step title="Build and run">
+    ```bash
+    npx expo run:ios
+    npx expo run:android
+    ```
+
+    Bare React Native: run `npx pod-install` before building for iOS.
   </Step>
 </Steps>
 
 ## Quick Start
 
-Here's the minimal code to get health sync working:
+The minimal flow - see the [Integration Guide](/sdk/integration) for when to call what:
 
-```TypeScript
+```ts
+import OpenWearablesHealthSDK, { HealthDataType } from "open-wearables";
 
-import OpenWearablesHealthSDK from "open-wearables";
+// Every app launch
+OpenWearablesHealthSDK.configure("https://api.your-open-wearables.com");
 
-// Configure the SDK with your backend host
-OpenWearablesHealthSDK.configure("https://your-api-host.com");
+// Once per user, with tokens from your backend
+await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
 
-// Sign in (token-based)
-OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
+// Android only
+OpenWearablesHealthSDK.setProvider("google");
 
-// Or sign in (API key)
-OpenWearablesHealthSDK.signIn(userId, null, null, apiKey);
-
-// Request HealthKit authorization
-await OpenWearablesHealthSDK.requestAuthorization(["steps", "heartRate", "sleep"]);
-
-// Start background sync
-await OpenWearablesHealthSDK.startBackgroundSync();
-
-// Sync immediately
-await OpenWearablesHealthSDK.syncNow();
+await OpenWearablesHealthSDK.requestAuthorization([HealthDataType.Steps, HealthDataType.HeartRate, HealthDataType.Sleep]);
+await OpenWearablesHealthSDK.startBackgroundSync(90);
 ```
 
 ## Events
@@ -203,8 +191,11 @@ Subscribe to native SDK events using the standard Expo module event emitter:
 ## Documentation
 
 <CardGroup cols={2}>
-  <Card title="Integration Guide" icon="book" href="/sdk/react-native/integration">
-    Complete guide to integrating the SDK including authentication flow, backend setup, and best practices.
+  <Card title="Integration Guide" icon="book" href="/sdk/integration">
+    Authentication, backend endpoint, and SDK lifecycle - the same for every SDK.
+  </Card>
+  <Card title="React Native calls" icon="code" href="/sdk/react-native/integration">
+    The React Native code for each integration step, plus Expo setup.
   </Card>
   <Card title="Troubleshooting" icon="wrench" href="/sdk/react-native/troubleshooting">
     Common issues and their solutions for iOS and Android.

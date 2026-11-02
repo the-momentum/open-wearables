@@ -53,6 +53,7 @@ class GarminStrategy(BaseProviderStrategy):
         self.webhooks = GarminWebhookHandler(
             garmin_workouts=self.workouts,
             garmin_247=self.data_247,
+            oauth=self.oauth,
         )
 
     @property

@@ -9,32 +9,49 @@ Usage:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
 import factory
 from factory import LazyAttribute, LazyFunction, Sequence
+from sqlalchemy.orm import Session
 
+from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.models import (
     ApiKey,
     Application,
-    DataPointSeries,
     DataSource,
     Developer,
     EventRecord,
+    EventRecordDetail,
     HealthScore,
+    MealDetails,
     PersonalRecord,
     ProviderSetting,
+    SeriesAggregate,
+    SeriesSample,
     SeriesTypeDefinition,
     SleepDetails,
     User,
     UserConnection,
     WorkoutDetails,
 )
+from app.repositories.aggregate_repository import AggregateRepository
+from app.repositories.event_record_detail_repository import EventRecordDetailRepository
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.auth import ConnectionStatus
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import (
+    ComputedBy,
+    EventCategory,
+    HealthScoreCategory,
+    PeriodKind,
+    ProviderName,
+    SeriesType,
+    get_series_type_id,
+)
+from app.schemas.model_crud.activities import CalendarPeriod, EventRecordDetailCreate
 from app.utils.security import get_password_hash, hash_api_key
 
 
@@ -101,6 +118,26 @@ class SeriesTypeDefinitionFactory(BaseFactory):
             if existing:
                 return existing
         return cls(id=82, code="basal_energy", unit="kcal")
+
+    @classmethod
+    def get_or_create_total_energy(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded total_energy series type (ID=89)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 89).first()
+            if existing:
+                return existing
+        return cls(id=89, code="total_energy", unit="kcal")
+
+    @classmethod
+    def get_or_create_distance(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded distance series type (ID=185)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 185).first()
+            if existing:
+                return existing
+        return cls(id=185, code="distance", unit="meters")
 
     @classmethod
     def get_or_create_distance_walking_running(cls) -> SeriesTypeDefinition:
@@ -245,6 +282,7 @@ class UserFactory(BaseFactory):
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
     external_user_id = None
+    is_seed = False
 
 
 class PersonalRecordFactory(BaseFactory):
@@ -397,7 +435,8 @@ class UserConnectionFactory(BaseFactory):
     provider_username = factory.Faker("user_name")
     access_token = LazyFunction(lambda: f"access_{uuid4().hex}")  # Optional for SDK providers
     refresh_token = LazyFunction(lambda: f"refresh_{uuid4().hex}")
-    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))  # Optional for SDK providers
+    # Optional for SDK providers
+    token_expires_at = LazyFunction(lambda: datetime.now(timezone.utc) + timedelta(days=1))
     scope = "read_all"
     status = ConnectionStatus.ACTIVE
     last_synced_at = None
@@ -454,17 +493,17 @@ class EventRecordFactory(BaseFactory):
 
 
 class DataPointSeriesFactory(BaseFactory):
-    """Factory for DataPointSeries model."""
+    """Factory for SeriesSample model."""
 
     class Meta:
-        model = DataPointSeries
+        model = SeriesSample
 
     id = LazyFunction(uuid4)
     value = LazyFunction(lambda: Decimal("72.0"))
     recorded_at = LazyFunction(lambda: datetime.now(timezone.utc))
 
     @classmethod
-    def _create(cls, model_class: type[DataPointSeries], *args: Any, **kwargs: Any) -> DataPointSeries:
+    def _create(cls, model_class: type[SeriesSample], *args: Any, **kwargs: Any) -> SeriesSample:
         """Override create to handle relationships."""
         # Support both "mapping" (legacy) and "data_source" parameter names
         data_source = kwargs.pop("data_source", None) or kwargs.pop("mapping", None)
@@ -551,7 +590,14 @@ class WorkoutDetailsFactory(BaseFactory):
         if "heart_rate_avg" in kwargs and not isinstance(kwargs["heart_rate_avg"], Decimal):
             kwargs["heart_rate_avg"] = Decimal(str(kwargs["heart_rate_avg"]))
 
-        return super()._create(model_class, *args, **kwargs)
+        detail = super()._create(model_class, *args, **kwargs)
+        # As the detail save path does: the statistics also land in event_record_aggregate.
+        creator = EventRecordDetailCreate(
+            record_id=detail.record_id, **{column: getattr(detail, column) for column in WORKOUT_DETAIL_STATS}
+        )
+        session = cls._meta.sqlalchemy_session
+        EventRecordDetailRepository(EventRecordDetail)._mirror_workout_stats(session, [creator], EventCategory.WORKOUT)
+        return detail
 
 
 class SleepDetailsFactory(BaseFactory):
@@ -578,6 +624,28 @@ class SleepDetailsFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
+class MealDetailsFactory(BaseFactory):
+    """Factory for MealDetails model."""
+
+    class Meta:
+        model = MealDetails
+
+    title = "Grilled Chicken Breast"
+    meal_type = "lunch"
+    nutrients = LazyFunction(dict)
+
+    @classmethod
+    def _create(cls, model_class: type[MealDetails], *args: Any, **kwargs: Any) -> MealDetails:
+        """Override create to handle event_record relationship."""
+        event_record = kwargs.pop("event_record", None)
+        # Remove any stale record_id that might have been set
+        kwargs.pop("record_id", None)
+        if event_record is None:
+            event_record = EventRecordFactory(category="meal")
+        kwargs["record_id"] = event_record.id
+        return super()._create(model_class, *args, **kwargs)
+
+
 __all__ = [
     "BaseFactory",
     "SeriesTypeDefinitionFactory",
@@ -593,4 +661,34 @@ __all__ = [
     "ProviderSettingFactory",
     "WorkoutDetailsFactory",
     "SleepDetailsFactory",
+    "MealDetailsFactory",
 ]
+
+
+def roll_up_everything(db: Session) -> None:
+    """What the rollup job does once it has run: day and session aggregates out of every source's samples."""
+    repo = SeriesRollupRepository()
+    for source in db.query(DataSource):
+        repo.roll_up(db, source.id, repo.days_before(db, source.id, date(9000, 1, 1)))
+    db.flush()
+
+
+def provider_day(db: Session, source: DataSource, series_type: SeriesType, day: date, **stats: Decimal | int) -> None:
+    """A day value as a provider sends it: one series_aggregate row computed by the provider."""
+    period = CalendarPeriod.of_date(day)
+    AggregateRepository(SeriesAggregate).upsert(
+        db,
+        [
+            {
+                "data_source_id": source.id,
+                "series_type_definition_id": get_series_type_id(series_type),
+                "period_kind": PeriodKind.DAY,
+                "period_start": period.start,
+                "period_end": period.end,
+                "zone_offset": period.zone_offset,
+                "computed_by": ComputedBy.PROVIDER,
+                "count": 1,
+                **stats,
+            }
+        ],
+    )

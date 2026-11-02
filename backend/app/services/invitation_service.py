@@ -59,14 +59,7 @@ class InvitationService:
     ) -> Invitation:
         """Create and send a new invitation."""
         # Check if email already registered as developer
-        existing_developers = developer_service.crud.get_all(
-            db_session,
-            filters={"email": payload.email},
-            offset=0,
-            limit=1,
-            sort_by=None,
-        )
-        if existing_developers:
+        if developer_service.get_by_email(db_session, payload.email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A developer with this email already exists",
@@ -184,7 +177,13 @@ class InvitationService:
 
         invitation = self.crud.update_status(db_session, invitation, InvitationStatus.REVOKED)
 
-        self.logger.info(f"Invitation revoked for {invitation.email}")
+        log_structured(
+            self.logger,
+            "info",
+            "Invitation revoked",
+            action="invitation_revoked",
+            invitation_id=str(invitation.id),
+        )
         return invitation
 
     def resend_invitation(self, db_session: DbSession, invitation_id: UUID) -> Invitation:

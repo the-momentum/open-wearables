@@ -71,8 +71,7 @@ def create_endpoint(body: EndpointCreateRequest, app_id: SvixAppId) -> EndpointR
 
 @router.get("/endpoints")
 def list_endpoints(app_id: SvixAppId) -> list[EndpointResponse]:
-    result = svix_service.list_endpoints(app_id)
-    return [_ep_to_response(ep) for ep in result.data]
+    return [_ep_to_response(ep) for ep in svix_service.iter_endpoints(app_id)]
 
 
 @router.get("/endpoints/{endpoint_id}")
@@ -172,6 +171,7 @@ def list_endpoint_attempts(
         after=after,
         status=MessageStatus(status) if status is not None else None,
         event_types=event_types,
+        with_content=True,
     )
     result = svix_service.list_message_attempts(app_id, endpoint_id, options)
 
