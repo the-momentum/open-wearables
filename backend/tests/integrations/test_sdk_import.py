@@ -16,12 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
-from app.schemas.enums import SeriesType, get_series_type_id
+from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
 from app.services.sdk.import_service import ImportService
-from tests.factories import UserFactory
+from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
 
 SDK_ENVELOPE: dict[str, str] = {
     "provider": "apple",
@@ -1443,6 +1443,30 @@ class TestSDKImportMealCorrelation:
             "lunch": 40.42,
         }
         assert self._user_samples(db, user.id) == []
+
+    def test_meal_replay_joins_the_legacy_source_keyed_by_the_relaying_iphone(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """Older iOS SDKs stored meals under the relaying iPhone's model; once the model is dropped at
+        ingest, the meal's app id re-keys that legacy source instead of storing the meal again."""
+        user = UserFactory()
+        legacy = DataSourceFactory(
+            user=user, provider=ProviderName.APPLE, device_model="iPhone16,1", source="MyFitnessPal"
+        )
+        EventRecordFactory(
+            data_source=legacy, category="meal", type="HKCorrelationTypeIdentifierFood", external_id="MEAL-1"
+        )
+        record = self._correlation_record("MEAL-1")
+        record["source"] = {**record["source"], "deviceModel": "iPhone16,1"}
+
+        import_service.load_data(db, self._build_payload([record]), str(user.id))
+        db.expire_all()
+
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        assert meal.data_source_id == legacy.id
+        stamped = db.get(DataSource, legacy.id)
+        assert stamped.source_app_id == "com.myfitnesspal.mfp"
+        assert stamped.device_model is None
 
     def test_food_correlation_resync_updates_the_meal_in_place(
         self, db: Session, import_service: ImportService

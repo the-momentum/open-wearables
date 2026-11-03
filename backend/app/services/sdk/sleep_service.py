@@ -354,8 +354,8 @@ def handle_sleep_data(
         received_fields: set[str] = set()
         for sjson in unique_data:
             # Extract device info
-            device_model, software_version, original_source_name = extract_device_info(sjson.source)
-            device_type = extract_device_type(sjson.source)
+            device_model, software_version, original_source_name = extract_device_info(sjson.source, provider)
+            device_type = extract_device_type(sjson.source, provider)
             device_id, source_app_id, device_manufacturer = extract_device_ids(sjson.source)
 
             sleep_phase = get_apple_sleep_phase(sjson.stage)
