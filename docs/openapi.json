@@ -6949,6 +6949,7 @@
                                   "type": "string"
                                 }
                               ],
+                              "description": "Ignored for ACTIVITY_INTENSITY_MODERATE and ACTIVITY_INTENSITY_VIGOROUS: their minutes are computed from startDate and endDate.",
                               "title": "Value"
                             },
                             "unit": {
@@ -6960,6 +6961,7 @@
                                   "type": "null"
                                 }
                               ],
+                              "description": "Ignored for ACTIVITY_INTENSITY_MODERATE and ACTIVITY_INTENSITY_VIGOROUS: their minutes are computed from startDate and endDate.",
                               "title": "Unit"
                             },
                             "metadata": {

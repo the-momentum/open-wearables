@@ -83,13 +83,18 @@ class MetricRecord(BaseModel):
     endDate: datetime
     zoneOffset: str | None = None
     source: SourceInfo | None = None
-    value: Decimal
-    unit: str | None
+    value: Decimal = Field(
+        description="Ignored for ACTIVITY_INTENSITY_MODERATE and ACTIVITY_INTENSITY_VIGOROUS: "
+        "their minutes are computed from startDate and endDate."
+    )
+    unit: str | None = Field(
+        description="Ignored for ACTIVITY_INTENSITY_MODERATE and ACTIVITY_INTENSITY_VIGOROUS: "
+        "their minutes are computed from startDate and endDate."
+    )
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _interval_holds_minutes(self) -> MetricRecord:
-        # A record whose minutes are its length holds none if it doesn't end after it starts
         if self.type in INTERVAL_MINUTE_METRIC_TYPES and self.endDate <= self.startDate:
             raise ValueError("endDate must be after startDate for a record whose minutes are its length")
         return self
