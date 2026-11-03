@@ -155,8 +155,8 @@ uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
     || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-01-01 once all deployments have migrated.
-# Types Google Health sleep rows saved without 'sleep_session', so re-fetches update them
-# instead of inserting duplicates. Idempotent, no-op once typed.
+# Types Google Health sleep rows saved without 'sleep_session', so a re-fetched night updates
+# its details instead of sending sleep.created again. Runs once per instance (data_migration).
 echo 'Running Google sleep type backfill...'
 uv run python scripts/data_migrations/backfill_google_sleep_type.py \
     || echo "Warning: Google sleep type backfill failed — will retry on next startup."
