@@ -6,7 +6,7 @@ from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories import HealthScoreRepository, ProviderPriorityRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
-from app.schemas.enums import HealthScoreCategory
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     HealthScoreCreate,
     HealthScoreQueryParams,
@@ -46,6 +46,16 @@ class HealthScoreService(
         category: HealthScoreCategory,
     ) -> HealthScore | None:
         return self.crud.get_latest_by_category(db_session, user_id, category)
+
+    @handle_exceptions
+    def get_for_event_record(
+        self,
+        db_session: DbSession,
+        event_record_id: UUID,
+        provider: ProviderName,
+        category: HealthScoreCategory,
+    ) -> HealthScore | None:
+        return self.crud.get_for_event_record(db_session, event_record_id, provider, category)
 
     @handle_exceptions
     def get_latest_per_category(

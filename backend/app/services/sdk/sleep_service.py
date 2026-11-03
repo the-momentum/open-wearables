@@ -26,6 +26,7 @@ from app.schemas.model_crud.activities import (
     SleepStage,
 )
 from app.schemas.providers.mobile_sdk import (
+    SLEEP_START_STAGES,
     SLEEP_START_STATES,
     SleepState,
     SleepStateStage,
@@ -200,7 +201,6 @@ def _apply_transition(
         state.device_id = device_id
         state.source_app_id = source_app_id
         state.device_manufacturer = device_manufacturer
-        state.zone_offset = zone_offset or state.zone_offset
 
     if zone_offset and not state.zone_offset:
         state.zone_offset = zone_offset
@@ -397,23 +397,17 @@ def handle_sleep_data(
     celery_app.send_task(CeleryTask.FINALIZE_STALE_SLEEPS)
 
 
-_SLEEP_START_STAGES = {
-    SleepStageType.IN_BED,
-    SleepStageType.SLEEPING,
-    SleepStageType.LIGHT,
-    SleepStageType.DEEP,
-    SleepStageType.REM,
-}
-
-
 def _drop_awake_before_first_sleep(stages: list[SleepStateStage]) -> list[SleepStateStage]:
     """Drop awake time before the first sleep stage of the night.
 
     A night starts at its first sleep sample. Applying this to the whole merged night,
     rather than to each upload, keeps an awakening that happens to open a later upload.
     Returns an empty list when there is no sleep stage at all.
+
+    Known limitation: the dropped awake is not stored. If the later part of a night is saved
+    before the earlier part, an awakening that opens it is lost when the two are merged.
     """
-    sleep_starts = [s.start_time for s in stages if s.stage in _SLEEP_START_STAGES]
+    sleep_starts = [s.start_time for s in stages if s.stage in SLEEP_START_STAGES]
     if not sleep_starts:
         return []
     night_start = min(sleep_starts)
@@ -541,9 +535,12 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     represented as a single session.
     """
 
-    # Recalculate metrics from stages to handle overlaps/duplicates
-    # state.stages is a list[SleepStateStage]
-    metrics, cleaned_stages = _calculate_final_metrics(state.stages)
+    # Recalculate metrics from stages to handle overlaps/duplicates.
+    # A night starts at its first sleep sample, so the lookup window does not reach back
+    # over awake time before it. An awake-only session keeps its own window: it can only
+    # attach to a stored night.
+    session_stages = _drop_awake_before_first_sleep(state.stages) if state.has_sleep_sample else state.stages
+    metrics, cleaned_stages = _calculate_final_metrics(session_stages)
 
     if cleaned_stages:
         start_time = cleaned_stages[0].start_time
@@ -565,16 +562,13 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     )
 
     external_id = state.uuid
+    sleep_score = state.sleep_score
 
     if adjacent is None:
         if not state.has_sleep_sample:
             # Only awake samples and no stored night to attach them to: not a sleep session.
             delete_sleep_state(user_id)
             return
-        metrics, cleaned_stages = _calculate_final_metrics(_drop_awake_before_first_sleep(state.stages))
-        if cleaned_stages:
-            start_time = cleaned_stages[0].start_time
-            end_time = cleaned_stages[-1].end_time
     else:
         # Deserialise the stored stages back to SleepStateStage so we can feed
         # them into _calculate_final_metrics together with the new stages.
@@ -591,6 +585,11 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
             _drop_awake_before_first_sleep(existing_state_stages + state.stages)
         )
 
+        if not state.has_sleep_sample and not cleaned_stages:
+            # The stored night has no stages to place the awake time in: leave it as it is.
+            delete_sleep_state(user_id)
+            return
+
         # Expand the session window to cover both records.
         start_time = adjacent.start_datetime
         end_time = adjacent.end_datetime
@@ -598,9 +597,13 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
             start_time = min(start_time, cleaned_stages[0].start_time)
             end_time = max(end_time, cleaned_stages[-1].end_time)
 
-        if not state.has_sleep_sample:
-            # The upload only adds awake time: the stored night keeps its identity.
-            external_id = adjacent.external_id or external_id
+        # The merged record is the stored night extended, so it keeps that night's id.
+        external_id = adjacent.external_id or external_id
+
+        # Deleting the stored night also deletes its provider score (cascade). Later uploads of
+        # a night usually carry no score, so keep the stored one unless this upload sends one.
+        if sleep_score is None:
+            sleep_score = _stored_provider_sleep_score(db_session, adjacent.id, state.provider)
 
         # Remove the old record before creating the merged one (cascade deletes detail).
         event_record_service.delete(db_session, adjacent.id)
@@ -655,7 +658,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         # Always use the returned record's ID (whether newly created or existing)
         detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
         event_record_service.create_detail(db_session, detail_for_record, detail_type=EventCategory.SLEEP)
-        _save_provider_sleep_score(db_session, user_id, state, created_or_existing_record, start_time)
+        _save_provider_sleep_score(db_session, user_id, state, sleep_score, created_or_existing_record, start_time)
         # Delete from Redis only after a successful DB write so a transient error
         # keeps the session available for the next periodic finalization attempt.
         delete_sleep_state(user_id)
@@ -672,19 +675,37 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         )
 
 
+def _provider_name(provider: str | None) -> ProviderName | None:
+    if provider is None:
+        return None
+    try:
+        return ProviderName(provider)
+    except ValueError:
+        return None
+
+
+def _stored_provider_sleep_score(db_session: DbSession, record_id: UUID, provider: str | None) -> float | None:
+    """Return the provider sleep score already linked to a stored session, if any."""
+    provider_name = _provider_name(provider)
+    if provider_name is None:
+        return None
+    score = health_score_service.get_for_event_record(db_session, record_id, provider_name, HealthScoreCategory.SLEEP)
+    if score is None or score.value is None:
+        return None
+    return float(score.value)
+
+
 def _save_provider_sleep_score(
     db_session: DbSession,
     user_id: str,
     state: SleepState,
+    sleep_score: float | None,
     record: EventRecord,
     start_time: datetime,
 ) -> None:
     """Persist the provider-computed sleep score (e.g. Samsung SLEEP_SCORE) linked to the session."""
-    if state.sleep_score is None or state.provider is None:
-        return
-    try:
-        provider = ProviderName(state.provider)
-    except ValueError:
+    provider = _provider_name(state.provider)
+    if sleep_score is None or provider is None:
         return
 
     health_score_service.bulk_create(
@@ -696,7 +717,7 @@ def _save_provider_sleep_score(
                 data_source_id=record.data_source_id,
                 provider=provider,
                 category=HealthScoreCategory.SLEEP,
-                value=state.sleep_score,
+                value=sleep_score,
                 recorded_at=start_time,
                 zone_offset=state.zone_offset,
                 event_record_id=record.id,

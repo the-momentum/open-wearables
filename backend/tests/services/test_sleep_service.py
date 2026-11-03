@@ -869,6 +869,7 @@ class TestHistoricalBulkUploadMerging:
         # Simulate the adjacent record that payload A already wrote to the DB
         mock_adjacent = MagicMock()
         mock_adjacent.id = uuid4()
+        mock_adjacent.external_id = "A001"
         mock_adjacent.start_datetime = _dt("2026-03-22T23:00:00Z")
         mock_adjacent.end_datetime = _dt("2026-03-23T01:00:00Z")
         mock_adjacent.sleep_detail = MagicMock()
@@ -902,6 +903,8 @@ class TestHistoricalBulkUploadMerging:
         # Merged window covers both A and B
         assert created_record.start_datetime <= _dt("2026-03-22T23:00:00Z")
         assert created_record.end_datetime >= _dt("2026-03-23T06:00:00Z")
+        # The merged record is the stored night extended: it keeps that night's id
+        assert created_record.external_id == "A001"
 
         # Detail must contain stages from both payloads
         mock_event_service.create_detail.assert_called_once()
@@ -1101,14 +1104,24 @@ def _sleep_entry(entry_id: str, stage: str, start: str, end: str) -> dict:
     }
 
 
-def _sleep_payload(*entries: dict) -> SyncRequest:
+def _sleep_payload(*entries: dict, provider: str = "apple") -> SyncRequest:
     return SyncRequest.model_validate(
         {
-            "provider": "apple",
+            "provider": provider,
             "sdkVersion": "1.0.0",
             "syncTimestamp": "2026-03-23T08:00:01Z",
             "data": {"records": [], "workouts": [], "sleep": list(entries)},
         }
+    )
+
+
+def _stored_nights(db: Session, user_id: str) -> list[EventRecord]:
+    return (
+        db.query(EventRecord)
+        .join(DataSource)
+        .filter(DataSource.user_id == UUID(user_id), EventRecord.category == "sleep")
+        .order_by(EventRecord.start_datetime)
+        .all()
     )
 
 
@@ -1294,12 +1307,7 @@ class TestAwakeAtStartOfUpload:
         ]
 
         def stored_night(user_id: str) -> EventRecord:
-            records = (
-                db.query(EventRecord)
-                .join(DataSource)
-                .filter(DataSource.user_id == UUID(user_id), EventRecord.category == "sleep")
-                .all()
-            )
+            records = _stored_nights(db, user_id)
             assert len(records) == 1
             return records[0]
 
@@ -1316,3 +1324,98 @@ class TestAwakeAtStartOfUpload:
         assert split.sleep_detail is not None
         assert split.sleep_detail.sleep_awake_minutes == single.sleep_detail.sleep_awake_minutes == 40
         assert split.sleep_detail.sleep_efficiency_score == single.sleep_detail.sleep_efficiency_score
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    def test_awake_before_falling_asleep_does_not_widen_the_lookup(self, mock_finalize: MagicMock, db: Session) -> None:
+        """A nap ending at 20:30 and a night falling asleep at 23:00 stay apart (gap 2.5 h),
+        even if the night's upload starts with awake at 22:00 (gap 1.5 h)."""
+        user = UserFactory()
+        handle_sleep_data(
+            db,
+            _sleep_payload(_sleep_entry("N001", "light", "2026-03-22T19:00:00Z", "2026-03-22T20:30:00Z")),
+            str(user.id),
+        )
+        handle_sleep_data(
+            db,
+            _sleep_payload(
+                _sleep_entry("N002", "awake", "2026-03-22T22:00:00Z", "2026-03-22T23:00:00Z"),
+                _sleep_entry("N003", "light", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+            ),
+            str(user.id),
+        )
+
+        nap, night = _stored_nights(db, str(user.id))
+        assert (nap.start_datetime, nap.end_datetime) == (_dt("2026-03-22T19:00:00Z"), _dt("2026-03-22T20:30:00Z"))
+        assert (night.start_datetime, night.end_datetime) == (_dt("2026-03-22T23:00:00Z"), _dt("2026-03-23T03:00:00Z"))
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    def test_awake_only_upload_keeps_provider_sleep_score(self, mock_finalize: MagicMock, db: Session) -> None:
+        """Merging deletes the stored night and its score; an upload without a score keeps the stored one."""
+        source = TestProviderSleepScore.SAMSUNG_SOURCE
+        night = {
+            **_sleep_entry("S1-s0-0", "light", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+            "source": source,
+            "values": [{"type": "sleepScore", "value": 82, "unit": "score"}],
+        }
+        awakening = {
+            **_sleep_entry("S1-s0-1", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+            "source": source,
+        }
+        user = UserFactory()
+
+        handle_sleep_data(db, _sleep_payload(night, provider="samsung"), str(user.id))
+        handle_sleep_data(db, _sleep_payload(awakening, provider="samsung"), str(user.id))
+
+        (stored,) = _stored_nights(db, str(user.id))
+        assert stored.sleep_detail is not None
+        assert stored.sleep_detail.sleep_awake_minutes == 40
+        scores = (
+            db.query(HealthScore)
+            .filter(HealthScore.event_record_id == stored.id, HealthScore.provider == ProviderName.SAMSUNG)
+            .all()
+        )
+        assert [float(s.value) for s in scores] == [82.0]
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_awake_only_upload_leaves_night_without_stages_untouched(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        adjacent = self._stored_night()
+        adjacent.sleep_detail.sleep_stages = None
+        self._mock_services(mock_redis_func, mock_event_service, adjacent)
+
+        payload = _sleep_payload(_sleep_entry("B001", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"))
+        handle_sleep_data(db, payload, str(uuid4()))
+
+        mock_event_service.delete.assert_not_called()
+        mock_event_service.create.assert_not_called()
+        mock_redis_func.return_value.delete.assert_called_once()
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "Known limitation: awake before a session's first sleep sample is dropped when the session "
+            "is saved, so if the later part of a night is saved first, an awakening that opens it is lost."
+        ),
+    )
+    @patch("app.services.sdk.sleep_service.celery_app")
+    def test_split_upload_in_reverse_order_matches_single_upload(self, mock_finalize: MagicMock, db: Session) -> None:
+        entries = [
+            _sleep_entry("E001", "light", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+            _sleep_entry("E002", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+            _sleep_entry("E003", "deep", "2026-03-23T03:40:00Z", "2026-03-23T07:00:00Z"),
+        ]
+        user = UserFactory()
+
+        handle_sleep_data(db, _sleep_payload(*entries[1:]), str(user.id))
+        handle_sleep_data(db, _sleep_payload(entries[0]), str(user.id))
+
+        (stored,) = _stored_nights(db, str(user.id))
+        assert stored.sleep_detail is not None
+        assert stored.sleep_detail.sleep_awake_minutes == 40

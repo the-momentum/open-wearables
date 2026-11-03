@@ -57,3 +57,6 @@ SLEEP_START_STATES = {
     SleepPhase.ASLEEP_DEEP,
     SleepPhase.ASLEEP_REM,
 }
+
+# The same set in the stage domain, used on stored stages (SleepPhase values are SleepStageType values).
+SLEEP_START_STAGES = {SleepStageType(phase) for phase in SLEEP_START_STATES}

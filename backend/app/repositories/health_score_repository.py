@@ -135,6 +135,24 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             .first()
         )
 
+    def get_for_event_record(
+        self,
+        db_session: DbSession,
+        event_record_id: UUID,
+        provider: ProviderName,
+        category: HealthScoreCategory,
+    ) -> HealthScore | None:
+        """Return the score a provider attached to an event record, if any."""
+        return (
+            db_session.query(HealthScore)
+            .filter(
+                HealthScore.event_record_id == event_record_id,
+                HealthScore.provider == provider,
+                HealthScore.category == category,
+            )
+            .first()
+        )
+
     def delete_for_user_date(
         self,
         db_session: DbSession,
