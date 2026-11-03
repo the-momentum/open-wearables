@@ -1418,6 +1418,25 @@ class TestDropLeadingAwake:
 
         assert kept == stages
 
+    def test_awake_starting_with_in_bed_is_kept_in_either_order(self) -> None:
+        """Awake that starts with in_bed is time in bed, whichever the upload lists first."""
+        stages = [
+            SleepStateStage(
+                stage=SleepStageType.AWAKE,
+                start_time=_dt("2026-03-22T23:00:00Z"),
+                end_time=_dt("2026-03-22T23:30:00Z"),
+            ),
+            SleepStateStage(
+                stage=SleepStageType.IN_BED,
+                start_time=_dt("2026-03-22T23:00:00Z"),
+                end_time=_dt("2026-03-23T07:00:00Z"),
+            ),
+        ]
+
+        kept = _drop_leading_awake(stages)
+
+        assert [s.stage for s in kept] == [SleepStageType.IN_BED, SleepStageType.AWAKE]
+
 
 class TestSplitNightStartingWithAwake:
     """A night split across uploads keeps the awakening that opens the later upload."""

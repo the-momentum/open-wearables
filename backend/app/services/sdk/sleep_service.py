@@ -81,7 +81,8 @@ def _drop_leading_awake(
     that moment, so the awake a stored record already counted is not dropped again when
     the night is merged with a later upload.
     """
-    ordered = sorted(stages, key=lambda stage: stage.start_time)
+    # Sleep stages first on a tie, so awake that starts with in_bed is kept in either order
+    ordered = sorted(stages, key=lambda stage: (stage.start_time, stage.stage not in _SLEEP_STAGES))
     for index, stage in enumerate(ordered):
         if stage.stage in _SLEEP_STAGES:
             return ordered[index:]
