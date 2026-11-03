@@ -463,6 +463,16 @@ class TestGarmin247Data:
         assert [sample["value"] for sample in normalized["steps"]] == [450]
         assert [sample["value"] for sample in normalized["energy"]] == [19]
 
+    def test_normalize_epochs_takes_the_slot_window_from_the_latest_epoch(
+        self, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+    ) -> None:
+        """A repeated slot with another duration carries the window of the epoch whose value is stored."""
+        repeated = [*mixed_slot_epochs, {**mixed_slot_epochs[0], "durationInSeconds": 600, "steps": 450}]
+
+        normalized = garmin_247.normalize_epochs(repeated, uuid4())
+
+        assert [(sample["value"], sample["window_seconds"]) for sample in normalized["steps"]] == [(450, 600)]
+
     @pytest.mark.parametrize(
         "malformed",
         [{"startTimeInSeconds": "not-a-timestamp"}, {"startTimeOffsetInSeconds": "n/a"}, {"summaryId": 12345}],

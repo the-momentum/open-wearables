@@ -741,15 +741,12 @@ class Garmin247Data(Base247DataTemplate):
         slot_external_id = summary_id.rpartition("-")[0] if summary_id and summary_id.count("-") >= 2 else summary_id
         window_seconds = epoch.get("durationInSeconds") or None
 
-        slot = slots.setdefault(
-            start_ts,
-            {
-                "timestamp": recorded_at.isoformat(),
-                "zone_offset": zone_offset,
-                "external_id": slot_external_id,
-                "window_seconds": window_seconds,
-                "epochs": {},
-            },
+        slot = slots.setdefault(start_ts, {"epochs": {}})
+        slot.update(
+            timestamp=recorded_at.isoformat(),
+            zone_offset=zone_offset,
+            external_id=slot_external_id,
+            window_seconds=window_seconds,
         )
         slot["epochs"][epoch.get("activityType")] = epoch
 
