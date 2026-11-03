@@ -14,6 +14,7 @@ from app.schemas.model_crud.user_management import (
 )
 from app.schemas.utils import OldPaginatedResponse
 from app.services import ApiKeyDep, user_service
+from app.utils.problem import problem_doc
 
 router = APIRouter()
 
@@ -39,32 +40,8 @@ def list_users(
     # Same as the list: an expansion that was not asked for stays out of the payload.
     response_model_exclude_unset=True,
     responses={
-        401: {
-            "description": "Authentication required",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "title": "Unauthorized",
-                        "status": 401,
-                        "detail": "Authentication required: provide JWT token or API key",
-                        "code": "UNAUTHORIZED",
-                    }
-                }
-            },
-        },
-        404: {
-            "description": "User not found",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "title": "Not Found",
-                        "status": 404,
-                        "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
-                        "code": "NOT_FOUND",
-                    }
-                }
-            },
-        },
+        **problem_doc(401, "Authentication required", "Authentication required: provide JWT token or API key"),
+        **problem_doc(404, "User not found", "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found."),
     },
 )
 def get_user(

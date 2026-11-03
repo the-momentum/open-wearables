@@ -53,6 +53,21 @@ def problem_response(
     return ProblemResponse(problem.model_dump(), status_code=status_code, headers=headers)
 
 
+def problem_doc(status_code: int, description: str, detail: str, code: str | None = None) -> dict[int, Any]:
+    """A route's documented error response, for its ``responses=``: ``**problem_doc(404, ...)``.
+
+    The example is built like the real response, so its ``title`` and ``code`` cannot drift.
+    """
+    example = {
+        "title": _title(status_code),
+        "status": status_code,
+        "detail": detail,
+        "code": code or status_code_name(status_code),
+    }
+    # application/json, as FastAPI's own: add_problem_responses moves it under the problem media type
+    return {status_code: {"description": description, "content": {"application/json": {"example": example}}}}
+
+
 def _is_error_status(status: str) -> bool:
     return status[0] in "45"
 

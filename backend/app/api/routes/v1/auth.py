@@ -9,6 +9,7 @@ from app.schemas.auth import PasswordChangePrompt, TokenResponse
 from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.config_utils import EnvironmentType
+from app.utils.problem import problem_doc
 from app.utils.security import create_access_token, verify_password
 from app.utils.structured_logging import get_logger
 
@@ -28,19 +29,9 @@ def _password_change_prompt(password: str) -> PasswordChangePrompt | None:
 @router.post(
     "/login",
     responses={
-        401: {
-            "description": "Incorrect email or password, or a field missing from the form",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "title": "Unauthorized",
-                        "status": 401,
-                        "detail": "Incorrect email or password",
-                        "code": "UNAUTHORIZED",
-                    }
-                }
-            },
-        },
+        **problem_doc(
+            401, "Incorrect email or password, or a field missing from the form", "Incorrect email or password"
+        ),
     },
 )
 def login(

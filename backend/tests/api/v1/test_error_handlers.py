@@ -26,8 +26,8 @@ from app.utils.exceptions import (
     ServiceUnavailableError,
     WebhookVerificationError,
 )
-from tests.factories import DeveloperFactory, UserFactory
-from tests.utils import developer_auth_headers
+from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
+from tests.utils import api_key_headers, developer_auth_headers
 
 
 def _access_log(mock: MagicMock, status: int) -> dict:
@@ -333,6 +333,18 @@ class TestOpenAPI:
         assert schema["paths"]["/api/v1/users"]["post"]["responses"]["422"]["content"]["application/problem+json"][
             "schema"
         ] == {"$ref": "#/components/schemas/ValidationProblem"}
+
+    def test_a_documented_error_example_is_what_the_api_returns(self, client: TestClient, api_v1_prefix: str) -> None:
+        documented = api.openapi()["paths"]["/api/v1/users/{user_id}"]["get"]["responses"]["404"]
+        example = documented["content"]["application/problem+json"]["example"]
+        api_key = ApiKeyFactory()
+
+        response = client.get(
+            f"{api_v1_prefix}/users/123e4567-e89b-12d3-a456-426614174000", headers=api_key_headers(api_key.plain_key)
+        )
+
+        assert response.status_code == 404
+        assert response.json() == example
 
     def test_login_documents_its_validation_errors_as_a_failed_login(self) -> None:
         responses = api.openapi()["paths"]["/api/v1/auth/login"]["post"]["responses"]
