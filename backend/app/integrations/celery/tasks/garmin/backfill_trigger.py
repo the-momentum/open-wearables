@@ -4,15 +4,22 @@ Handles the actual API call to Garmin, error classification, rate-limiting,
 and scheduling the timeout checker.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 from uuid import UUID
 
+from celery import current_app as celery_app
 from celery import shared_task
 from fastapi import HTTPException
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
+from app.integrations.celery.tasks.garmin.backfill_timeout import (
+    _classify_chain_stop_error,
+    _finalize_chain_stop,
+    check_triggered_timeout,
+)
 from app.integrations.redis_client import get_redis_client
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -38,22 +45,21 @@ from app.services.providers.garmin.backfill_state import (
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.services.sync_status_service import record_requested_window
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
 
-@shared_task
+def _record_accepted_window(user_id: str, trace_id: str | None, start_time: datetime, end_time: datetime) -> None:
+    run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
+    record_requested_window(run_id, start_time, end_time)
+
+
+@shared_task(name=CeleryTask.GARMIN_TRIGGER_BACKFILL_FOR_TYPE)
 def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
     """Trigger backfill for a specific data type."""
-    from app.integrations.celery.tasks.garmin.backfill_task import trigger_next_pending_type
-    from app.integrations.celery.tasks.garmin.backfill_timeout import (
-        _classify_chain_stop_error,
-        _finalize_chain_stop,
-        check_triggered_timeout,
-    )
-
     if data_type not in BACKFILL_DATA_TYPES:
         return {"error": f"Invalid data type: {data_type}"}
 
@@ -138,7 +144,8 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 # Retry "min start time" errors with a shorter date range before giving up
                 if status_code == 400 and "min start time" in error.lower():
                     fallback_days = 14 if data_type in ACTIVITY_API_TYPES else 31
-                    start_time_fallback = end_time - timedelta(days=fallback_days)
+                    # Never before the window start: on a reconnect that is the end of what Garmin already sent
+                    start_time_fallback = max(start_time, end_time - timedelta(days=fallback_days))
                     log_structured(
                         logger,
                         "info",
@@ -164,9 +171,14 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                         status_code = retry_result.get("failed_status_codes", {}).get(data_type)
                     else:
                         # Retry succeeded — skip the failure handling below
+                        _record_accepted_window(user_id, trace_id, start_time_fallback, end_time)
                         if data_type in retry_result.get("duplicate", []):
                             mark_type_success(user_id, data_type)
-                            trigger_next_pending_type.apply_async(args=[user_id], countdown=DELAY_BETWEEN_TYPES)
+                            celery_app.send_task(
+                                CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE,
+                                args=[user_id],
+                                countdown=DELAY_BETWEEN_TYPES,
+                            )
                             return {"status": "duplicate_skipped", "data_type": data_type}
                         check_triggered_timeout.apply_async(
                             args=[user_id, data_type], countdown=TRIGGERED_TIMEOUT_SECONDS
@@ -210,8 +222,11 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                         delay_seconds=delay,
                         user_id=user_id,
                     )
-                trigger_next_pending_type.apply_async(args=[user_id], countdown=delay)
+                celery_app.send_task(CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE, args=[user_id], countdown=delay)
                 return {"status": "failed", "error": error}
+
+            # A 409 duplicate also means Garmin holds this range as requested.
+            _record_accepted_window(user_id, trace_id, start_time, end_time)
 
             if data_type in result.get("duplicate", []):
                 log_structured(
@@ -225,7 +240,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     user_id=user_id,
                 )
                 mark_type_success(user_id, data_type)
-                trigger_next_pending_type.apply_async(args=[user_id], countdown=DELAY_BETWEEN_TYPES)
+                celery_app.send_task(
+                    CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE, args=[user_id], countdown=DELAY_BETWEEN_TYPES
+                )
                 return {
                     "status": "duplicate_skipped",
                     "data_type": data_type,
@@ -288,7 +305,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     delay_seconds=delay,
                     user_id=user_id,
                 )
-            trigger_next_pending_type.apply_async(args=[user_id], countdown=delay)
+            celery_app.send_task(CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE, args=[user_id], countdown=delay)
             return {"status": "failed", "error": error}
 
         except Exception as e:
@@ -305,5 +322,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 },
             )
             mark_type_failed(user_id, data_type, error)
-            trigger_next_pending_type.apply_async(args=[user_id], countdown=DELAY_BETWEEN_TYPES)
+            celery_app.send_task(
+                CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE, args=[user_id], countdown=DELAY_BETWEEN_TYPES
+            )
             return {"error": error}

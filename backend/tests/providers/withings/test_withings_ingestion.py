@@ -10,6 +10,7 @@ import pytest
 from app.constants.withings_requests import ACTIVITY
 from app.schemas.enums import SeriesType
 from app.schemas.enums.workout_types import WorkoutType
+from app.schemas.model_crud.activities import CalendarPeriod, SessionValue
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.providers.withings.data_247 import Withings247Data
 from app.services.providers.withings.handlers.rpc_client import WithingsAPIError
@@ -100,6 +101,7 @@ def test_activity_row_maps_fields_and_derives_passive_calories() -> None:
     assert by_type[SeriesType.active_energy].value == Decimal("400.0")
     assert by_type[SeriesType.basal_energy].value == Decimal("1800.0")
     assert by_type[SeriesType.steps].is_daily_total is True
+    assert {s.period for s in samples} == {CalendarPeriod.of_date(date(2026, 3, 1), "+01:00")}
 
 
 def test_externally_sourced_activity_is_dropped() -> None:
@@ -135,6 +137,15 @@ def test_activity_request_asks_for_active() -> None:
 # ---------------------------- intraday activity ----------------------------
 
 INTRADAY_SLICE = {"model_id": 55, "steps": 120, "distance": 96.5, "calories": 7.5}
+
+
+def test_intraday_slice_width_is_its_duration() -> None:
+    samples = _data_247().normalize_intraday_activity(
+        {"1772346600": {**INTRADAY_SLICE, "duration": 60}, "1772346660": INTRADAY_SLICE}, uuid4()
+    )
+
+    widths = {sample.recorded_at.minute: sample.window_seconds for sample in samples}
+    assert widths == {30: 60, 31: None}
 
 
 def test_intraday_slice_is_keyed_by_epoch_and_is_not_a_daily_total() -> None:
@@ -343,6 +354,7 @@ def test_workout_normalizes_into_a_record_and_detail() -> None:
     assert record.zone_offset == "+01:00"
     assert detail.heart_rate_avg == Decimal("150")
     assert detail.energy_burned == Decimal("500.0")
+    assert detail.energy_series == SeriesType.active_energy
 
 
 def test_unknown_workout_category_falls_back_to_other() -> None:
@@ -403,7 +415,10 @@ def _save_one_night(mock_paginate: MagicMock) -> None:
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", side_effect=[SERIES_BODY, {"series": []}])
 @patch("app.services.providers.withings.data_247.paginate")
 def test_sleep_row_stores_the_hypnogram(
@@ -443,7 +458,10 @@ def _saved_hrv(mock_timeseries: MagicMock) -> dict[SeriesType, list[float]]:
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", side_effect=[HRV_SERIES_BODY, {"series": []}])
 @patch("app.services.providers.withings.data_247.paginate")
 def test_sleep_hrv_readings_become_samples_of_their_night(
@@ -462,7 +480,10 @@ def test_sleep_hrv_readings_become_samples_of_their_night(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch(
     "app.services.providers.withings.data_247.withings_request",
     side_effect=[WithingsAPIError(withings_status=2555, action="get"), SERIES_BODY, {"series": []}],
@@ -480,7 +501,10 @@ def test_hypnogram_survives_the_hrv_fields_being_refused(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch(
     "app.services.providers.withings.data_247.withings_request",
     side_effect=WithingsAPIError(withings_status=601, action="get"),
@@ -496,7 +520,10 @@ def test_throttled_hypnogram_is_not_asked_again_without_the_hrv_fields(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", side_effect=[HRV_SERIES_BODY, {"series": []}])
 @patch("app.services.providers.withings.data_247.paginate")
 def test_sleep_hrv_is_kept_for_a_night_without_a_lowest_heart_rate(
@@ -510,7 +537,10 @@ def test_sleep_hrv_is_kept_for_a_night_without_a_lowest_heart_rate(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", side_effect=RuntimeError("boom"))
 @patch("app.services.providers.withings.data_247.paginate")
 def test_night_is_saved_when_the_hypnogram_call_fails(
@@ -524,7 +554,10 @@ def test_night_is_saved_when_the_hypnogram_call_fails(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request")
 @patch("app.services.providers.withings.data_247.paginate")
 def test_two_nights_share_one_hypnogram_request(
@@ -558,7 +591,10 @@ def test_two_nights_share_one_hypnogram_request(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request")
 @patch("app.services.providers.withings.data_247.paginate")
 def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
@@ -591,7 +627,10 @@ def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
 @patch("app.services.providers.withings.data_247.log_and_capture_error")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request")
 @patch("app.services.providers.withings.data_247.paginate")
 def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
@@ -630,7 +669,10 @@ def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
 @patch("app.services.providers.withings.data_247.log_structured")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request")
 @patch("app.services.providers.withings.data_247.paginate")
 def test_a_walk_that_runs_out_of_requests_says_so(
@@ -655,7 +697,10 @@ def test_a_walk_that_runs_out_of_requests_says_so(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.paginate")
 def test_minute_by_minute_states_are_folded_into_one_interval(
     mock_paginate: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
@@ -678,7 +723,10 @@ def test_minute_by_minute_states_are_folded_into_one_interval(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", side_effect=[SERIES_BODY, {"series": []}])
 @patch("app.services.providers.withings.data_247.paginate")
 def test_a_night_with_unreadable_timestamps_does_not_drop_the_batch(
@@ -697,7 +745,10 @@ def test_a_night_with_unreadable_timestamps_does_not_drop_the_batch(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.paginate")
 def test_a_stage_running_past_the_night_is_clipped(
     mock_paginate: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
@@ -712,7 +763,10 @@ def test_a_stage_running_past_the_night_is_clipped(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", return_value={"series": []})
 @patch("app.services.providers.withings.data_247.paginate")
 def test_the_night_low_heart_rate_becomes_a_resting_heart_rate_sample(
@@ -729,10 +783,15 @@ def test_the_night_low_heart_rate_becomes_a_resting_heart_rate_sample(
     assert float(rhr.value) == 48
     assert rhr.recorded_at == datetime.fromtimestamp(SLEEP_ROW["startdate"], tz=timezone.utc)
     assert rhr.zone_offset == "+02:00"
+    # It belongs to the stored night, which the merge may have folded into another record.
+    assert rhr.session == SessionValue(record_id=mock_event.create_or_merge_sleep.return_value.id)
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", return_value={"series": []})
 @patch("app.services.providers.withings.data_247.paginate")
 def test_the_sample_carries_the_offset_in_force_when_the_night_began(
@@ -755,7 +814,10 @@ def test_the_sample_carries_the_offset_in_force_when_the_night_began(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.event_record_service")
+@patch(
+    "app.services.providers.withings.data_247.event_record_service",
+    **{"create_or_merge_sleep.return_value.id": uuid4()},
+)
 @patch("app.services.providers.withings.data_247.withings_request", return_value={"series": []})
 @patch("app.services.providers.withings.data_247.paginate")
 def test_a_night_without_a_low_heart_rate_is_still_saved(

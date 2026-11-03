@@ -5,7 +5,8 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
-from app.schemas.enums import ProviderName, TimelineBucket, TimelineGroupBy
+from app.repositories.series_aggregate_repository import provider_day_counts, provider_day_timeline
+from app.schemas.enums import EventCategory, ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.dashboard import (
     ProviderDataCount,
     TimelineMetric,
@@ -54,9 +55,9 @@ class SystemInfoService:
         category_counts = dict(self.event_record_service.get_category_counts(db_session))
         event_records = EventRecordsInfo(
             count=sum(category_counts.values()),
-            workouts=category_counts.get("workout", 0),
-            sleep=category_counts.get("sleep", 0),
-            menstrual_cycles=category_counts.get("menstrual_cycle", 0),
+            workouts=category_counts.get(EventCategory.WORKOUT, 0),
+            sleep=category_counts.get(EventCategory.SLEEP, 0),
+            menstrual_cycles=category_counts.get(EventCategory.MENSTRUAL_CYCLE, 0),
         )
 
         return SystemInfoResponse(
@@ -65,6 +66,7 @@ class SystemInfoService:
             data_points=DataPointsInfo(
                 count=get_total_data_points(db_session),
                 archived=self.timeseries_service.get_approximate_archived_count(db_session),
+                aggregated=self.timeseries_service.get_approximate_aggregate_count(db_session),
             ),
             event_records=event_records,
             connections_coverage=self.user_connection_service.get_connections_coverage(db_session),
@@ -83,7 +85,8 @@ class SystemInfoService:
         window (data points by ``recorded_at``, events by ``start_datetime``). Omitting both
         returns all-time counts. The per-provider breakdown is derived from the scoped rows.
 
-        Data point counts cover the live and the archive table; event records have no archive.
+        Data point counts cover the live table, the archive and the providers' day values, which
+        were samples before the aggregate tables; event records have no archive.
         """
         series_rows = [
             *self.timeseries_service.crud.get_user_counts_by_provider_and_type(
@@ -92,6 +95,7 @@ class SystemInfoService:
             *self.archive_repo.get_user_counts_by_provider_and_type_from_archive(
                 db_session, user_id, start_datetime, end_datetime
             ),
+            *provider_day_counts(db_session, user_id, start_datetime, end_datetime),
         ]
 
         # Query event counts grouped by provider + category + type
@@ -114,12 +118,12 @@ class SystemInfoService:
 
         has_womens_health_data = False
         for provider, category, event_type, count in event_rows:
-            if category == "workout":
+            if category == EventCategory.WORKOUT:
                 provider_workouts[provider] += count
                 workout_type_totals[event_type or "unknown"] += count
-            elif category == "sleep":
+            elif category == EventCategory.SLEEP:
                 provider_sleep[provider] += count
-            elif category == "menstrual_cycle" and count > 0:
+            elif category == EventCategory.MENSTRUAL_CYCLE and count > 0:
                 has_womens_health_data = True
 
         # Build per-provider breakdown
@@ -179,6 +183,7 @@ class SystemInfoService:
                 *self.archive_repo.get_user_timeline_counts_from_archive(
                     db_session, user_id, bucket, group_by, start_datetime, end_datetime, provider
                 ),
+                *provider_day_timeline(db_session, user_id, bucket, group_by, start_datetime, end_datetime, provider),
             ]
             metric = TimelineMetric.DATA_POINTS
 

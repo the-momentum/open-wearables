@@ -12,6 +12,7 @@ Responsibilities:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterator
 from typing import Any
 from uuid import UUID
 
@@ -28,7 +29,6 @@ from svix.api import (
     EventTypeIn,
     EventTypeListOptions,
     EventTypePatch,
-    ListResponseEndpointOut,
     ListResponseMessageAttemptOut,
     ListResponseMessageOut,
     MessageAttemptListByEndpointOptions,
@@ -60,6 +60,19 @@ _USER_CHANNEL_PREFIX = "user."
 # Svix caps message list pages at 250 items.
 _MESSAGE_LIST_PAGE_SIZE = 250
 _PAYLOAD_DELETE_BATCH_SIZE = 100
+
+
+def _walk_pages(fetch_page: Callable[[str | None], Any], listing: str) -> Iterator[Any]:
+    """Every item of a Svix list, fetched page by page from the previous page's iterator."""
+    iterator: str | None = None
+    while True:
+        page = fetch_page(iterator)
+        yield from page.data
+        if page.done or not page.iterator:
+            return
+        if page.iterator == iterator:
+            raise RuntimeError(f"Svix returned the same iterator twice while listing {listing}")
+        iterator = page.iterator
 
 
 def _user_channels(user_id: UUID | None) -> list[str] | None:
@@ -135,15 +148,15 @@ def register_event_types() -> bool:
     # List existing types once (paginated) so a steady-state startup makes a single
     # call instead of a create+update round-trip per type. If Svix is still coming up,
     # skip without crashing app startup — the sync is idempotent and reruns next boot.
-    existing: dict[str, str] = {}
-    iterator: str | None = None
+    client = _client
     try:
-        while True:
-            page = _client.event_type.list(EventTypeListOptions(limit=250, iterator=iterator))
-            existing.update({et.name: et.description for et in page.data})
-            if page.done:
-                break
-            iterator = page.iterator
+        existing = {
+            et.name: et.description
+            for et in _walk_pages(
+                lambda iterator: client.event_type.list(EventTypeListOptions(limit=250, iterator=iterator)),
+                "event types",
+            )
+        }
     except Exception:
         logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).")
         return False
@@ -270,10 +283,14 @@ def create_endpoint(
     )
 
 
-def list_endpoints(app_id: str, *, iterator: str | None = None) -> ListResponseEndpointOut:
-    """One page of endpoints. Pass the previous response's `iterator` to walk the rest."""
+def iter_endpoints(app_id: str) -> Iterator[EndpointOut]:
+    """Every endpoint of an application, across Svix's pages."""
     assert _client is not None
-    return _client.endpoint.list(app_id, EndpointListOptions(iterator=iterator))
+    client = _client
+    return _walk_pages(
+        lambda iterator: client.endpoint.list(app_id, EndpointListOptions(iterator=iterator)),
+        f"endpoints of app {app_id}",
+    )
 
 
 def get_endpoint(app_id: str, endpoint_id: str) -> EndpointOut:
@@ -372,19 +389,16 @@ def delete_user_message_payloads(app_id: str, user_id: UUID) -> int:
     assert _client is not None
     channel = f"{_USER_CHANNEL_PREFIX}{user_id}"
 
-    msg_ids: list[str] = []
-    iterator: str | None = None
-    while True:
-        page = _client.message.list(
-            app_id,
-            MessageListOptions(limit=_MESSAGE_LIST_PAGE_SIZE, iterator=iterator, channel=channel),
+    client = _client
+    msg_ids = [
+        msg.id
+        for msg in _walk_pages(
+            lambda iterator: client.message.list(
+                app_id, MessageListOptions(limit=_MESSAGE_LIST_PAGE_SIZE, iterator=iterator, channel=channel)
+            ),
+            f"messages of app {app_id}",
         )
-        msg_ids.extend(msg.id for msg in page.data)
-        if page.done or not page.iterator:
-            break
-        if page.iterator == iterator:
-            raise RuntimeError(f"Svix returned the same message list iterator twice for app {app_id}")
-        iterator = page.iterator
+    ]
 
     deleted = 0
     for start in range(0, len(msg_ids), _PAYLOAD_DELETE_BATCH_SIZE):

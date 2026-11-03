@@ -2,9 +2,11 @@
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from fastapi import HTTPException
 
+from app.integrations.celery.tasks.garmin.backfill_task import start_full_backfill
 from app.integrations.celery.tasks.garmin.backfill_trigger import trigger_backfill_for_type
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
@@ -17,6 +19,11 @@ from app.services.providers.garmin.backfill_config import (
     MAX_REQUEST_DAYS,
     REQUEST_DELAY_SECONDS,
     SUMMARY_DAYS,
+)
+from app.services.providers.garmin.backfill_state import (
+    get_window_date_range,
+    get_window_date_range_for_index,
+    init_window_state,
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 
@@ -297,16 +304,15 @@ class TestBackfillTaskStopChain:
     """
 
     TASK_MODULE = "app.integrations.celery.tasks.garmin.backfill_trigger"
-    ORCHESTRATOR_MODULE = "app.integrations.celery.tasks.garmin.backfill_task"
     TIMEOUT_MODULE = "app.integrations.celery.tasks.garmin.backfill_timeout"
-    BACKFILL_STATE_MODULE = "app.services.providers.garmin.backfill_state"
     USER_ID = "c079cf7e-70b3-4529-a325-401a658f5cba"
 
     def _run_task(
         self,
         *,
-        side_effect: Exception | None = None,
+        side_effect: Exception | list[dict] | None = None,
         return_value: dict | None = None,
+        window: tuple[datetime, datetime] | None = None,
     ) -> dict:
         """Run trigger_backfill_for_type with a mocked backfill service.
 
@@ -332,10 +338,7 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TASK_MODULE}.get_current_window", return_value=0),
             patch(
                 f"{self.TASK_MODULE}.get_window_date_range",
-                return_value=(
-                    datetime.now(timezone.utc) - timedelta(days=30),
-                    datetime.now(timezone.utc),
-                ),
+                return_value=window or (datetime.now(timezone.utc) - timedelta(days=30), datetime.now(timezone.utc)),
             ),
             patch(f"{self.TASK_MODULE}.get_trace_id", return_value="test-trace"),
             patch(f"{self.TASK_MODULE}.set_type_trace_id", return_value="test-type-trace"),
@@ -345,10 +348,12 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TIMEOUT_MODULE}.mark_type_failed", shared_mark_failed),
             patch(f"{self.TIMEOUT_MODULE}.persist_window_results"),
             patch(f"{self.TIMEOUT_MODULE}.complete_backfill"),
-            patch(f"{self.BACKFILL_STATE_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
-            patch(f"{self.ORCHESTRATOR_MODULE}.trigger_next_pending_type") as mock_next,
+            patch(f"{self.TIMEOUT_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
+            patch(f"{self.TASK_MODULE}.celery_app") as mock_celery,
             patch(f"{self.TASK_MODULE}.get_redis_client", return_value=mock_redis),
             patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
+            patch(f"{self.TASK_MODULE}.record_requested_window") as mock_record_window,
+            patch(f"{self.TASK_MODULE}.check_triggered_timeout"),
         ):
             # Setup DB session context manager
             mock_db = MagicMock()
@@ -362,13 +367,15 @@ class TestBackfillTaskStopChain:
                 GarminBackfillService,
                 "trigger_backfill",
                 **backfill_patch_kwargs,
-            ):
+            ) as mock_trigger:
                 result = trigger_backfill_for_type(self.USER_ID, "sleeps")
 
             return {
                 "result": result,
+                "mock_trigger": mock_trigger,
                 "mock_mark_failed": shared_mark_failed,
-                "mock_next": mock_next,
+                "mock_send_task": mock_celery.send_task,
+                "mock_record_window": mock_record_window,
             }
 
     def _run_task_with_status(self, status_code: int, detail: str) -> dict:
@@ -376,6 +383,21 @@ class TestBackfillTaskStopChain:
         return self._run_task(
             side_effect=HTTPException(status_code=status_code, detail=detail),
         )
+
+    def test_accepted_request_records_the_window(self) -> None:
+        ctx = self._run_task(return_value={"triggered": ["sleeps"], "duplicate": [], "failed": {}})
+
+        assert ctx["result"]["status"] == "triggered"
+        run_id = ctx["mock_record_window"].call_args.args[0]
+        assert run_id == f"garmin_backfill_{self.USER_ID}_test-trace"
+
+    def test_rejected_request_records_no_window(self) -> None:
+        ctx = self._run_task(
+            return_value={"triggered": [], "duplicate": [], "failed": {"sleeps": "boom"}, "failed_status_codes": {}}
+        )
+
+        assert ctx["result"]["status"] == "failed"
+        ctx["mock_record_window"].assert_not_called()
 
     def test_412_stops_chain_and_fails_pending_types(self) -> None:
         """412 should stop the chain and mark all pending types as failed."""
@@ -391,7 +413,7 @@ class TestBackfillTaskStopChain:
         assert "activities" in failed_types
 
         # Should NOT trigger next type
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_401_stops_chain_and_fails_pending_types(self) -> None:
         """401 should stop the chain and mark all pending types as failed."""
@@ -405,7 +427,7 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_403_stops_chain_and_fails_pending_types(self) -> None:
         """403 should stop the chain and mark all pending types as failed."""
@@ -418,7 +440,7 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_400_min_start_time_stops_chain_via_exception(self) -> None:
         """400 'min start time' should stop the chain (HTTPException path)."""
@@ -436,7 +458,7 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_400_min_start_time_stops_chain_via_result(self) -> None:
         """400 'min start time' via result dict should stop the chain (production path)."""
@@ -461,7 +483,23 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
+
+    def test_shorter_range_retry_stays_inside_a_reconnect_gap(self) -> None:
+        """Before the gap Garmin already sent the data; asking again only earns a 409."""
+        now = datetime.now(timezone.utc)
+        gap_start = now - timedelta(days=3)
+        min_start_error = {
+            "triggered": [],
+            "failed": {"sleeps": "before min start time"},
+            "duplicate": [],
+            "failed_status_codes": {"sleeps": 400},
+        }
+        accepted = {"triggered": ["sleeps"], "failed": {}, "duplicate": []}
+
+        ctx = self._run_task(side_effect=[min_start_error, accepted], window=(gap_start, now))
+
+        assert ctx["mock_trigger"].call_args_list[1].kwargs["start_time"] == gap_start
 
     def test_500_does_not_stop_chain(self) -> None:
         """500 should NOT stop the chain — next type should still be triggered."""
@@ -475,4 +513,76 @@ class TestBackfillTaskStopChain:
         assert "dailies" not in failed_types
 
         # Should trigger next type
-        ctx["mock_next"].apply_async.assert_called_once()
+        ctx["mock_send_task"].assert_called_once()
+
+
+class TestReconnectGapBackfill:
+    """A reconnect requests only the gap, never a range Garmin was already asked for."""
+
+    TASK_MODULE = "app.integrations.celery.tasks.garmin.backfill_task"
+
+    def test_start_floors_the_window(self) -> None:
+        user_id = str(uuid4())
+        start = datetime.now(timezone.utc) - timedelta(days=3)
+
+        init_window_state(user_id, start=start)
+
+        assert get_window_date_range(user_id)[0] == start
+        assert get_window_date_range_for_index(user_id, 0)[0] == start
+
+    def test_full_backfill_clears_a_previous_floor(self) -> None:
+        user_id = str(uuid4())
+        init_window_state(user_id, start=datetime.now(timezone.utc) - timedelta(days=3))
+
+        init_window_state(user_id)
+
+        start, end = get_window_date_range(user_id)
+        assert end - start == timedelta(days=BACKFILL_CHUNK_DAYS)
+
+    def _start(self, since: datetime, requested_at: datetime | None) -> tuple[dict, MagicMock]:
+        connection = MagicMock(scope=None, provider_user_id=None)
+        with (
+            patch(f"{self.TASK_MODULE}.SessionLocal"),
+            patch(f"{self.TASK_MODULE}.UserConnectionRepository") as repo_cls,
+            patch(f"{self.TASK_MODULE}.last_backfill_requested_until", return_value=requested_at),
+            patch(f"{self.TASK_MODULE}.acquire_backfill_lock", return_value=True),
+            patch(f"{self.TASK_MODULE}.get_current_window", return_value=0),
+            patch(f"{self.TASK_MODULE}.init_window_state") as init,
+            patch(f"{self.TASK_MODULE}.emit_sync_started"),
+            patch(f"{self.TASK_MODULE}.trigger_backfill_for_type"),
+        ):
+            repo_cls.return_value.get_by_user_and_provider.return_value = connection
+            result = start_full_backfill(str(uuid4()), since.isoformat())
+        return result, init
+
+    def test_gap_starts_after_the_last_requested_backfill(self) -> None:
+        now = datetime.now(timezone.utc)
+        requested_at = now - timedelta(days=2)
+
+        result, init = self._start(since=now - timedelta(days=5), requested_at=requested_at)
+
+        assert result["status"] == "started"
+        assert init.call_args.kwargs["start"] == requested_at + timedelta(seconds=1)
+
+    def test_gap_starts_at_last_sync_when_later(self) -> None:
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(days=1)
+
+        _, init = self._start(since=since, requested_at=now - timedelta(days=2))
+
+        assert init.call_args.kwargs["start"] == since
+
+    def test_naive_since_is_read_as_utc(self) -> None:
+        since = datetime.now(timezone.utc) - timedelta(days=1)
+
+        _, init = self._start(since=since.replace(tzinfo=None), requested_at=since - timedelta(days=1))
+
+        assert init.call_args.kwargs["start"] == since
+
+    def test_nothing_left_to_request_skips(self) -> None:
+        now = datetime.now(timezone.utc)
+
+        result, init = self._start(since=now - timedelta(days=5), requested_at=now + timedelta(minutes=1))
+
+        assert result["status"] == "skipped"
+        init.assert_not_called()

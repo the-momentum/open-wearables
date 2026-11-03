@@ -19,6 +19,7 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 import app.extensions as extensions
+from app.constants.celery_tasks import CeleryTask
 from app.database import BaseDbModel
 from app.extensions import (
     LoadedExtension,
@@ -354,7 +355,7 @@ class TestTaskModules:
         # Workers and beat run this on startup; an exception here stops them.
         celery_app.loader.import_default_modules()
 
-        assert "app.integrations.celery.tasks.periodic_sync_task.sync_all_users" in celery_app.tasks
+        assert CeleryTask.SYNC_ALL_USERS in celery_app.tasks
 
 
 class TestHooks:
@@ -385,10 +386,7 @@ class TestBeatSchedule:
 
         schedule = create_celery().conf.beat_schedule
 
-        assert (
-            schedule["sync-all-users-periodic"]["task"]
-            == "app.integrations.celery.tasks.periodic_sync_task.sync_all_users"
-        )
+        assert schedule["sync-all-users-periodic"]["task"] == CeleryTask.SYNC_ALL_USERS
         assert schedule["core-key-own-job"]["task"] == "core_key.tasks.run"
 
     def test_first_extension_keeps_a_shared_key(self, installed: Callable[..., None]) -> None:
@@ -644,7 +642,7 @@ class TestEvents:
         installed(FakeEntryPoint("listening", ListeningExtension))
         entry = create_celery().conf.beat_schedule["dispatch-extension-events"]
 
-        assert entry["task"] == "app.integrations.celery.tasks.extension_events_task.dispatch_extension_events"
+        assert entry["task"] == CeleryTask.DISPATCH_EXTENSION_EVENTS
         assert events.subscribed(events.SYNC_COMPLETED)
 
 

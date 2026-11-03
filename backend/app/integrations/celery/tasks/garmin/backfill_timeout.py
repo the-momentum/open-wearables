@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from logging import getLogger
 from typing import Any
 
+from celery import current_app as celery_app
 from celery import shared_task
 
-from app.integrations.celery.tasks.garmin.backfill_task import trigger_next_pending_type
+from app.constants.celery_tasks import CeleryTask
 from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import (
     DELAY_BETWEEN_TYPES,
@@ -20,6 +21,7 @@ from app.services.providers.garmin.backfill_state import (
     _get_key,
     complete_backfill,
     get_current_window,
+    get_pending_types,
     get_trace_id,
     get_type_skip_count,
     is_retry_phase,
@@ -69,8 +71,6 @@ def _classify_chain_stop_error(status_code: int | None, error_text: str) -> tupl
 
 def _finalize_chain_stop(user_id: str, current_window: int, error_msg: str) -> None:
     """Mark all pending types as failed and finalize the backfill."""
-    from app.services.providers.garmin.backfill_state import get_pending_types
-
     pending = get_pending_types(user_id)
     for pending_type in pending:
         mark_type_failed(user_id, pending_type, error_msg)
@@ -78,7 +78,7 @@ def _finalize_chain_stop(user_id: str, current_window: int, error_msg: str) -> N
     complete_backfill(user_id)
 
 
-@shared_task
+@shared_task(name=CeleryTask.GARMIN_CHECK_TRIGGERED_TIMEOUT)
 def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     """Check if a triggered type has timed out and mark it as timed_out.
 
@@ -137,7 +137,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     else:
         record_timed_out_entry(user_id_str, data_type, get_current_window(user_id_str))
 
-    trigger_next_pending_type.apply_async(args=[user_id_str], countdown=DELAY_BETWEEN_TYPES)
+    celery_app.send_task(CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE, args=[user_id_str], countdown=DELAY_BETWEEN_TYPES)
 
     skip_count = get_type_skip_count(user_id_str, data_type)
     return {

@@ -234,6 +234,8 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         )
         result: dict[tuple[str, str], list[UUID]] = {}
         for provider, provider_user_id, linked_user_id in rows:
+            if provider_user_id is None:
+                continue
             result.setdefault((provider, provider_user_id), []).append(linked_user_id)
         return result
 
@@ -376,6 +378,10 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.commit()
         db_session.refresh(connection)
         return connection
+
+    def reload_tokens(self, db_session: DbSession, connection: UserConnection) -> None:
+        """Re-read the token columns another worker may have written, keeping unflushed changes to the rest."""
+        db_session.refresh(connection, attribute_names=["access_token", "refresh_token", "token_expires_at"])
 
     def update_last_synced_at(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
         """Update the last synced timestamp."""

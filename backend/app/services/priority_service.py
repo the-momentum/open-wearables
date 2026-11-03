@@ -2,6 +2,7 @@ import contextlib
 from logging import Logger, getLogger
 from uuid import UUID
 
+from app.constants.devices_map import resolve_device_name
 from app.database import DbSession
 from app.models import DataSource, ProviderPriority
 from app.repositories import DataSourceRepository, ProviderPriorityRepository
@@ -17,6 +18,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityListResponse,
     ProviderPriorityResponse,
 )
+from app.services.providers.factory import ProviderFactory
 from app.utils.exceptions import handle_exceptions
 
 
@@ -29,10 +31,6 @@ class PriorityService:
 
     def _to_provider_response(self, priority: ProviderPriority) -> ProviderPriorityResponse:
         """Enrich a priority row with the strategy's display name and icon, like provider settings do."""
-        # Imported here: provider strategies import event_record_service, which imports this
-        # module, so a top-level import of the factory would be a circular import.
-        from app.services.providers.factory import ProviderFactory
-
         response = ProviderPriorityResponse.model_validate(priority)
         with contextlib.suppress(ValueError):
             strategy = ProviderFactory().get_provider(str(priority.provider))
@@ -77,22 +75,24 @@ class PriorityService:
         user_id: UUID,
     ) -> DataSourceListResponse:
         sources = self.data_source_repo.get_user_data_sources(db_session, user_id)
-        items = [
-            DataSourceResponse(
-                id=ds.id,
-                user_id=ds.user_id,
-                provider=ds.provider,
-                user_connection_id=ds.user_connection_id,
-                device_model=ds.device_model,
-                software_version=ds.software_version,
-                source=ds.source,
-                device_type=ds.device_type,
-                original_source_name=ds.original_source_name,
-                display_name=self._build_display_name(ds),
-            )
-            for ds in sources
-        ]
+        items = [self._to_data_source_response(ds) for ds in sources]
         return DataSourceListResponse(items=items, total=len(items))
+
+    def _to_data_source_response(self, ds: DataSource) -> DataSourceResponse:
+        device_name = resolve_device_name(ds.device_model)
+        return DataSourceResponse(
+            id=ds.id,
+            user_id=ds.user_id,
+            provider=ds.provider,
+            user_connection_id=ds.user_connection_id,
+            device_model=ds.device_model,
+            software_version=ds.software_version,
+            source=ds.source,
+            device_type=ds.device_type,
+            original_source_name=ds.original_source_name,
+            device_name=device_name,
+            display_name=self._build_display_name(ds, device_name),
+        )
 
     @handle_exceptions
     def get_device_type_priorities(
@@ -124,49 +124,14 @@ class PriorityService:
         db_session.commit()
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in results])
 
-    def get_priority_data_source_ids(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-    ) -> list[UUID]:
-        """Get data source IDs for a user, ordered by global priority."""
-        provider_order = self.priority_repo.get_priority_order(db_session)
-        device_type_order = self.device_type_priority_repo.get_priority_order(db_session)
-        sources = self.data_source_repo.get_user_data_sources(db_session, user_id)
-
-        if not sources:
-            return []
-
-        def sort_key(ds: DataSource) -> tuple[int, int, str]:
-            provider_priority = provider_order.get(ds.provider, 99)
-            device_type_priority = 99
-            if ds.device_type:
-                try:
-                    dt = DeviceType(ds.device_type)
-                    device_type_priority = device_type_order.get(dt, 99)
-                except ValueError:
-                    pass
-            return (provider_priority, device_type_priority, ds.device_model or "")
-
-        sorted_sources = sorted(sources, key=sort_key)
-        return [ds.id for ds in sorted_sources]
-
-    def get_best_data_source_id(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-    ) -> UUID | None:
-        ids = self.get_priority_data_source_ids(db_session, user_id)
-        return ids[0] if ids else None
-
-    def _build_display_name(self, ds: DataSource) -> str:
+    def _build_display_name(self, ds: DataSource, device_name: str | None) -> str:
         parts = []
         if ds.provider:
             # Rows loaded from the database carry provider as a plain str (the
             # column is a String, not a native enum), so there is no .value.
             parts.append(ds.provider.capitalize())
-        if ds.device_model:
-            parts.append(ds.device_model)
+        if device_name:
+            parts.append(device_name)
         elif ds.original_source_name:
             parts.append(ds.original_source_name)
         return " - ".join(parts) if parts else "Unknown Source"

@@ -1,24 +1,7 @@
 import type { User } from './types';
 
-/**
- * Six tones rather than a hash to hex: a fixed set stays inside the token
- * palette, so avatars cannot clash with the theme or fail contrast.
- */
-export const AVATAR_TONES = [
-	'bg-primary/15 text-primary',
-	'bg-success/15 text-success',
-	'bg-warning/15 text-warning',
-	'bg-danger/15 text-danger',
-	'bg-surface-muted text-secondary-foreground',
-	'bg-primary/10 text-primary/80'
-] as const;
-
-/** Stable per user, so a row keeps its colour across pages and reloads. */
-export function avatarTone(id: string): string {
-	let hash = 0;
-	for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) % 4096;
-	return AVATAR_TONES[hash % AVATAR_TONES.length];
-}
+/** One neutral tone: green, amber and red are reserved for status. */
+export const AVATAR_TONE = 'bg-surface-muted text-secondary-foreground';
 
 export function initials(user: Pick<User, 'first_name' | 'last_name' | 'email'>): string {
 	const fromName = [user.first_name, user.last_name]

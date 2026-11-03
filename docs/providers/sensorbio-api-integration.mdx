@@ -27,7 +27,8 @@ Sensor Bio provides access to workout, sleep, recovery, and continuous biometric
 | Sleep (with stages: deep, light, REM, awake) | Yes |
 | Recovery (score, resting HR, HRV, SpO2) | Yes |
 | Continuous 24/7 biometric timeseries (HR, HRV, SpO2, respiration) | Yes |
-| Daily step details (steps, distance, calories) | Yes |
+| Daily step details (steps, distance) | Yes |
+| Daily calories (active, basal) | Yes |
 | Body measurements | No (not available via API) |
 
 ### Data delivery
@@ -93,7 +94,7 @@ Fetched from `/v1/sleep` one day at a time (the API requires a single `date` par
 
 ### Recovery
 
-Fetched from `/v1/scores` one day at a time (single required `date` parameter). Provides daily recovery/activity/sleep scores and resting biometrics (resting HR, resting HRV, SpO2) stored as timeseries samples plus HealthScore rows.
+Fetched from `/v1/scores` one day at a time (single required `date` parameter). Provides daily recovery/activity/sleep scores and resting biometrics (resting HR, resting HRV, SpO2) stored as day values (`/timeseries?resolution=1day`) plus HealthScore rows.
 
 ### 24/7 Biometric timeseries
 
@@ -108,4 +109,8 @@ Fetched from `/v1/biometrics` using cursor pagination. Supports:
 
 ### Daily step details
 
-Fetched from `/v1/step/details` one day at a time. Provides steps, distance (km), and calorie burn. Note: the endpoint returns the response body directly (no `data` wrapper).
+Fetched from `/v1/step/details` one day at a time. Provides steps and distance (km). Note: the endpoint returns the response body directly (no `data` wrapper).
+
+### Daily calories
+
+Fetched from `/v1/calorie/details` one day at a time, in the same shape as step details. `Resting Calories` is stored as `basal_energy`, and `Total Calories` minus `Resting Calories` as `active_energy`.

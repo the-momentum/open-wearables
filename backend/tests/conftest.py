@@ -300,12 +300,11 @@ def mock_svix_lifespan() -> Generator[MagicMock, None, None]:
 def mock_webhook_dispatch() -> Generator[MagicMock, None, None]:
     """Prevent outgoing webhook tasks from attempting real Redis/Celery connections.
 
-    Patches the Celery task's delay so tests that don't care about webhook
+    Patches the Celery app used for dispatch so tests that don't care about webhook
     emission never hang on a missing broker.  Tests that DO verify dispatch
     behaviour override this via their own @patch decorator (innermost wins).
     """
-    with patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event") as mock:
-        mock.delay.return_value = None
+    with patch("app.services.outgoing_webhooks.events.celery_app") as mock:
         yield mock
 
 
@@ -316,11 +315,7 @@ def mock_dashboard_stats_refresh() -> Generator[MagicMock, None, None]:
     ``get_total_data_points`` dispatches this task on a cold/stale cache; without this patch the
     dispatch would try to connect to a missing broker and hang the test.
     """
-    with patch(
-        "app.integrations.celery.tasks.refresh_dashboard_stats_task.refresh_dashboard_total_data_points"
-    ) as mock:
-        mock.apply_async.return_value = None
-        mock.delay.return_value = None
+    with patch("app.services.dashboard_stats_cache.celery_app") as mock:
         yield mock
 
 

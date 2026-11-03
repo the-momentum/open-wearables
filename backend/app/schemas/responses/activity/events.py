@@ -57,6 +57,9 @@ class Workout(BaseModel):
     average_cadence: float | None = None
     average_watts: float | None = None
     max_watts: float | None = None
+    average_met: float | None = Field(
+        None, description="The workout's average metabolic equivalent (MET), from its physical_effort series."
+    )
     moving_time_seconds: int | None = None
     elev_high: float | None = None
     elev_low: float | None = None

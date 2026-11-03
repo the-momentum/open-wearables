@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.algorithms.config_algorithms import sleep_config
 from app.schemas.utils import SourceMetadata
 
 
@@ -42,7 +43,14 @@ class ActivitySummary(BaseModel):
     elevation_meters: float | None = Field(None, description="Raw total elevation gain", example=36.0)
     # Energy metrics
     active_calories_kcal: float | None = Field(None, description="Active energy burned", example=342.5)
-    total_calories_kcal: float | None = Field(None, description="Active + basal energy", example=2150.0)
+    total_calories_kcal: float | None = Field(
+        None,
+        description=(
+            "Total energy burned: the provider's reported total when available, otherwise active + basal energy "
+            "when both are reported; null otherwise"
+        ),
+        example=2150.0,
+    )
     # Duration metrics (based on step threshold)
     active_minutes: int | None = Field(None, description="Minutes with activity above threshold", example=60)
     sedentary_minutes: int | None = Field(None, description="Minutes with minimal activity", example=480)
@@ -99,7 +107,15 @@ class SleepSummary(BaseModel):
     time_in_bed_minutes: int | None = Field(None, description="Total time in bed excluding naps", example=480)
     efficiency_percent: float | None = Field(None, ge=0, le=100, example=89.5)
     stages: SleepStagesSummary | None = None
-    interruptions_count: int | None = None
+    interruptions_count: int | None = Field(
+        None,
+        description=(
+            f"Awakenings longer than {sleep_config.significant_wake_threshold_mins:g} minutes within the main sleep"
+            " (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the"
+            " timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)"
+        ),
+        example=2,
+    )
     nap_count: int | None = Field(None, description="Number of naps taken", example=1)
     nap_duration_minutes: int | None = Field(
         None, description="Start-to-end time of the day's naps, awake time included", example=30
