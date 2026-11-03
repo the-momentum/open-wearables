@@ -56,9 +56,10 @@ class SNSService:
         cert_url = notification.signing_cert_url
         if not _SNS_CERT_URL_RE.match(cert_url):
             logger.warning(
-                f"Untrusted signing cert URL: {cert_url}",
+                "Untrusted signing cert URL",
                 provider="apple_xml",
                 task="sns_notification",
+                cert_url=cert_url,
             )
             return False
 
@@ -71,16 +72,18 @@ class SNSService:
             decoded_signature = base64.b64decode(notification.signature)
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             logger.error(
-                f"Failed to fetch SNS signing certificate: {e}",
+                "Failed to fetch SNS signing certificate",
                 provider="apple_xml",
                 task="sns_notification",
+                error=str(e),
             )
             return False
         except Exception as e:
             logger.error(
-                f"Failed to parse SNS signing certificate or decode signature: {e}",
+                "Failed to parse SNS signing certificate or decode signature",
                 provider="apple_xml",
                 task="sns_notification",
+                error=str(e),
             )
             return False
 
@@ -126,9 +129,10 @@ class SNSService:
             return UploadDataResponse(status_code=status.HTTP_200_OK, response="subscription_confirmed", user_id=None)
         except Exception as e:
             logger.error(
-                f"Error confirming SNS subscription: {e}",
+                "Error confirming SNS subscription",
                 provider="apple_xml",
                 task="sns_notification",
+                error=str(e),
             )
             return UploadDataResponse(status_code=status.HTTP_400_BAD_REQUEST, response=str(e), user_id=None)
 
@@ -165,9 +169,10 @@ class SNSService:
             user_id = object_key_parts[0] if len(object_key_parts) >= 3 else None
             if not user_id:
                 logger.warning(
-                    f"No user_id found in object key: {object_key}",
+                    "No user_id found in object key",
                     provider="apple_xml",
                     task="sns_notification",
+                    object_key=object_key,
                 )
                 continue
 
@@ -179,9 +184,11 @@ class SNSService:
             dispatched += 1
 
             logger.info(
-                f"Dispatched processing for {object_key} (user {user_id})",
+                "Dispatched processing",
                 provider="apple_xml",
                 task="sns_notification",
+                object_key=object_key,
+                user_id=user_id,
             )
 
         return UploadDataResponse(

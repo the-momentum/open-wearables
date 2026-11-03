@@ -65,10 +65,11 @@ class WhoopOAuth(BaseOAuthTemplate):
             return {"user_id": provider_user_id, "username": None}
         except Exception as e:
             logger.error(
-                f"Failed to fetch Whoop user profile: {e}",
+                "Failed to fetch Whoop user profile",
                 provider="whoop",
                 task="get_provider_user_info",
                 user_id=user_id,
+                error=str(e),
             )
             return {"user_id": None, "username": None}
 

@@ -94,8 +94,10 @@ def fill_missing_resilience_scores() -> dict[str, int]:
             dates_by_user[UUID(str(user_id))].append(reference_date)
 
         logger.info(
-            f"Found {len(rows)} resilience score(s) missing across {len(dates_by_user)} user(s)",
+            "Found missing resilience scores",
             task="fill_missing_resilience_scores",
+            missing_count=len(rows),
+            user_count=len(dates_by_user),
         )
 
         total_saved = 0
@@ -154,7 +156,7 @@ def fill_missing_resilience_scores() -> dict[str, int]:
                 )
 
         logger.info(
-            f"Resilience score fill complete: {total_saved} saved, {total_skipped} skipped",
+            "Resilience score fill complete",
             task="fill_missing_resilience_scores",
             saved=total_saved,
             skipped=total_skipped,

@@ -465,10 +465,11 @@ class Withings247Data(Base247DataTemplate):
                 if not series:
                     raise
                 logger.warning(
-                    f"Returning partial Withings intraday activity due to error: {e}",
+                    "Returning partial intraday activity due to error",
                     provider=self.provider_name,
                     action="withings_api_partial_data",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 break
         samples = self.normalize_intraday_activity(series, user_id, user_connection_id, timezones)

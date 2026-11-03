@@ -894,8 +894,9 @@ class Oura247Data(Base247DataTemplate):
                         db.commit()
                     except Exception as e:
                         logger.warning(
-                            f"Failed to save {series_type.value}",
+                            "Failed to save sleep scalar series",
                             action=f"oura_{series_type.value}_save_error",
+                            series_type=series_type.value,
                             sleep_id=str(sleep_id),
                             error=str(e),
                             user_id=str(user_id),

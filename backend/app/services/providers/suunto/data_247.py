@@ -145,10 +145,13 @@ class Suunto247Data(Base247DataTemplate):
                     all_data.extend(response)
             except Exception as e:
                 logger.warning(
-                    f"Error fetching chunk {current_start} to {current_end}: {e}",
+                    "Error fetching chunk",
                     provider="suunto",
                     task="fetch_in_chunks",
                     user_id=str(user_id),
+                    chunk_start=current_start.isoformat(),
+                    chunk_end=current_end.isoformat(),
+                    error=str(e),
                 )
 
             current_start = current_end
@@ -252,10 +255,11 @@ class Suunto247Data(Base247DataTemplate):
 
         if not start_dt or not end_dt or end_dt <= start_dt:
             logger.warning(
-                f"Skipping sleep record {sleep_id}: missing or degenerate start/end window",
+                "Skipping sleep record: missing or degenerate start/end window",
                 provider="suunto",
                 task="save_sleep_data",
                 user_id=str(user_id),
+                sleep_id=str(sleep_id),
             )
             return False
 
@@ -301,10 +305,12 @@ class Suunto247Data(Base247DataTemplate):
             )
         except Exception as e:
             logger.error(
-                f"Error saving sleep record {sleep_id}: {e}",
+                "Error saving sleep record",
                 provider="suunto",
                 task="save_sleep_data",
                 user_id=str(user_id),
+                sleep_id=str(sleep_id),
+                error=str(e),
             )
             return False
 
@@ -354,10 +360,11 @@ class Suunto247Data(Base247DataTemplate):
         except Exception as e:
             db.rollback()
             logger.error(
-                f"Failed to persist sleep-derived series: {e}",
+                "Failed to persist sleep-derived series",
                 provider="suunto",
                 task="persist_sleep_series",
                 user_id=str(user_id),
+                error=str(e),
             )
 
     # ------------------------------------------------------------------
@@ -471,10 +478,11 @@ class Suunto247Data(Base247DataTemplate):
                     total_count += self.save_recovery_data(db, user_id, normalized)
             except Exception as e:
                 logger.warning(
-                    f"Failed to save recovery data: {e}",
+                    "Failed to save recovery data",
                     provider="suunto",
                     task="load_and_save_recovery",
                     user_id=str(user_id),
+                    error=str(e),
                 )
 
         return total_count
@@ -623,10 +631,13 @@ class Suunto247Data(Base247DataTemplate):
                     all_data.extend(response)
             except Exception as e:
                 logger.warning(
-                    f"Error fetching daily activity chunk {current_start} to {current_end}: {e}",
+                    "Error fetching daily activity chunk",
                     provider="suunto",
                     task="get_daily_activity_statistics",
                     user_id=str(user_id),
+                    chunk_start=current_start.isoformat(),
+                    chunk_end=current_end.isoformat(),
+                    error=str(e),
                 )
 
             current_start = current_end
@@ -732,10 +743,11 @@ class Suunto247Data(Base247DataTemplate):
             except Exception as e:
                 skipped += 1
                 logger.warning(
-                    f"Failed to save sleep data: {e}",
+                    "Failed to save sleep data",
                     provider="suunto",
                     task="load_and_save_sleep",
                     user_id=str(user_id),
+                    error=str(e),
                 )
         return saved, skipped
 

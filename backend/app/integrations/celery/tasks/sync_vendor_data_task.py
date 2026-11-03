@@ -169,7 +169,7 @@ def sync_vendor_data(
 
             if not connections:
                 logger.info(
-                    f"No active connections found for user {user_id}",
+                    "No active connections found",
                     task="sync_vendor_data",
                     user_id=user_id,
                 )
@@ -177,15 +177,16 @@ def sync_vendor_data(
                 return result.model_dump()
 
             logger.info(
-                f"Found {len(connections)} active connections for user {user_id}",
+                "Found active connections",
                 task="sync_vendor_data",
                 user_id=user_id,
+                count=len(connections),
             )
 
             for connection in connections:
                 provider_name = connection.provider
                 logger.info(
-                    f"Syncing data from {provider_name} for user {user_id}",
+                    "Syncing data from provider",
                     provider=provider_name,
                     task="sync_vendor_data",
                     user_id=user_id,
@@ -218,7 +219,7 @@ def sync_vendor_data(
                         active = user_connection_repo.get_active_connection(db, existing_primary, provider_name)
                         if not active:
                             logger.info(
-                                f"Stealing stale {provider_name} primary lock — holder has no active connection",
+                                "Stealing stale primary lock — holder has no active connection",
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
@@ -231,7 +232,7 @@ def sync_vendor_data(
 
                     if not is_pull_primary:
                         logger.info(
-                            f"Skipping {provider_name} pull — this provider account is already syncing",
+                            "Skipping pull — this provider account is already syncing",
                             provider=provider_name,
                             task="sync_vendor_data",
                             user_id=user_id,
@@ -408,7 +409,7 @@ def sync_vendor_data(
                             for _task, _outcome in results_247.outcomes.items():
                                 data_type_outcomes.extend(_task_outcomes(_task, _outcome))
                             logger.info(
-                                f"247 data synced for {provider_name}",
+                                "247 data synced",
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
@@ -459,7 +460,7 @@ def sync_vendor_data(
                             if linked_conn.user_id == user_uuid:
                                 continue
                             logger.info(
-                                f"Fanning out {provider_name} sync to linked profile",
+                                "Fanning out sync to linked profile",
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
@@ -479,7 +480,7 @@ def sync_vendor_data(
 
                     result.providers_synced[provider_name] = provider_result
                     logger.info(
-                        f"Successfully synced {provider_name} for user {user_id}",
+                        "Successfully synced provider",
                         provider=provider_name,
                         task="sync_vendor_data",
                         user_id=user_id,
