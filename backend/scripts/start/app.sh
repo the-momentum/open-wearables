@@ -154,6 +154,13 @@ echo 'Running Sensor Bio sleep window backfill...'
 uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
     || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Types Google Health sleep rows saved without 'sleep_session', so a re-fetched night updates
+# its details instead of sending sleep.created again. Idempotent, no-op without Google data.
+echo 'Running Google sleep type backfill...'
+uv run python scripts/data_migrations/backfill_google_sleep_type.py \
+    || echo "Warning: Google sleep type backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
