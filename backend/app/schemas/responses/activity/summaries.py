@@ -79,7 +79,7 @@ class SleepSessionSummary(BaseModel):
     duration_minutes: int | None = Field(
         None,
         description=(
-            "Main sleep: time asleep, awake time excluded; a session that reports no time asleep counts with "
+            "Main sleep: time asleep, awake time excluded; a session with no stored time asleep counts with "
             "its start-to-end time. Nap: start-to-end time, awake time included"
         ),
         example=420,
@@ -96,7 +96,7 @@ class SleepSummary(BaseModel):
     duration_minutes: int | None = Field(
         None,
         description=(
-            "Time asleep in the day's main sleep, naps excluded; a session that reports no time asleep "
+            "Time asleep in the day's main sleep, naps excluded; a session with no stored time asleep "
             "counts with its start-to-end time"
         ),
         example=450,
