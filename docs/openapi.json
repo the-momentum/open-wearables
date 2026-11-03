@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Open Wearables API",
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "paths": {
     "/": {
@@ -4615,7 +4615,7 @@
           "External: Data Sync"
         ],
         "summary": "Sync Historical Data",
-        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter may be ignored by\nproviders that enforce their own limits.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
+        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter is capped at the\nprovider's ``max_historical_days``.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
         "operationId": "sync_historical_data_api_v1_providers__provider__users__user_id__sync_historical_post",
         "security": [
           {
@@ -4649,13 +4649,13 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 365,
+              "maximum": 3650,
               "minimum": 1,
-              "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days).",
+              "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync.",
               "default": 90,
               "title": "Days"
             },
-            "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days)."
+            "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -9946,7 +9946,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely.",
+        "description": "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -11608,6 +11608,12 @@
             "type": "boolean",
             "title": "Rollup Enabled",
             "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: activity and body summaries count them from the samples, day reads of sources without provider day values get no new days.",
+            "default": true
+          },
+          "history_rollup_enabled": {
+            "type": "boolean",
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too, once, in the background. Hours on a large instance; until it is done the summaries count those days from the samples.",
             "default": false
           },
           "delete_after_days": {
@@ -11630,10 +11636,28 @@
       "ArchivalSettingUpdate": {
         "properties": {
           "rollup_enabled": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Rollup Enabled",
-            "description": "Roll samples up into daily and per-session aggregates.",
-            "default": false
+            "description": "Roll samples up into daily and per-session aggregates. Left out or null: unchanged."
+          },
+          "history_rollup_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too; switched on, it starts in the background. Needs rollup_enabled. Left out or null: unchanged."
           },
           "delete_after_days": {
             "anyOf": [
@@ -11647,12 +11671,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before samples are deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely; left out: unchanged."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating data lifecycle settings."
+        "description": "Request schema for updating data lifecycle settings: a field left out keeps its saved value."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -11661,12 +11685,16 @@
           },
           "storage": {
             "$ref": "#/components/schemas/StorageEstimate"
+          },
+          "history_rollup": {
+            "$ref": "#/components/schemas/HistoryRollupStatus"
           }
         },
         "type": "object",
         "required": [
           "settings",
-          "storage"
+          "storage",
+          "history_rollup"
         ],
         "title": "ArchivalSettingWithEstimate",
         "description": "Combined archival settings + storage estimates response."
@@ -13581,6 +13609,65 @@
           "success"
         ],
         "title": "HistoricalDataTypeSyncEndEvent"
+      },
+      "HistoryRollupStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "running",
+              "done"
+            ],
+            "title": "State"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rollup_recent",
+                  "rollup_all"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "The pass running"
+          },
+          "sources_done": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Done",
+            "description": "Data sources the running pass has finished"
+          },
+          "sources_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Total",
+            "description": "Data sources the pass goes through"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "HistoryRollupStatus",
+        "description": "Where the history's rollup is. It goes through every data source twice, the last 30 days first."
       },
       "IntensityMinutes": {
         "properties": {
@@ -16860,7 +16947,9 @@
                 "type": "null"
               }
             ],
-            "title": "Interruptions Count"
+            "title": "Interruptions Count",
+            "description": "Awakenings longer than 5 minutes within the main sleep (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)",
+            "example": 2
           },
           "nap_count": {
             "anyOf": [
