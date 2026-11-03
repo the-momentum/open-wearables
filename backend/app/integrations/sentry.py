@@ -42,6 +42,10 @@ CREDENTIAL_DENYLIST = [
     "client_secret",
     "code_verifier",
     "id_token",
+    # Raw query string of outgoing httpx requests in breadcrumbs and spans (the path stays in
+    # "url"). Some providers take credentials as query params: Oura's token revoke, Strava's
+    # push_subscriptions client_secret.
+    "http.query",
 ]
 
 # Pydantic renders the offending raw value into the error string, e.g.

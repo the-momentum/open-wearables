@@ -1,15 +1,23 @@
 """Credentials must be masked in Sentry events, also with SENTRY_SEND_SENSITIVE_DATA."""
 
+import json
 import traceback
+from collections.abc import Generator
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import sentry_sdk
 from sentry_sdk._types import AnnotatedValue
+from sentry_sdk.consts import SPANDATA
+from sentry_sdk.envelope import Envelope
 from sentry_sdk.scrubber import EventScrubber
+from sentry_sdk.transport import Transport
 
+from app.config import settings
+from app.integrations import sentry as sentry_integration
 from app.integrations.sentry import FILTERED, _credentials_scrubber, _scrubber
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -68,6 +76,74 @@ def test_oauth_credentials_are_masked(scrubber: EventScrubber, key: str) -> None
 
     assert _is_masked(scrubbed["request"]["data"][key])
     assert _is_masked(scrubbed["extra"]["payload"][key])
+
+
+@SCRUBBERS
+def test_outgoing_request_query_is_masked(scrubber: EventScrubber) -> None:
+    data = {"url": "https://api.ouraring.com/oauth/revoke", SPANDATA.HTTP_QUERY: f"access_token={FAKE_TOKEN}"}
+    event = {
+        "breadcrumbs": {"values": [{"type": "http", "data": dict(data)}]},
+        "spans": [{"op": "http.client", "data": dict(data)}],
+    }
+
+    scrubbed = _scrub(scrubber, event)
+
+    for scrubbed_data in (scrubbed["breadcrumbs"]["values"][0]["data"], scrubbed["spans"][0]["data"]):
+        assert _is_masked(scrubbed_data[SPANDATA.HTTP_QUERY])
+        assert scrubbed_data["url"] == "https://api.ouraring.com/oauth/revoke"
+
+
+class _CapturingTransport(Transport):
+    def __init__(self, options: dict[str, Any] | None = None) -> None:
+        super().__init__(options)
+        self.envelopes: list[Envelope] = []
+
+    def capture_envelope(self, envelope: Envelope) -> None:
+        self.envelopes.append(envelope)
+
+    def payloads(self) -> list[dict[str, Any]]:
+        events = [e.get_event() or e.get_transaction_event() for e in self.envelopes]
+        return [dict(event) for event in events if event is not None]
+
+
+@pytest.fixture(params=[False, True], ids=["default", "sensitive"])
+def sentry_transport(request: pytest.FixtureRequest) -> Generator[_CapturingTransport, None, None]:
+    """The real init_sentry() with a transport that keeps what the SDK would ship."""
+    transport = _CapturingTransport()
+    real_init = sentry_sdk.init
+
+    def init_with_transport(*args: Any, **kwargs: Any) -> Any:
+        return real_init(*args, transport=transport, **kwargs)
+
+    with (
+        patch.object(settings, "SENTRY_ENABLED", True),
+        patch.object(settings, "SENTRY_DSN", "https://public@sentry.example.com/1"),
+        patch.object(settings, "SENTRY_SEND_SENSITIVE_DATA", request.param),
+        patch.object(settings, "SENTRY_SAMPLES_RATE", 1.0),
+        patch.object(sentry_integration.sentry_sdk, "init", init_with_transport),
+    ):
+        sentry_integration.init_sentry()
+    try:
+        yield transport
+    finally:
+        sentry_sdk.get_global_scope().set_client(None)
+
+
+def test_shipped_events_carry_no_outgoing_query_credentials(sentry_transport: _CapturingTransport) -> None:
+    client = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
+
+    with sentry_sdk.isolation_scope(), sentry_sdk.start_transaction(name="revoke"):
+        client.post("https://api.ouraring.com/oauth/revoke", params={"access_token": FAKE_TOKEN})
+        sentry_sdk.capture_message("later failure in the same scope")
+    sentry_sdk.flush()
+
+    payloads = sentry_transport.payloads()
+    assert {p.get("type", "event") for p in payloads} == {"event", "transaction"}
+    breadcrumbs = [b for p in payloads for b in p.get("breadcrumbs", {}).get("values", [])]
+    spans = [s for p in payloads for s in p.get("spans", [])]
+    assert any(b.get("data", {}).get("url") == "https://api.ouraring.com/oauth/revoke" for b in breadcrumbs)
+    assert any(s.get("data", {}).get("url") == "https://api.ouraring.com/oauth/revoke" for s in spans)
+    assert FAKE_TOKEN not in json.dumps(payloads, default=str)
 
 
 def _oura_oauth() -> BaseOAuthTemplate:
