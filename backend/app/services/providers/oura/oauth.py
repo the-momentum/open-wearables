@@ -77,14 +77,17 @@ class OuraOAuth(BaseOAuthTemplate):
 
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Revoke Oura OAuth access for this user."""
-        response = httpx.post(
-            f"{self.api_base_url}/oauth/revoke",
-            params={"access_token": access_token},
-            timeout=30.0,
-        )
         try:
+            response = httpx.post(
+                f"{self.api_base_url}/oauth/revoke",
+                params={"access_token": access_token},
+                timeout=30.0,
+            )
             response.raise_for_status()
-        except httpx.HTTPStatusError:
+        except httpx.HTTPStatusError as e:
             # Oura takes the token as a query param, which httpx renders into str(e).
             # "from None" keeps the original error (and its URL) out of the reported chain.
-            raise RuntimeError(f"Oura token revoke failed: HTTP {response.status_code}") from None
+            raise RuntimeError(f"Oura token revoke failed: HTTP {e.response.status_code}") from None
+        except httpx.HTTPError:
+            # Transport errors carry the request (and its URL) in httpx frame locals.
+            raise RuntimeError("Oura token revoke failed: request error") from None

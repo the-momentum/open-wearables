@@ -192,6 +192,40 @@ def test_oura_revoke_error_does_not_carry_token(mock_post: MagicMock) -> None:
     assert FAKE_TOKEN not in "".join(traceback.format_exception(exc))
 
 
+def _oura_revoke_connect_error(*args: Any, **kwargs: Any) -> httpx.Response:
+    # Like httpx's own transport frames: a `request` local whose repr shows the full URL.
+    request = httpx.Request("POST", args[0], params=kwargs["params"])
+    raise httpx.ConnectError("[Errno 111] Connection refused", request=request)
+
+
+@patch("httpx.post", side_effect=_oura_revoke_connect_error)
+def test_oura_revoke_transport_error_does_not_carry_token(mock_post: MagicMock) -> None:
+    with pytest.raises(RuntimeError) as exc_info:
+        _oura_oauth().deregister_user(FAKE_TOKEN)
+
+    exc = exc_info.value
+    assert str(exc) == "Oura token revoke failed: request error"
+    assert exc.__cause__ is None
+    assert exc.__suppress_context__ is True
+    assert FAKE_TOKEN not in "".join(traceback.format_exception(exc))
+
+
+@patch("httpx.post", side_effect=_oura_revoke_connect_error)
+def test_shipped_oura_transport_error_carries_no_token(
+    mock_post: MagicMock, sentry_transport: _CapturingTransport
+) -> None:
+    # Sensitive mode ships frame locals; the httpx frames holding the request must not be reported.
+    try:
+        _oura_oauth().deregister_user(FAKE_TOKEN)
+    except RuntimeError as e:
+        sentry_sdk.capture_exception(e)
+    sentry_sdk.flush()
+
+    payloads = sentry_transport.payloads()
+    assert payloads
+    assert FAKE_TOKEN not in json.dumps(payloads, default=str)
+
+
 @patch("httpx.post")
 def test_oura_revoke_success_does_not_raise(mock_post: MagicMock) -> None:
     mock_post.side_effect = lambda *a, **kw: _oura_revoke_response(200, *a, **kw)
