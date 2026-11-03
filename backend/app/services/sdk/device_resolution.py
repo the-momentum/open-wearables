@@ -22,9 +22,17 @@ def _get_device_model(source: SourceInfo | None) -> str | None:
     # Apple's own sources tag some Watch samples with the paired iPhone's model; hardware is the producer
     if source.device_hardware_version and is_apple_own_source(app_id):
         return source.device_hardware_version
-    model = source.device_model or source.product_type or None
-    # iOS SDKs before the fix for third-party writes report the relaying iPhone as the writer's model
-    return None if is_host_model(app_id, model) else model
+    return None if _reports_relaying_host(source) else _reported_model(source)
+
+
+def _reported_model(source: SourceInfo) -> str | None:
+    return source.device_model or source.product_type or None
+
+
+def _reports_relaying_host(source: SourceInfo) -> bool:
+    """iOS SDKs before the fix for third-party writes report the relaying iPhone as the writer's model,
+    and its type (phone/watch) as the device type."""
+    return is_host_model(_get_source_app_id(source), _reported_model(source))
 
 
 def _get_original_source_name(source: SourceInfo | None) -> str | None:
@@ -72,4 +80,6 @@ def extract_device_ids(source: SourceInfo | None) -> tuple[str | None, str | Non
 
 def extract_device_type(source: SourceInfo | None) -> DeviceType | None:
     """Device type reported by the SDK, or None when absent or unknown."""
-    return map_reported_device_type(source.device_type) if source else None
+    if not source or _reports_relaying_host(source):
+        return None
+    return map_reported_device_type(source.device_type)

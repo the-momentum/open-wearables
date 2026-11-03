@@ -10,7 +10,7 @@ from app.constants.devices_map import (
 )
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.providers.mobile_sdk import SourceInfo
-from app.services.sdk.device_resolution import extract_device_info
+from app.services.sdk.device_resolution import extract_device_info, extract_device_type
 
 
 class TestInferDeviceTypeFromModel:
@@ -178,3 +178,25 @@ def test_sdk_device_model_uses_hardware_only_for_apple_own_sources(
 def test_sdk_drops_relaying_host_model_of_third_party_writer() -> None:
     relayed = SourceInfo(app_id="com.ouraring.oura", name="Oura", device_model="iPhone16,1")
     assert extract_device_info(relayed)[0] is None
+
+
+@pytest.mark.parametrize(
+    ("app_id", "name", "device_model"),
+    [
+        ("com.garmin.connect.mobile", "Connect", "iPhone16,1"),
+        ("com.apple.shortcuts", "Shortcuts", "Watch7,9"),
+        # Cronometer attaches the local iPhone as its HKDevice, so even fixed SDKs send it
+        ("CRONOMETER-GOLD", "Cronometer", "iPhone"),
+    ],
+)
+def test_sdk_drops_relaying_host_type_of_third_party_writer(app_id: str, name: str, device_model: str) -> None:
+    relayed = SourceInfo(app_id=app_id, name=name, device_model=device_model, device_type="phone")
+    model, _, source_name = extract_device_info(relayed)
+    reported = extract_device_type(relayed)
+    assert reported is None
+    assert infer_device_type(ProviderName.APPLE, model, source_name, reported, app_id) == DeviceType.UNKNOWN
+
+
+def test_sdk_keeps_reported_type_of_apple_own_source() -> None:
+    watch = SourceInfo(app_id="com.apple.health.0BA80355-AAAA", device_model="Watch7,5", device_type="watch")
+    assert extract_device_type(watch) == DeviceType.WATCH
