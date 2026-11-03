@@ -950,19 +950,6 @@ class TestGarmin247Data:
             [(get_series_type_id(SeriesType.steps), 420.0), (get_series_type_id(SeriesType.active_energy), 18.0)]
         )
 
-    @patch("app.services.providers.garmin.data_247.log_and_capture_error")
-    def test_process_items_batch_epochs_reports_a_failure_to_sentry(
-        self, mock_capture: MagicMock, garmin_247: Garmin247Data, db: Session, mixed_slot_epochs: list[dict[str, Any]]
-    ) -> None:
-        """A failure building the push's epoch samples is suppressed but still captured."""
-        user = UserFactory()
-
-        with patch.object(garmin_247, "normalize_epochs", side_effect=RuntimeError("boom")):
-            garmin_247.process_items_batch(db, user.id, "epochs", mixed_slot_epochs)
-
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[2] == "Error building batch epoch items"
-
     @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
     def test_process_items_batch_stress(
         self,

@@ -681,19 +681,16 @@ class Garmin247Data(Base247DataTemplate):
             Dict with keys like 'heart_rate', 'steps', etc.
         """
         heart_rate_samples: list[dict[str, Any]] = []
-        # Garmin sends one epoch per activity type in a slot, so a slot's steps and active calories
-        # are summed over its types; a repeated slot and type replaces the earlier epoch.
+        # Garmin sends one epoch per activity type in a slot, so steps and active calories are summed over them.
         slots: dict[int, dict[str, Any]] = {}
 
         skipped: list[tuple[Any, Exception]] = []
         for epoch in raw_epochs:
-            # Skip only a malformed epoch: the push's other epochs are normalized in the same call.
             try:
                 self._collect_epoch(epoch, slots, heart_rate_samples)
             except Exception as e:
                 skipped.append((epoch.get("summaryId") if isinstance(epoch, dict) else None, e))
         if skipped:
-            # Once per call, so a format change hitting every epoch is one event rather than hundreds.
             log_and_capture_error(
                 skipped[0][1],
                 self.logger,
@@ -711,7 +708,6 @@ class Garmin247Data(Base247DataTemplate):
         for slot in slots.values():
             slot_epochs = slot.pop("epochs").values()
             for samples, field in ((step_samples, "steps"), (energy_samples, "activeKilocalories")):
-                # to_decimal leaves out a malformed metric, so the slot's other epochs still count.
                 values = [value for e in slot_epochs if (value := to_decimal(e.get(field))) is not None]
                 if values:
                     samples.append({**slot, "value": sum(values)})
@@ -745,7 +741,6 @@ class Garmin247Data(Base247DataTemplate):
         slot_external_id = summary_id.rpartition("-")[0] if summary_id and summary_id.count("-") >= 2 else summary_id
         window_seconds = epoch.get("durationInSeconds") or None
 
-        # Steps and active calories, summed per slot in normalize_epochs
         slot = slots.setdefault(
             start_ts,
             {
@@ -2126,15 +2121,7 @@ class Garmin247Data(Base247DataTemplate):
                 )
 
         if epoch_items:
-            try:
-                all_samples.extend(self._build_epochs_samples(user_id, self.normalize_epochs(epoch_items, user_id)))
-            except Exception as e:
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    "Error building batch epoch items",
-                    extra={"provider": "garmin", "task": "process_items_batch", "user_id": str(user_id)},
-                )
+            all_samples.extend(self._build_epochs_samples(user_id, self.normalize_epochs(epoch_items, user_id)))
 
         count = WriteCounts(0, 0)
 
