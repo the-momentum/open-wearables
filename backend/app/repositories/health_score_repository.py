@@ -3,7 +3,7 @@ from typing import Any
 from typing import cast as typing_cast
 from uuid import UUID
 
-from sqlalchemy import Date, and_, cast, func, or_, select, tuple_
+from sqlalchemy import Date, and_, cast, func, literal_column, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
@@ -120,6 +120,29 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         inserted = len(db_session.execute(stmt).scalars().all())
         # Caller is responsible for commit — allows batching with other operations
         return WriteCounts(inserted, 0)
+
+    def bulk_create_keeping_highest(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> WriteCounts:
+        """Bulk upsert health scores, keeping the higher value when a score for the same time is sent again.
+
+        For a peak the provider resends with more data as the day goes on, e.g. Garmin body battery.
+        Scores without a value are skipped.
+        """
+        # The highest of each key: ON CONFLICT DO UPDATE can't touch a row twice in one statement
+        with_value = sorted((c for c in creators if c.value is not None), key=lambda c: c.value or 0)
+        highest = {(c.user_id, c.provider, c.data_source_id, c.category, c.recorded_at): c for c in with_value}
+        if not highest:
+            return WriteCounts(0, 0)
+
+        stmt = insert(HealthScore).values([c.model_dump() for c in highest.values()])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id", "provider", "data_source_id", "category", "recorded_at"],
+            set_={"value": stmt.excluded.value},
+            where=or_(HealthScore.value.is_(None), stmt.excluded.value > HealthScore.value),
+        ).returning(literal_column("xmax = 0"))
+        was_insert = db_session.execute(stmt).scalars().all()
+        inserted = sum(was_insert)
+        # Caller is responsible for commit — allows batching with other operations
+        return WriteCounts(inserted, len(was_insert) - inserted)
 
     def get_latest_by_category(
         self,
