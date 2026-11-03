@@ -19,14 +19,25 @@ from app.utils.structured_logging import log_structured
 logger = logging.getLogger(__name__)
 
 
-def init_window_state(user_id: str | UUID, total_windows: int = BACKFILL_WINDOW_COUNT) -> None:
-    """Initialise multi-window backfill state in Redis."""
+def init_window_state(
+    user_id: str | UUID, total_windows: int = BACKFILL_WINDOW_COUNT, start: datetime | None = None
+) -> None:
+    """Initialise multi-window backfill state in Redis. ``start`` floors every window's start."""
     uid = str(user_id)
     anchor = datetime.now(timezone.utc).isoformat()
     get_redis_client().setex(_get_key(uid, "window", "current"), REDIS_TTL, "0")
     get_redis_client().setex(_get_key(uid, "window", "total"), REDIS_TTL, str(total_windows))
     get_redis_client().setex(_get_key(uid, "window", "anchor_ts"), REDIS_TTL, anchor)
     get_redis_client().setex(_get_key(uid, "window", "completed_count"), REDIS_TTL, "0")
+    if start is None:
+        get_redis_client().delete(_get_key(uid, "window", "start_ts"))
+    else:
+        get_redis_client().setex(_get_key(uid, "window", "start_ts"), REDIS_TTL, start.isoformat())
+
+
+def _floored(user_id: str | UUID, start_time: datetime) -> datetime:
+    val = get_redis_client().get(_get_key(str(user_id), "window", "start_ts"))
+    return max(start_time, datetime.fromisoformat(val)) if val else start_time  # ty:ignore[invalid-argument-type]
 
 
 def get_current_window(user_id: str | UUID) -> int:
@@ -60,7 +71,7 @@ def get_window_date_range(user_id: str | UUID) -> tuple[datetime, datetime]:
     chunk = BACKFILL_CHUNK_DAYS
     end_time = anchor - timedelta(days=window * chunk)
     start_time = anchor - timedelta(days=(window + 1) * chunk)
-    return start_time, end_time
+    return _floored(user_id, start_time), end_time
 
 
 def get_window_date_range_for_index(user_id: str | UUID, window_idx: int) -> tuple[datetime, datetime]:
@@ -69,7 +80,7 @@ def get_window_date_range_for_index(user_id: str | UUID, window_idx: int) -> tup
     chunk = BACKFILL_CHUNK_DAYS
     end_time = anchor - timedelta(days=window_idx * chunk)
     start_time = anchor - timedelta(days=(window_idx + 1) * chunk)
-    return start_time, end_time
+    return _floored(user_id, start_time), end_time
 
 
 def get_completed_window_count(user_id: str | UUID) -> int:

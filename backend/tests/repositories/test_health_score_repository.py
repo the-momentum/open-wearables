@@ -7,12 +7,13 @@ Tests cover:
 - get_latest_by_category
 - get_latest_per_category
 - bulk_create with on_conflict_do_nothing
+- bulk_create_keeping_highest
 """
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -512,3 +513,69 @@ class TestHealthScoreRepositorySourcePriority:
         results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
 
         assert results == [(score, source)]
+
+
+def _body_battery(user_id: UUID, recorded_at: datetime, value: str | None) -> HealthScoreCreate:
+    return HealthScoreCreate(
+        id=uuid4(),
+        user_id=user_id,
+        provider=ProviderName.GARMIN,
+        category=HealthScoreCategory.BODY_BATTERY,
+        value=Decimal(value) if value is not None else None,
+        recorded_at=recorded_at,
+    )
+
+
+class TestHealthScoreRepositoryBulkCreateKeepingHighest:
+    def test_a_higher_value_replaces_the_stored_one(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        day = datetime(2026, 10, 28, tzinfo=timezone.utc)
+
+        first = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, day, "46")])
+        higher = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, day, "78")])
+        lower = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, day, "60")])
+        db.commit()
+
+        [score] = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        assert score.value == Decimal("78")
+        assert (first.inserted, first.updated) == (1, 0)
+        assert (higher.inserted, higher.updated) == (0, 1)
+        assert (lower.inserted, lower.updated) == (0, 0)
+
+    def test_one_batch_keeps_the_highest_of_a_day(self, db: Session, repo: HealthScoreRepository) -> None:
+        # ON CONFLICT DO UPDATE can't touch a row twice in one statement
+        user = UserFactory()
+        day = datetime(2026, 10, 28, tzinfo=timezone.utc)
+        scores = [_body_battery(user.id, day, value) for value in ("46", "78", "60")]
+
+        written = repo.bulk_create_keeping_highest(db, scores)
+        db.commit()
+
+        [score] = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        assert score.value == Decimal("78")
+        assert (written.inserted, written.updated) == (1, 0)
+
+    def test_a_value_replaces_a_stored_empty_one(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        day = datetime(2026, 10, 28, tzinfo=timezone.utc)
+        repo.bulk_create(db, [_body_battery(user.id, day, None)])
+
+        written = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, day, "78")])
+        db.commit()
+
+        [score] = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        assert score.value == Decimal("78")
+        assert (written.inserted, written.updated) == (0, 1)
+
+    def test_a_score_without_a_value_is_skipped(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+
+        written = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, datetime.now(timezone.utc), None)])
+
+        assert (written.inserted, written.updated) == (0, 0)
+        assert db.query(HealthScore).filter(HealthScore.user_id == user.id).count() == 0
+
+    def test_empty(self, db: Session, repo: HealthScoreRepository) -> None:
+        written = repo.bulk_create_keeping_highest(db, [])
+
+        assert (written.inserted, written.updated) == (0, 0)
