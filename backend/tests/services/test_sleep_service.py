@@ -1626,3 +1626,51 @@ class TestMergedNightBoundaries:
         assert sessions[0].sleep_detail is not None
         assert sessions[0].sleep_detail.sleep_awake_minutes == 30
         assert sessions[0].sleep_detail.sleep_total_duration_minutes == 450
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    def test_in_bed_before_sleep_does_not_bridge_an_earlier_session(
+        self, mock_finalize: MagicMock, db: Session
+    ) -> None:
+        """The lookup starts where the night's stages do, not where a wider in_bed does."""
+        user = UserFactory()
+
+        handle_sleep_data(
+            db, _sleep_request(("M9", "light", "2026-03-22T19:00:00Z", "2026-03-22T19:30:00Z")), str(user.id)
+        )
+        handle_sleep_data(
+            db,
+            _sleep_request(
+                ("M10", "in_bed", "2026-03-22T21:00:00Z", "2026-03-23T07:00:00Z"),
+                ("M11", "light", "2026-03-22T23:00:00Z", "2026-03-23T07:00:00Z"),
+            ),
+            str(user.id),
+        )
+
+        sessions = sorted(_sleep_sessions(db, user), key=lambda record: record.start_datetime)
+        assert [(s.start_datetime, s.end_datetime) for s in sessions] == [
+            (_dt("2026-03-22T19:00:00Z"), _dt("2026-03-22T19:30:00Z")),
+            (_dt("2026-03-22T23:00:00Z"), _dt("2026-03-23T07:00:00Z")),
+        ]
+
+    @patch("app.services.sdk.sleep_service.celery_app")
+    def test_stored_stage_wins_a_tie_with_a_new_one(self, mock_finalize: MagicMock, db: Session) -> None:
+        """A merge resolves stages starting at the same time in favour of the stored night."""
+        user = UserFactory()
+
+        handle_sleep_data(
+            db,
+            _sleep_request(
+                ("M12", "light", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+                ("M13", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:30:00Z"),
+            ),
+            str(user.id),
+        )
+        handle_sleep_data(
+            db, _sleep_request(("M14", "deep", "2026-03-23T03:00:00Z", "2026-03-23T05:00:00Z")), str(user.id)
+        )
+
+        sessions = _sleep_sessions(db, user)
+        assert len(sessions) == 1
+        assert sessions[0].sleep_detail is not None
+        assert sessions[0].sleep_detail.sleep_awake_minutes == 30
+        assert sessions[0].sleep_detail.sleep_deep_minutes == 90

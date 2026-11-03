@@ -352,8 +352,8 @@ def handle_sleep_data(
         - Acquire a per-user Redis lock to prevent concurrent state corruption
         - Deduplicate incoming data based on start/end/stage/source
         - Sessions are kept per provider and writer app, so overlapping writers never share one
-        - If no active session exists: Create new session in Redis (valid start states,
-          plus `awake` when the upload continues a night an earlier upload stored)
+        - If no active session exists: Create new session in Redis (valid start states or
+          `awake`; finish_sleep drops awake that precedes the night's first sleep stage)
         - If active session exists: Check gap between new sample and the session window
           * Gap > 2 hours: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
@@ -403,8 +403,8 @@ def handle_sleep_data(
             field = session_field(provider, source_app_id)
             current_state = states.get(field)
             if not current_state:
-                # `awake` may open a session when the upload continues a night stored
-                # by an earlier one; finish_sleep keeps it for the upload that adds sleep.
+                # `awake` may open a session too, as it can continue a night an earlier upload
+                # stored; finish_sleep drops it when it precedes the night's first sleep stage.
                 if sleep_phase not in SLEEP_START_STATES and sleep_phase is not SleepPhase.AWAKE:
                     continue
 
@@ -601,17 +601,16 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     mid-night keeps the awakening it carries.  A session that never reached sleep is
     left in Redis for the upload that brings the rest of the night.
     """
-    ordered = sorted(state.stages, key=lambda stage: stage.start_time)
-    first_sleep = next((stage for stage in ordered if stage.stage in _SLEEP_STAGES), None)
-    if first_sleep is None:
+    if not _has_sleep_stage(state.stages):
         # Saving awake alone would grow the stored night past its last sleep stage, so it
         # waits in Redis until the writer's next upload continues or replaces it.
         return
 
-    # The lookup starts at the first sleep stage so that leading awake cannot bridge
-    # the night to an unrelated later session (a nap, for example).
-    lookup_start = first_sleep.start_time
-    lookup_end = max(stage.end_time for stage in ordered)
+    # The lookup spans the upload's own stages without its leading awake, so that awake
+    # cannot bridge the night to an unrelated session (a nap, for example).
+    _, own_stages = _calculate_final_metrics(_drop_leading_awake(state.stages))
+    lookup_start = own_stages[0].start_time if own_stages else state.start_time
+    lookup_end = own_stages[-1].end_time if own_stages else state.end_time
 
     # --- Merge with an adjacent existing session if one exists ---
     source_for_lookup = state.source_name if state.source_name != "unknown" else None
@@ -626,13 +625,15 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         source_app_id=state.source_app_id,
     )
 
-    stages: list[SleepStateStage] = list(state.stages)
     # Deserialise the stored stages back to SleepStateStage so we can feed them into
-    # _calculate_final_metrics together with the new stages.
+    # _calculate_final_metrics together with the new stages. They go first, so a stored
+    # stage keeps winning a tie with a new one.
+    stages: list[SleepStateStage] = []
     if adjacent is not None and adjacent.sleep_detail and adjacent.sleep_detail.sleep_stages:
         for s in adjacent.sleep_detail.sleep_stages:
             with contextlib.suppress(Exception):
                 stages.append(SleepStateStage.model_validate(s))
+    stages += state.stages
 
     # Trim only up to the stored record: stored stages keep no `in_bed`, so the awake it
     # already counted would be dropped again.
