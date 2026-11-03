@@ -199,6 +199,31 @@ class SyncRunRepository:
         )
         return db_session.execute(stmt).scalar()
 
+    def historical_data_type_statuses(
+        self, db_session: DbSession, user_id: UUID, provider: str, source: SyncSource
+    ) -> list[tuple[UUID, str | None, SyncStatus | None]]:
+        """(run id, data type, status) of every type reported by this provider's historical runs.
+
+        A run with no type rows yet comes back once with None for both, so the caller can
+        tell an export that has started from no export at all.
+
+        Returned raw rather than judged in SQL: one SDK export records the same type under more
+        than one name (a batch writes `sleep`, the device's end event `HKCategoryTypeIdentifierSleepAnalysis`),
+        so the caller has to fold the names together before it can tell whether a type finished.
+        Historical runs are a handful per user, so this stays small.
+        """
+        stmt = (
+            select(SyncRun.id, SyncRunDataType.data_type, SyncRunDataType.status)
+            .outerjoin(SyncRunDataType, SyncRunDataType.run_id == SyncRun.id)
+            .where(
+                SyncRun.user_id == user_id,
+                SyncRun.provider == provider,
+                SyncRun.source == source,
+                SyncRun.scope == SyncScope.HISTORICAL,
+            )
+        )
+        return [(run_id, data_type, status) for run_id, data_type, status in db_session.execute(stmt).all()]
+
     def list_for_user(
         self,
         db_session: DbSession,

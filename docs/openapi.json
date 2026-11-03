@@ -7958,6 +7958,91 @@
         }
       }
     },
+    "/api/v1/sdk/users/{user_id}/sync/status": {
+      "get": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Get Sdk Sync Status",
+        "description": "Where the user's SDK sync for one provider stands, as the server sees it.\n\nThe server is the source of truth for sync progress; the device's own state is only a\ncache. Call this after login, before starting a sync, to restore that state:\n\n- `historicalSyncCompleted: true` - the historical export finished; only live sync is\n  left, continuing from `syncedUntil`.\n- `historicalSyncCompleted: false` - the export has not finished. It runs newest first, so\n  each type in `dataTypes` with `historicalSyncCompleted: false` resumes backwards from its\n  `coveredRange.startDate`. Types not listed have no data on the server yet.\n- `historicalSyncCompleted: null` - no historical export on record: nothing synced yet, or\n  an SDK version that does not send `syncSessionId`, so the server cannot tell. The same\n  applies per type in `dataTypes`.\n- `syncedUntil: null` and empty `dataTypes` - nothing synced yet; start a full export.\n\nA user who has never synced gets that empty state with 200, not 404.",
+        "operationId": "get_sdk_sync_status_api_v1_sdk_users__user_id__sync_status_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "SDK provider slug, e.g. `apple`, `samsung`, `health_connect`.",
+              "title": "Provider"
+            },
+            "description": "SDK provider slug, e.g. `apple`, `samsung`, `health_connect`."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SDKSyncState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported provider."
+          },
+          "403": {
+            "description": "SDK token does not belong to this user."
+          },
+          "404": {
+            "description": "User not found."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/token": {
       "post": {
         "tags": [
@@ -12344,6 +12429,28 @@
         ],
         "title": "CoverageResponse"
       },
+      "CoveredRange": {
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Startdate",
+            "description": "Earliest data held for this type. The SDK exports newest first, so an unfinished type resumes from here, backwards."
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enddate",
+            "description": "Latest data held for this type."
+          }
+        },
+        "type": "object",
+        "required": [
+          "startDate",
+          "endDate"
+        ],
+        "title": "CoveredRange"
+      },
       "DataGranularity": {
         "type": "string",
         "enum": [
@@ -15748,6 +15855,53 @@
         "title": "Resolution",
         "description": "Bucket width requested when reading time series. RAW returns stored samples untouched; day, week\nand month read the day aggregates instead of the samples."
       },
+      "SDKDataTypeSyncState": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Canonical data type: a series type slug (e.g. `heart_rate`) or an event category (`sleep`, `workout`).",
+            "examples": [
+              "heart_rate"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DataTypeKind",
+            "description": "`series` for time series samples, `event` for sleep and workouts."
+          },
+          "historicalSyncCompleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historicalsynccompleted",
+            "description": "Whether a historical export finished this type. When false, resume it backwards from `coveredRange.startDate`. Null when no historical export reported this type, e.g. on SDK versions that do not send `syncSessionId`."
+          },
+          "lastSyncedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Lastsyncedat",
+            "description": "When data of this type was last written on the server."
+          },
+          "coveredRange": {
+            "$ref": "#/components/schemas/CoveredRange"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "kind",
+          "historicalSyncCompleted",
+          "lastSyncedAt",
+          "coveredRange"
+        ],
+        "title": "SDKDataTypeSyncState",
+        "description": "What the server holds for one data type from this provider."
+      },
       "SDKLogRequest": {
         "properties": {
           "sdkVersion": {
@@ -15812,6 +15966,62 @@
         ],
         "title": "SDKLogRequest",
         "description": "Top-level request for SDK log events endpoint."
+      },
+      "SDKSyncState": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Canonical SDK provider slug.",
+            "examples": [
+              "apple"
+            ]
+          },
+          "historicalSyncCompleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historicalsynccompleted",
+            "description": "Whether a historical export for this provider has finished every data type it covered. False when one exists but has not finished. Null when there is no historical export on record: nothing synced yet, or an SDK version that does not send `syncSessionId`."
+          },
+          "syncedUntil": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synceduntil",
+            "description": "Newest data held from this provider, across all types: where live sync continues from. Null when nothing has been synced yet.",
+            "examples": [
+              "2026-11-01T22:15:00Z"
+            ]
+          },
+          "dataTypes": {
+            "items": {
+              "$ref": "#/components/schemas/SDKDataTypeSyncState"
+            },
+            "type": "array",
+            "title": "Datatypes",
+            "description": "Data held per type from this provider. Empty when nothing has been synced yet."
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "historicalSyncCompleted",
+          "syncedUntil"
+        ],
+        "title": "SDKSyncState",
+        "description": "Where the server says a user's SDK sync for one provider stands.\n\nThe server is the source of truth: a device that lost its local state (e.g. after a\nlogout) reads this to know where to resume from."
       },
       "SDKTokenRequest": {
         "properties": {
