@@ -6,7 +6,6 @@ from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, HealthScore, SeriesTypeDefinition, User
@@ -64,8 +63,7 @@ def _value(db: Session, score: HealthScore) -> Decimal:
 
 
 class TestRaiseGarminBodyBatteryPeaks:
-    def test_raises_a_score_to_its_days_highest_sample(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(module, "_BATCH_SIZE", 1)
+    def test_raises_a_score_to_its_days_highest_sample(self, db: Session) -> None:
         user = UserFactory()
         source = _garmin(user)
         _samples(db, source, DAY, {1: 20, 7: 78, 15: 40})
@@ -79,6 +77,17 @@ class TestRaiseGarminBodyBatteryPeaks:
         assert raised == 2
         assert _value(db, low) == Decimal("78")
         assert _value(db, other_low) == Decimal("81")
+
+    def test_raises_every_users_scores_from_all_their_garmin_sources(self, db: Session) -> None:
+        user, other_user = UserFactory(), UserFactory()
+        _samples(db, _garmin(user), DAY, {7: 70})
+        _samples(db, DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin_connect"), DAY, {9: 85})
+        _samples(db, _garmin(other_user), DAY, {7: 64})
+        score, other_score = _peak(user, DAY, "46"), _peak(other_user, DAY, "50")
+
+        assert raise_garmin_body_battery_peaks(db, dry_run=False) == 2
+        assert _value(db, score) == Decimal("85")
+        assert _value(db, other_score) == Decimal("64")
 
     def test_a_day_ends_where_the_next_one_starts(self, db: Session) -> None:
         # A 23-hour day (spring forward, or travelling east): the next day's samples don't count

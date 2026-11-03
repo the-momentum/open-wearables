@@ -13,8 +13,7 @@ change, or travel) ends where the next one starts; otherwise it lasts 24 hours. 
 user's Garmin ``garmin_body_battery`` samples in that window, which hold every push. A score is
 only ever raised. Days whose samples retention deleted keep their score.
 
-Runs once per instance (``data_migration``): one pass collects the scores to raise, then
-committed batches raise them.
+Runs once per instance (``data_migration``), one committed statement per Garmin user.
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/raise_garmin_body_battery_peaks.py --dry-run
@@ -30,23 +29,26 @@ from app.database import engine
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.services.data_migration_service import data_migration_service
 
-_BATCH_SIZE = 10_000
-
+_USERS = text("""
+    SELECT user_id, array_agg(id) FROM data_source
+    WHERE provider = :provider
+    GROUP BY user_id ORDER BY user_id
+""")
+# Per user, with the user's Garmin sources bound, so each day is one range of the (source, type, time)
+# index and every statement is short: no snapshot held across the whole history, no table-wide scan
 _LOW_PEAKS = """
     WITH days AS (
-        SELECT id, user_id, value, recorded_at AS day_start,
-               lead(recorded_at) OVER (PARTITION BY user_id ORDER BY recorded_at) AS next_start
+        SELECT id, value, recorded_at AS day_start,
+               lead(recorded_at) OVER (ORDER BY recorded_at) AS next_start
         FROM health_score
-        WHERE provider = :provider AND category = :category
+        WHERE user_id = :user_id AND provider = :provider AND category = :category
     )
     SELECT days.id, peak.value AS peak
     FROM days
     CROSS JOIN LATERAL (
         SELECT max(s.value) AS value
         FROM series_sample s
-        JOIN data_source ds ON ds.id = s.data_source_id
-        WHERE ds.user_id = days.user_id
-          AND ds.provider = :provider
+        WHERE s.data_source_id = ANY(:source_ids)
           AND s.series_type_definition_id = :series_type_id
           AND s.recorded_at >= days.day_start
           AND s.recorded_at < CASE
@@ -57,46 +59,36 @@ _LOW_PEAKS = """
     WHERE peak.value > days.value
 """
 _COUNT = text(f"SELECT count(*) FROM ({_LOW_PEAKS}) low_peaks")
-# Collected in one pass into a session temp table, so batches cost a key lookup each and not a
-# rescan of the samples; the session must stay on one connection (see main)
-_DROP = text("DROP TABLE IF EXISTS low_body_battery_peaks")
-_COLLECT = text(f"CREATE TEMP TABLE low_body_battery_peaks AS {_LOW_PEAKS}")
-_INDEX = text("CREATE INDEX ON low_body_battery_peaks (id)")
-_NEXT = text("SELECT id FROM low_body_battery_peaks ORDER BY id LIMIT :batch_size")
-# Only ever up: ingestion may have raised a score past its collected peak in the meantime
-_RAISE = text("""
+# Only ever up: ingestion may have raised a score past its peak in the meantime
+_RAISE = text(f"""
     UPDATE health_score hs SET value = low.peak
-    FROM low_body_battery_peaks low
-    WHERE hs.id = low.id AND low.id = ANY(:ids) AND low.peak > hs.value
+    FROM ({_LOW_PEAKS}) low
+    WHERE hs.id = low.id AND low.peak > hs.value
 """)
-_FORGET = text("DELETE FROM low_body_battery_peaks WHERE id = ANY(:ids)")
+# A sync writing the same scores holds their rows; behind one, a statement fails and the next start
+# retries instead of holding the startup
+_LOCK_TIMEOUT = text("SET lock_timeout = '10s'")
 
 
 def raise_garmin_body_battery_peaks(db: Session, *, dry_run: bool) -> int:
-    """Commits per batch, so an interrupted run keeps what it raised."""
+    """Commits per user, so an interrupted run keeps what it raised."""
     params = {
         "provider": ProviderName.GARMIN.value,
         "category": HealthScoreCategory.BODY_BATTERY.value,
         "series_type_id": get_series_type_id(SeriesType.garmin_body_battery),
     }
+    statement = _COUNT if dry_run else _RAISE
+    found = 0
+    for user_id, source_ids in db.execute(_USERS, params).all():
+        result = db.execute(statement, {**params, "user_id": user_id, "source_ids": source_ids})
+        found += (result.scalar() or 0) if dry_run else result.rowcount  # ty: ignore[unresolved-attribute]
+        if not dry_run:
+            db.commit()
     if dry_run:
-        found = db.execute(_COUNT, params).scalar() or 0
         print(f"Would raise {found} Garmin body battery score(s).\n\nDry run: no changes made.")
-        return found
-
-    db.execute(_DROP)
-    db.execute(_COLLECT, params)
-    db.execute(_INDEX)
-    db.commit()
-    raised = 0
-    while ids := list(db.execute(_NEXT, {"batch_size": _BATCH_SIZE}).scalars()):
-        raised += db.execute(_RAISE, {"ids": ids}).rowcount  # ty: ignore[unresolved-attribute]
-        db.execute(_FORGET, {"ids": ids})
-        db.commit()
-    db.execute(_DROP)
-    db.commit()
-    print(f"Raised {raised} Garmin body battery score(s).")
-    return raised
+    else:
+        print(f"Raised {found} Garmin body battery score(s).")
+    return found
 
 
 def _migrate(db: Session, dry_run: bool) -> bool:
@@ -106,6 +98,7 @@ def _migrate(db: Session, dry_run: bool) -> bool:
 
 def main(dry_run: bool) -> None:
     with engine.connect() as connection, Session(bind=connection) as db:
+        db.execute(_LOCK_TIMEOUT)
         data_migration_service.run(
             db, "raise_garmin_body_battery_peaks", lambda: _migrate(db, dry_run), dry_run=dry_run
         )
