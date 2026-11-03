@@ -63,7 +63,6 @@ class SDKMetricType(StrEnum):
     ANDROID_BASAL_METABOLIC_RATE = "BASAL_METABOLIC_RATE"
     APPLE_STAND_TIME = "HKQuantityTypeIdentifierAppleStandTime"
     APPLE_EXERCISE_TIME = "HKQuantityTypeIdentifierAppleExerciseTime"
-    # Health Connect ActivityIntensityRecord, one type per intensity; minutes come from its start and end
     ANDROID_ACTIVITY_INTENSITY_MODERATE = "ACTIVITY_INTENSITY_MODERATE"
     ANDROID_ACTIVITY_INTENSITY_VIGOROUS = "ACTIVITY_INTENSITY_VIGOROUS"
     FLIGHTS_CLIMBED = "HKQuantityTypeIdentifierFlightsClimbed"

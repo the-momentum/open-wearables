@@ -356,7 +356,6 @@ class ImportService:
             if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
                 value = value / 1000
 
-            # Its minutes are its length; MetricRecord drops one that doesn't end after it starts
             if record_type in INTERVAL_MINUTE_METRIC_TYPES:
                 value = Decimal(str((rjson.endDate - rjson.startDate).total_seconds() / 60))
 
