@@ -32,6 +32,13 @@ PII_DENYLIST = [
     "phone",
     "phone_number",
     "address",
+]
+
+# Credentials masked in both modes, on top of the SDK defaults. The SDK only strips
+# standard headers (authorization, cookie, x-api-key) and matches key names exactly,
+# so our own API key header needs listing.
+CREDENTIAL_DENYLIST = [
+    "x-open-wearables-api-key",
     "client_secret",
     "code_verifier",
     "id_token",
@@ -51,15 +58,18 @@ _PG_DETAIL = re.compile(r"DETAIL:.*$", re.MULTILINE)
 _QUERY_VALUE = re.compile(r"=[^&]*")
 
 _scrubber = EventScrubber(
-    denylist=DEFAULT_DENYLIST + PII_DENYLIST,
+    denylist=DEFAULT_DENYLIST + CREDENTIAL_DENYLIST + PII_DENYLIST,
     pii_denylist=DEFAULT_PII_DENYLIST,
     recursive=True,
 )
 # With SENTRY_SEND_SENSITIVE_DATA, credentials (tokens, secrets, cookies) are still masked.
 # "headers" covers raw ASGI scopes in frame locals (a Starlette Request is a mapping over its
 # scope), whose byte-string headers carry Authorization / API keys. Request headers themselves
-# are scrubbed per header by the SDK, so they stay visible.
-_credentials_scrubber = EventScrubber(denylist=[*DEFAULT_DENYLIST, "headers"], recursive=True)
+# are scrubbed per header (SDK defaults plus CREDENTIAL_DENYLIST), so the rest stay visible.
+_credentials_scrubber = EventScrubber(
+    denylist=[*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, "headers"],
+    recursive=True,
+)
 
 
 def _scrub_text(value: Any) -> Any:
