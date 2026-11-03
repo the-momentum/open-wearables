@@ -10,8 +10,10 @@ push, and this raises the scores already stored.
 A score's day runs from its ``recorded_at``, the summary's start, to the start of the user's next
 body battery score when that comes within 25 hours, so a 23- or 25-hour day (a daylight-saving
 change, or travel) ends where the next one starts; otherwise it lasts 24 hours. Its samples are the
-user's Garmin ``garmin_body_battery`` samples in that window, which hold every push. A score is
-only ever raised. Days whose samples retention deleted keep their score.
+user's Garmin ``garmin_body_battery`` samples in that window. A sample keeps the latest value pushed
+for its timestamp, so a peak Garmin later revised down is gone and the score is raised only to what
+the samples still hold. A score is only ever raised. Days whose samples retention deleted keep their
+score.
 
 Runs once per instance (``data_migration``), one committed statement per Garmin user.
 
