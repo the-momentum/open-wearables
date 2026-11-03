@@ -147,6 +147,13 @@ echo 'Running relayed host model cleanup...'
 uv run python scripts/data_migrations/clear_relayed_host_models.py \
     || echo "Warning: relayed host model cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Sets duration and time in bed of stored Sensor Bio sleep sessions to the start-to-end window.
+# Idempotent, no-op without Sensor Bio data.
+echo 'Running Sensor Bio sleep window backfill...'
+uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
+    || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
