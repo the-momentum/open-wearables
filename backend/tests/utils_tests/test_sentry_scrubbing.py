@@ -7,9 +7,10 @@ the SDK would actually ship.
 import json
 import logging
 from collections.abc import Generator, Iterator
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 import sentry_sdk
@@ -23,9 +24,10 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.integrations import sentry as sentry_integration
 from app.services import raw_payload_storage
+from app.services.providers.sensorbio import data_247 as sensorbio_data_247
 from app.utils.config_utils import LogLevel
 from app.utils.logging_setup import configure_app_logger
-from app.utils.structured_logging import get_logger
+from app.utils.structured_logging import get_logger, is_client_error
 
 # A library logger: its ERROR records keep becoming Sentry events, like before.
 logger = logging.getLogger("library.test_sentry_scrubbing")
@@ -147,6 +149,10 @@ def test_database_error_keeps_its_statement_but_not_the_row(captured: list[dict[
     assert str(FAKE_HEART_RATE) not in _dump(captured[0])
 
 
+def _raise(exc: Exception) -> Any:
+    raise exc
+
+
 def _raised(exc: Exception) -> Exception:
     try:
         raise exc
@@ -246,6 +252,42 @@ def test_alert_below_error_without_an_exception_keeps_its_level(captured: list[d
 
     [event] = captured
     assert event["level"] == "warning"
+
+
+@pytest.mark.parametrize(
+    ("exc", "reported"),
+    [(HTTPException(status_code=404), False), (HTTPException(status_code=500), True), (ValueError("boom"), True)],
+)
+def test_alert_can_leave_out_client_errors(captured: list[dict[str, Any]], exc: Exception, reported: bool) -> None:
+    exc = _raised(exc)
+    with patch.object(app_logger.logger, "log", wraps=app_logger.logger.log) as log:
+        app_logger.warning("Fetch failed", exc_info=exc, alert=not is_client_error(exc))
+    sentry_sdk.flush()
+
+    assert log.call_args.args[0] == logging.WARNING
+    assert [event["level"] for event in captured] == (["error"] if reported else [])
+
+
+@pytest.mark.parametrize(
+    ("make_exc", "events"), [(lambda: HTTPException(status_code=401), 0), (lambda: RuntimeError("boom"), 3)]
+)
+def test_sensorbio_daily_details_do_not_alert_on_client_errors(
+    captured: list[dict[str, Any]], make_exc: Any, events: int
+) -> None:
+    """Like log_and_capture_error(level="warning") did: an expired token is no alert for each day of a sync."""
+    data_247 = sensorbio_data_247.SensorBio247Data("sensorbio", "https://api.sensorbio.com", MagicMock())
+    start, end = datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 3, tzinfo=timezone.utc)
+    sensorbio_logger = sensorbio_data_247.logger.logger
+    with (
+        # A new exception per day, as in a real sync: Sentry drops a repeat of the same object.
+        patch.object(data_247, "_make_api_request", side_effect=lambda *args, **kwargs: _raise(make_exc())),
+        patch.object(sensorbio_logger, "log", wraps=sensorbio_logger.log) as log,
+    ):
+        assert data_247._get_daily_details(MagicMock(), uuid4(), start, end, "/v1/activity/details") == []
+    sentry_sdk.flush()
+
+    assert [call.args[0] for call in log.call_args_list] == [logging.WARNING] * 3
+    assert len(captured) == events
 
 
 def test_attributes_do_not_replace_the_fields_of_the_log_context(captured: list[dict[str, Any]]) -> None:
