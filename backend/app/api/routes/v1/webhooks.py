@@ -122,12 +122,10 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     a ``501`` response.
     """
     handler = _get_webhook_handler(provider)
-    if type(handler).handle_challenge is BaseWebhookHandler.handle_challenge:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Provider '{provider}' does not support webhook subscription verification via GET.",
-        )
-    return handler.handle_challenge(request)
+    try:
+        return handler.handle_challenge(request)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
 
 
 @router.head("", response_class=Response)

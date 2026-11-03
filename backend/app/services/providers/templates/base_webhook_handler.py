@@ -42,7 +42,7 @@ from fastapi import Request
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories import UserConnectionRepository
-from app.utils.exceptions import UnsupportedProviderError, WebhookVerificationError
+from app.utils.exceptions import WebhookVerificationError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -233,9 +233,8 @@ class BaseWebhookHandler(ABC):
         to verify webhook subscriptions (Strava ``hub.challenge``, Oura
         ``verification_token``).
 
-        The unified router answers 501 itself when a handler does not override
-        this method, so the default is only a fallback for other callers: it
-        raises ``UnsupportedProviderError`` rather than pretending to verify.
+        Default implementation raises ``NotImplementedError``, which the
+        unified router answers with ``501 Not Implemented``.
 
         Args:
             request: The incoming GET request (query params carry challenge data).
@@ -244,9 +243,11 @@ class BaseWebhookHandler(ABC):
             Provider-specific challenge response dict.
 
         Raises:
-            ``UnsupportedProviderError`` by default.
+            ``NotImplementedError`` by default.
         """
-        raise UnsupportedProviderError(self.provider_name, "webhook subscription verification via GET")
+        raise NotImplementedError(
+            f"Provider '{self.provider_name}' does not support webhook subscription verification via GET."
+        )
 
     # ------------------------------------------------------------------
     # Shared signature verification helpers (issue #712)

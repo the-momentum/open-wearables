@@ -73,6 +73,12 @@ class TestWebhookRoute:
         response = client.post(f"{api_v1_prefix}/providers/nonsense/webhooks", json={})
         assert response.status_code == 404
 
+    def test_get_challenge_without_provider_support_is_501(self, client: TestClient, api_v1_prefix: str) -> None:
+        """Garmin has a webhook handler but no GET subscription verification."""
+        response = client.get(f"{api_v1_prefix}/providers/garmin/webhooks")
+        assert response.status_code == 501
+        assert "does not support webhook subscription verification" in response.json()["detail"]
+
 
 class TestDataIdentityStaysStrict:
     """URL compatibility must not leak into data filters — a stale ?provider=google
