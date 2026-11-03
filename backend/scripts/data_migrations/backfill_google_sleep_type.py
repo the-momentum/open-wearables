@@ -8,8 +8,9 @@ window had shifted was inserted as a duplicate row. New rows now carry the type;
 old ones so their next re-fetch updates them instead.
 
 Reads Google sources first and updates their sleep rows a chunk of sources at a time through
-``ix_event_record_source_category``, committing after each chunk. Runs once per instance
-(``data_migration``).
+``ix_event_record_source_category``, committing after each chunk. An instance without Google
+sources stops after one lookup on ``data_source``. Cheap and unrecorded, so every startup also
+types rows an old pod writes during a rolling deploy.
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/backfill_google_sleep_type.py --dry-run
@@ -22,10 +23,9 @@ from typing import cast
 from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.orm import Session
 
-from app.database import engine
+from app.database import SessionLocal
 from app.models import DataSource, EventRecord
 from app.schemas.enums import EventCategory, ProviderName
-from app.services.data_migration_service import data_migration_service
 
 SOURCES_PER_BATCH = 100
 
@@ -58,17 +58,9 @@ def backfill_google_sleep_type(db: Session, *, dry_run: bool, batch_size: int = 
     return total
 
 
-def _migrate(db: Session, dry_run: bool) -> bool:
-    backfill_google_sleep_type(db, dry_run=dry_run)
-    if dry_run:
-        return False
-    print("Done.")
-    return True
-
-
 def main(dry_run: bool) -> None:
-    with engine.connect() as connection, Session(bind=connection) as db:
-        data_migration_service.run(db, "backfill_google_sleep_type", lambda: _migrate(db, dry_run), dry_run=dry_run)
+    with SessionLocal() as db:
+        backfill_google_sleep_type(db, dry_run=dry_run)
 
 
 if __name__ == "__main__":
