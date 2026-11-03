@@ -81,13 +81,21 @@ def _exception(exc_info: Any) -> BaseException | None:
     return sys.exc_info()[1] if exc_info else None
 
 
-def _is_expected_error(exc: BaseException | None) -> bool:
+def is_client_error(exc: BaseException | None) -> bool:
     """4xx HTTPExceptions and AppErrors are explicit, handled client errors (e.g. a user whose
-    provider grant was revoked), and an upstream outage is a provider or storage failure, not
-    our bug: logged as warnings, kept out of Sentry."""
+    provider grant was revoked): logged as warnings, kept out of Sentry.
+
+    ``alert=True`` reports them anyway; a warning that should alert on everything else
+    (upstream outages too) passes ``alert=not is_client_error(e)``."""
     if isinstance(exc, AppError):
-        return exc.is_client_error or is_upstream_outage(exc)
+        return exc.is_client_error
     return isinstance(exc, HTTPException) and 400 <= exc.status_code < 500
+
+
+def _is_expected_error(exc: BaseException | None) -> bool:
+    """A client error, or an upstream outage - a provider or storage failure, not our bug:
+    logged as warnings, kept out of Sentry."""
+    return is_client_error(exc) or is_upstream_outage(exc)
 
 
 def _report(level: int, msg: str, exc: BaseException | None, context: dict[str, Any]) -> None:
@@ -119,7 +127,8 @@ class StructuredLogger:
       ``AppError``\\s and upstream outages (``is_upstream_outage``) are logged as warnings.
     - ``provider``: provider name, printed right after the message.
     - ``alert``: always report the line to Sentry - without an exception, below ``error``,
-      and also when LOG_LEVEL filters it out of the logs.
+      and also when LOG_LEVEL filters it out of the logs. ``alert=not is_client_error(e)``
+      keeps client errors out.
     - any other keyword: an attribute of the line (queryable via @name:value in log
       explorers). Keep values JSON-serializable and free of health data and PII.
     """
