@@ -18,8 +18,11 @@ def build_sync_params(start_date: str | None, end_date: str | None) -> dict[str,
                 datetime.fromisoformat(value.replace("Z", "+00:00"))
             except (ValueError, AttributeError) as e:
                 logger.warning(
-                    f"Invalid {label} format: {value}, error: {e}",
+                    "Invalid date format",
                     task="build_sync_params",
+                    param=label,
+                    value=value,
+                    error=str(e),
                 )
 
     return {"start_date": start_date, "end_date": end_date}

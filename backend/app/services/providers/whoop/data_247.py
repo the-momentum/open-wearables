@@ -89,7 +89,7 @@ class Whoop247Data(Base247DataTemplate):
     ) -> Any:
         """Make authenticated request to Whoop API."""
         logger.debug(
-            f"Making API request to {endpoint}",
+            "Making API request",
             provider="whoop",
             endpoint=endpoint,
             params=params,
@@ -163,20 +163,22 @@ class Whoop247Data(Base247DataTemplate):
 
             except Exception as e:
                 logger.error(
-                    f"Error fetching Whoop {label} data: {e}",
+                    "Error fetching Whoop data",
                     provider="whoop",
                     task=task,
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 # Page 1 failing means we have nothing to save, so let it propagate.
                 if not all_records:
                     raise
                 logger.warning(
-                    f"Returning partial {label} data due to error: {e}",
+                    "Returning partial data due to error",
                     provider="whoop",
                     task=task,
                     action="whoop_api_partial_data",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 return all_records, True
 
@@ -340,10 +342,11 @@ class Whoop247Data(Base247DataTemplate):
 
         if not start_dt or not end_dt:
             logger.warning(
-                f"Skipping sleep record {sleep_id}: missing start/end time",
+                "Skipping sleep record: missing start/end time",
                 provider="whoop",
                 task="save_sleep_data",
                 user_id=str(user_id),
+                sleep_id=str(sleep_id),
             )
             return
 
@@ -390,10 +393,12 @@ class Whoop247Data(Base247DataTemplate):
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
             logger.error(
-                f"Error saving sleep record {sleep_id}: {e}",
+                "Error saving sleep record",
                 provider="whoop",
                 task="save_sleep_data",
                 user_id=str(user_id),
+                sleep_id=str(sleep_id),
+                error=str(e),
             )
 
     def get_sleep_record(
@@ -435,9 +440,11 @@ class Whoop247Data(Base247DataTemplate):
             return 1, closed_at
         except Exception as e:
             logger.warning(
-                f"Failed to save sleep record {sleep_id}: {e}",
+                "Failed to save sleep record",
                 provider="whoop",
                 task="load_single_sleep",
+                sleep_id=sleep_id,
+                error=str(e),
             )
             return 0, closed_at
 
@@ -462,10 +469,11 @@ class Whoop247Data(Base247DataTemplate):
             except Exception as e:
                 db.rollback()
                 logger.warning(
-                    f"Failed to save sleep data: {e}",
+                    "Failed to save sleep data",
                     provider="whoop",
                     task="load_and_save_sleep",
                     user_id=str(user_id),
+                    error=str(e),
                 )
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
@@ -537,10 +545,11 @@ class Whoop247Data(Base247DataTemplate):
             return response if isinstance(response, dict) else {}
         except Exception as e:
             logger.error(
-                f"Error fetching Whoop body measurement: {e}",
+                "Error fetching Whoop body measurement",
                 provider="whoop",
                 task="get_body_measurement",
                 user_id=str(user_id),
+                error=str(e),
             )
             return {}
 
@@ -602,10 +611,11 @@ class Whoop247Data(Base247DataTemplate):
                     )
             except Exception as e:
                 logger.warning(
-                    f"Failed to build height sample: {e}",
+                    "Failed to build height sample",
                     provider="whoop",
                     task="load_and_save_body_measurement",
                     user_id=str(user_id),
+                    error=str(e),
                 )
 
         # Save weight (already in kilograms) if changed
@@ -628,10 +638,11 @@ class Whoop247Data(Base247DataTemplate):
                     )
             except Exception as e:
                 logger.warning(
-                    f"Failed to build weight sample: {e}",
+                    "Failed to build weight sample",
                     provider="whoop",
                     task="load_and_save_body_measurement",
                     user_id=str(user_id),
+                    error=str(e),
                 )
 
         counts = WriteCounts(0, 0)
@@ -786,10 +797,12 @@ class Whoop247Data(Base247DataTemplate):
                     )
                 except Exception as e:
                     logger.warning(
-                        f"Failed to build recovery sample {field_name}: {e}",
+                        "Failed to build recovery sample",
                         provider="whoop",
                         task="save_recovery_data",
                         user_id=str(user_id),
+                        field=field_name,
+                        error=str(e),
                     )
 
         counts = WriteCounts(0, 0)
@@ -836,9 +849,11 @@ class Whoop247Data(Base247DataTemplate):
             return count
         except Exception as e:
             logger.warning(
-                f"Failed to save recovery record {cycle_id}: {e}",
+                "Failed to save recovery record",
                 provider="whoop",
                 task="load_single_recovery",
+                cycle_id=cycle_id,
+                error=str(e),
             )
             return WriteCounts(0, 0)
 
@@ -863,10 +878,11 @@ class Whoop247Data(Base247DataTemplate):
                 normalized, health_score = self.normalize_recovery(item, user_id)
             except Exception as e:
                 logger.warning(
-                    f"Failed to normalize recovery data: {e}",
+                    "Failed to normalize recovery data",
                     provider="whoop",
                     task="load_and_save_recovery",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 continue
             if normalized:  # Skip unscored records
@@ -886,10 +902,11 @@ class Whoop247Data(Base247DataTemplate):
             except Exception as e:
                 db.rollback()
                 logger.warning(
-                    f"Failed to save recovery data: {e}",
+                    "Failed to save recovery data",
                     provider="whoop",
                     task="load_and_save_recovery",
                     user_id=str(user_id),
+                    error=str(e),
                 )
 
         if health_scores:
@@ -946,11 +963,12 @@ class Whoop247Data(Base247DataTemplate):
             daily_samples, strain_score = self.normalize_cycle(raw, user_id)
             if not daily_samples and not strain_score:
                 logger.info(
-                    f"Whoop cycle {raw.get('id')} carries no usable score",
+                    "Whoop cycle carries no usable score",
                     provider="whoop",
                     task="load_closed_cycle",
                     user_id=str(user_id),
                     score_state=raw.get("score_state"),
+                    cycle_id=raw.get("id"),
                 )
                 return 0
             if daily_samples:
@@ -962,9 +980,11 @@ class Whoop247Data(Base247DataTemplate):
         except Exception as e:
             db.rollback()
             logger.warning(
-                f"Failed to save cycle {raw.get('id')}: {e}",
+                "Failed to save cycle",
                 provider="whoop",
                 task="load_closed_cycle",
+                cycle_id=raw.get("id"),
+                error=str(e),
             )
             return 0
 
@@ -1067,10 +1087,11 @@ class Whoop247Data(Base247DataTemplate):
                     health_scores.append(strain_score)
             except Exception as e:
                 logger.warning(
-                    f"Failed to normalize cycle: {e}",
+                    "Failed to normalize cycle",
                     provider="whoop",
                     task="load_and_save_cycles",
                     user_id=str(user_id),
+                    error=str(e),
                 )
 
         counts = WriteCounts(0, 0)

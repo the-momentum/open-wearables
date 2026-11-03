@@ -135,8 +135,9 @@ class ArchivalService:
             deleted, complete = self._delete_before(db, cutoff, setting.rollup_enabled, frozen_before)
             summary["deleted_live_rows"] = deleted
             logger.info(
-                f"Retention: deleted {deleted} live rows before {cutoff}",
+                "Retention: deleted live rows",
                 delete_after_days=setting.delete_after_days,
+                cutoff=cutoff.isoformat(),
                 deleted_live_rows=deleted,
             )
             summary["deleted_archive_rows"] = self._delete_archive_before(db, cutoff)
@@ -172,13 +173,13 @@ class ArchivalService:
             return time.monotonic() - started >= budget_seconds
 
         if recovered := rollup_queue.recover_dirty_days():
-            logger.warning(f"Rollup: {recovered} days left by a run that died, queued again")
+            logger.warning("Rollup: days left by a run that died, queued again", recovered_days=recovered)
         while not out_of_time():
             batch = rollup_queue.pop_dirty_days(ROLLUP_BATCH_SIZE)
             if not batch:
                 break
             rolled_up += self._roll_up_batch(db, batch, cutoff, frozen_before, out_of_time)
-        logger.info(f"Rollup: {rolled_up} days", rolled_up_days=rolled_up)
+        logger.info("Rollup finished", rolled_up_days=rolled_up)
         return rolled_up
 
     def _roll_up_batch(

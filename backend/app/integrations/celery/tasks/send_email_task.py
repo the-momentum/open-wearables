@@ -42,9 +42,10 @@ class EmailTaskBase(Task):
                         invitation.status = InvitationStatus.FAILED
                         db.commit()
                         logger.warning(
-                            f"Marked invitation {invitation_id} as FAILED after all retries exhausted",
+                            "Marked invitation as FAILED after all retries exhausted",
                             provider="email",
                             task="send_invitation_email_task",
+                            invitation_id=invitation_id,
                         )
             except Exception as e:
                 logger.error(
@@ -100,9 +101,10 @@ def send_invitation_email_task(
         # Skip if already sent (idempotency)
         if invitation.status == InvitationStatus.SENT:
             logger.info(
-                f"Invitation {invitation_id} already sent, skipping",
+                "Invitation already sent, skipping",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
             )
             return {
                 "status": "success",
@@ -113,9 +115,10 @@ def send_invitation_email_task(
         # Skip if already failed (allow resend via separate action)
         if invitation.status == InvitationStatus.FAILED:
             logger.info(
-                f"Invitation {invitation_id} previously failed, skipping",
+                "Invitation previously failed, skipping",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
             )
             return {
                 "status": "skipped",
@@ -129,9 +132,11 @@ def send_invitation_email_task(
         # Skip sending if email is not configured (allow manual invite links)
         if config_error := get_email_config_error():
             logger.warning(
-                f"{config_error}, skipping send for invitation {invitation_id}",
+                "Email not configured, skipping send for invitation",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
+                reason=config_error,
             )
             return {
                 "status": "skipped",
@@ -142,9 +147,12 @@ def send_invitation_email_task(
         # Send email only if status is PENDING
         attempt = self.request.retries + 1
         logger.info(
-            f"Sending invitation email for {invitation_id} (attempt {attempt}/{settings.email_max_retries + 1})",
+            "Sending invitation email",
             provider="email",
             task="send_invitation_email_task",
+            invitation_id=invitation_id,
+            attempt=attempt,
+            max_attempts=settings.email_max_retries + 1,
         )
         success = send_invitation_email(to_email, invite_url, invited_by_email)
 
@@ -156,9 +164,10 @@ def send_invitation_email_task(
             invitation.status = InvitationStatus.SENT
             db.commit()
             logger.info(
-                f"Updated invitation {invitation_id} status to SENT",
+                "Updated invitation status to SENT",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
             )
         except Exception as e:
             db.rollback()

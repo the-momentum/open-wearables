@@ -218,7 +218,7 @@ logger.warning(
 ```
 
 - Define `logger = get_logger(__name__)` once per module, below the imports. Scripts outside `app/` pass an explicit name (`get_logger("app.scripts.create_svix_db")`).
-- Pass the message as a stable, human-readable string and put the variable parts in keyword arguments (don't f-string them into the message). `provider=` is printed right after the message; every other keyword becomes an attribute of the line.
+- Pass the message as a stable, human-readable string and put the variable parts in keyword arguments (don't f-string them into the message; ruff's `G00` rules enforce it). `provider=` is printed right after the message; every other keyword becomes an attribute of the line.
 - Attributes cannot be named `timestamp`, `level` or `message` (the line's own fields).
 - `trace_id` is injected automatically from context when not supplied; the logger name (shown with `LOG_FORMAT=text` and in log export) is the module name.
 - Levels: `logger.debug/info/warning/error/critical`, or `logger.log(level, ...)` for a computed level. `debug` lines are dropped unless `LOG_LEVEL=DEBUG`.

@@ -249,9 +249,10 @@ class Polar247Data(Base247DataTemplate):
                 continue
             if not parsed.date or not parsed.sleep_start_time or not parsed.sleep_end_time:
                 logger.warning(
-                    f"Polar sleep record missing date or start/end time: {parsed.date}",
+                    "Sleep record missing date or start/end time",
                     provider="polar",
                     user_id=str(user_id),
+                    date=parsed.date,
                 )
                 continue
 
@@ -1011,8 +1012,9 @@ class Polar247Data(Base247DataTemplate):
 
             case _:
                 logger.warning(
-                    f"Targeted webhook fetch not implemented for event type: {event_type}",
+                    "Targeted webhook fetch not implemented for event type",
                     provider="polar",
+                    event_type=str(event_type),
                 )
                 return {}
 

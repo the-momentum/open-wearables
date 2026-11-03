@@ -89,10 +89,13 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             except Exception as e:
                 # Log error but continue with other chunks
                 logger.warning(
-                    f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
+                    "Error fetching activities chunk",
                     provider="garmin",
                     task="get_workouts_historical",
                     user_id=str(user_id),
+                    chunk_start=current_start.isoformat(),
+                    chunk_end=current_end.isoformat(),
+                    error=str(e),
                 )
 
             current_start = current_end

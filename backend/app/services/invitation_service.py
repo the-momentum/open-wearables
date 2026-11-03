@@ -145,9 +145,10 @@ class InvitationService:
             developer = self.crud.accept_with_developer(db_session, invitation, developer)
         except Exception as e:
             logger.error(
-                f"Failed to accept invitation: {e}",
+                "Failed to accept invitation",
                 provider="invitation",
                 task="accept_invitation",
+                error=str(e),
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

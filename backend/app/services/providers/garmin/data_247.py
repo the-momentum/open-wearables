@@ -164,10 +164,14 @@ class Garmin247Data(Base247DataTemplate):
                     all_data.append(response)
             except Exception as e:
                 logger.warning(
-                    f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
+                    "Error fetching chunk",
                     provider="garmin",
                     task="fetch_in_chunks",
                     user_id=str(user_id),
+                    endpoint=endpoint,
+                    chunk_start=current_start.isoformat(),
+                    chunk_end=current_end.isoformat(),
+                    error=str(e),
                 )
 
             current_start = current_end
@@ -370,10 +374,11 @@ class Garmin247Data(Base247DataTemplate):
 
         if not start_dt or not end_dt:
             logger.warning(
-                f"Missing start/end time for sleep {sleep_id}",
+                "Missing start/end time for sleep",
                 provider="garmin",
                 task="build_sleep_record",
                 user_id=str(user_id),
+                sleep_id=str(sleep_id),
             )
             return None
 
@@ -435,10 +440,12 @@ class Garmin247Data(Base247DataTemplate):
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
             logger.error(
-                f"Error saving sleep record {normalized_sleep['id']}: {e}",
+                "Error saving sleep record",
                 provider="garmin",
                 task="save_sleep_data",
                 user_id=str(user_id),
+                sleep_id=str(normalized_sleep["id"]),
+                error=str(e),
             )
 
     # -------------------------------------------------------------------------
@@ -2081,10 +2088,12 @@ class Garmin247Data(Base247DataTemplate):
 
             except Exception as e:
                 logger.warning(
-                    f"Error building batch item for {summary_type}: {e}",
+                    "Error building batch item",
                     provider="garmin",
                     task="process_items_batch",
                     user_id=str(user_id),
+                    summary_type=summary_type,
+                    error=str(e),
                 )
 
         count = WriteCounts(0, 0)

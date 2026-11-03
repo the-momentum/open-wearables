@@ -225,7 +225,7 @@ def infer_device_type(
     device_type = _resolve_device_type(provider, device_model, original_source_name, reported_type)
     if device_type == DeviceType.OTHER:
         logger.warning(
-            f"Device mapped to other: {device_model}",
+            "Device mapped to other",
             provider=provider.value,
             action="device_type_other",
             device_model=device_model,

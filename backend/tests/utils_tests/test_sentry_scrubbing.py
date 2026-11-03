@@ -339,7 +339,7 @@ def test_query_string_values_are_filtered(captured: list[dict[str, Any]]) -> Non
 
 
 def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list[dict[str, Any]]) -> None:
-    logger.error(f"Failed to send invitation to {FAKE_EMAIL}")
+    logger.error(f"Failed to send invitation to {FAKE_EMAIL}")  # noqa: G004 - free text is what the filter must catch
     logger.error("Failed to send invitation to %s", FAKE_EMAIL)
     sentry_sdk.capture_exception(ValueError(f"User {FAKE_EMAIL} already exists"))
     sentry_sdk.flush()
