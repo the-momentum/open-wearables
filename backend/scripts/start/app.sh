@@ -148,6 +148,13 @@ uv run python scripts/data_migrations/clear_relayed_host_models.py \
     || echo "Warning: relayed host model cleanup failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Sets duration and time in bed of stored Sensor Bio sleep sessions to the start-to-end window.
+# Idempotent, no-op without Sensor Bio data.
+echo 'Running Sensor Bio sleep window backfill...'
+uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
+    || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
 # Raises each Garmin body battery score to the highest sample of its day; scores kept the peak of
 # the day's first stressDetails push. Runs once per instance (data_migration).
 echo 'Running Garmin body battery peak backfill...'
