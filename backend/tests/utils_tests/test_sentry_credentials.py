@@ -65,7 +65,7 @@ def test_api_key_header_is_masked(scrubber: EventScrubber) -> None:
 
 
 @SCRUBBERS
-@pytest.mark.parametrize("key", ["client_secret", "code_verifier", "id_token"])
+@pytest.mark.parametrize("key", ["client_secret", "code_verifier", "id_token", "access_token", "refresh_token"])
 def test_oauth_credentials_are_masked(scrubber: EventScrubber, key: str) -> None:
     event = {
         "request": {"data": {key: FAKE_SECRET}},
@@ -144,6 +144,25 @@ def test_shipped_events_carry_no_outgoing_query_credentials(sentry_transport: _C
     assert any(b.get("data", {}).get("url") == "https://api.ouraring.com/oauth/revoke" for b in breadcrumbs)
     assert any(s.get("data", {}).get("url") == "https://api.ouraring.com/oauth/revoke" for s in spans)
     assert FAKE_TOKEN not in json.dumps(payloads, default=str)
+
+
+def _revoke(access_token: str, refresh_token: str) -> None:
+    raise RuntimeError("revoke failed")
+
+
+def test_shipped_events_carry_no_token_locals(sentry_transport: _CapturingTransport) -> None:
+    # Sensitive mode ships frame locals; token parameters must still be masked there.
+    try:
+        _revoke(FAKE_TOKEN, FAKE_SECRET)
+    except RuntimeError as e:
+        sentry_sdk.capture_exception(e)
+    sentry_sdk.flush()
+
+    payloads = sentry_transport.payloads()
+    assert payloads
+    dumped = json.dumps(payloads, default=str)
+    assert FAKE_TOKEN not in dumped
+    assert FAKE_SECRET not in dumped
 
 
 def _oura_oauth() -> BaseOAuthTemplate:
