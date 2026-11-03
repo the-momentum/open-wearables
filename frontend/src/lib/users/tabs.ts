@@ -2,6 +2,7 @@ import Activity from '@lucide/svelte/icons/activity';
 import ChartColumn from '@lucide/svelte/icons/chart-column';
 import Dumbbell from '@lucide/svelte/icons/dumbbell';
 import Heart from '@lucide/svelte/icons/heart';
+import MonitorSmartphone from '@lucide/svelte/icons/monitor-smartphone';
 import Moon from '@lucide/svelte/icons/moon';
 import Scale from '@lucide/svelte/icons/scale';
 import Trophy from '@lucide/svelte/icons/trophy';
@@ -9,33 +10,27 @@ import Utensils from '@lucide/svelte/icons/utensils';
 import Plug from '@lucide/svelte/icons/plug';
 import type { Component } from 'svelte';
 import { resolve } from '$app/paths';
-import type { UserDetail } from './types';
 
 export type UserTab = {
 	/** Path segment under /users/{id}; empty for the index tab. */
 	slug: string;
 	label: string;
 	icon: Component;
-	/** Hidden unless the user actually has this kind of data. */
-	gated?: boolean;
 };
 
 export const USER_TABS: readonly UserTab[] = [
 	// Not "Profile": the profile is the header, visible above every tab.
 	{ slug: '', label: 'Connections', icon: Plug },
 	{ slug: 'data', label: 'Data Summary', icon: ChartColumn },
+	{ slug: 'sources', label: 'Sources', icon: MonitorSmartphone },
 	{ slug: 'workouts', label: 'Workouts', icon: Dumbbell },
 	{ slug: 'activity', label: 'Activity', icon: Activity },
 	{ slug: 'sleep', label: 'Sleep', icon: Moon },
 	{ slug: 'meals', label: 'Meals', icon: Utensils },
 	{ slug: 'body', label: 'Body', icon: Scale },
 	{ slug: 'scores', label: 'Scores', icon: Trophy },
-	{ slug: 'womens-health', label: "Women's Health", icon: Heart, gated: true }
+	{ slug: 'womens-health', label: "Women's Health", icon: Heart }
 ];
-
-export function tabsFor(user: Pick<UserDetail, 'has_womens_health_data'>): UserTab[] {
-	return USER_TABS.filter((tab) => !tab.gated || user.has_womens_health_data);
-}
 
 export function tabLabel(slug: string): string {
 	return USER_TABS.find((tab) => tab.slug === slug)?.label ?? slug;

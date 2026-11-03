@@ -3,7 +3,7 @@ from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
-# Apple HealthKit emits only HKQuantityTypeIdentifier... metrics (SDNN, not RMSSD).
+# Apple HealthKit emits only HKQuantityTypeIdentifier... metrics (HRV as SDNN, plus RMSSD on iOS 27+).
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *APPLE_METRIC_TYPE_TO_SERIES_TYPE.values(),
@@ -23,7 +23,7 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "max_speed",
         "average_speed",
         "average_cadence",
-        "moving_time_seconds",
+        "average_watts",
         "total_elevation_gain",
         "elev_high",
         "elev_low",

@@ -155,10 +155,10 @@ The defaults in `.env.example` are development values. Override at least these f
 
 | Variable | Set to |
 |----------|--------|
-| `ENVIRONMENT` | `production` |
+| `ENVIRONMENT` | `production` (required on any server reachable from the internet: other values accept the default admin password) |
 | `DB_PASSWORD` | a strong database password |
 | `SECRET_KEY` | a long random secret, used to sign tokens |
-| `ADMIN_PASSWORD` | password for the admin account seeded on first start |
+| `ADMIN_PASSWORD` | password for the admin account seeded on first start (required: with `ENVIRONMENT=production` the seed and the login refuse the default; if the account whose email matches `ADMIN_EMAIL` still has the default, its password is changed to this value at startup) |
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |
 | `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
@@ -168,6 +168,10 @@ The defaults in `.env.example` are development values. Override at least these f
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 
 Open Wearables does not use `OTEL_PROPAGATORS`, but FastAPI loads the propagators it lists at startup. If your platform sets it to one that is not installed in the image, such as `b3`, every backend container fails with `ValueError: Propagator b3 not found`. Unset it for these containers.
+
+### Mobile SDK syncs
+
+By default every mobile SDK sync payload is queued in Redis. That's fine for ongoing syncs, but a historical backfill sends a lot of data at once. How much depends on whether your app runs a backfill and how far back it goes, which you set in the SDK. With many users backfilling long periods, Redis can run out of memory. In that case we recommend setting `SDK_PAYLOAD_S3_OFFLOAD=true`. Payloads then go to an S3-compatible bucket and Redis only holds a reference. See [SDK Payload Offload](/dev-guides/raw-payload-storage#sdk-payload-offload) for the required bucket settings.
 
 ### Running it
 

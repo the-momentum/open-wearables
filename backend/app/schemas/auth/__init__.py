@@ -14,6 +14,7 @@ from .sdk_auth import (
 from .token import (
     PasswordChangePrompt,
     RefreshTokenRequest,
+    SDKTokenOrigin,
     TokenResponse,
     TokenType,
 )
@@ -25,6 +26,7 @@ __all__ = [
     # Token
     "PasswordChangePrompt",
     "RefreshTokenRequest",
+    "SDKTokenOrigin",
     "TokenResponse",
     "TokenType",
     # Connection status

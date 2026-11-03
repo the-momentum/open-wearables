@@ -7,6 +7,7 @@ import isodate
 
 from app.constants.workout_types.polar import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -65,10 +66,10 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         start_time_utc_offset: int,
         duration: str,
     ) -> tuple[datetime, datetime]:
-        """Extract start and end dates from timestamps with UTC offset."""
-        start_date = isodate.parse_datetime(start_time)
+        """Start and end in UTC: ``start_time`` is naive local time, ``start_time_utc_offset`` its offset in minutes."""
+        local_start = isodate.parse_datetime(start_time)
         offset = timedelta(minutes=start_time_utc_offset)
-        start_date = start_date + offset
+        start_date = local_start - offset
         duration_td = isodate.parse_duration(duration)
         end_date = start_date + duration_td
         return start_date, end_date
@@ -119,7 +120,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         zone_offset = offset_to_iso(raw_workout.start_time_utc_offset * 60)
 
         record = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=raw_workout.device,
             device_model=raw_workout.device,
@@ -130,6 +131,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             id=workout_id,
             external_id=raw_workout.id,
             source="polar",
+            device_id=raw_workout.device_id,
             user_id=user_id,
         )
 

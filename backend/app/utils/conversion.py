@@ -73,11 +73,17 @@ def minutes_to_seconds(minutes: int | None) -> int | None:
     return minutes * 60 if minutes is not None else None
 
 
+def sum_optional(*values: int | None) -> int | None:
+    """Sum of the reported values; None when none of them is reported."""
+    if all(v is None for v in values):
+        return None
+    return sum(v or 0 for v in values)
+
+
 def seconds_to_minutes(*seconds: int | None) -> int | None:
     """Whole minutes in the summed durations; None when none of them is reported."""
-    if all(s is None for s in seconds):
-        return None
-    return sum(s or 0 for s in seconds) // 60
+    total = sum_optional(*seconds)
+    return total // 60 if total is not None else None
 
 
 _KCAL_PER_KJ = Decimal("0.239006")  # 1 kcal = 4.184 kJ
@@ -87,6 +93,13 @@ def kilojoules_to_kcal(kilojoules: Any) -> Decimal | None:
     """Convert kilojoules to kilocalories; None if not numeric."""
     kj = to_decimal(kilojoules)
     return kj * _KCAL_PER_KJ if kj is not None else None
+
+
+def energy_difference(total: float | None, part: float | None) -> float | None:
+    """The rest of a total energy once part of it is taken out; None when either is missing or part exceeds it."""
+    if total is None or part is None or part > total:
+        return None
+    return total - part
 
 
 def base_to_dict(instance: BaseDbModel) -> dict[str, str | None]:

@@ -77,6 +77,20 @@ echo 'Running Whoop cycle day re-key...'
 uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
     || echo "Warning: Whoop cycle re-key failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Relabels Whoop cycle energy stored as active_energy to total_energy: it includes BMR.
+# Drops 0 kJ no-wear rows. Runs once per instance (data_migration).
+echo 'Running Whoop active_energy->total_energy relabel...'
+uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energy.py \
+    || echo "Warning: Whoop energy relabel failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves average_met rows onto physical_effort, the series it merged into: both carry METs.
+# Runs at every start until one finds no average_met rows left (data_migration).
+echo 'Running average_met->physical_effort merge...'
+uv run python scripts/data_migrations/merge_average_met_into_physical_effort.py \
+    || echo "Warning: average_met merge failed — will retry on next startup."
+
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
 # recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
@@ -84,6 +98,61 @@ uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
 echo 'Running device type backfill...'
 uv run python scripts/data_migrations/backfill_device_types.py \
     || echo "Warning: device type backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Merges data sources split by placeholder models / platform names / Polar's missing source,
+# then drops events duplicated across a user's sources. Idempotent, no-op once merged.
+echo 'Running data source merge...'
+uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
+    || echo "Warning: data source merge failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves Polar workouts stored twice their UTC offset in the future to their real time, before the
+# aggregate backfill reads them. Runs once per instance (data_migration).
+echo 'Running Polar workout time fix...'
+uv run python scripts/data_migrations/fix_polar_workout_utc_offset.py \
+    || echo "Warning: Polar workout time fix failed — will retry on next startup."
+
+# Queues the one-off copy of the history into the aggregate tables; it runs in Celery, not here.
+# A run waits for the data source merge's data_migration row, since beat queues it too.
+echo 'Queueing aggregate backfill...'
+uv run python scripts/data_migrations/enqueue_aggregate_backfill.py \
+    || echo "Warning: aggregate backfill not queued — beat queues it within 15 minutes."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Clears the 0 kcal the SDK and Apple XML importers stored for workouts that reported no
+# calories. Runs once per instance (data_migration).
+echo 'Running SDK workout calories cleanup...'
+uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
+    || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-04-01 once all deployments have migrated.
+# Sets sleep stages to NULL on SDK nights whose hypnogram has no light/deep/rem segment.
+# Runs once per instance (data_migration).
+echo 'Running SDK unreported sleep stages cleanup...'
+uv run python scripts/data_migrations/clear_sdk_unreported_sleep_stages.py \
+    || echo "Warning: SDK sleep stages cleanup failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Removes the stage and time-in-bed copies that Polar sleep re-syncs appended, and keys the
+# nights by date so later re-syncs replace them. Runs once per instance (data_migration).
+echo 'Running Polar sleep dedupe...'
+uv run python scripts/data_migrations/dedupe_polar_sleep.py \
+    || echo "Warning: Polar sleep dedupe failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Clears the relaying iPhone's model (and the phone type inferred from it) from third-party
+# HealthKit data sources. Runs once per instance (data_migration).
+echo 'Running relayed host model cleanup...'
+uv run python scripts/data_migrations/clear_relayed_host_models.py \
+    || echo "Warning: relayed host model cleanup failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Sets duration and time in bed of stored Sensor Bio sleep sessions to the start-to-end window.
+# Idempotent, no-op without Sensor Bio data.
+echo 'Running Sensor Bio sleep window backfill...'
+uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
+    || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-01-01 once all deployments have migrated.
 # Types Google Health sleep rows saved without 'sleep_session', so re-fetches update them

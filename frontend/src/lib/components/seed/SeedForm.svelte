@@ -4,6 +4,7 @@
 	import type { SeriesGroup } from '$lib/seed/catalogue';
 	import { audienceSummary, perUser, windowSummary } from '$lib/seed/summary';
 	import type { SeedPreset, SleepProfile } from '$lib/seed/types';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import GenerateCard from './GenerateCard.svelte';
 	import MealSection from './MealSection.svelte';
 	import PresetPicker from './PresetPicker.svelte';
@@ -52,6 +53,11 @@
 </script>
 
 <div class="flex flex-col gap-5">
+	<Alert tone="warning">
+		Seeded data doesn't match real device volumes or sampling frequency. Don't use it to estimate
+		how much data a real user generates.
+	</Alert>
+
 	<PresetPicker {presets} {active} onpick={pick} />
 
 	<SeedBasics bind:draft {providers} />

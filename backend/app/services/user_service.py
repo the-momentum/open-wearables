@@ -49,12 +49,12 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         return self.crud.get_count_in_range(db_session, start_date, end_date)
 
     @handle_exceptions
-    def create(self, db_session: DbSession, creator: UserCreate) -> User:
+    def create(self, db_session: DbSession, creator: UserCreate, *, is_seed: bool = False) -> User:
         """Create a user with server-generated id and created_at."""
         if self.crud.get_by_email(db_session, creator.email):
             raise ResourceAlreadyExistsError("User with this email already exists.")
         creation_data = creator.model_dump()
-        internal_creator = UserCreateInternal(**creation_data)
+        internal_creator = UserCreateInternal(**creation_data, is_seed=is_seed)
         return super().create(db_session, internal_creator)
 
     def update(

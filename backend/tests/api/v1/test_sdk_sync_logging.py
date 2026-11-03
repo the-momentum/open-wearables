@@ -54,6 +54,21 @@ class TestSDKSyncAttribution:
         assert attributes["request_id"] == "req-1"
         assert attributes["user_agent"] == "OpenWearablesHealthSDK/0.15.0 (iOS 18.1.0; iPhone15,2)"
 
+    def test_sync_context_headers_are_logged(self, client: TestClient, api_v1_prefix: str, mock_log: MagicMock) -> None:
+        client.post(
+            f"{api_v1_prefix}/sdk/users/{_USER_ID}/sync/",
+            headers={
+                "X-Open-Wearables-API-Key": ApiKeyFactory().plain_key,
+                "X-Open-Wearables-App-State": "background",
+                "X-Open-Wearables-Sync-Trigger": "bg_app_refresh",
+            },
+            json=_BODY,
+        )
+
+        attributes = _batch_received(mock_log)
+        assert attributes["app_state"] == "background"
+        assert attributes["sync_trigger"] == "bg_app_refresh"
+
     def test_body_version_is_the_fallback(self, client: TestClient, api_v1_prefix: str, mock_log: MagicMock) -> None:
         client.post(
             f"{api_v1_prefix}/sdk/users/{_USER_ID}/sync/",

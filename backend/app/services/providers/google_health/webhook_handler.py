@@ -36,6 +36,7 @@ from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.google import GoogleWebhookNotification
@@ -46,12 +47,11 @@ from app.services.providers.google_health.data_247 import (
 from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import REAUTH_REQUIRED, ReauthRequiredError
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
-
-_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 # Notification dataTypes that map to a session handler rather than a 24/7 metric.
 _SLEEP_DATA_TYPE = "sleep"
@@ -150,7 +150,9 @@ class GoogleWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="google_health", payload=payload, trace_id=trace_id)
 
-        task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["google_health", payload, trace_id], queue="webhook_sync")
+        task = celery_app.send_task(
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["google_health", payload, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
+        )
         log_structured(
             logger,
             "info",
@@ -175,6 +177,9 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         for item in items:
             try:
                 results.append(self._process_one(db, item, trace_id))
+            except ReauthRequiredError as e:
+                # Already revoked: an expected state, not a failure for Sentry; the rest of the batch goes on
+                results.append({"status": "error", "error": REAUTH_REQUIRED, "user_id": str(e.user_id)})
             except Exception as e:
                 log_and_capture_error(
                     e,
@@ -245,8 +250,8 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "no_interval", "user_id": str(user_id)}
 
         start, end = window
-        self.connection_repo.update_last_synced_at(db, connection)
         count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+        self.connection_repo.update_last_synced_at(db, connection)
 
         log_structured(
             logger,

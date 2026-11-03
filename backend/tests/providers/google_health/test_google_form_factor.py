@@ -3,7 +3,7 @@
 import pytest
 
 from app.schemas.enums import DeviceType
-from app.services.providers.google_health.helpers import extract_form_factor
+from app.services.providers.google_health.helpers import extract_form_factor, extract_source
 
 
 @pytest.mark.parametrize(
@@ -19,3 +19,7 @@ from app.services.providers.google_health.helpers import extract_form_factor
 )
 def test_extract_form_factor(data_source: object, expected: DeviceType | None) -> None:
     assert extract_form_factor(data_source) == expected
+
+
+def test_platform_is_not_used_as_device_model() -> None:
+    assert extract_source({"platform": "HEALTH_KIT"}) == ("HEALTH_KIT", None)

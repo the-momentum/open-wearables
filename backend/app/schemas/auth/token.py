@@ -10,6 +10,14 @@ class TokenType(StrEnum):
     DEVELOPER = "developer"
 
 
+class SDKTokenOrigin(StrEnum):
+    """How an SDK refresh token was issued."""
+
+    APPLICATION = "application"  # app_id + app_secret
+    ADMIN = "admin"  # developer Bearer token
+    INVITE = "invite"  # redeemed invitation code
+
+
 class PasswordChangePrompt(StrEnum):
     """How the portal should ask a developer who signed in with the default password to change it."""
 
