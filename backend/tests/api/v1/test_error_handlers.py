@@ -112,7 +112,7 @@ class TestDomainErrors:
         self, client: TestClient, api_v1_prefix: str, error: AppError, status: int, detail: str, code: str
     ) -> None:
         """Not our bug: answered like a 4xx instead of re-raised (the default client would
-        raise it), so it stays out of Sentry, and the provider's answer stays out of the body."""
+        raise it), and the provider's answer stays out of the body."""
         developer = DeveloperFactory()
         user = UserFactory()
 

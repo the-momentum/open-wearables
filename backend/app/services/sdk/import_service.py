@@ -654,7 +654,7 @@ class ImportService:
 
             # Log detailed processing results
             logger.info(
-                f"{provider.capitalize()} data import completed",
+                "SDK data import completed",
                 provider=f"{provider}",
                 action=f"{provider}_sdk_import_complete",
                 batch_id=batch_id,
@@ -697,7 +697,7 @@ class ImportService:
                 if first.get("loc"):
                     first_loc += f".{first['loc']}"
                 logger.warning(
-                    f"{provider.capitalize()} SDK dropped invalid records",
+                    "SDK dropped invalid records",
                     provider=f"{provider}",
                     action=f"{provider}_sdk_records_dropped",
                     batch_id=batch_id,
@@ -732,7 +732,7 @@ class ImportService:
             # before sending to Sentry; keep loc/msg/type. Preserve the 20-error cap.
             safe_errors = [{k: v for k, v in err.items() if k not in ("input", "url")} for err in errors[:20]]
             logger.error(
-                f"{provider.capitalize()} SDK payload validation failed",
+                "SDK payload validation failed",
                 exc_info=e,
                 provider=provider,
                 action=f"{provider}_sdk_validation_failed",
@@ -751,7 +751,7 @@ class ImportService:
 
         except Exception as e:
             logger.error(
-                f"{provider.capitalize()} SDK import failed",
+                "SDK import failed",
                 exc_info=e,
                 provider=provider,
                 action=f"{provider}_sdk_import_failed",

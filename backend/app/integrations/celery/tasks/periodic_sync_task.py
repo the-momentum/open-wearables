@@ -32,9 +32,10 @@ def sync_all_users(
         active_user_ids = UserConnectionRepository().get_all_active_users(db, eligible_providers)
 
     logger.info(
-        f"Found {len(active_user_ids)} users with a pull-mode connection",
+        "Found users with a pull-mode connection",
         provider="sync_all_users",
         task="sync_all_users",
+        user_count=len(active_user_ids),
         eligible_providers=eligible_providers,
     )
 

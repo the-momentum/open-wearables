@@ -30,7 +30,7 @@ from app.services.providers.sync_247_result import Sync247Run
 from app.utils.config_utils import LogLevel
 from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError
 from app.utils.logging_setup import configure_app_logger
-from app.utils.structured_logging import get_logger, is_client_error
+from app.utils.structured_logging import get_logger, is_expected_error
 
 # A library logger: its ERROR records keep becoming Sentry events, like before.
 logger = logging.getLogger("library.test_sentry_scrubbing")
@@ -260,12 +260,18 @@ def test_alert_below_error_without_an_exception_keeps_its_level(captured: list[d
 
 @pytest.mark.parametrize(
     ("exc", "reported"),
-    [(HTTPException(status_code=404), False), (HTTPException(status_code=500), True), (ValueError("boom"), True)],
+    [
+        (HTTPException(status_code=404), False),
+        (ProviderError("garmin", upstream_status=404), False),
+        (HTTPException(status_code=500), True),
+        (ProviderError("garmin", upstream_status=503), True),
+        (ValueError("boom"), True),
+    ],
 )
-def test_alert_can_leave_out_client_errors(captured: list[dict[str, Any]], exc: Exception, reported: bool) -> None:
+def test_alert_can_leave_out_expected_errors(captured: list[dict[str, Any]], exc: Exception, reported: bool) -> None:
     exc = _raised(exc)
     with patch.object(app_logger.logger, "log", wraps=app_logger.logger.log) as log:
-        app_logger.warning("Fetch failed", exc_info=exc, alert=not is_client_error(exc))
+        app_logger.warning("Fetch failed", exc_info=exc, alert=not is_expected_error(exc))
     sentry_sdk.flush()
 
     assert log.call_args.args[0] == logging.WARNING
@@ -273,7 +279,13 @@ def test_alert_can_leave_out_client_errors(captured: list[dict[str, Any]], exc: 
 
 
 @pytest.mark.parametrize(
-    ("make_exc", "events"), [(lambda: HTTPException(status_code=401), 0), (lambda: RuntimeError("boom"), 3)]
+    ("make_exc", "events"),
+    [
+        (lambda: HTTPException(status_code=401), 0),
+        (lambda: ProviderError("sensorbio", upstream_status=404), 0),
+        (lambda: ProviderError("sensorbio", upstream_status=503), 3),
+        (lambda: RuntimeError("boom"), 3),
+    ],
 )
 def test_sensorbio_daily_details_do_not_alert_on_client_errors(
     captured: list[dict[str, Any]], make_exc: Any, events: int
@@ -343,7 +355,7 @@ def test_query_string_values_are_filtered(captured: list[dict[str, Any]]) -> Non
 
 
 def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list[dict[str, Any]]) -> None:
-    logger.error(f"Failed to send invitation to {FAKE_EMAIL}")
+    logger.error(f"Failed to send invitation to {FAKE_EMAIL}")  # noqa: G004 - free text is what the filter must catch
     logger.error("Failed to send invitation to %s", FAKE_EMAIL)
     sentry_sdk.capture_exception(ValueError(f"User {FAKE_EMAIL} already exists"))
     sentry_sdk.flush()
@@ -449,9 +461,18 @@ def _app_raising(error: Exception) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
-def test_failed_provider_call_is_answered_but_not_reported(captured: list[dict[str, Any]]) -> None:
-    """The SDK reports every handled 5xx; a provider outage is not our bug."""
+def test_provider_outage_is_answered_and_reported_grouped(captured: list[dict[str, Any]]) -> None:
+    """Not our bug, but it breaks syncs: one issue per provider and status, not per user."""
     response = _app_raising(ProviderError("garmin", upstream_status=500)).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 502
+    assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "500"]]
+
+
+def test_providers_answer_about_a_user_is_answered_but_not_reported(captured: list[dict[str, Any]]) -> None:
+    """The SDK reports every handled 5xx; data the provider doesn't have for a user is nothing to fix."""
+    response = _app_raising(ProviderError("garmin", upstream_status=404)).get("/provider-data")
     sentry_sdk.flush()
 
     assert response.status_code == 502
@@ -467,8 +488,8 @@ def test_missing_setting_is_answered_and_reported(captured: list[dict[str, Any]]
     assert [event["exception"]["values"][-1]["type"] for event in captured] == ["ConfigurationError"]
 
 
-def test_failed_provider_call_is_a_warning_unless_alerted(captured: list[dict[str, Any]]) -> None:
-    error = _raised(ProviderError("garmin", upstream_status=503))
+def test_providers_answer_about_a_user_is_a_warning_unless_alerted(captured: list[dict[str, Any]]) -> None:
+    error = _raised(ProviderError("garmin", upstream_status=404))
     app_logger.error("Garmin fetch failed", exc_info=error)
     app_logger.warning("Garmin fetch keeps failing", exc_info=error, alert=True)
     sentry_sdk.flush()
@@ -485,11 +506,11 @@ def test_request_the_provider_refused_is_reported_grouped(captured: list[dict[st
     assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "400"]]
 
 
-def test_captured_sync_step_reports_an_outage(captured: list[dict[str, Any]]) -> None:
-    """capture=True is an explicit ask to see the failure in Sentry, outage or not."""
+def test_captured_sync_step_reports_a_users_state(captured: list[dict[str, Any]]) -> None:
+    """capture=True is an explicit ask to see the failure in Sentry, whatever it is."""
     run = Sync247Run("withings", MagicMock(), uuid4())
-    run.fail("sleep", _raised(ProviderError("withings", upstream_status=503)), capture=True)
-    run.fail("activity", _raised(ProviderError("withings", upstream_status=503)))
+    run.fail("sleep", _raised(ProviderError("withings", upstream_status=404)), capture=True)
+    run.fail("activity", _raised(ProviderError("withings", upstream_status=404)))
     sentry_sdk.flush()
 
     assert [event["contexts"]["log"]["data_type"] for event in captured] == ["sleep"]

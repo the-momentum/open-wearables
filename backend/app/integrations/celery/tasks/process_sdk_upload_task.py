@@ -167,7 +167,7 @@ def process_sdk_upload(
 
     # Log task start
     logger.info(
-        f"{provider.capitalize()} sync batch processing started",
+        "SDK sync batch processing started",
         action=f"{provider}_batch_processing_start",
         batch_id=batch_id,
         user_id=user_id,
@@ -201,7 +201,7 @@ def process_sdk_upload(
 
         # Log processing completion with results
         logger.info(
-            f"{provider.capitalize()} sync batch processing completed",
+            "SDK sync batch processing completed",
             action=f"{provider}_batch_processing_complete",
             batch_id=batch_id,
             user_id=user_id,

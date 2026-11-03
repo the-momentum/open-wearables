@@ -104,8 +104,10 @@ class DatetimeParseError(InvalidInputError, ValueError):
 class UpstreamError(AppError):
     """A service we call failed: a provider API, object storage.
 
-    Not our bug, so unlike other 5xx errors the client gets this status and ``detail``
-    instead of a bare 500, and it is logged as a warning rather than reported to Sentry.
+    Not a bug in our code, so unlike other 5xx errors the client gets this status and
+    ``detail`` instead of a bare 500. Still reported to Sentry: an outage breaks syncs, and
+    Sentry is where we hear about it first. Only a provider's answer about a user's state
+    stays out (``is_provider_state_error``).
     """
 
     status_code = status.HTTP_502_BAD_GATEWAY
@@ -121,7 +123,7 @@ class ConfigurationError(AppError):
     """A setting the request needs is missing or rejected (storage bucket, credentials).
 
     The deployment's to fix, not the client's: the client gets 503 with the detail, but
-    unlike an UpstreamError it is our failure, logged at its level and reported to Sentry.
+    unlike an UpstreamError the failure is ours, not the called service's.
     """
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -145,8 +147,8 @@ class ProviderError(UpstreamError):
     ``upstream_body`` is what the provider answered: for logs and for callers that branch
     on it, never for ``detail``, which the client sees.
     ``request_rejected``: the provider refused the request itself (a 400, a 422), most likely
-    because we built it wrong, so unlike an outage it is reported to Sentry. Derived from
-    ``upstream_status`` unless the caller knows better, e.g. from a status in the body.
+    because we built it wrong, so unlike a 4xx about the user's state it is reported to Sentry.
+    Derived from ``upstream_status`` unless the caller knows better, e.g. from a status in the body.
     """
 
     code = "PROVIDER_ERROR"
@@ -185,13 +187,15 @@ class ProviderRateLimitError(ProviderError):
     code = "PROVIDER_RATE_LIMITED"
 
 
-def is_upstream_outage(exc: BaseException | None) -> bool:
-    """A provider or storage failure that is not our bug: logged as a warning, kept out of Sentry.
+def is_provider_state_error(exc: BaseException | None) -> bool:
+    """A provider's answer about a user's or a resource's state (data that isn't there, a
+    throttle we couldn't wait out): nothing we can fix, logged as a warning, kept out of Sentry.
 
-    A request the provider rejected (``ProviderError.request_rejected``) doesn't count: when
-    a provider changes its API, every user of it fails the same way, and only Sentry tells us.
+    Every other upstream failure is reported: an outage (a 5xx, no response) breaks syncs for
+    every user of the provider, and a request it rejected (``ProviderError.request_rejected``)
+    most likely means it changed its API. Sentry groups both per provider and status.
     """
-    return isinstance(exc, UpstreamError) and not (isinstance(exc, ProviderError) and exc.request_rejected)
+    return isinstance(exc, ProviderError) and not exc.request_rejected and exc.upstream_status in _STATE_STATUSES
 
 
 class ProviderConnectionError(AppError):

@@ -174,11 +174,12 @@ class BaseOAuthTemplate(ABC):
 
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"Failed to refresh OAuth token: {e.response.text}",
+                "Failed to refresh OAuth token",
                 provider=self.provider_name,
                 task="refresh_access_token",
                 user_id=str(user_id),
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
             # 400/401 = refresh token is dead so revoke + notify
             if e.response.status_code in (HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED):
@@ -189,10 +190,11 @@ class BaseOAuthTemplate(ABC):
         except (httpx.RequestError, ValueError) as e:
             # no response, or one that isn't a token (ValueError covers bad JSON and validation)
             logger.warning(
-                f"OAuth token refresh failed: {e}",
+                "OAuth token refresh failed",
                 provider=self.provider_name,
                 task="refresh_access_token",
                 user_id=str(user_id),
+                error=str(e),
             )
             raise ProviderError(self.provider_name, f"{provider_label(self.provider_name)} token refresh failed") from e
 
@@ -291,10 +293,11 @@ class BaseOAuthTemplate(ABC):
             return OAuthTokenResponse.model_validate(response.json())
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"Failed to exchange authorization code: {e.response.text}",
+                "Failed to exchange authorization code",
                 provider=self.provider_name,
                 task="exchange_token",
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
             # a 4xx rejects the code the callback brought; a 5xx or throttle is the provider's
             if e.response.is_server_error or e.response.status_code == HTTP_429_TOO_MANY_REQUESTS:
@@ -302,9 +305,10 @@ class BaseOAuthTemplate(ABC):
             raise InvalidInputError("Failed to exchange authorization code") from e
         except (httpx.RequestError, ValueError) as e:
             logger.error(
-                f"Token exchange failed: {e}",
+                "Token exchange failed",
                 provider=self.provider_name,
                 task="exchange_token",
+                error=str(e),
             )
             raise ProviderError(
                 self.provider_name, f"{provider_label(self.provider_name)} token exchange failed"

@@ -77,9 +77,10 @@ class SensorBioOAuth(BaseOAuthTemplate):
             return {"user_id": None, "username": None}
         except Exception as e:
             logger.error(
-                f"Unexpected error fetching Sensor Bio user profile: {e}",
+                "Unexpected error fetching Sensor Bio user profile",
                 provider="sensorbio",
                 task="get_provider_user_info",
                 user_id=user_id,
+                error=str(e),
             )
             return {"user_id": None, "username": None}

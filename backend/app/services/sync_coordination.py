@@ -174,17 +174,18 @@ def bind_primary_lease(
             except Exception as exc:
                 # An unreachable Redis means nobody else can take the lock either, so keep holding.
                 logger.warning(
-                    f"Could not renew {provider} {scope} lease: {exc}",
+                    "Could not renew lease",
                     provider=provider,
                     action="lease_renew_error",
                     scope=scope,
                     user_id=str(user_id),
+                    error=str(exc),
                 )
                 continue
             if not held:
                 # release_primary is token-guarded, so the run's own release stays a safe no-op.
                 logger.warning(
-                    f"Lost {provider} {scope} lease mid-sync — another profile now holds it",
+                    "Lost lease mid-sync — another profile now holds it",
                     provider=provider,
                     action="lease_lost",
                     scope=scope,
@@ -282,10 +283,11 @@ def get_secondary_user_ids(
             uids.append(UUID(raw))
         except ValueError:
             logger.warning(
-                f"Ignoring invalid UUID in secondaries set: {raw}",
+                "Ignoring invalid UUID in secondaries set",
                 provider=provider,
                 action="invalid_secondary",
                 scope=scope,
+                member=raw,
             )
     return uids
 

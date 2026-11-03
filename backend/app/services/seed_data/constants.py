@@ -194,9 +194,10 @@ def _load_series_type_config() -> tuple[dict[SeriesType, SeriesTypeGenSpec], lis
             cadence = Cadence(vals["cadence"])
         except (KeyError, ValueError):
             logger.warning(
-                f"Skipping '{name}' - missing or invalid cadence",
+                "Skipping series type - missing or invalid cadence",
                 provider="seed_data_service",
                 task="load_config",
+                series_type=name,
             )
             continue
 
@@ -239,9 +240,10 @@ def _parse_paired(name: str, vals: dict) -> PairedGenSpec | None:
         return PairedGenSpec(cadence=frequency, members=members)
     except (KeyError, ValueError):
         logger.warning(
-            f"Skipping paired entry '{name}' - malformed members or frequency",
+            "Skipping paired entry - malformed members or frequency",
             provider="seed_data_service",
             task="load_config",
+            series_type=name,
         )
         return None
 
@@ -253,9 +255,10 @@ def _parse_workout_types(raw: list[str]) -> frozenset[WorkoutType]:
             result.add(WorkoutType(wt))
         except ValueError:
             logger.warning(
-                f"Unknown workout type '{wt}' in series_type_config.yaml",
+                "Unknown workout type in series_type_config.yaml",
                 provider="seed_data_service",
                 task="load_config",
+                workout_type=wt,
             )
     return frozenset(result)
 

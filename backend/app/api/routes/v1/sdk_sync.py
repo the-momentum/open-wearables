@@ -100,7 +100,7 @@ def sync_sdk_data(
 
     # Log initial batch receipt with counts
     logger.info(
-        f"{provider.capitalize()} sync batch received",
+        "SDK sync batch received",
         action=f"{provider}_sdk_batch_received",
         batch_id=batch_id,
         user_id=user_id,

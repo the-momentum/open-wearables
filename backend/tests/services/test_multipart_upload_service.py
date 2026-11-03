@@ -81,7 +81,7 @@ class TestCreate:
 
     @pytest.mark.parametrize("error_code", ["InvalidAccessKeyId", "SignatureDoesNotMatch"])
     def test_create_with_rejected_credentials_is_a_configuration_error(self, error_code: str) -> None:
-        """Our deployment's to fix, so unlike an object-store outage it reaches Sentry."""
+        """Our deployment's to fix, not the object store's."""
         client = MagicMock()
         client.create_multipart_upload.side_effect = _client_error(error_code)
         service = _service(client)

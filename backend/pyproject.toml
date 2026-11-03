@@ -78,6 +78,7 @@ select = [
     "N",     # pep8-naming
     "E",     # pycodestyle errors
     "W",     # pycodestyle warnings
+    "G00",   # flake8-logging-format: no formatting in log messages, see AGENTS.md "Logging"
 ]
 ignore = [
     "ANN002", # missing-type-args

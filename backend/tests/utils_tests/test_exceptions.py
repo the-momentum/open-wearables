@@ -26,7 +26,7 @@ from app.utils.exceptions import (
     UnsupportedProviderError,
     UpstreamError,
     app_error_from_integrity_error,
-    is_upstream_outage,
+    is_provider_state_error,
 )
 from app.utils.problem import status_code_name
 
@@ -173,19 +173,29 @@ class TestProviderErrors:
         error = ProviderError("garmin", upstream_status=upstream_status)
 
         assert error.request_rejected
-        assert not is_upstream_outage(error)
+        assert not is_provider_state_error(error)
 
-    @pytest.mark.parametrize("upstream_status", [None, 500, 503, 401, 403, 404, 409, 410, 412, 429])
-    def test_an_outage_or_a_users_state_is_not(self, upstream_status: int | None) -> None:
+    @pytest.mark.parametrize("upstream_status", [None, 500, 502, 503])
+    def test_an_outage_is_reported(self, upstream_status: int | None) -> None:
+        """A provider that is down breaks syncs for all its users: Sentry is where we hear it first."""
         error = ProviderError("garmin", upstream_status=upstream_status)
 
         assert not error.request_rejected
-        assert is_upstream_outage(error)
+        assert not is_provider_state_error(error)
+
+    @pytest.mark.parametrize("upstream_status", [401, 403, 404, 409, 410, 412, 429])
+    def test_an_answer_about_a_users_state_is_not(self, upstream_status: int) -> None:
+        error = ProviderError("garmin", upstream_status=upstream_status)
+
+        assert not error.request_rejected
+        assert is_provider_state_error(error)
 
     def test_the_caller_can_mark_a_refusal_the_status_does_not_show(self) -> None:
-        """e.g. Withings reports a bad request in the body of an HTTP 200."""
-        assert not is_upstream_outage(ProviderError("withings", request_rejected=True))
+        """e.g. Withings reports a bad request in the body of an HTTP 200, or a 404 from an
+        endpoint with no per-user resource."""
+        assert not is_provider_state_error(ProviderError("withings", request_rejected=True))
+        assert not is_provider_state_error(ProviderError("withings", upstream_status=404, request_rejected=True))
 
-    def test_storage_failure_is_an_outage_and_a_missing_setting_is_not(self) -> None:
-        assert is_upstream_outage(ServiceUnavailableError("Failed to complete upload: SlowDown"))
-        assert not is_upstream_outage(ConfigurationError("S3 bucket not configured"))
+    def test_storage_failures_are_reported(self) -> None:
+        assert not is_provider_state_error(ServiceUnavailableError("Failed to complete upload: SlowDown"))
+        assert not is_provider_state_error(ConfigurationError("S3 bucket not configured"))

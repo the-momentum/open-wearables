@@ -92,9 +92,11 @@ class GoogleOAuth(BaseOAuthTemplate):
             return response.json().get(field)
         except Exception as e:
             logger.warning(
-                f"Failed to fetch Google {field}: {e}",
+                "Failed to fetch Google user info field",
                 provider=self.provider_name,
                 task="get_provider_user_info",
                 user_id=user_id,
+                field=field,
+                error=str(e),
             )
             return None

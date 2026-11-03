@@ -27,6 +27,7 @@ from app.utils.exceptions import (
     ReauthRequiredError,
     app_error_from_integrity_error,
     describe_integrity_error,
+    is_provider_state_error,
 )
 from app.utils.structured_logging import get_logger
 
@@ -251,11 +252,12 @@ def process_webhook_push(
                 "upstream_status": exc.upstream_status,
             }
         if self.request.retries >= self.max_retries:
-            # The payload is lost now: say so, although an outage itself stays out of Sentry.
+            # The payload is lost now. CeleryIntegration reports the error re-raised below, but
+            # drops a provider's answer about the user's state (a throttle), so alert on that here.
             logger.warning(
                 "Webhook push task failed upstream, giving up",
                 exc_info=exc,
-                alert=True,
+                alert=is_provider_state_error(exc),
                 provider=provider_name,
                 trace_id=request_trace_id,
                 provider_user_id=provider_user_id,

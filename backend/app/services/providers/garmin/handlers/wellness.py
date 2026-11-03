@@ -124,9 +124,10 @@ def process_wellness_items(
             )
         except Exception as e:
             logger.error(
-                f"Error processing {summary_type}",
+                "Error processing wellness data",
                 provider="garmin",
                 trace_id=trace_id,
+                summary_type=summary_type,
                 user_id=str(uid),
                 error=str(e),
             )

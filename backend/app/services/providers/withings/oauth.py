@@ -109,10 +109,11 @@ class WithingsOAuth(BaseOAuthTemplate):
             envelope = response.json()
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"Withings token HTTP error: {e.response.text}",
+                "Token HTTP error",
                 provider=self.provider_name,
                 task=task,
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
             raise withings_token_error(
                 task=task,
@@ -121,9 +122,10 @@ class WithingsOAuth(BaseOAuthTemplate):
             ) from e
         except (httpx.RequestError, ValueError) as e:
             logger.error(
-                f"Withings token request failed: {e}",
+                "Token request failed",
                 provider=self.provider_name,
                 task=task,
+                error=str(e),
             )
             raise ProviderError(self.provider_name, "Withings token request failed") from e
 

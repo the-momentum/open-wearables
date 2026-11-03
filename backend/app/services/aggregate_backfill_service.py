@@ -98,8 +98,9 @@ class AggregateBackfillService:
             started = time.monotonic()
             done = step.run(db, budget)
             logger.info(
-                f"Aggregate backfill: {step.name} {'done' if done else 'paused'}",
+                "Aggregate backfill: step run ended",
                 step=step.name,
+                done=done,
                 seconds=round(time.monotonic() - started, 1),
             )
             if not done:
@@ -337,7 +338,12 @@ class AggregateBackfillService:
             except Exception as exc:
                 db.rollback()
                 if attempt == 2:
-                    logger.error(f"Aggregate backfill: {step} skips data source {source_id}", exc_info=exc)
+                    logger.error(
+                        "Aggregate backfill: skips a data source",
+                        exc_info=exc,
+                        step=step,
+                        data_source_id=str(source_id),
+                    )
         self.migrations.mark_completed(db, f"{SKIPPED_SOURCE}{source_id}")
         db.commit()
         return True

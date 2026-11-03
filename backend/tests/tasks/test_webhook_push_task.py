@@ -185,16 +185,22 @@ def test_only_a_request_the_provider_refused_alerts_when_skipped(upstream_status
     assert logger.warning.call_args.kwargs["alert"] is alerted
 
 
-def test_last_failed_attempt_alerts_that_the_payload_is_lost() -> None:
+@pytest.mark.parametrize(
+    ("exc", "alerted"),
+    [(ProviderError("oura", upstream_status=503), False), (ProviderRateLimitError("oura", upstream_status=429), True)],
+)
+def test_last_failed_attempt_reports_that_the_payload_is_lost(exc: ProviderError, alerted: bool) -> None:
+    """CeleryIntegration reports the error the last attempt re-raises, except a throttle,
+    which before_send drops: the line alerts only on that, so nothing is reported twice."""
     task.process_webhook_push.push_request(retries=task.process_webhook_push.max_retries)
     try:
         with patch.object(task, "logger") as logger, pytest.raises(Retry):
-            _run_with_failing_handler(ProviderError("oura", upstream_status=503))
+            _run_with_failing_handler(exc)
     finally:
         task.process_webhook_push.pop_request()
 
     assert logger.warning.call_args.args[0] == "Webhook push task failed upstream, giving up"
-    assert logger.warning.call_args.kwargs["alert"] is True
+    assert logger.warning.call_args.kwargs["alert"] is alerted
 
 
 def test_earlier_failed_attempts_do_not_alert() -> None:
