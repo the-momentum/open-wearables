@@ -209,4 +209,22 @@ def test_sdk_keeps_apple_prefixed_model_outside_healthkit() -> None:
     assert extract_device_info(huawei, ProviderName.HEALTH_CONNECT)[0] == "Watch GT 3"
     assert extract_device_type(huawei, ProviderName.HEALTH_CONNECT) == DeviceType.WATCH
     assert not is_host_model(ProviderName.HEALTH_CONNECT, "com.huawei.health", "Watch GT 3")
-    assert is_host_model(ProviderName.APPLE, "com.huawei.health", "Watch GT 3")
+
+
+@pytest.mark.parametrize(
+    ("device_model", "expected"),
+    [
+        ("iPhone16,1", True),
+        ("Watch7,9", True),
+        ("iPad13,1", True),
+        ("iPod9,1", True),
+        ("iPhone", True),
+        ("Watch", True),
+        ("iPod touch", True),
+        # "Watch" is generic: another brand's watch is the producing device
+        ("Watch GT 3", False),
+        ("H10", False),
+    ],
+)
+def test_host_model_matches_apple_hardware_only(device_model: str, expected: bool) -> None:
+    assert is_host_model(ProviderName.APPLE, "com.huawei.health", device_model) is expected

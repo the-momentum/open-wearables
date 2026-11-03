@@ -49,7 +49,10 @@ APPLE_PRODUCT_TYPE_PREFIXES: list[tuple[str, DeviceType]] = [
 # Bundle id prefix of HealthKit sources written by Apple's own devices, whose productType is the
 # producing device. Observed in SDK payloads (com.apple.health.<UUID>), not documented by Apple.
 APPLE_SOURCE_APP_PREFIX = "com.apple.health."
-APPLE_HARDWARE_PREFIXES = (*(prefix for prefix, _ in APPLE_PRODUCT_TYPE_PREFIXES), "iPod")
+# The relaying iPhone/Watch as a third-party record reports it: its productType code (older iOS SDKs),
+# or the bare HKDevice.model of a writer that attaches the local device (e.g. Cronometer). "Watch" is a
+# generic word other brands use, so only the code or the bare name counts (not e.g. "Watch GT 3").
+APPLE_HOST_MODEL = re.compile(r"(?:iPhone|iPad|iPod).*|Watch(?:\d+,\d+)?")
 
 
 def is_apple_own_source(source_app_id: str | None) -> bool:
@@ -60,13 +63,13 @@ def is_apple_own_source(source_app_id: str | None) -> bool:
 def is_host_model(provider: str | None, source_app_id: str | None, device_model: str | None) -> bool:
     """Apple hardware code on a third-party HealthKit writer's row: the iPhone/Watch that relayed it, not the producer.
 
-    Only HealthKit relays through a host; other providers' models (e.g. a Health Connect "Watch GT 3") are kept.
+    Only HealthKit relays through a host; other providers' models are kept.
     """
     if provider != ProviderName.APPLE:
         return False
     if not source_app_id or is_apple_own_source(source_app_id) or not device_model:
         return False
-    return device_model.startswith(APPLE_HARDWARE_PREFIXES)
+    return APPLE_HOST_MODEL.fullmatch(device_model) is not None
 
 
 # Samsung model code prefix (SM-X...); SM-R is skipped as it mixes watches, bands and buds
