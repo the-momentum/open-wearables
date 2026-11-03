@@ -34,9 +34,7 @@ def backfill_google_sleep_type(db: Session, *, dry_run: bool, batch_size: int = 
     """Type untyped Google sleep rows, committing after each chunk of sources unless dry_run."""
     source_ids = list(
         db.scalars(
-            select(DataSource.id)
-            .where(DataSource.provider == ProviderName.GOOGLE_HEALTH.value)
-            .order_by(DataSource.id)
+            select(DataSource.id).where(DataSource.provider == ProviderName.GOOGLE_HEALTH.value).order_by(DataSource.id)
         )
     )
     total = 0
