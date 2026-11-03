@@ -16,6 +16,7 @@ from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
+    get_detail_field_precedence,
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
@@ -201,8 +202,8 @@ class ImportService:
             workout_id = uuid4()
             external_id = wjson.id if wjson.id else None
 
-            device_model, software_version, original_source_name = extract_device_info(wjson.source)
-            device_type = extract_device_type(wjson.source)
+            device_model, software_version, original_source_name = extract_device_info(wjson.source, provider)
+            device_type = extract_device_type(wjson.source, provider)
             device_id, source_app_id, device_manufacturer = extract_device_ids(wjson.source)
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
@@ -275,7 +276,8 @@ class ImportService:
 
             meal_id = uuid4()
             metadata = rjson.metadata if isinstance(rjson.metadata, dict) else {}
-            device_model, software_version, original_source_name = extract_device_info(rjson.source)
+            device_model, software_version, original_source_name = extract_device_info(rjson.source, provider)
+            device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
 
             record = EventRecordCreate(
                 category=EventCategory.MEAL,
@@ -289,6 +291,10 @@ class ImportService:
                 external_id=rjson.id,
                 source=original_source_name,
                 software_version=software_version,
+                device_type=extract_device_type(rjson.source, provider),
+                device_id=device_id,
+                source_app_id=source_app_id,
+                device_manufacturer=device_manufacturer,
                 provider=provider,
                 user_id=user_uuid,
             )
@@ -356,7 +362,7 @@ class ImportService:
                 value = value / 1000
 
             # Extract device info
-            device_model, software_version, original_source_name = extract_device_info(rjson.source)
+            device_model, software_version, original_source_name = extract_device_info(rjson.source, provider)
             device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
 
             sample = TimeSeriesSampleCreate(
@@ -366,7 +372,7 @@ class ImportService:
                 source=original_source_name,
                 device_model=device_model,
                 software_version=software_version,
-                device_type=extract_device_type(rjson.source),
+                device_type=extract_device_type(rjson.source, provider),
                 device_id=device_id,
                 source_app_id=source_app_id,
                 device_manufacturer=device_manufacturer,
@@ -420,6 +426,7 @@ class ImportService:
             return EventRecordMetrics(), [], None
 
         stats_dict: dict[str, Decimal | int] = {}
+        detail_field_ranks: dict[str, int] = {}
         time_series_samples: list[TimeSeriesSampleCreate] = []
         duration: float | None = None
         energy_statistics: set[str] = set()
@@ -473,8 +480,12 @@ class ImportService:
                 case _:
                     detail_field = get_detail_field_from_workout_statistic_type(stat.type)
                     if detail_field:
+                        rank = get_detail_field_precedence(detail_field, stat.type)
+                        if rank > detail_field_ranks.get(detail_field, rank):
+                            continue
+                        detail_field_ranks[detail_field] = rank
                         # Apple SDK may send fractional Decimals for integer fields (e.g. stepCount)
-                        if detail_field in ("steps_count", "moving_time_seconds"):
+                        if detail_field == "steps_count":
                             value = int(value)
                         stats_dict[detail_field] = value
 

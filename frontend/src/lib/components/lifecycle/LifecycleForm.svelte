@@ -5,6 +5,7 @@
 	import { invalid, LIMITS, policyOf, samePolicy, toFields } from '$lib/lifecycle/projection';
 	import type { Lifecycle, Policy } from '$lib/lifecycle/types';
 	import GrowthProjection from './GrowthProjection.svelte';
+	import HistoryRollupCard from './HistoryRollupCard.svelte';
 	import PolicyCard from './PolicyCard.svelte';
 	import RunNow from './RunNow.svelte';
 	import StorageOverview from './StorageOverview.svelte';
@@ -19,6 +20,11 @@
 
 	// Re-derived when a save comes back.
 	let rollupOn = $derived(saved.rollup_enabled);
+	let historyOn = $derived(saved.history_rollup_enabled);
+	// The history's rollup needs the current one: switching that off takes the history's with it.
+	$effect(() => {
+		if (!rollupOn) historyOn = false;
+	});
 	let retainOn = $derived(saved.delete_after_days !== null);
 	// The days outlive their switch: a number typed while deletion is off is kept across saves,
 	// and only a saved window replaces it.
@@ -29,6 +35,7 @@
 
 	const policy: Policy = $derived({
 		rollup: rollupOn,
+		history: historyOn,
 		retain: retainOn ? (retainDays ?? NaN) : null
 	});
 
@@ -65,6 +72,12 @@
 			max={LIMITS.retain}
 			bind:enabled={retainOn}
 			bind:days={retainDays}
+		/>
+
+		<HistoryRollupCard
+			status={lifecycle.history_rollup}
+			rollup={rollupOn}
+			bind:enabled={historyOn}
 		/>
 	</div>
 

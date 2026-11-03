@@ -24,8 +24,10 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    SESSION_PAGE_SIZE,
     extract_form_factor,
     extract_source,
+    next_page_token,
     parse_interval,
     parse_page,
     parse_rfc3339,
@@ -42,7 +44,7 @@ class GoogleHealthApiSleep:
     """Fetches Google Health API Sleep sessions and stores them as sleep EventRecords."""
 
     LIST_ENDPOINT = DATAPOINTS_LIST_ENDPOINT.format(data_type="sleep")
-    PAGE_SIZE = 1000
+    PAGE_SIZE = SESSION_PAGE_SIZE
 
     def __init__(self, oauth: BaseOAuthTemplate, connection_repo: UserConnectionRepository, api_base_url: str):
         self.oauth = oauth
@@ -78,6 +80,7 @@ class GoogleHealthApiSleep:
         )
         points: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen: set[str] = set()
         while True:
             params: dict[str, Any] = {"pageSize": self.PAGE_SIZE, "filter": time_filter}
             if page_token:
@@ -102,7 +105,7 @@ class GoogleHealthApiSleep:
             )
             page = parse_page(response, self.LIST_ENDPOINT)
             points.extend(page.data_points)
-            page_token = page.next_page_token
+            page_token = next_page_token(page, seen, self.LIST_ENDPOINT)
             if not page_token:
                 break
         return points
