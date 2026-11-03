@@ -912,6 +912,29 @@ class TestSDKImportUnitConversion:
         assert [record.type for record in request.data.records] == ["STEPS"]
         assert [(record["collection"], record["index"]) for record in dropped] == [("records", 0)]
 
+    def test_health_connect_moderate_and_vigorous_with_one_start_keep_one_sample(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """Both intensities are exercise_time, so the later record from one source with the same start overwrites."""
+        user = UserFactory()
+        moderate = self._record("ACTIVITY_INTENSITY_MODERATE", 0) | {
+            "id": "moderate",
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": "2025-04-10T10:30:00Z",
+        }
+        vigorous = self._record("ACTIVITY_INTENSITY_VIGOROUS", 0) | {
+            "id": "vigorous",
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": "2025-04-10T10:10:00Z",
+        }
+        payload = {**SDK_ENVELOPE, "provider": "health_connect", "data": {"records": [moderate, vigorous]}}
+
+        import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
+
+        stored = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).one()
+        assert stored.series_type_definition_id == get_series_type_id(SeriesType.exercise_time)
+        assert (stored.external_id, stored.value) == ("vigorous", Decimal("10"))
+
     @pytest.mark.parametrize(
         ("unit", "expected"),
         [
