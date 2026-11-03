@@ -106,6 +106,13 @@ echo 'Running data source merge...'
 uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
     || echo "Warning: data source merge failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves Polar workouts stored twice their UTC offset in the future to their real time, before the
+# aggregate backfill reads them. Runs once per instance (data_migration).
+echo 'Running Polar workout time fix...'
+uv run python scripts/data_migrations/fix_polar_workout_utc_offset.py \
+    || echo "Warning: Polar workout time fix failed — will retry on next startup."
+
 # Queues the one-off copy of the history into the aggregate tables; it runs in Celery, not here.
 # A run waits for the data source merge's data_migration row, since beat queues it too.
 echo 'Queueing aggregate backfill...'
@@ -118,6 +125,27 @@ uv run python scripts/data_migrations/enqueue_aggregate_backfill.py \
 echo 'Running SDK workout calories cleanup...'
 uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
     || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-04-01 once all deployments have migrated.
+# Sets sleep stages to NULL on SDK nights whose hypnogram has no light/deep/rem segment.
+# Runs once per instance (data_migration).
+echo 'Running SDK unreported sleep stages cleanup...'
+uv run python scripts/data_migrations/clear_sdk_unreported_sleep_stages.py \
+    || echo "Warning: SDK sleep stages cleanup failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Removes the stage and time-in-bed copies that Polar sleep re-syncs appended, and keys the
+# nights by date so later re-syncs replace them. Runs once per instance (data_migration).
+echo 'Running Polar sleep dedupe...'
+uv run python scripts/data_migrations/dedupe_polar_sleep.py \
+    || echo "Warning: Polar sleep dedupe failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Clears the relaying iPhone's model (and the phone type inferred from it) from third-party
+# HealthKit data sources. Runs once per instance (data_migration).
+echo 'Running relayed host model cleanup...'
+uv run python scripts/data_migrations/clear_relayed_host_models.py \
+    || echo "Warning: relayed host model cleanup failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-03-01 once all deployments have migrated.
 # Raises each Garmin body battery score to the highest sample of its day; scores kept the peak of
