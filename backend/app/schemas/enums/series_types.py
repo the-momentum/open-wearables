@@ -12,7 +12,12 @@ IMPORTANT: Never change existing IDs - only add new ones. IDs are persisted in t
 from enum import Enum
 
 # TEMPORARY until 1.0: retired name -> current name. Delete with SeriesType._missing_ below.
-RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {"energy": "active_energy"}
+RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {
+    "energy": "active_energy",
+    "walking_heart_rate_average": "walking_heart_rate",
+    # A workout's average MET is that workout's physical_effort average, kept per workout as a session value.
+    "average_met": "physical_effort",
+}
 
 
 class SeriesType(str, Enum):
@@ -25,7 +30,7 @@ class SeriesType(str, Enum):
     resting_heart_rate = "resting_heart_rate"
     heart_rate_variability_sdnn = "heart_rate_variability_sdnn"
     heart_rate_recovery_one_minute = "heart_rate_recovery_one_minute"
-    walking_heart_rate_average = "walking_heart_rate_average"
+    walking_heart_rate = "walking_heart_rate"
     heart_rate_variability_rmssd = "heart_rate_variability_rmssd"
 
     # =========================================================================
@@ -84,7 +89,6 @@ class SeriesType(str, Enum):
     exercise_time = "exercise_time"
     physical_effort = "physical_effort"
     flights_climbed = "flights_climbed"
-    average_met = "average_met"
     active_time = "active_time"  # Provider-reported daily active time (non-sedentary)
     total_energy = "total_energy"  # Provider-reported total energy (active + basal), no split available
 
@@ -131,6 +135,8 @@ class SeriesType(str, Enum):
     cadence = "cadence"
     power = "power"
     speed = "speed"
+    distance = "distance"
+    elevation_gain = "elevation_gain"
 
     # Generic Activity Metrics
     workout_effort_score = "workout_effort_score"
@@ -247,7 +253,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (2, SeriesType.resting_heart_rate, "bpm"),
     (3, SeriesType.heart_rate_variability_sdnn, "ms"),
     (4, SeriesType.heart_rate_recovery_one_minute, "bpm"),
-    (5, SeriesType.walking_heart_rate_average, "bpm"),
+    (5, SeriesType.walking_heart_rate, "bpm"),
     (7, SeriesType.heart_rate_variability_rmssd, "ms"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Blood & Respiratory (IDs 20-39)
@@ -295,9 +301,9 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (82, SeriesType.basal_energy, "kcal"),
     (83, SeriesType.stand_time, "minutes"),
     (84, SeriesType.exercise_time, "minutes"),
-    (85, SeriesType.physical_effort, "score"),
+    (85, SeriesType.physical_effort, "met"),
     (86, SeriesType.flights_climbed, "count"),
-    (87, SeriesType.average_met, "met"),
+    # 87 was average_met, merged into physical_effort; never reuse it.
     (88, SeriesType.active_time, "minutes"),
     (89, SeriesType.total_energy, "kcal"),
     # -------------------------------------------------------------------------
@@ -341,6 +347,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (182, SeriesType.speed, "m_per_s"),
     (183, SeriesType.workout_effort_score, "score"),
     (184, SeriesType.estimated_workout_effort_score, "score"),
+    (185, SeriesType.distance, "meters"),
+    (186, SeriesType.elevation_gain, "meters"),
     # -------------------------------------------------------------------------
     # ENVIRONMENTAL (IDs 200-219)
     # -------------------------------------------------------------------------
@@ -435,11 +443,16 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
 SERIES_TYPE_ID_BY_ENUM: dict[SeriesType, int] = {enum: type_id for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}
 SERIES_TYPE_ENUM_BY_ID: dict[int, SeriesType] = {type_id: enum for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}
 SERIES_TYPE_UNIT_BY_ENUM: dict[SeriesType, str] = {enum: unit for _, enum, unit in SERIES_TYPE_DEFINITIONS}
+# A retired id reads as the series it merged into: the startup merge moves its rows once, but a pod on the
+# previous release keeps writing the old id until the rollout ends, and a read must not fail on those rows.
+RETIRED_SERIES_TYPE_IDS: dict[int, SeriesType] = {87: SeriesType.physical_effort}
 
 # Optional human-readable descriptions surfaced in the coverage matrix (tooltips).
 # Only series types that need a meaningful clarification have an entry here;
 SERIES_TYPE_DESCRIPTION_BY_ENUM: dict[SeriesType, str] = {
     SeriesType.garmin_body_battery: "Intraday body battery readings (0-100), one sample per measurement",
+    SeriesType.distance: "Distance of a whole workout, whatever its type; per-sport distance samples have own types",
+    SeriesType.elevation_gain: "Total ascent of a whole workout; elevation holds the altitude itself",
 }
 
 
@@ -454,8 +467,8 @@ def get_series_type_id(series_type: SeriesType) -> int:
 
 
 def get_series_type_from_id(series_type_id: int) -> SeriesType:
-    """Get the series type enum from a database ID."""
-    return SERIES_TYPE_ENUM_BY_ID[series_type_id]
+    """Get the series type enum from a database ID; a retired id gives the series it merged into."""
+    return SERIES_TYPE_ENUM_BY_ID.get(series_type_id) or RETIRED_SERIES_TYPE_IDS[series_type_id]
 
 
 def get_series_type_unit(series_type: SeriesType) -> str:

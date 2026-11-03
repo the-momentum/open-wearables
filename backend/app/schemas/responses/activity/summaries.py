@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.algorithms.config_algorithms import sleep_config
 from app.schemas.utils import SourceMetadata
 
 
@@ -92,7 +93,15 @@ class SleepSummary(BaseModel):
     time_in_bed_minutes: int | None = Field(None, description="Total time in bed excluding naps", example=480)
     efficiency_percent: float | None = Field(None, ge=0, le=100, example=89.5)
     stages: SleepStagesSummary | None = None
-    interruptions_count: int | None = None
+    interruptions_count: int | None = Field(
+        None,
+        description=(
+            f"Awakenings longer than {sleep_config.significant_wake_threshold_mins:g} minutes within the main sleep"
+            " (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the"
+            " timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)"
+        ),
+        example=2,
+    )
     nap_count: int | None = Field(None, description="Number of naps taken", example=1)
     nap_duration_minutes: int | None = Field(None, description="Total nap duration", example=30)
     sessions: list[SleepSessionSummary] | None = Field(

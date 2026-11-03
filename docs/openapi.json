@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Open Wearables API",
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "paths": {
     "/": {
@@ -3666,7 +3666,7 @@
           "External: Health Scores"
         ],
         "summary": "List Health Scores",
-        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.",
+        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.\n\nOne OW score (provider `internal`) per category and day, from the highest-priority source.\n\nScores computed by Open Wearables (`provider: internal`) are deprecated: no new ones are\ncomputed starting November 6, 2026. Previously computed scores are still returned.",
         "operationId": "list_health_scores_api_v1_users__user_id__health_scores_get",
         "security": [
           {
@@ -4615,7 +4615,7 @@
           "External: Data Sync"
         ],
         "summary": "Sync Historical Data",
-        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter may be ignored by\nproviders that enforce their own limits.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
+        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter is capped at the\nprovider's ``max_historical_days``.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
         "operationId": "sync_historical_data_api_v1_providers__provider__users__user_id__sync_historical_post",
         "security": [
           {
@@ -4649,13 +4649,13 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 365,
+              "maximum": 3650,
               "minimum": 1,
-              "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days).",
+              "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync.",
               "default": 90,
               "title": "Days"
             },
-            "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days)."
+            "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -6944,7 +6944,6 @@
                                   "type": "number"
                                 },
                                 {
-                                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                                   "type": "string"
                                 }
                               ],
@@ -7769,6 +7768,12 @@
                                               "averageVerticalOscillation",
                                               "averageGroundContactTime",
                                               "vo2Max",
+                                              "averageCyclingPower",
+                                              "averageCyclingCadence",
+                                              "averageCyclingSpeed",
+                                              "meanPower",
+                                              "maxPower",
+                                              "meanRpm",
                                               "elevationAscended",
                                               "elevationDescended",
                                               "altitudeGain",
@@ -9916,7 +9921,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Get data lifecycle settings",
-        "description": "Returns current archival/retention configuration and storage size estimates.",
+        "description": "Returns current rollup/retention configuration and storage size estimates.",
         "operationId": "get_archival_settings_api_v1_settings_archival_get",
         "responses": {
           "200": {
@@ -9941,7 +9946,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure archive_after_days (when live data is aggregated) and delete_after_days (when old data is permanently removed). Set to null to disable.",
+        "description": "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -9987,8 +9992,8 @@
         "tags": [
           "Internal: Data Lifecycle"
         ],
-        "summary": "Trigger archival job manually",
-        "description": "Dispatches the daily archival + retention job via Celery. Returns immediately with the task ID.",
+        "summary": "Trigger the data lifecycle job manually",
+        "description": "Dispatches the daily rollup + retention job via Celery. Returns immediately with the task ID.",
         "operationId": "trigger_archival_api_v1_settings_archival_run_post",
         "responses": {
           "202": {
@@ -11599,17 +11604,17 @@
       },
       "ArchivalSettingRead": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live samples are aggregated into daily archive. NULL = archival disabled."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: activity and body summaries count them from the samples, day reads of sources without provider day values get no new days.",
+            "default": true
+          },
+          "history_rollup_enabled": {
+            "type": "boolean",
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too, once, in the background. Hours on a large instance; until it is done the summaries count those days from the samples.",
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [
@@ -11621,28 +11626,38 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before archived data is permanently removed. NULL = kept indefinitely."
+            "description": "Days before samples are deleted, rolled up first when rollup is on. NULL = kept indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingRead",
-        "description": "Response schema for archival settings."
+        "description": "Response schema for data lifecycle settings."
       },
       "ArchivalSettingUpdate": {
         "properties": {
-          "archive_after_days": {
+          "rollup_enabled": {
             "anyOf": [
               {
-                "type": "integer",
-                "maximum": 3650.0,
-                "minimum": 1.0
+                "type": "boolean"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Archive After Days",
-            "description": "Days before live data is archived. NULL to disable archival."
+            "title": "Rollup Enabled",
+            "description": "Roll samples up into daily and per-session aggregates. Left out or null: unchanged."
+          },
+          "history_rollup_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too; switched on, it starts in the background. Needs rollup_enabled. Left out or null: unchanged."
           },
           "delete_after_days": {
             "anyOf": [
@@ -11656,12 +11671,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before data is permanently deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely; left out: unchanged."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating archival settings."
+        "description": "Request schema for updating data lifecycle settings: a field left out keeps its saved value."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -11670,12 +11685,16 @@
           },
           "storage": {
             "$ref": "#/components/schemas/StorageEstimate"
+          },
+          "history_rollup": {
+            "$ref": "#/components/schemas/HistoryRollupStatus"
           }
         },
         "type": "object",
         "required": [
           "settings",
-          "storage"
+          "storage",
+          "history_rollup"
         ],
         "title": "ArchivalSettingWithEstimate",
         "description": "Combined archival settings + storage estimates response."
@@ -12192,6 +12211,15 @@
         ],
         "title": "CompletedPart"
       },
+      "ComputedBy": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "open_wearables"
+        ],
+        "title": "ComputedBy",
+        "description": "Who computed an aggregate: the provider, or Open Wearables from stored samples."
+      },
       "ConfigResponse": {
         "properties": {
           "outgoing_webhooks_enabled": {
@@ -12335,15 +12363,20 @@
           "archived": {
             "type": "integer",
             "title": "Archived"
+          },
+          "aggregated": {
+            "type": "integer",
+            "title": "Aggregated"
           }
         },
         "type": "object",
         "required": [
           "count",
-          "archived"
+          "archived",
+          "aggregated"
         ],
         "title": "DataPointsInfo",
-        "description": "Data points information.\n\n``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive\ntable. Both are approximate on a cold cache / from planner statistics."
+        "description": "Data points information.\n\n``count`` is the live (hot) ``series_sample`` table; ``aggregated`` the day and session rows the\nsamples are rolled up into; ``archived`` the legacy archive table until it is dropped. All are\napproximate on a cold cache / from planner statistics."
       },
       "DataSourceListResponse": {
         "properties": {
@@ -13393,6 +13426,17 @@
             ],
             "title": "Event Record Id",
             "description": "The sleep session or workout this score describes. Null for whole-day scores."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The data source the score was computed from or reported by. Null for scores without one."
           }
         },
         "type": "object",
@@ -13565,6 +13609,65 @@
           "success"
         ],
         "title": "HistoricalDataTypeSyncEndEvent"
+      },
+      "HistoryRollupStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "running",
+              "done"
+            ],
+            "title": "State"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rollup_recent",
+                  "rollup_all"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "The pass running"
+          },
+          "sources_done": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Done",
+            "description": "Data sources the running pass has finished"
+          },
+          "sources_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Total",
+            "description": "Data sources the pass goes through"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "HistoryRollupStatus",
+        "description": "Where the history's rollup is. It goes through every data source twice, the last 30 days first."
       },
       "IntensityMinutes": {
         "properties": {
@@ -15420,6 +15523,12 @@
             "title": "Is Enabled",
             "description": "Whether provider is enabled by admin"
           },
+          "credentials_configured": {
+            "type": "boolean",
+            "title": "Credentials Configured",
+            "description": "Whether the OAuth client ID and secret are set. Always true for SDK-only providers.",
+            "default": true
+          },
           "icon_url": {
             "type": "string",
             "title": "Icon Url",
@@ -15631,10 +15740,13 @@
           "1min",
           "5min",
           "15min",
-          "1hour"
+          "1hour",
+          "1day",
+          "1week",
+          "1month"
         ],
         "title": "Resolution",
-        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched."
+        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched; day, week\nand month read the day aggregates instead of the samples."
       },
       "SDKLogRequest": {
         "properties": {
@@ -16037,6 +16149,75 @@
         "title": "SeedProfileConfig",
         "description": "Complete seed data generation configuration."
       },
+      "SeriesStats": {
+        "properties": {
+          "avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "SeriesStats",
+        "description": "Every statistic held for a period. The sample's value is the one its series is read by."
+      },
       "SeriesType": {
         "type": "string",
         "enum": [
@@ -16044,7 +16225,7 @@
           "resting_heart_rate",
           "heart_rate_variability_sdnn",
           "heart_rate_recovery_one_minute",
-          "walking_heart_rate_average",
+          "walking_heart_rate",
           "heart_rate_variability_rmssd",
           "oxygen_saturation",
           "blood_glucose",
@@ -16082,7 +16263,6 @@
           "exercise_time",
           "physical_effort",
           "flights_climbed",
-          "average_met",
           "active_time",
           "total_energy",
           "distance_walking_running",
@@ -16109,6 +16289,8 @@
           "cadence",
           "power",
           "speed",
+          "distance",
+          "elevation_gain",
           "workout_effort_score",
           "estimated_workout_effort_score",
           "environmental_audio_exposure",
@@ -16765,7 +16947,9 @@
                 "type": "null"
               }
             ],
-            "title": "Interruptions Count"
+            "title": "Interruptions Count",
+            "description": "Awakenings longer than 5 minutes within the main sleep (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)",
+            "example": 2
           },
           "nap_count": {
             "anyOf": [
@@ -17003,22 +17187,22 @@
           "live_data_bytes": {
             "type": "integer",
             "title": "Live Data Bytes",
-            "description": "Data size of data_point_series table (bytes)"
+            "description": "Data size of series_sample table (bytes)"
           },
           "live_index_bytes": {
             "type": "integer",
             "title": "Live Index Bytes",
-            "description": "Index size of data_point_series table (bytes)"
+            "description": "Index size of series_sample table (bytes)"
           },
-          "archive_data_bytes": {
+          "aggregate_data_bytes": {
             "type": "integer",
-            "title": "Archive Data Bytes",
-            "description": "Data size of archive table (bytes)"
+            "title": "Aggregate Data Bytes",
+            "description": "Data size of the aggregate tables and the legacy archive (bytes)"
           },
-          "archive_index_bytes": {
+          "aggregate_index_bytes": {
             "type": "integer",
-            "title": "Archive Index Bytes",
-            "description": "Index size of archive table (bytes)"
+            "title": "Aggregate Index Bytes",
+            "description": "Index size of the aggregate tables and the legacy archive (bytes)"
           },
           "other_tables_bytes": {
             "type": "integer",
@@ -17035,20 +17219,20 @@
             "title": "Live Row Count",
             "description": "Number of rows in live table"
           },
-          "archive_row_count": {
+          "aggregate_row_count": {
             "type": "integer",
-            "title": "Archive Row Count",
-            "description": "Number of rows in archive table"
+            "title": "Aggregate Row Count",
+            "description": "Number of rows in the aggregate tables and the legacy archive"
           },
           "avg_bytes_per_live_row": {
             "type": "number",
             "title": "Avg Bytes Per Live Row",
             "description": "Average bytes per live row (data+index)"
           },
-          "avg_bytes_per_archive_row": {
+          "avg_bytes_per_aggregate_row": {
             "type": "number",
-            "title": "Avg Bytes Per Archive Row",
-            "description": "Average bytes per archive row (data+index)"
+            "title": "Avg Bytes Per Aggregate Row",
+            "description": "Average bytes per aggregate row (data+index)"
           },
           "live_data_span_days": {
             "type": "integer",
@@ -17070,20 +17254,20 @@
             "title": "Live Index Pretty",
             "description": "Human-readable live index size"
           },
-          "archive_total_pretty": {
+          "aggregate_total_pretty": {
             "type": "string",
-            "title": "Archive Total Pretty",
-            "description": "Human-readable archive total size (data+indexes)"
+            "title": "Aggregate Total Pretty",
+            "description": "Human-readable aggregate total size (data+indexes)"
           },
-          "archive_data_pretty": {
+          "aggregate_data_pretty": {
             "type": "string",
-            "title": "Archive Data Pretty",
-            "description": "Human-readable archive data size"
+            "title": "Aggregate Data Pretty",
+            "description": "Human-readable aggregate data size"
           },
-          "archive_index_pretty": {
+          "aggregate_index_pretty": {
             "type": "string",
-            "title": "Archive Index Pretty",
-            "description": "Human-readable archive index size"
+            "title": "Aggregate Index Pretty",
+            "description": "Human-readable aggregate index size"
           },
           "other_tables_pretty": {
             "type": "string",
@@ -17105,21 +17289,21 @@
         "required": [
           "live_data_bytes",
           "live_index_bytes",
-          "archive_data_bytes",
-          "archive_index_bytes",
+          "aggregate_data_bytes",
+          "aggregate_index_bytes",
           "other_tables_bytes",
           "total_bytes",
           "live_row_count",
-          "archive_row_count",
+          "aggregate_row_count",
           "avg_bytes_per_live_row",
-          "avg_bytes_per_archive_row",
+          "avg_bytes_per_aggregate_row",
           "live_data_span_days",
           "live_total_pretty",
           "live_data_pretty",
           "live_index_pretty",
-          "archive_total_pretty",
-          "archive_data_pretty",
-          "archive_index_pretty",
+          "aggregate_total_pretty",
+          "aggregate_data_pretty",
+          "aggregate_index_pretty",
           "other_tables_pretty",
           "total_pretty",
           "growth_class"
@@ -18245,6 +18429,49 @@
               }
             ],
             "title": "Is Daily Total"
+          },
+          "window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Seconds"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "computed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComputedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -19726,6 +19953,18 @@
               }
             ],
             "title": "Max Watts"
+          },
+          "average_met": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Met",
+            "description": "The workout's average metabolic equivalent (MET), from its physical_effort series."
           },
           "moving_time_seconds": {
             "anyOf": [

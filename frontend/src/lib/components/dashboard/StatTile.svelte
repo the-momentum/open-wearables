@@ -17,7 +17,7 @@
 		/** A word about the figure itself - that it is an estimate, say. */
 		note?: string;
 		/**
-		 * Always rendered, zero included: "0 archived" says the archive is empty,
+		 * Always rendered, zero included: "0 day and session rows" says nothing has been rolled up,
 		 * and leaving the row out says nothing at all.
 		 */
 		parts: { label: string; value: string }[];

@@ -28,6 +28,10 @@ export const actions: Actions = {
 			if (error instanceof ApiError && error.status === 401) {
 				return fail(401, { email, message: 'Incorrect email or password.' });
 			}
+			// The default admin password is refused in production; the API says how to replace it.
+			if (error instanceof ApiError && error.status === 403) {
+				return fail(403, { email, message: error.message });
+			}
 			return fail(503, { email, message: 'Could not reach the server. Try again.' });
 		}
 

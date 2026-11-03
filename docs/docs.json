@@ -3,9 +3,33 @@
   "theme": "mint",
   "name": "Open Wearables",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2353C4",
+    "light": "#527DE3",
+    "dark": "#2353C4"
+  },
+  "appearance": {
+    "default": "light",
+    "strict": true
+  },
+  "background": {
+    "color": {
+      "light": "#FFFFFF",
+      "dark": "#FFFFFF"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Switzer",
+      "weight": 500,
+      "source": "/fonts/Switzer-Medium.woff2",
+      "format": "woff2"
+    },
+    "body": {
+      "family": "Switzer",
+      "weight": 400,
+      "source": "/fonts/Switzer-Regular.woff2",
+      "format": "woff2"
+    }
   },
   "favicon": "/favicon.svg",
   "redirects": [
@@ -189,6 +213,7 @@
               "api-reference/guides/webhooks",
               "api-reference/guides/provider-webhook-subscriptions",
               "api-reference/guides/sync-status-stream",
+              "api-reference/guides/workout-statistics",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",
               "api-reference/guides/error-handling"
@@ -355,8 +380,8 @@
     }
   },
   "logo": {
-    "light": "/logo/light.png",
-    "dark": "/logo/dark.png"
+    "light": "/logo/logo.svg",
+    "dark": "/logo/logo.svg"
   },
   "navbar": {
     "links": [

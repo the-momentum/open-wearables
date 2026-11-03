@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill data_point_series.is_daily_total for archival (legacy) rows.
+"""Backfill series_sample.is_daily_total for archival (legacy) rows.
 
 Only daily-total rows are set to TRUE. Every other row is left NULL, which the
 aggregation treats as FALSE (intraday / not a daily total). This keeps the
@@ -15,7 +15,7 @@ Garmin epochs, which now carry external_id (a slot id) yet are FALSE, so a naive
 
 PERFORMANCE: data_source_id and series ids are resolved up front, so every
 UPDATE filters on (data_source_id, series_type_definition_id) — the leading
-columns of uq_data_point_series_source_type_time — for an index range scan, no
+columns of uq_series_sample_source_type_time — for an index range scan, no
 per-batch JOINs. Work is committed in --batch chunks (no long locks / no single
 giant transaction).
 
@@ -68,12 +68,12 @@ _RULE_PREDICATE = """
     AND is_daily_total IS NULL
     AND (NOT %(require_ext)s OR external_id IS NOT NULL)
 """
-RULE_COUNT_SQL = f"SELECT COUNT(*) FROM data_point_series WHERE {_RULE_PREDICATE}"
+RULE_COUNT_SQL = f"SELECT COUNT(*) FROM series_sample WHERE {_RULE_PREDICATE}"
 RULE_UPDATE_SQL = f"""
     WITH batch AS (
-        SELECT id FROM data_point_series WHERE {_RULE_PREDICATE} LIMIT %(batch)s
+        SELECT id FROM series_sample WHERE {_RULE_PREDICATE} LIMIT %(batch)s
     )
-    UPDATE data_point_series d SET is_daily_total = TRUE FROM batch WHERE d.id = batch.id
+    UPDATE series_sample d SET is_daily_total = TRUE FROM batch WHERE d.id = batch.id
 """
 
 # Suunto steps/energy daily total = the per-day max-value row. On the first/last
@@ -92,7 +92,7 @@ _SUUNTO_DAILY_IDS = """
             ) AS rn,
             MIN(recorded_at::date) OVER src AS first_d,
             MAX(recorded_at::date) OVER src AS last_d
-        FROM data_point_series
+        FROM series_sample
         WHERE data_source_id = ANY(%(sources)s) AND series_type_definition_id = ANY(%(series)s)
         WINDOW
             w AS (PARTITION BY data_source_id, series_type_definition_id, recorded_at::date),
@@ -102,17 +102,17 @@ _SUUNTO_DAILY_IDS = """
     WHERE rn = 1 AND ((d <> first_d AND d <> last_d) OR (value * 2 = day_total))
 """
 SUUNTO_COUNT_SQL = f"""
-    SELECT COUNT(*) FROM data_point_series
+    SELECT COUNT(*) FROM series_sample
     WHERE id IN ({_SUUNTO_DAILY_IDS}) AND is_daily_total IS NULL
 """
 SUUNTO_UPDATE_SQL = f"""
     WITH daily AS ({_SUUNTO_DAILY_IDS}),
          batch AS (
-            SELECT id FROM data_point_series
+            SELECT id FROM series_sample
             WHERE id IN (SELECT id FROM daily) AND is_daily_total IS NULL
             LIMIT %(batch)s
          )
-    UPDATE data_point_series d SET is_daily_total = TRUE FROM batch WHERE d.id = batch.id
+    UPDATE series_sample d SET is_daily_total = TRUE FROM batch WHERE d.id = batch.id
 """
 
 
@@ -162,9 +162,7 @@ def run_batched(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Backfill data_point_series.is_daily_total (legacy NULL rows -> TRUE)."
-    )
+    parser = argparse.ArgumentParser(description="Backfill series_sample.is_daily_total (legacy NULL rows -> TRUE).")
     parser.add_argument("--dry-run", action="store_true", help="Count rows that would change; make no changes.")
     parser.add_argument("--batch", type=int, default=50000, help="Rows per UPDATE batch (default 50000).")
     args = parser.parse_args()

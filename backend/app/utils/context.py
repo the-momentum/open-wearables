@@ -7,7 +7,7 @@ sync_run_var works the same way for the run being ingested, so the shared write 
 can stamp outgoing data events with it without every provider threading it through.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -25,7 +25,7 @@ def current_sync_payload() -> dict[str, str] | None:
 
 
 @contextmanager
-def sync_run_context(run: SyncRunContext) -> Iterator[SyncRunContext]:
+def sync_run_context(run: SyncRunContext) -> Generator[SyncRunContext]:
     """Mark everything ingested in this block as belonging to one sync run.
 
     Resets on exit, so a worker reusing the thread for the next task does not inherit it.

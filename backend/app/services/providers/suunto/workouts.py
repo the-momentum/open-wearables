@@ -7,7 +7,7 @@ from app.constants.workout_types.suunto import get_unified_workout_type
 from app.database import DbSession
 from app.models import DataSource
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -140,9 +140,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             # Energy and distance
             "energy_burned": energy_burned,
             "distance": distance,
-            # Speed (convert from m/s to km/h for display)
-            "max_speed": Decimal(str(raw_workout.maxSpeed * 3.6)) if raw_workout.maxSpeed else None,
-            "average_speed": Decimal(str(raw_workout.avgSpeed * 3.6)) if raw_workout.avgSpeed else None,
+            "max_speed": Decimal(str(raw_workout.maxSpeed)) if raw_workout.maxSpeed else None,
+            "average_speed": Decimal(str(raw_workout.avgSpeed)) if raw_workout.avgSpeed else None,
             # Power
             "max_watts": Decimal(str(raw_workout.maxPower)) if raw_workout.maxPower else None,
             "average_watts": Decimal(str(raw_workout.avgPower)) if raw_workout.avgPower else None,
@@ -191,7 +190,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         moving_time = duration_seconds
 
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=source_name,
             device_model=device_model,

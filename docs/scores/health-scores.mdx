@@ -3,6 +3,11 @@ title: Health Scores
 description: OW platform provides two custom health scores backed by science. The scores are designed to help users understand their habits and should not be treated as a clinical tool.
 ---
 
+<Warning>
+**Open Wearables native scores (Sleep Score and Resilience Score) are deprecated and will be removed from this repository on November 6, 2026.** They will be distributed as a separate package, available as an extension under a different license.
+
+The `GET /api/v1/users/{user_id}/health-scores` endpoint is not going away. Starting November 6, Open Wearables stops computing new OW scores. Scores computed before that date stay in the database and are still returned. See [Deprecation of OW native scores](#deprecation-of-ow-native-scores).
+</Warning>
 
 <CardGroup cols={2}>
   <Card title="Sleep Score" icon="moon" href="/scores/sleep-score">
@@ -36,10 +41,44 @@ In addition to the OW native scores described above, users may also see scores f
 
 This means you can surface both in your application - the OW scores for a consistent cross-device baseline, and the provider scores for users who want to compare against what their device reports.
 
+### Which OW score the API returns
+
+OW can compute a score from each of a user's data sources. `GET /api/v1/users/{user_id}/health-scores` returns one OW score per category and day: the one from the source ranked highest in the [provider and device type priorities](/developer-portal/settings/priorities), the same ranking the summaries use. If one source has more than one sleep score on a day, for example an unflagged nap, the longest sleep is returned. Each score's `source` tells which source it came from. The pick is made over the whole day, so with a `start_date` or `end_date` inside a day, that day's score is returned only if it falls within the range. Provider scores are always returned as they are.
+
 ---
 
 ## Disabling OW Native Scores
 
-Self-hosted deployments compute both OW scores by default. To turn them off, set `OW_SCORES_ENABLED=false` in the backend `.env`.
+Before November 6, 2026, self-hosted deployments compute both OW scores by default. To turn them off, set `OW_SCORES_ENABLED=false` in the backend `.env`.
 
 Provider scores are still stored and shown. Scores computed before the switch stay in the database. Re-enabling backfills the last `SCORE_BACKFILL_DAYS` (30 by default).
+
+---
+
+## Deprecation of OW native scores
+
+On November 6, 2026 the Sleep Score and Resilience Score computed by Open Wearables are removed from this repository. They will be distributed as a separate package, available as an extension under a different license.
+
+What stays the same:
+
+- The [`GET /api/v1/users/{user_id}/health-scores`](/api-reference/external:-health-scores/list-health-scores) endpoint, its parameters and response format.
+- Scores fetched from connected providers (Garmin, Oura, Whoop, Polar, and others).
+- OW scores computed before November 6. They stay in the database and the endpoint keeps returning them.
+
+What changes: Open Wearables no longer computes new Sleep Score and Resilience Score records.
+
+To check whether your integration uses OW native scores, look for records with `"provider": "internal"` in the response. You can also filter for them directly:
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/{user_id}/health-scores?provider=internal" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+These are the records that are no longer created starting November 6:
+
+| Score            | `provider` | `category`   |
+|------------------|------------|--------------|
+| Sleep Score      | `internal` | `sleep`      |
+| Resilience Score | `internal` | `resilience` |
+
+Sleep scores from providers use the same `sleep` category but carry the provider name (for example `"provider": "oura"`), so they are not affected.
