@@ -169,11 +169,12 @@ class BaseOAuthTemplate(ABC):
 
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"Failed to refresh OAuth token: {e.response.text}",
+                "Failed to refresh OAuth token",
                 provider=self.provider_name,
                 task="refresh_access_token",
                 user_id=str(user_id),
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
             # 400/401 = refresh token is dead so revoke + notify
             if e.response.status_code in (HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED):
@@ -187,10 +188,11 @@ class BaseOAuthTemplate(ABC):
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=f"Failed to refresh token: {e.response.text}")
         except Exception as e:
             logger.warning(
-                f"OAuth token refresh failed: {e}",
+                "OAuth token refresh failed",
                 provider=self.provider_name,
                 task="refresh_access_token",
                 user_id=str(user_id),
+                error=str(e),
             )
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token refresh failed: {str(e)}")
 
@@ -289,10 +291,11 @@ class BaseOAuthTemplate(ABC):
             return OAuthTokenResponse.model_validate(response.json())
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"Failed to exchange authorization code: {e.response.text}",
+                "Failed to exchange authorization code",
                 provider=self.provider_name,
                 task="exchange_token",
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
@@ -300,9 +303,10 @@ class BaseOAuthTemplate(ABC):
             )
         except Exception as e:
             logger.error(
-                f"Token exchange failed: {e}",
+                "Token exchange failed",
                 provider=self.provider_name,
                 task="exchange_token",
+                error=str(e),
             )
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token exchange failed: {str(e)}")
 

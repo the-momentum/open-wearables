@@ -511,8 +511,9 @@ class XMLService:
             # Log breakdown of skip reasons
             for type, reasons in self.stats.get_skip_summary().items():
                 logger.warning(
-                    f"Skipped {type}: {reasons}",
+                    "Skipped items during XML import",
                     provider="apple_xml",
                     task="process_xml_upload",
                     skip_type=type,
+                    reasons=reasons,
                 )

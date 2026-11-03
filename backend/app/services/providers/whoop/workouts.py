@@ -83,18 +83,20 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
             except Exception as e:
                 logger.error(
-                    f"Error fetching Whoop workout data: {e}",
+                    "Error fetching Whoop workout data",
                     provider="whoop",
                     task="get_workouts",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_workouts:
                     logger.warning(
-                        f"Returning partial workout data due to error: {e}",
+                        "Returning partial workout data due to error",
                         provider="whoop",
                         task="get_workouts",
                         user_id=str(user_id),
+                        error=str(e),
                     )
                     break
                 raise
@@ -156,9 +158,11 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             return 1
         except Exception as e:
             logger.warning(
-                f"Failed to save workout record {workout_id}: {e}",
+                "Failed to save workout record",
                 provider="whoop",
                 task="load_single_workout",
+                workout_id=workout_id,
+                error=str(e),
             )
             return 0
 
@@ -413,18 +417,20 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
             except Exception as e:
                 logger.error(
-                    f"Error fetching Whoop workout data: {e}",
+                    "Error fetching Whoop workout data",
                     provider="whoop",
                     task="load_data",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 # If we got some data, continue processing; otherwise re-raise
                 if all_workouts:
                     logger.warning(
-                        f"Processing partial workout data due to error: {e}",
+                        "Processing partial workout data due to error",
                         provider="whoop",
                         task="load_data",
                         user_id=str(user_id),
+                        error=str(e),
                     )
                     break
                 raise

@@ -136,15 +136,17 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
                     break
             except Exception as e:
                 logger.error(
-                    f"Error fetching Sensor Bio workout data: {e}",
+                    "Error fetching Sensor Bio workout data",
                     provider="sensorbio",
                     task="get_workouts",
+                    error=str(e),
                 )
                 if all_workouts:
                     logger.warning(
-                        f"Returning partial workout data due to error: {e}",
+                        "Returning partial workout data due to error",
                         provider="sensorbio",
                         task="get_workouts",
+                        error=str(e),
                     )
                     break
                 raise

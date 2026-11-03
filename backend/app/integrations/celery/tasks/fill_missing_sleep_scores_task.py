@@ -72,8 +72,10 @@ def fill_missing_sleep_scores() -> dict:
             records_by_user[user_id].append((record_id, data_source_id, wake_date, local_end))
 
         logger.info(
-            f"Found {len(rows)} session(s) missing scores across {len(records_by_user)} user(s)",
+            "Found sleep sessions missing scores",
             task="fill_missing_sleep_scores",
+            missing_count=len(rows),
+            user_count=len(records_by_user),
         )
 
         total_saved = 0
@@ -113,7 +115,7 @@ def fill_missing_sleep_scores() -> dict:
                 )
 
         logger.info(
-            f"Sleep score fill complete: {total_saved} saved, {total_skipped} skipped",
+            "Sleep score fill complete",
             task="fill_missing_sleep_scores",
             saved=total_saved,
             skipped=total_skipped,

@@ -294,7 +294,7 @@ class Sync247Run:
     def log_summary(self, **extra: Any) -> None:
         """Emit one structured line summarizing the run."""
         logger.info(
-            f"{self.result.provider} 24/7 sync complete",
+            "24/7 sync complete",
             provider=self.result.provider,
             task=self.task,
             user_id=str(self.user_id),

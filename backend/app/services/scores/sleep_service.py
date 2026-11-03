@@ -353,7 +353,8 @@ class SleepScoreService:
 
         if skipped:
             logger.warning(
-                f"Skipped sleep score for {len(skipped)} record(s): invalid session data",
+                "Skipped sleep scores for records with invalid session data",
+                skipped_count=len(skipped),
                 skipped=[{"record_id": rid, "reason": reason} for _, rid, reason in skipped],
             )
 
@@ -456,7 +457,8 @@ class SleepScoreService:
 
         if skipped:
             logger.warning(
-                f"Skipped sleep score for {len(skipped)} date(s): invalid session data",
+                "Skipped sleep scores for dates with invalid session data",
+                skipped_count=len(skipped),
                 skipped=[{"date": str(d), "record_id": rid, "reason": reason} for d, rid, reason in skipped],
             )
 

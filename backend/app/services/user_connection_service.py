@@ -79,7 +79,7 @@ class UserConnectionService(
         connected_at = connection.created_at if outcome == SdkConnectionOutcome.CREATED else connection.updated_at
 
         logger.info(
-            f"SDK connection {outcome}",
+            "SDK connection state changed",
             action="sdk_connection_state_change",
             outcome=str(outcome),
             provider=provider,

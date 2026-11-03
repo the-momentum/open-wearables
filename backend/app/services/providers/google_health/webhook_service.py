@@ -90,7 +90,7 @@ def _subscribers_url() -> str:
 def _error_result(subscription_id: str, action: str, error: httpx.HTTPError) -> WebhookOperationResult:
     response_body = error.response.text if isinstance(error, httpx.HTTPStatusError) else None
     logger.error(
-        f"Failed to {action} Google Health API subscriber",
+        "Google Health API subscriber operation failed",
         provider="google_health",
         action=f"google_webhook_subscription_{action}_error",
         subscription_id=subscription_id,

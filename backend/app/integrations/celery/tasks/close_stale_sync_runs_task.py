@@ -41,7 +41,7 @@ def close_stale_sync_runs() -> dict:
 
     if closed:
         logger.warning(
-            f"Closed {len(closed)} stale sync run(s)",
+            "Closed stale sync runs",
             action="sync_run_sweep_complete",
             stale_after_hours=settings.sync_run_stale_after_hours,
             closed_count=len(closed),

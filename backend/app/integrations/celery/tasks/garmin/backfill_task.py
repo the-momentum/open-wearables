@@ -98,9 +98,10 @@ def _release_shared_backfill_primary(user_id: str, *, overall_status: SyncStatus
             )
     except Exception as exc:
         logger.error(
-            f"Failed to notify backfill secondaries: {exc}; proceeding with lock release",
+            "Failed to notify backfill secondaries; proceeding with lock release",
             provider="garmin",
             user_id=user_id,
+            error=str(exc),
         )
 
     release_primary_for_user("garmin", provider_user_id, UUID(user_id), scope="backfill")
@@ -252,9 +253,10 @@ def start_full_backfill(user_id: str, since: str | None = None) -> dict[str, Any
                 )
         except Exception as exc:
             logger.error(
-                f"Failed to notify linked profiles of backfill start: {exc}; continuing",
+                "Failed to notify linked profiles of backfill start; continuing",
                 provider="garmin",
                 user_id=user_id,
+                error=str(exc),
             )
 
     # Check for existing state (resume detection)
