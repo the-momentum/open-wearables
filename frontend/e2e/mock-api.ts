@@ -124,10 +124,12 @@ const json = (body: unknown, status = 200) =>
 const TITLES: Record<number, string> = {
 	400: 'Bad Request',
 	401: 'Unauthorized',
+	403: 'Forbidden',
 	404: 'Not Found',
 	409: 'Conflict',
 	422: 'Unprocessable Content',
-	500: 'Internal Server Error'
+	500: 'Internal Server Error',
+	503: 'Service Unavailable'
 };
 
 /** The API's RFC 9457 error body. */
@@ -217,7 +219,7 @@ const server = Bun.serve({
 			const password = form.get('password');
 			// Like the API: refused before the account lookup, so any email gets the same answer.
 			if (password === DEFAULT_PASSWORD && PASSWORD_CHANGE === 'refused') {
-				return json({ detail: DEFAULT_PASSWORD_REFUSED }, 403);
+				return problem(403, DEFAULT_PASSWORD_REFUSED, 'FORBIDDEN');
 			}
 			if (form.get('username') !== CREDENTIALS.email) {
 				return problem(401, 'Incorrect email or password', 'UNAUTHORIZED');
