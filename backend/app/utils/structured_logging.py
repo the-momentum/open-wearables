@@ -81,9 +81,12 @@ def _exception(exc_info: Any) -> BaseException | None:
     return sys.exc_info()[1] if exc_info else None
 
 
-def _is_client_error(exc: BaseException | None) -> bool:
+def is_client_error(exc: BaseException | None) -> bool:
     """4xx HTTPExceptions and AppErrors are explicit, handled client errors (e.g. a provider
-    rejecting a token refresh): logged as warnings, kept out of Sentry."""
+    rejecting a token refresh): logged as warnings, kept out of Sentry.
+
+    ``alert=True`` reports them anyway; a warning that should alert on everything else
+    passes ``alert=not is_client_error(e)``."""
     if isinstance(exc, AppError):
         return exc.is_client_error
     return isinstance(exc, HTTPException) and 400 <= exc.status_code < 500
@@ -118,7 +121,8 @@ class StructuredLogger:
       ``AppError``\\s are logged as warnings.
     - ``provider``: provider name, printed right after the message.
     - ``alert``: always report the line to Sentry - without an exception, below ``error``,
-      and also when LOG_LEVEL filters it out of the logs.
+      and also when LOG_LEVEL filters it out of the logs. ``alert=not is_client_error(e)``
+      keeps client errors out.
     - any other keyword: an attribute of the line (queryable via @name:value in log
       explorers). Keep values JSON-serializable and free of health data and PII.
     """
@@ -168,7 +172,7 @@ class StructuredLogger:
         exc = _exception(exc_info)
         if _strict:
             _check_attributes(attributes, exc)
-        if level > logging.WARNING and _is_client_error(exc):
+        if level > logging.WARNING and is_client_error(exc):
             level = logging.WARNING
         enabled = self.logger.isEnabledFor(level)
         if not (enabled or alert):

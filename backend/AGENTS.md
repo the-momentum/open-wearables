@@ -211,7 +211,7 @@ except Exception as e:
 - ❌ `logger.error(...)` without `exc_info` or `alert` - logged only
 - Passing `exc_info` for an exception that is re-raised is fine: the duplicate Sentry event is dropped by the SDK's deduplication.
 
-4xx `HTTPException`s and `AppError`s passed as `exc_info` are logged as warnings and not captured. An error that `LOG_LEVEL` filters out (`LOG_LEVEL=CRITICAL`) is not reported either, unless it has `alert=True`. App code reports to Sentry through the logger itself: Sentry's logging integration ignores the `app` loggers, so app lines never become breadcrumbs.
+4xx `HTTPException`s and `AppError`s passed as `exc_info` are logged as warnings and not captured, unless the line has `alert=True`; a warning that should alert on every other exception passes `alert=not is_client_error(e)`. An error that `LOG_LEVEL` filters out (`LOG_LEVEL=CRITICAL`) is not reported either, unless it has `alert=True`. App code reports to Sentry through the logger itself: Sentry's logging integration ignores the `app` loggers, so app lines never become breadcrumbs.
 
 **Keep health data and PII out of Sentry:** for reported lines, the message and all attributes are sent to Sentry as event context. Put only identifiers and categories in them (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise, since they become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
 
