@@ -57,8 +57,13 @@ def is_apple_own_source(source_app_id: str | None) -> bool:
     return source_app_id is not None and source_app_id.startswith(APPLE_SOURCE_APP_PREFIX)
 
 
-def is_host_model(source_app_id: str | None, device_model: str | None) -> bool:
-    """Apple hardware code on a third-party writer's row: the iPhone/Watch that relayed it, not the producer."""
+def is_host_model(provider: str | None, source_app_id: str | None, device_model: str | None) -> bool:
+    """Apple hardware code on a third-party HealthKit writer's row: the iPhone/Watch that relayed it, not the producer.
+
+    Only HealthKit relays through a host; other providers' models (e.g. a Health Connect "Watch GT 3") are kept.
+    """
+    if provider != ProviderName.APPLE:
+        return False
     if not source_app_id or is_apple_own_source(source_app_id) or not device_model:
         return False
     return device_model.startswith(APPLE_HARDWARE_PREFIXES)
@@ -221,7 +226,7 @@ def infer_device_type(
 ) -> DeviceType:
     """Resolve device type: single-device provider, then the reported type, then inference."""
     # The iOS SDK derives both from the relaying iPhone/Watch, so only the source name is left
-    if is_host_model(source_app_id, device_model):
+    if is_host_model(provider, source_app_id, device_model):
         device_model, reported_type = None, None
     device_type = _resolve_device_type(provider, device_model, original_source_name, reported_type)
     if device_type == DeviceType.OTHER:

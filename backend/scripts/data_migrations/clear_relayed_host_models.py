@@ -37,11 +37,19 @@ def clear_relayed_host_models(db: Session, *, dry_run: bool) -> Counter[str]:
 
     Returns counts keyed by ``"cleared"`` and ``"skipped"``.
     """
-    rows = db.query(DataSource).filter(DataSource.source_app_id.isnot(None), DataSource.device_id.is_(None)).all()
+    rows = (
+        db.query(DataSource)
+        .filter(
+            DataSource.provider == ProviderName.APPLE,
+            DataSource.source_app_id.isnot(None),
+            DataSource.device_id.is_(None),
+        )
+        .all()
+    )
     without_model = {(r.user_id, r.provider, r.source_app_id) for r in rows if r.device_model is None}
     counts: Counter[str] = Counter()
     for ds in rows:
-        if not is_host_model(ds.source_app_id, ds.device_model):
+        if not is_host_model(ds.provider, ds.source_app_id, ds.device_model):
             continue
         if (ds.user_id, ds.provider, ds.source_app_id) in without_model:
             counts["skipped"] += 1

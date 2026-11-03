@@ -177,8 +177,8 @@ class DataSourceRepository(
         if len(writer_rows) != 1:
             return None
         row = writer_rows[0]
-        incoming_unknown = device_model is None or is_host_model(source_app_id, device_model)
-        stored_unknown = row.device_model is None or is_host_model(row.source_app_id, row.device_model)
+        incoming_unknown = device_model is None or is_host_model(row.provider, source_app_id, device_model)
+        stored_unknown = row.device_model is None or is_host_model(row.provider, row.source_app_id, row.device_model)
         return row if incoming_unknown or stored_unknown else None
 
     @staticmethod
@@ -222,7 +222,7 @@ class DataSourceRepository(
                 and r.device_id is None
                 and r.source_app_id is None
                 and (r.source or "") == (identity.source or "")
-                and is_host_model(identity.source_app_id, r.device_model)
+                and is_host_model(r.provider, identity.source_app_id, r.device_model)
             ),
             None,
         )
@@ -411,8 +411,8 @@ class DataSourceRepository(
             updates["source"] = source
         # Keyed rows learn their model later (Polar sleep before the exercise, a writer's first model);
         # a relaying host's code is replaced by the producing device's model, or cleared when there is none
-        host_row = is_host_model(app_id, existing.device_model)
-        incoming_host = is_host_model(app_id, device_model)
+        host_row = is_host_model(provider, app_id, existing.device_model)
+        incoming_host = is_host_model(provider, app_id, device_model)
         replaces_host = host_row and not incoming_host
         if replaces_host or (device_model and existing.device_model is None and not incoming_host):
             updates["device_model"] = device_model

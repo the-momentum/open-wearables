@@ -79,3 +79,17 @@ class TestClearRelayedHostModels:
 
         assert counts["cleared"] == 1
         assert oura.device_model == "iPhone16,1"
+
+    def test_leaves_other_providers_alone(self, db: Session) -> None:
+        huawei = DataSourceFactory(
+            provider=ProviderName.HEALTH_CONNECT,
+            device_model="Watch GT 3",
+            source="Huawei Health",
+            source_app_id="com.huawei.health",
+        )
+
+        counts = clear_relayed_host_models(db, dry_run=False)
+        db.flush()
+
+        assert counts["cleared"] == 0
+        assert huawei.device_model == "Watch GT 3"

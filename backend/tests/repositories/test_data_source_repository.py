@@ -315,6 +315,23 @@ class TestDataSourceRepository:
         assert stamped.device_type == DeviceType.RING
         assert iphone.device_model == "iPhone16,1"
 
+    def test_apple_prefixed_models_outside_healthkit_stay_separate(self, db: Session) -> None:
+        """Health Connect reports the producing device, so two "Watch ..." models of one app are two devices."""
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.HEALTH_CONNECT,
+            "source": "Huawei Health",
+            "source_app_id": "com.huawei.health",
+        }
+
+        gt3 = repo.ensure_data_source(db, **ids, device_model="Watch GT 3")
+        gt4 = repo.ensure_data_source(db, **ids, device_model="Watch GT 4")
+
+        assert gt3.id != gt4.id
+        assert (gt3.device_model, gt4.device_model) == ("Watch GT 3", "Watch GT 4")
+
     def test_apple_own_source_keeps_product_type(self, db: Session) -> None:
         user = UserFactory()
         repo = DataSourceRepository(DataSource)

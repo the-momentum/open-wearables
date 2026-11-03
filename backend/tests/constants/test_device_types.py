@@ -5,6 +5,7 @@ import pytest
 from app.constants.devices_map import (
     infer_device_type,
     infer_device_type_from_model,
+    is_host_model,
     map_reported_device_type,
     normalize_device_model,
 )
@@ -172,12 +173,12 @@ def test_sdk_device_model_uses_hardware_only_for_apple_own_sources(
     app_id: str, device_model: str, hardware: str | None, expected: str | None
 ) -> None:
     source = SourceInfo(app_id=app_id, device_model=device_model, device_hardware_version=hardware)
-    assert extract_device_info(source)[0] == expected
+    assert extract_device_info(source, ProviderName.APPLE)[0] == expected
 
 
 def test_sdk_drops_relaying_host_model_of_third_party_writer() -> None:
     relayed = SourceInfo(app_id="com.ouraring.oura", name="Oura", device_model="iPhone16,1")
-    assert extract_device_info(relayed)[0] is None
+    assert extract_device_info(relayed, ProviderName.APPLE)[0] is None
 
 
 @pytest.mark.parametrize(
@@ -191,12 +192,21 @@ def test_sdk_drops_relaying_host_model_of_third_party_writer() -> None:
 )
 def test_sdk_drops_relaying_host_type_of_third_party_writer(app_id: str, name: str, device_model: str) -> None:
     relayed = SourceInfo(app_id=app_id, name=name, device_model=device_model, device_type="phone")
-    model, _, source_name = extract_device_info(relayed)
-    reported = extract_device_type(relayed)
+    model, _, source_name = extract_device_info(relayed, ProviderName.APPLE)
+    reported = extract_device_type(relayed, ProviderName.APPLE)
     assert reported is None
     assert infer_device_type(ProviderName.APPLE, model, source_name, reported, app_id) == DeviceType.UNKNOWN
 
 
 def test_sdk_keeps_reported_type_of_apple_own_source() -> None:
     watch = SourceInfo(app_id="com.apple.health.0BA80355-AAAA", device_model="Watch7,5", device_type="watch")
-    assert extract_device_type(watch) == DeviceType.WATCH
+    assert extract_device_type(watch, ProviderName.APPLE) == DeviceType.WATCH
+
+
+def test_sdk_keeps_apple_prefixed_model_outside_healthkit() -> None:
+    """Only HealthKit relays through a host, so a Health Connect "Watch GT 3" is the producing device."""
+    huawei = SourceInfo(app_id="com.huawei.health", device_model="Watch GT 3", device_type="watch")
+    assert extract_device_info(huawei, ProviderName.HEALTH_CONNECT)[0] == "Watch GT 3"
+    assert extract_device_type(huawei, ProviderName.HEALTH_CONNECT) == DeviceType.WATCH
+    assert not is_host_model(ProviderName.HEALTH_CONNECT, "com.huawei.health", "Watch GT 3")
+    assert is_host_model(ProviderName.APPLE, "com.huawei.health", "Watch GT 3")
