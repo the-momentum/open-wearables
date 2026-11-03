@@ -423,11 +423,7 @@ def handle_sleep_data(
 
             # The first sleep sample of a night decides its source and device, even when
             # an earlier upload already opened the session with awake.
-            if (
-                current_state.provider == provider
-                and not _has_sleep_stage(current_state.stages)
-                and sleep_phase in SLEEP_START_STATES
-            ):
+            if sleep_phase in SLEEP_START_STATES and not _has_sleep_stage(current_state.stages):
                 current_state.source_name = original_source_name or "unknown"
                 current_state.device_model = device_model
                 current_state.device_type = device_type
@@ -608,7 +604,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     first_sleep = next((stage for stage in ordered if stage.stage in _SLEEP_STAGES), None)
     if first_sleep is None:
         # Saving awake alone would grow the stored night past its last sleep stage, so it
-        # waits in Redis for the rest of the night (the TTL discards it otherwise).
+        # waits in Redis until the writer's next upload continues or replaces it.
         return
 
     # The lookup starts at the first sleep stage so that leading awake cannot bridge
