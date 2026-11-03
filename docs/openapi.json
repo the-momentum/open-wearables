@@ -7834,7 +7834,7 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "description": "One GPS location of a workout route. Unknown keys (e.g. speed, course) are ignored.",
+                                    "description": "One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored.",
                                     "properties": {
                                       "timestamp": {
                                         "anyOf": [
@@ -7880,28 +7880,6 @@
                                           }
                                         ],
                                         "title": "Altitudem"
-                                      },
-                                      "horizontalAccuracyM": {
-                                        "anyOf": [
-                                          {
-                                            "type": "number"
-                                          },
-                                          {
-                                            "type": "null"
-                                          }
-                                        ],
-                                        "title": "Horizontalaccuracym"
-                                      },
-                                      "verticalAccuracyM": {
-                                        "anyOf": [
-                                          {
-                                            "type": "number"
-                                          },
-                                          {
-                                            "type": "null"
-                                          }
-                                        ],
-                                        "title": "Verticalaccuracym"
                                       }
                                     },
                                     "title": "WorkoutRoutePoint",

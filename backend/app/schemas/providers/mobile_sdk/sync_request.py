@@ -106,16 +106,12 @@ class WorkoutStatistic(BaseModel):
 
 
 class WorkoutRoutePoint(BaseModel):
-    """One GPS location of a workout route. Unknown keys (e.g. speed, course) are ignored."""
-
-    model_config = ConfigDict(populate_by_name=True)
+    """One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored."""
 
     timestamp: datetime | None = None
     latitude: float | None = None
     longitude: float | None = None
-    altitude_m: float | None = Field(default=None, alias="altitudeM")
-    horizontal_accuracy_m: float | None = Field(default=None, alias="horizontalAccuracyM")
-    vertical_accuracy_m: float | None = Field(default=None, alias="verticalAccuracyM")
+    altitudeM: float | None = None
 
 
 class WorkoutSample(BaseModel):

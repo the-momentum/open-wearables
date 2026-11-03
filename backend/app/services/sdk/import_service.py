@@ -19,10 +19,9 @@ from app.constants.series_types.sdk import (
     get_detail_field_from_workout_statistic_type,
     get_detail_field_precedence,
     get_series_type_from_metric_type,
-    get_series_type_from_workout_sample_type,
     get_series_type_from_workout_statistic_type,
 )
-from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE, WORKOUT_SAMPLE_UNITS
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE, WORKOUT_SAMPLE_TYPES
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_ENERGY_SERIES, WORKOUT_STATISTIC_STAT
 from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SERIES
 from app.constants.workout_types import get_unified_sdk_workout_type
@@ -303,7 +302,6 @@ class ImportService:
                     recorded_at=recorded_at,
                     value=Decimal(str(value)),
                     series_type=series_type,
-                    is_daily_total=daily_total_flag(series_type, is_daily=False),
                 )
             )
 
@@ -321,12 +319,12 @@ class ImportService:
             if sample.timestamp is None or sample.value is None:
                 continue
             sample_type = sample.type or ""
-            series_type = get_series_type_from_workout_sample_type(sample_type)
-            if series_type is None:
+            if sample_type not in WORKOUT_SAMPLE_TYPES:
                 unknown_types[sample_type] += 1
                 continue
+            series_type, units = WORKOUT_SAMPLE_TYPES[sample_type]
             unit = (sample.unit or "").strip().lower()
-            if unit and unit not in WORKOUT_SAMPLE_UNITS[sample_type]:
+            if unit and unit not in units:
                 unexpected_units[f"{sample_type}:{unit}"] += 1
                 continue
             add(sample.timestamp, series_type, sample.value)
