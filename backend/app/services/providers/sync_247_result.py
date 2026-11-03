@@ -293,7 +293,7 @@ class Sync247Run:
         """Record and log a failure outside a ``step`` — e.g. a shared fetch feeding several types."""
         self.result.fail(data_type, error)
         # The error's text stays out: a database error carries the rows it failed on.
-        # capture is an explicit ask, so an upstream outage is reported too
+        # capture is an explicit ask, so a provider's answer about the user's state is reported too
         logger.error(
             "Failed to sync data type",
             exc_info=error if capture else None,

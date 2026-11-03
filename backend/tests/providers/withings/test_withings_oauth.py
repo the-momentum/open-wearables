@@ -81,9 +81,7 @@ def test_refresh_classifies_provider_statuses(
 
 @pytest.mark.parametrize(("http_status", "request_rejected"), [(403, True), (404, True), (503, False)])
 @patch("app.services.providers.withings.oauth.httpx.post")
-def test_refresh_http_error_is_reported_unless_an_outage(
-    mock_post: MagicMock, http_status: int, request_rejected: bool
-) -> None:
+def test_refresh_http_4xx_is_a_refused_request(mock_post: MagicMock, http_status: int, request_rejected: bool) -> None:
     request = httpx.Request("POST", "https://wbsapi.withings.net/v2/oauth2")
     mock_post.return_value = httpx.Response(http_status, text="error", request=request)
     oauth = _oauth()

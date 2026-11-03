@@ -8,7 +8,7 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST, EventScr
 
 from app import __version__
 from app.config import settings
-from app.utils.exceptions import ProviderError, is_upstream_outage
+from app.utils.exceptions import ProviderError, is_provider_state_error
 from app.utils.logging_setup import APP_LOGGER
 from app.utils.structured_logging import get_logger
 
@@ -93,17 +93,18 @@ def _mask_keys(value: Any, denylist: list[str]) -> Any:
 
 
 def _route_upstream_error(event: "Event", hint: "Hint") -> "Event | None":
-    """Drop a provider or storage outage, group what a provider rejected.
+    """Drop a provider's answer about a user's state, group every other provider failure.
 
-    An outage is not our bug, but the SDK's request and task hooks capture it like any 5xx,
-    so it is dropped here, unless a line logged with ``alert=True`` carries it (its ``log``
-    context marks it): the caller asked for it explicitly. A request the provider rejected
-    ships, grouped per provider and status, so a broken integration is one issue with a
-    count instead of an event per user.
+    The SDK's request and task hooks capture a provider error like any 5xx. One about a user's
+    state (``is_provider_state_error``) is dropped here, unless a line logged with
+    ``alert=True`` carries it (its ``log`` context marks it): the caller asked for it
+    explicitly. An outage or a request the provider rejected ships, grouped per provider and
+    status, so a provider that is down or changed its API is one issue with a count instead
+    of an event per user.
     """
     exc_info = hint.get("exc_info")
     exc = exc_info[1] if exc_info else None
-    if is_upstream_outage(exc) and "log" not in event.get("contexts", {}):
+    if is_provider_state_error(exc) and "log" not in event.get("contexts", {}):
         return None
     if isinstance(exc, ProviderError):
         event["fingerprint"] = ["{{ default }}", exc.provider, str(exc.upstream_status)]

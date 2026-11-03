@@ -156,8 +156,8 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 @api.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError) -> Response:
     # a failed provider or storage call and a missing setting have a status and detail the
-    # client should see; Sentry's own handler hook still reports the 5xx (an upstream outage
-    # is dropped in before_send)
+    # client should see; Sentry's own handler hook still reports the 5xx (a provider's answer
+    # about a user's state is dropped in before_send)
     if not exc.is_client_error and not isinstance(exc, UpstreamError | ConfigurationError):
         raise exc  # unhandled → the catch-all 500, the traceback in the access log and Sentry
     http_exc = HTTPException(exc.status_code, exc.detail, exc.headers)
