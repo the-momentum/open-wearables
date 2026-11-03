@@ -42,13 +42,10 @@ CREDENTIAL_DENYLIST = [
     "client_secret",
     "code_verifier",
     "id_token",
-    # The SDK masks only an exact "token": these reach sensitive-mode frame locals and request
-    # bodies (e.g. /token/refresh) unmasked otherwise.
     "access_token",
     "refresh_token",
-    # Raw query string of outgoing httpx requests in breadcrumbs and spans (the path stays in
-    # "url"). Some providers take credentials as query params: Oura's token revoke, Strava's
-    # push_subscriptions client_secret.
+    # Raw query string of outgoing httpx requests in breadcrumbs
+    # and spans (the path stays in "url")
     "http.query",
 ]
 
