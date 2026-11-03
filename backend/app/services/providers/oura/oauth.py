@@ -82,4 +82,9 @@ class OuraOAuth(BaseOAuthTemplate):
             params={"access_token": access_token},
             timeout=30.0,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            # Oura takes the token as a query param, which httpx renders into str(e).
+            # "from None" keeps the original error (and its URL) out of the reported chain.
+            raise RuntimeError(f"Oura token revoke failed: HTTP {response.status_code}") from None
