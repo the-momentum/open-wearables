@@ -7,9 +7,9 @@ and time asleep in ``sleep_total_duration_minutes``. Ingest now stores the windo
 on sessions stored before. A re-sync cannot do it: the same window returns the existing record
 without refreshing it.
 
-Starts from ``data_source`` rows with ``provider = 'sensorbio'``, so an instance without Sensor
-Bio data updates nothing. Cheap and unrecorded: it also fixes sessions an old pod writes during
-a rolling deploy.
+An instance without a Sensor Bio ``data_source`` row stops after one lookup on that table and
+never touches ``event_record``. Cheap and unrecorded: it also fixes sessions an old pod writes
+during a rolling deploy.
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py --dry-run
@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.schemas.enums import ProviderName
 
+_HAS_SOURCE = text("SELECT EXISTS (SELECT 1 FROM data_source WHERE provider = :provider)")
 _WINDOW = "EXTRACT(EPOCH FROM er.end_datetime - er.start_datetime)::int"
 _SESSIONS = f"""
     FROM event_record er
@@ -68,6 +69,9 @@ _UPDATE_TIME_IN_BED = text(
 def backfill_sensorbio_sleep_window(db: Session, *, dry_run: bool) -> int:
     """Does not commit; the caller owns the transaction. Returns the number of sessions changed."""
     params = {"provider": ProviderName.SENSORBIO.value}
+    if not db.execute(_HAS_SOURCE, params).scalar():
+        print("No Sensor Bio data source — nothing to do.")
+        return 0
     found = db.execute(_COUNT, params).scalar() or 0
     if dry_run:
         print(f"Would set the window on {found} Sensor Bio sleep session(s).\n\nDry run — no changes made.")

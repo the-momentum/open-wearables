@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord, SleepDetails
@@ -63,6 +64,25 @@ class TestBackfillSensorbioSleepWindow:
         assert _stored(db, zero) == (28800, 480)
         assert _stored(db, other) == (25200, 420)
         assert backfill_sensorbio_sleep_window(db, dry_run=False) == 0
+
+    def test_without_sensorbio_source_only_checks_data_source(self, db: Session) -> None:
+        other = _sleep(ProviderName.OURA, duration_seconds=25200, time_in_bed_minutes=420)
+        db.flush()
+        statements: list[str] = []
+        connection = db.connection()
+
+        def _record(*args: object) -> None:
+            statements.append(str(args[2]))
+
+        event.listen(connection, "before_cursor_execute", _record)
+        try:
+            assert backfill_sensorbio_sleep_window(db, dry_run=False) == 0
+        finally:
+            event.remove(connection, "before_cursor_execute", _record)
+
+        assert len(statements) == 1
+        assert "event_record" not in statements[0]
+        assert _stored(db, other) == (25200, 420)
 
     def test_dry_run_counts_and_changes_nothing(self, db: Session) -> None:
         details = _sleep(ProviderName.SENSORBIO, duration_seconds=0, time_in_bed_minutes=0)
