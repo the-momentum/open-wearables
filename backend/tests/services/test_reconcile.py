@@ -95,6 +95,28 @@ class TestReconcileReads:
 
         assert _read(db, watch, DAY, DAY) == [(DAY, 180, None)]
 
+    def test_a_stored_merge_stays_while_only_another_series_source_is_queued(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        _walk(watch, phone, DAY)
+        for source in devices:
+            SeriesRollupRepository().roll_up(db, source.id, [DAY])
+        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], priority_service.get_source_ranking(db))
+        scale = DataSourceFactory(user=db.get(User, watch.user_id), provider=ProviderName.WITHINGS, source="withings")
+        requeue_dirty_days([(scale.id, DAY)])
+        db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
+        db.flush()
+        monkeypatch.setattr(rollup_queue, "QUEUED_DAYS_TIMEOUT_SECONDS", 5)
+
+        def no_merging(*_args: object) -> None:
+            raise AssertionError("merged on the fly")
+
+        monkeypatch.setattr(SeriesReconcileRepository, "merge", no_merging)
+
+        assert _read(db, watch, DAY, DAY) == [(DAY, 180, None)]
+
     def test_a_day_whose_best_source_holds_only_a_day_value_is_that_value(self, db: Session, devices: tuple) -> None:
         """Oura sends steps only as its day total; ranked first, it is not outvoted by a merge of worse devices."""
         watch, phone = devices

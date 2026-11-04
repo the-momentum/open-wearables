@@ -1259,7 +1259,9 @@ class TestDayReadsBehindTheRollup:
     _DAY = date(2024, 3, 2)
 
     @pytest.fixture(autouse=True)
-    def _rollup_caught_up(self, db: Session) -> None:
+    def _rollup_caught_up(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The logic under test, not how fast the test Redis answers.
+        monkeypatch.setattr(rollup_queue, "QUEUED_DAYS_TIMEOUT_SECONDS", 5)
         db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
         DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
         db.flush()
@@ -1308,6 +1310,34 @@ class TestDayReadsBehindTheRollup:
         requeue_dirty_days([(source.id, self._DAY)])
 
         assert self._read(db, source) == [(self._DAY, 1500)]
+
+    def test_a_queued_day_without_samples_keeps_its_row(self, db: Session) -> None:
+        """The rollup leaves such a row alone (an archived day), so a read must not drop it either."""
+        source = DataSourceFactory()
+        self._row(db, source, self._DAY, ComputedBy.OPEN_WEARABLES, 900)
+        requeue_dirty_days([(source.id, self._DAY)])
+
+        assert self._read(db, source) == [(self._DAY, 900)]
+
+    def test_per_range_ignores_a_queued_sample_past_the_last_local_day(self, db: Session) -> None:
+        """23:30 UTC on the last day is the next local day at +02:00: the read returns nothing from it."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        phone = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.GARMIN, 1)
+        priorities.upsert(db, ProviderName.APPLE, 2)
+        DataPointSeriesFactory(
+            mapping=watch,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            recorded_at=datetime(2024, 3, 3, 23, 30, tzinfo=timezone.utc),
+            zone_offset="+02:00",
+            value=400,
+        )
+        requeue_dirty_days([(watch.id, date(2024, 3, 3))])
+        self._row(db, phone, self._DAY, ComputedBy.OPEN_WEARABLES, 700)
+
+        assert self._read(db, phone, source_selection=SourceSelection.PER_RANGE) == [(self._DAY, 700)]
 
     def test_a_day_no_longer_queued_reads_its_row(self, db: Session) -> None:
         source = DataSourceFactory()
