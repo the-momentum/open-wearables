@@ -1,5 +1,3 @@
-"""Tests for the workouts list endpoint's priority filter."""
-
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -12,8 +10,8 @@ from tests.factories import ApiKeyFactory, DataSourceFactory, EventRecordFactory
 from tests.utils import api_key_headers
 
 
-class TestListWorkoutsFilterByPriority:
-    """GET /users/{user_id}/events/workouts?filter_by_priority=..."""
+class TestListWorkoutsPerSession:
+    """GET /users/{user_id}/events/workouts?source_selection=..."""
 
     def _seed_duplicate_ride(self, db: Session) -> tuple:
         user = UserFactory()
@@ -50,9 +48,9 @@ class TestListWorkoutsFilterByPriority:
 
         assert set(ids) == {str(strava_record.id), str(apple_record.id)}
 
-    def test_filter_by_priority_drops_the_lower_priority_copy(self, client: TestClient, db: Session) -> None:
+    def test_per_session_drops_the_lower_priority_copy(self, client: TestClient, db: Session) -> None:
         user, strava_record, _ = self._seed_duplicate_ride(db)
 
-        ids = self._get(client, user.id, filter_by_priority="true")
+        ids = self._get(client, user.id, source_selection="per_session")
 
         assert ids == [str(strava_record.id)]

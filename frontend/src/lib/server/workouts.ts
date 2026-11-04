@@ -24,7 +24,7 @@ function filterParams(
 ) {
 	if (provider) params.set('provider', provider);
 	if (type) params.set('type', type);
-	if (topSourceOnly) params.set('filter_by_priority', 'true');
+	if (topSourceOnly) params.set('source_selection', 'per_session');
 	return params;
 }
 

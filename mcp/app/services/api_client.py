@@ -139,7 +139,7 @@ class OpenWearablesClient:
             "limit": limit,
             # The same workout often arrives from several providers (e.g. Strava and Apple Health);
             # keep only the highest-priority copy so counts, durations and calories are not doubled.
-            "filter_by_priority": "true",
+            "source_selection": "per_session",
         }
         if record_type:
             params["record_type"] = record_type

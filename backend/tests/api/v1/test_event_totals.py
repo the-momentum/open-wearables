@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.schemas.enums import ProviderName
+from app.services.priority_service import priority_service
 from tests.factories import (
     ApiKeyFactory,
     DataSourceFactory,
@@ -86,9 +87,7 @@ class TestWorkoutTotals:
             "distance_meters": None,
         }
 
-    def test_filter_by_priority_counts_the_same_workouts_as_the_list(self, client: TestClient, db: Session) -> None:
-        from app.services.priority_service import priority_service
-
+    def test_per_session_counts_the_same_workouts_as_the_list(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
         strava = DataSourceFactory(user=user, provider=ProviderName.STRAVA, source="strava")
         apple = DataSourceFactory(user=user, provider=ProviderName.APPLE)
@@ -109,14 +108,14 @@ class TestWorkoutTotals:
         # Off by default: both copies are added up.
         assert self._totals(client, user.id)["count"] == 2
         # On: the Apple copy of the Strava ride is left out, as it is in the list.
-        filtered = self._totals(client, user.id, filter_by_priority="true")
+        filtered = self._totals(client, user.id, source_selection="per_session")
         assert filtered == {
             "count": 1,
             "duration_seconds": 1800,
             "calories_kcal": 200.0,
             "distance_meters": 10000.0,
         }
-        listed = _get(client, f"/api/v1/users/{user.id}/events/workouts", limit=100, filter_by_priority="true")
+        listed = _get(client, f"/api/v1/users/{user.id}/events/workouts", limit=100, source_selection="per_session")
         assert filtered["count"] == len(listed["data"])
 
 
