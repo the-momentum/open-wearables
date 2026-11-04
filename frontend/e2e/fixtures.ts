@@ -783,7 +783,7 @@ export const makeSleep = (query: URLSearchParams) => {
 
 	// Oura outranks Suunto in the default priority order, so the winning source
 	// per night is the Oura one wherever both reported.
-	if (query.get('filter_by_priority') === 'true') {
+	if (query.get('source_selection') === 'per_session') {
 		matching = matching.filter((session) => session.source.provider === 'oura');
 	}
 
