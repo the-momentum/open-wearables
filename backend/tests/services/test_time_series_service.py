@@ -17,13 +17,16 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, SeriesAggregate
+from app.integrations import rollup_queue
+from app.integrations.rollup_queue import finish_dirty_days, pop_dirty_days, requeue_dirty_days
+from app.models import DataSource, ProviderPriority, SeriesAggregate
 from app.models.archival_setting import ArchivalSetting
-from app.repositories import AggregateRepository
+from app.repositories import AggregateRepository, ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums import (
     ComputedBy,
     PeriodKind,
+    ProviderName,
     Resolution,
     SeriesType,
     SourceSelection,
@@ -780,9 +783,11 @@ class TestTimeSeriesServiceGetTimeseries:
         assert [(s.value, s.source.provider) for s in result.data] == [(30, "whoop")]
 
     def test_priority_on_days_takes_the_source_holding_day_rows(self, db: Session) -> None:
-        """Day reads come from the day rows: a source with only a provider day value must win there, and
-        a higher-ranked one whose samples are not rolled up (or were deleted by retention) has nothing."""
+        """With the rollup on and caught up, day reads come from the day rows: a source with only a provider day
+        value must win there, and a higher-ranked one whose samples have no rows and are not queued has nothing."""
         # Arrange - the watch outranks the band but has samples only; the band sent its day's total
+        db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
         user = UserFactory()
         watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
         band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
@@ -1245,3 +1250,200 @@ class TestTimeSeriesServicePeriods:
         )
 
         assert (raw.data[0].window_seconds, hourly.data[0].window_seconds) == (900, 3600)
+
+
+class TestDayReadsBehindTheRollup:
+    """With the rollup on and caught up, day reads take the rows, except where the rollup queue says a day's
+    samples changed since: those days are counted from the samples, so a read is never staler than its data."""
+
+    _DAY = date(2024, 3, 2)
+
+    @pytest.fixture(autouse=True)
+    def _rollup_caught_up(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The logic under test, not how fast the test Redis answers.
+        monkeypatch.setattr(rollup_queue, "QUEUED_DAYS_TIMEOUT_SECONDS", 5)
+        db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
+        db.flush()
+
+    def _row(self, db: Session, source: DataSource, day: date, computed_by: ComputedBy, steps: int) -> None:
+        period = CalendarPeriod.of_date(day, "+00:00")
+        AggregateRepository(SeriesAggregate).upsert(
+            db,
+            [
+                {
+                    "data_source_id": source.id,
+                    "series_type_definition_id": get_series_type_id(SeriesType.steps),
+                    "period_kind": PeriodKind.DAY,
+                    "period_start": period.start,
+                    "period_end": period.end,
+                    "zone_offset": period.zone_offset,
+                    "computed_by": computed_by,
+                    "count": 1,
+                    "sum": Decimal(steps),
+                }
+            ],
+        )
+
+    def _steps(self, source: DataSource, day: date, *values: int) -> None:
+        for hour, value in enumerate(values, start=8):
+            DataPointSeriesFactory(
+                mapping=source,
+                series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+                recorded_at=datetime.combine(day, datetime.min.time(), timezone.utc) + timedelta(hours=hour),
+                value=value,
+            )
+
+    def _read(self, db: Session, source: DataSource, **kwargs: object) -> list[tuple[date, float]]:
+        params = TimeSeriesQueryParams(
+            start_datetime=datetime(2024, 3, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2024, 3, 4, tzinfo=timezone.utc),
+            resolution=Resolution.ONE_DAY,
+        )
+        result = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params, **kwargs)
+        return [(s.timestamp.date(), float(s.value)) for s in result.data]
+
+    def test_a_queued_day_is_counted_from_its_samples_not_its_old_row(self, db: Session) -> None:
+        source = DataSourceFactory()
+        self._row(db, source, self._DAY, ComputedBy.OPEN_WEARABLES, 1000)
+        self._steps(source, self._DAY, 1000, 500)
+        requeue_dirty_days([(source.id, self._DAY)])
+
+        assert self._read(db, source) == [(self._DAY, 1500)]
+
+    def test_a_queued_day_without_samples_keeps_its_row(self, db: Session) -> None:
+        """The rollup leaves such a row alone (an archived day), so a read must not drop it either."""
+        source = DataSourceFactory()
+        self._row(db, source, self._DAY, ComputedBy.OPEN_WEARABLES, 900)
+        requeue_dirty_days([(source.id, self._DAY)])
+
+        assert self._read(db, source) == [(self._DAY, 900)]
+
+    def test_per_range_ignores_a_queued_sample_past_the_last_local_day(self, db: Session) -> None:
+        """23:30 UTC on the last day is the next local day at +02:00: the read returns nothing from it."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        phone = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.GARMIN, 1)
+        priorities.upsert(db, ProviderName.APPLE, 2)
+        DataPointSeriesFactory(
+            mapping=watch,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            recorded_at=datetime(2024, 3, 3, 23, 30, tzinfo=timezone.utc),
+            zone_offset="+02:00",
+            value=400,
+        )
+        requeue_dirty_days([(watch.id, date(2024, 3, 3))])
+        self._row(db, phone, self._DAY, ComputedBy.OPEN_WEARABLES, 700)
+
+        assert self._read(db, phone, source_selection=SourceSelection.PER_RANGE) == [(self._DAY, 700)]
+
+    def test_a_day_no_longer_queued_reads_its_row(self, db: Session) -> None:
+        source = DataSourceFactory()
+        self._row(db, source, self._DAY, ComputedBy.OPEN_WEARABLES, 1000)
+        self._steps(source, self._DAY, 1000, 500)
+        requeue_dirty_days([(source.id, self._DAY)])
+        finish_dirty_days(pop_dirty_days(10))
+
+        assert self._read(db, source) == [(self._DAY, 1000)]
+
+    def test_a_queued_day_without_a_row_yet_is_read(self, db: Session) -> None:
+        source = DataSourceFactory()
+        self._row(db, source, date(2024, 3, 1), ComputedBy.OPEN_WEARABLES, 700)
+        self._steps(source, date(2024, 3, 3), 300)
+        requeue_dirty_days([(source.id, date(2024, 3, 3))])
+
+        assert self._read(db, source) == [(date(2024, 3, 1), 700), (date(2024, 3, 3), 300)]
+
+    def test_a_providers_row_stays_on_a_queued_day(self, db: Session) -> None:
+        source = DataSourceFactory()
+        self._row(db, source, self._DAY, ComputedBy.PROVIDER, 8432)
+        self._steps(source, self._DAY, 1000)
+        requeue_dirty_days([(source.id, self._DAY)])
+
+        assert self._read(db, source) == [(self._DAY, 8432)]
+
+    def test_a_queued_day_retention_emptied_keeps_its_row(self, db: Session) -> None:
+        """A late sample on a deleted day queues it; that one sample is not the day."""
+        source = DataSourceFactory()
+        db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=30, deleted_before=date(2024, 3, 3)))
+        self._row(db, source, self._DAY, ComputedBy.OPEN_WEARABLES, 9000)
+        self._steps(source, self._DAY, 12)
+        requeue_dirty_days([(source.id, self._DAY)])
+
+        assert self._read(db, source) == [(self._DAY, 9000)]
+
+    def test_an_unreachable_queue_leaves_the_rows_as_they_are(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        source = DataSourceFactory()
+        self._row(db, source, self._DAY, ComputedBy.OPEN_WEARABLES, 1000)
+        self._steps(source, self._DAY, 1000, 500)
+        requeue_dirty_days([(source.id, self._DAY)])
+
+        def unreachable(*_args: object) -> None:
+            raise ConnectionError("redis is down")
+
+        monkeypatch.setattr(rollup_queue, "queued_days", unreachable)
+
+        assert self._read(db, source) == [(self._DAY, 1000)]
+
+    def test_priority_picks_a_source_only_its_queued_samples_hold(self, db: Session) -> None:
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.GARMIN, 1)
+        priorities.upsert(db, ProviderName.OURA, 2)
+        self._row(db, ring, self._DAY, ComputedBy.PROVIDER, 8000)
+        self._steps(watch, self._DAY, 4000, 4100)
+        requeue_dirty_days([(watch.id, self._DAY)])
+
+        assert self._read(db, watch, source_selection=SourceSelection.PER_RANGE) == [(self._DAY, 8100)]
+
+
+class TestPriorityDayReadsBeforeTheRollup:
+    def test_priority_picks_a_source_whose_days_are_only_in_its_samples(self, db: Session) -> None:
+        """Rollup off: the day read counts the samples, so priority must look at them too, not only at rows."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.GARMIN, 1)
+        priorities.upsert(db, ProviderName.OURA, 2)
+        day = date(2024, 3, 2)
+        period = CalendarPeriod.of_date(day, "+00:00")
+        AggregateRepository(SeriesAggregate).upsert(
+            db,
+            [
+                {
+                    "data_source_id": ring.id,
+                    "series_type_definition_id": get_series_type_id(SeriesType.steps),
+                    "period_kind": PeriodKind.DAY,
+                    "period_start": period.start,
+                    "period_end": period.end,
+                    "zone_offset": period.zone_offset,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "count": 1,
+                    "sum": Decimal(8000),
+                }
+            ],
+        )
+        DataPointSeriesFactory(
+            mapping=watch,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            recorded_at=datetime(2024, 3, 2, 9, tzinfo=timezone.utc),
+            value=4000,
+        )
+        params = TimeSeriesQueryParams(
+            start_datetime=datetime(2024, 3, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2024, 3, 4, tzinfo=timezone.utc),
+            resolution=Resolution.ONE_DAY,
+        )
+
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.steps], params, source_selection=SourceSelection.PER_RANGE
+        )
+
+        assert [(s.timestamp.date(), float(s.value), s.source.provider) for s in result.data] == [(day, 4000, "garmin")]

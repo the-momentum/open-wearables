@@ -11,6 +11,8 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.integrations import rollup_queue
+from app.integrations.rollup_queue import requeue_dirty_days
 from app.models import DataSource, EventRecordAggregate, ProviderPriority
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, EventRecordRepository, ProviderPriorityRepository
@@ -855,6 +857,25 @@ class TestGetActivitySummaries:
         _rollup_reached_the_history(db)
 
         assert self._day(db, service, user) == []
+
+    def test_a_queued_day_is_counted_from_its_samples_not_its_old_row(
+        self, db: Session, service: SummariesService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Samples newer than the last rollup run: the summary follows them, as the day reads do."""
+        user = UserFactory()
+        ds = self._apple_steps(user, [1000, 250])
+        roll_up_everything(db)
+        _rollup_reached_the_history(db)
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            value=500,
+            recorded_at=_dt("2026-01-01T12:00:00+00:00"),
+        )
+        requeue_dirty_days([(ds.id, date(2026, 1, 1))])
+        monkeypatch.setattr(rollup_queue, "QUEUED_DAYS_TIMEOUT_SECONDS", 5)
+
+        assert [day.steps for day in self._day(db, service, user)] == [1750]
 
     def test_includes_days_with_only_a_workout(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()

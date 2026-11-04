@@ -1,9 +1,9 @@
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import Date, Interval, func, text, tuple_
@@ -11,7 +11,9 @@ from sqlalchemy import cast as sql_cast
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
+from app.integrations import rollup_queue
 from app.models import DataSource, SeriesAggregate
+from app.models.archival_setting import ArchivalSetting
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.local_day import OFFSET_REACH, sample_day_sql, utc_midnight
 from app.repositories.repositories import (
@@ -81,6 +83,19 @@ _SAMPLE_DAYS = text(f"""
     ) d
 """)
 
+# The same, for only the local days in :days: those the rollup has not caught up with.
+_SAMPLE_DAYS_OF = text(f"""
+    SELECT c.source_id AS data_source_id, c.type_id AS series_type_definition_id, d.*
+    FROM unnest(CAST(:type_ids AS integer[]), CAST(:source_ids AS uuid[])) AS c(type_id, source_id)
+    CROSS JOIN LATERAL (
+        SELECT {sample_day_sql("s")} AS day, sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min,
+            max(s.value) AS max, count(*) AS count, (array_agg(s.value ORDER BY s.recorded_at DESC))[1] AS last,
+            min(s.zone_offset) AS zone_offset
+        {_SAMPLES_OF_PAIR} AND {sample_day_sql("s")} = ANY(:days)
+        GROUP BY 1
+    ) d
+""")
+
 # Per (series, data source) pair, the local day of its first (or last) sample in the range.
 _SAMPLE_EDGES = {
     latest: text(f"""
@@ -111,6 +126,25 @@ class SampleDay:
     last: Decimal | None
     zone_offset: str | None
     computed_by: ComputedBy = ComputedBy.OPEN_WEARABLES
+
+
+# Per data source, its local days whose day rows are older than their samples, as the rollup has not caught up.
+StaleDays = dict[UUID, set[date]]
+
+
+def _sample_day(sample: Any) -> SampleDay:
+    return SampleDay(
+        data_source_id=sample.data_source_id,
+        series_type_definition_id=sample.series_type_definition_id,
+        period_start=CalendarPeriod.of_date(sample.day, sample.zone_offset).start,
+        sum=sample.sum,
+        avg=sample.avg,
+        min=sample.min,
+        max=sample.max,
+        count=sample.count,
+        last=sample.last,
+        zone_offset=sample.zone_offset,
+    )
 
 
 def _pair_params(pairs: list[tuple[int, UUID]], first_day: date, last_day: date) -> dict:
@@ -165,34 +199,80 @@ class SeriesAggregateRepository:
         from_samples: bool,
         params: TimeSeriesQueryParams | None = None,
         source_by_type: dict[int, UUID] | None = None,
+        stale: StaleDays | None = None,
     ) -> list[tuple[SeriesAggregate | SampleDay, date]]:
         """The user's day rows; with ``from_samples`` also every (data source, series, day) no row holds, counted
-        from its samples, as the readers were before the rollup."""
+        from its samples, as the readers were before the rollup. Without it, the days the rollup has not caught
+        up with yet (``stale``, else asked of its queue while the rows are read) are counted from their samples.
+        """
         params = params or TimeSeriesQueryParams()
+        pairs = self._pairs(db_session, user_id, params, types, source_by_type)
+        pending = None
+        if not from_samples and stale is None:
+            pending = self.stale_days_soon(db_session, {source_id for _, source_id in pairs}, first_day, last_day)
         rows: list[tuple[SeriesAggregate | SampleDay, date]] = list(
             self.get_day_rows(db_session, user_id, params, types, first_day, last_day, source_by_type)
         )
-        if not from_samples:
-            return rows
-        held = {(row.data_source_id, row.series_type_definition_id, day) for row, day in rows}
-        pairs = self._pairs(db_session, user_id, params, types, source_by_type)
-        for sample in db_session.execute(_SAMPLE_DAYS, _pair_params(pairs, first_day, last_day)) if pairs else ():
-            if (sample.data_source_id, sample.series_type_definition_id, sample.day) in held:
-                continue
-            day = SampleDay(
-                data_source_id=sample.data_source_id,
-                series_type_definition_id=sample.series_type_definition_id,
-                period_start=CalendarPeriod.of_date(sample.day, sample.zone_offset).start,
-                sum=sample.sum,
-                avg=sample.avg,
-                min=sample.min,
-                max=sample.max,
-                count=sample.count,
-                last=sample.last,
-                zone_offset=sample.zone_offset,
-            )
-            rows.append((day, sample.day))
+        if pending is not None:
+            stale = pending()
+        if from_samples:
+            held = {(row.data_source_id, row.series_type_definition_id, day) for row, day in rows}
+            for sample in db_session.execute(_SAMPLE_DAYS, _pair_params(pairs, first_day, last_day)) if pairs else ():
+                if (sample.data_source_id, sample.series_type_definition_id, sample.day) not in held:
+                    rows.append((_sample_day(sample), sample.day))
+        elif stale := {
+            source_id: in_range
+            for source_id, days in (stale or {}).items()
+            if (in_range := {day for day in days if first_day <= day <= last_day})
+        }:
+            rows = self._recount_stale(db_session, rows, pairs, stale)
         return sorted(rows, key=lambda pair: pair[1])
+
+    def stale_days_soon(
+        self, db_session: DbSession, source_ids: Iterable[UUID], first_day: date, last_day: date
+    ) -> Callable[[], StaleDays]:
+        """Ask the rollup queue which of the sources' days it has not caught up with, on a worker thread so the
+        caller's next query runs meanwhile; call the result for the answer. Days whose samples retention deleted
+        are left out: their rows are all they have."""
+        pending = rollup_queue.queued_days_soon(source_ids, first_day, last_day)
+
+        def result() -> StaleDays:
+            queued = pending()
+            if not queued:
+                return {}
+            frozen_before = db_session.query(ArchivalSetting.deleted_before).filter(ArchivalSetting.id == 1).scalar()
+            return {source_id: days for source_id in queued.days if (days := queued.of(source_id, frozen_before))}
+
+        return result
+
+    @staticmethod
+    def _recount_stale(
+        db_session: DbSession,
+        rows: list[tuple[SeriesAggregate | SampleDay, date]],
+        pairs: list[tuple[int, UUID]],
+        stale: StaleDays,
+    ) -> list[tuple[SeriesAggregate | SampleDay, date]]:
+        """``rows`` with our rows of the stale days counted again from their samples; a provider's row stays."""
+        pairs = [(type_id, source_id) for type_id, source_id in pairs if stale.get(source_id)]
+        if not pairs:
+            return rows
+        days = sorted(set().union(*(stale[source_id] for _, source_id in pairs)))
+        counted = {
+            (sample.data_source_id, sample.series_type_definition_id, sample.day): _sample_day(sample)
+            for sample in db_session.execute(_SAMPLE_DAYS_OF, {**_pair_params(pairs, days[0], days[-1]), "days": days})
+            if sample.day in stale[sample.data_source_id]
+        }
+        kept: list[tuple[SeriesAggregate | SampleDay, date]] = []
+        for row, day in rows:
+            key = (row.data_source_id, row.series_type_definition_id, day)
+            if row.computed_by == ComputedBy.PROVIDER:
+                counted.pop(key, None)
+            elif key in counted:
+                # Replaced by the count below; a series with no samples that day keeps its row, as the rollup does.
+                continue
+            kept.append((row, day))
+        kept.extend((sample_day, key[2]) for key, sample_day in counted.items())
+        return kept
 
     def sample_edge_day(
         self,
