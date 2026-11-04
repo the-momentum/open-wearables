@@ -8,6 +8,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from psycopg.errors import ForeignKeyViolation
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -19,7 +20,7 @@ from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.sync_status_service import emit_sync_completed, new_run_id
 from app.utils.context import sync_run_context
-from app.utils.exceptions import is_unique_violation
+from app.utils.exceptions import integrity_violation, is_unique_violation
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -111,7 +112,19 @@ def process_activity_notification(
                     user_id=internal_user_id,
                 )
         except IntegrityError as exc:
+            # Each profile's activity commits on its own, so this drops only the failed insert.
             db.rollback()
+            if isinstance(integrity_violation(exc), ForeignKeyViolation):
+                # The user was deleted after the connections were loaded: the other profiles still get theirs.
+                logger.warning(
+                    "Activity skipped: user deleted meanwhile",
+                    provider="garmin",
+                    trace_id=trace_id,
+                    activity_id=activity_id,
+                    user_id=str(internal_user_id),
+                )
+                results.append({**base_result, "internal_user_id": str(internal_user_id), "status": "skipped"})
+                continue
             if not is_unique_violation(exc):
                 raise
             logger.info(
