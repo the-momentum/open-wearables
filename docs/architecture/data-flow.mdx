@@ -39,7 +39,7 @@ POST /api/v1/providers/{provider}/users/{user_id}/sync/historical
 
 How far back you can go depends on the provider - see [historical data limits](/providers/historical-data).
 
-For now it also fires automatically after every successful OAuth callback. You control this with `HISTORICAL_SYNC_ON_CONNECT` in the backend environment (default `true`) - set it to `false` to trigger backfill yourself. The automatic dispatch is a leftover that will go away, so don't build on it.
+Connecting a provider doesn't call it - you trigger the backfill yourself after OAuth. To run it after every successful OAuth callback instead, set `HISTORICAL_SYNC_ON_CONNECT=true` in the backend environment (default `false`).
 
 ## Mobile-only sources
 

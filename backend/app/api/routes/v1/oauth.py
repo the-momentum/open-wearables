@@ -110,10 +110,8 @@ def oauth_callback(
     # timestamp as its live-sync cursor and won't attempt to pull all history.
     previous_synced_at = user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
 
-    # Grace-period flag: automatically kick off a historical sync so integrators
-    # who haven't yet adopted the explicit /sync/historical call still get backfill.
-    # Controlled by HISTORICAL_SYNC_ON_CONNECT (default: true).
-    # Same dispatch as POST /sync/historical; on a reconnect only the gap is backfilled.
+    # Opt-in (HISTORICAL_SYNC_ON_CONNECT, default: false): the same dispatch as
+    # POST /sync/historical; on a reconnect only the gap is backfilled.
     if settings.historical_sync_on_connect:
         gap_start = user_connection_service.reconnect_gap_start(
             db, oauth_state.user_id, provider_name.value, previous_synced_at

@@ -282,22 +282,17 @@ def sync_historical_data(
     webhook backfill, etc.). The ``days`` parameter is capped at the
     provider's ``max_historical_days``.
 
-    **Automatic historical sync on connect (grace period)**
+    Connecting a provider only sets up live sync, so call this endpoint
+    after the OAuth callback to backfill history. Garmin only allows a
+    backfill within 30 days of the user's consent date, so call it right
+    after the user connects.
 
-    v0.4.2 introduced this endpoint as the canonical, opt-in way to
-    backfill historical data - the long-term goal is that connecting a
-    provider only sets up live sync, and history is pulled on demand.
+    **Automatic historical sync on connect (opt-in)**
 
-    To make migration painless, the pre-0.4.2 behaviour is kept for now
-    behind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:
-    ``true``): a historical sync is auto-dispatched after a successful
-    OAuth callback (up to 90 days for pull-based providers; up to 30
-    days for Garmin, whose webhook-based backfill is capped at 30 days
-    from the user's consent date).
-
-    Once your integration calls this endpoint explicitly, set
-    ``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to
-    ``false`` in a future release and is planned for removal afterwards.
+    An instance can run this sync on every OAuth connect instead by
+    setting ``HISTORICAL_SYNC_ON_CONNECT=true`` (default: ``false``). It
+    uses the default range (up to 90 days; 30 for Garmin) and on a
+    reconnect only backfills the gap since the last sync.
     """
     strategy = factory.get_provider(provider.value)
 
