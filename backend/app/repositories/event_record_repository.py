@@ -1323,6 +1323,57 @@ class EventRecordRepository(
         return {(source_id, type_id, day): float(avg) for source_id, type_id, day, avg in rows if avg is not None}
 
     @staticmethod
+    def daily_sleep_totals(db_session: DbSession, user_id: UUID, first_day: date, last_day: date) -> list[dict]:
+        """Main sleep seconds and duration-weighted efficiency per local wake day and device, as the sleep
+        summary counts them."""
+        local_end = cast(
+            func.timezone("UTC", EventRecord.end_datetime)
+            + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+        has_efficiency = SleepDetails.sleep_efficiency_score.isnot(None)
+        rows = (
+            db_session.query(
+                local_end.label("day"),
+                DataSource.provider,
+                DataSource.source,
+                DataSource.device_model,
+                DataSource.device_type,
+                func.sum(
+                    func.coalesce(SleepDetails.sleep_total_duration_minutes * 60, EventRecord.duration_seconds, 0)
+                ).label("seconds"),
+                func.sum(SleepDetails.sleep_efficiency_score * EventRecord.duration_seconds).label("weighted"),
+                func.sum(case((has_efficiency, EventRecord.duration_seconds), else_=0)).label("weight"),
+            )
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == EventCategory.SLEEP,
+                _nap_condition(False),
+                EventRecord.end_datetime >= utc_midnight(first_day) - timedelta(days=1),
+                EventRecord.end_datetime < utc_midnight(last_day) + timedelta(days=2),
+                local_end >= first_day,
+                local_end <= last_day,
+            )
+            .group_by(
+                local_end, DataSource.provider, DataSource.source, DataSource.device_model, DataSource.device_type
+            )
+        )
+        return [
+            {
+                "recovery_date": row.day,
+                "provider": row.provider,
+                "source": row.source,
+                "device_model": row.device_model,
+                "device_type": row.device_type,
+                "sleep_duration_seconds": int(row.seconds) if row.seconds else None,
+                "sleep_efficiency_percent": float(row.weighted) / float(row.weight) if row.weight else None,
+            }
+            for row in rows
+        ]
+
+    @staticmethod
     def _sleep_physiology(
         db_session: DbSession, main_sleeps_by_key: dict[tuple, list[tuple[UUID, int]]]
     ) -> dict[tuple, dict[str, float | None]]:

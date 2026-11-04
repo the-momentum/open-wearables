@@ -375,6 +375,33 @@ class SeriesAggregateRepository:
 
         ``night_values`` fill the days a source holds no day row for: the providers that send a resting pulse
         or a night's HRV on the sleep, not on the day. With ``from_samples`` the samples fill what is left."""
+        found = self.day_values(db_session, user_id, types, first_day, last_day, night_values, from_samples)
+        rank_of = self._ranks(db_session, {source_id for values in found.values() for source_id, _ in values}, ranking)
+        averages: dict[SeriesType, float] = {}
+        for series_type, values in found.items():
+            by_day: dict[date, list[tuple[tuple[int, int], float]]] = defaultdict(list)
+            for (source_id, day), value in values.items():
+                by_day[day].append((rank_of[source_id], value))
+            day_values = []
+            for ranked in by_day.values():
+                best = min(rank for rank, _ in ranked)
+                tied = [value for rank, value in ranked if rank == best]
+                day_values.append(sum(tied) / len(tied))
+            if day_values:
+                averages[series_type] = sum(day_values) / len(day_values)
+        return averages
+
+    def day_values(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        night_values: dict[tuple[UUID, int, date], float] | None = None,
+        from_samples: bool = False,
+    ) -> dict[SeriesType, dict[tuple[UUID, date], float]]:
+        """Each series' value per data source and local day, picked as ``period_averages`` picks them."""
         found: dict[SeriesType, dict[tuple[UUID, date], float]] = defaultdict(dict)
         counted: list[tuple[SampleDay, date]] = []
         for row, day in self.day_rows_or_samples(db_session, user_id, types, first_day, last_day, from_samples):
@@ -390,21 +417,7 @@ class SeriesAggregateRepository:
             series_type = get_series_type_from_id(row.series_type_definition_id)
             if (value := day_value(row, series_type)) is not None:
                 found[series_type].setdefault((row.data_source_id, day), value)
-
-        rank_of = self._ranks(db_session, {source_id for values in found.values() for source_id, _ in values}, ranking)
-        averages: dict[SeriesType, float] = {}
-        for series_type, values in found.items():
-            by_day: dict[date, list[tuple[tuple[int, int], float]]] = defaultdict(list)
-            for (source_id, day), value in values.items():
-                by_day[day].append((rank_of[source_id], value))
-            day_values = []
-            for ranked in by_day.values():
-                best = min(rank for rank, _ in ranked)
-                tied = [value for rank, value in ranked if rank == best]
-                day_values.append(sum(tied) / len(tied))
-            if day_values:
-                averages[series_type] = sum(day_values) / len(day_values)
-        return averages
+        return found
 
     def latest_day_value(
         self, db_session: DbSession, user_id: UUID, series_type: SeriesType, since: date, ranking: SourceRanking

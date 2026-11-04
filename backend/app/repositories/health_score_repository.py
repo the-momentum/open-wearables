@@ -3,7 +3,7 @@ from typing import Any
 from typing import cast as typing_cast
 from uuid import UUID
 
-from sqlalchemy import Date, and_, cast, func, literal_column, or_, select, tuple_
+from sqlalchemy import Date, and_, cast, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
@@ -13,7 +13,6 @@ from app.repositories.repositories import CrudRepository, SourceRanking
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
 from app.utils.dates import as_utc
-from app.utils.pagination import decode_cursor
 
 
 def _utc_midnight(moment: datetime) -> datetime:
@@ -184,82 +183,31 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             .delete(synchronize_session=False)
         )
 
-    def get_recovery_summaries(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
-        cursor: str | None,
-        limit: int,
-        ranking: SourceRanking,
+    def get_recovery_scores(
+        self, db_session: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
     ) -> list[dict[str, Any]]:
-        """Get recovery health scores for a date range with cursor-based pagination.
-
-        Per date only the highest-priority source's earliest score is kept, picked before pagination
-        so a page holds `limit` dates however many sources scored each day.
-
-        Returns list of dicts with keys: recovery_date, provider, source, device_model,
-        device_type, record_id, recorded_at, recovery_score, resting_heart_rate,
-        hrv_rmssd_milli, spo2_percentage.
-        Fetches limit+1 rows so callers can detect has_more without a separate COUNT query.
-        Ordering matches get_sleep_summaries: ASC by default, DESC when paginating backward.
-        """
-        # Provider scores have no data_source, so the provider rank comes from the score itself
-        ranked = (
-            select(
-                HealthScore.id,
-                func.row_number()
-                .over(
-                    partition_by=cast(HealthScore.recorded_at, Date),
-                    order_by=(
-                        *ranking.order_terms(HealthScore.provider),
-                        HealthScore.recorded_at,
-                        HealthScore.id,
-                    ),
-                )
-                .label("source_rank"),
-            )
+        """Recovery scores recorded in [start_date, end_date), earliest first, keyed by their device's data
+        source, else by the scoring provider; with the metrics a provider sent in the components."""
+        rows = (
+            db_session.query(HealthScore, DataSource)
             .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
-            .where(
+            .filter(
                 HealthScore.user_id == user_id,
                 HealthScore.category == HealthScoreCategory.RECOVERY,
                 HealthScore.recorded_at >= start_date,
                 HealthScore.recorded_at < end_date,
             )
-            .subquery()
+            .order_by(HealthScore.recorded_at, HealthScore.id)
+            .all()
         )
-        # Outer join so scores without a data_source (older rows) still come back.
-        query = (
-            db_session.query(HealthScore, DataSource)
-            .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
-            .filter(HealthScore.id.in_(select(ranked.c.id).where(ranked.c.source_rank == 1)))
-        )
-
-        if cursor:
-            cursor_ts, cursor_id, direction = decode_cursor(cursor)
-            if direction == "prev":
-                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) < (cursor_ts, cursor_id)).order_by(
-                    HealthScore.recorded_at.desc(), HealthScore.id.desc()
-                )
-            else:
-                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) > (cursor_ts, cursor_id)).order_by(
-                    HealthScore.recorded_at.asc(), HealthScore.id.asc()
-                )
-        else:
-            query = query.order_by(HealthScore.recorded_at.asc(), HealthScore.id.asc())
-
-        rows = query.limit(limit + 1).all()
 
         return [
             {
-                "recovery_date": row.recorded_at.date(),
-                "provider": row.provider,
+                "recovery_date": row.recorded_at.astimezone(timezone.utc).date(),
+                "provider": data_source.provider if data_source else row.provider,
                 "source": data_source.source if data_source else None,
                 "device_model": data_source.device_model if data_source else None,
                 "device_type": data_source.device_type if data_source else None,
-                "record_id": row.id,
-                "recorded_at": row.recorded_at,
                 "recovery_score": int(row.value) if row.value is not None else None,
                 "resting_heart_rate": typing_cast(dict, row.components or {})
                 .get("resting_heart_rate", {})

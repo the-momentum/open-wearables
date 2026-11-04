@@ -1591,7 +1591,7 @@ class TestRecoverySummaryEndpoint:
     def test_returns_200_with_recovery_score(self, client: TestClient, db: Session) -> None:
         """Basic recovery record is returned with correct score and date."""
         user = UserFactory()
-        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        source = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source=ProviderName.WHOOP)
         recorded_at = datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc)
         HealthScoreFactory(
             data_source=source,
