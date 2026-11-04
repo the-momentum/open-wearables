@@ -1,6 +1,5 @@
 import json
 import uuid
-from logging import getLogger
 from typing import Annotated
 from uuid import UUID
 
@@ -18,11 +17,11 @@ from app.services.sync_status_service import get_sdk_sync_state
 from app.utils.api_utils import inline_schema_defs
 from app.utils.auth import SDKAuthDep
 from app.utils.sdk_request_metadata import sdk_request_metadata
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
-logger = getLogger(__name__)
 
 
 @router.post(
@@ -105,10 +104,8 @@ def sync_sdk_data(
     sleep_count = len(sleep) if isinstance(sleep, list) else 0
 
     # Log initial batch receipt with counts
-    log_structured(
-        logger,
-        "info",
-        f"{provider.capitalize()} sync batch received",
+    logger.info(
+        "SDK sync batch received",
         action=f"{provider}_sdk_batch_received",
         batch_id=batch_id,
         user_id=user_id,
@@ -135,24 +132,17 @@ def sync_sdk_data(
     if offload and payload_ref is None:
         # Fail loudly: falling back to an inline body is what fills the broker until Redis
         # hits maxmemory, and the SDK can retry the upload.
-        log_structured(
-            logger,
-            "error",
-            "Failed to persist SDK payload to S3; rejecting batch",
-            action="sdk_payload_persist_failed",
-            batch_id=batch_id,
-            user_id=user_id,
-            provider=provider,
-        )
         exc = HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Failed to persist payload; please retry.",
         )
-        log_and_capture_error(
-            exc,
-            logger,
+        logger.error(
             "Failed to persist SDK payload to S3; rejecting batch",
-            extra={"batch_id": batch_id, "user_id": user_id, "provider": provider},
+            exc_info=exc,
+            action="sdk_payload_persist_failed",
+            batch_id=batch_id,
+            user_id=user_id,
+            provider=provider,
         )
         raise exc
 

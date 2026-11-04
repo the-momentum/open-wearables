@@ -1,4 +1,3 @@
-from logging import Logger
 from uuid import UUID
 
 from fastapi import Request
@@ -8,6 +7,9 @@ from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
 from app.schemas.utils import FilterParams
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 type OptRequest = Request | None
 
@@ -24,17 +26,15 @@ class AppService[
         self,
         crud_model: type[CrudModelType],
         model: type[ModelType],
-        log: Logger,
         **kwargs,
     ):
         self.crud = crud_model(model)
         self.name = self.crud.model.__name__.lower()
-        self.logger = log
         super().__init__(**kwargs)
 
     def create(self, db_session: DbSession, creator: CreateSchemaType) -> ModelType:
         creation = self.crud.create(db_session, creator)
-        self.logger.debug(f"Created {self.name} with ID: {creation.id}.")  # ty:ignore[unresolved-attribute]
+        logger.debug("Created object", model=self.name, object_id=str(creation.id))  # ty:ignore[unresolved-attribute]
         return creation  # ty:ignore[invalid-return-type]
 
     @handle_exceptions
@@ -58,9 +58,9 @@ class AppService[
             raise ResourceNotFoundError(self.name, id_to_fetch)  # ty:ignore[invalid-argument-type]
 
         if fetched and print_log:
-            self.logger.debug(f"Fetched {self.name} with ID: {fetched.id}.")
+            logger.debug("Fetched object", model=self.name, object_id=str(fetched.id))
         elif not fetched:
-            self.logger.debug(f"{self.name} with ID: {object_id} not found.")
+            logger.debug("Object not found", model=self.name, object_id=str(object_id))
 
         return fetched
 
@@ -86,7 +86,12 @@ class AppService[
         if not fetched and raise_404:
             raise ResourceNotFoundError(self.name)
 
-        self.logger.debug(f"Fetched {len(fetched)} {self.name}s. Filters: {filter_params.filters}.")
+        logger.debug(
+            "Fetched objects",
+            model=self.name,
+            count=len(fetched),
+            filter_fields=sorted(filter_params.filters),
+        )
 
         return fetched
 
@@ -99,11 +104,11 @@ class AppService[
     ) -> ModelType | None:
         if originator := self.get(db_session, object_id, print_log=False, raise_404=raise_404):
             fetched = self.crud.update(db_session, originator, updater)
-            self.logger.debug(f"Updated {self.name} with ID: {fetched.id}.")
+            logger.debug("Updated object", model=self.name, object_id=str(fetched.id))
             return fetched
 
     def delete(self, db_session: DbSession, object_id: UUID | str | int, raise_404: bool = False) -> ModelType | None:
         if originator := self.get(db_session, object_id, print_log=False, raise_404=raise_404):
             deleted = self.crud.delete(db_session, originator)
-            self.logger.debug(f"Deleted {self.name} with ID: {deleted.id}.")
+            logger.debug("Deleted object", model=self.name, object_id=str(deleted.id))
             return deleted

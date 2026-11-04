@@ -5,8 +5,6 @@ must not hold the app back from starting. Until it completes, coverage starts at
 write after the deploy. Each tick after that ends on the data_migration check.
 """
 
-from logging import getLogger
-
 from celery import shared_task
 from sqlalchemy.orm import Session
 
@@ -15,9 +13,9 @@ from app.database import engine
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.schemas.sync_status import DataTypeKind
 from app.services.data_migration_service import data_migration_service
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 MIGRATION_NAME = "backfill_data_type_coverage"
 
@@ -41,9 +39,7 @@ def run_backfill(*, dry_run: bool = False) -> dict[DataTypeKind, int] | None:
 @shared_task(name=CeleryTask.BACKFILL_DATA_TYPE_COVERAGE, ignore_result=True)
 def backfill_data_type_coverage() -> None:
     if found := run_backfill():
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Data type coverage backfilled",
             task="backfill_data_type_coverage",
             series_spans=found[DataTypeKind.SERIES],

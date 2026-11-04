@@ -1,6 +1,5 @@
 """Authenticate Withings notifications, acknowledge them, and defer ingestion to Celery."""
 
-import logging
 from datetime import datetime, timedelta
 from secrets import compare_digest
 from typing import Any, assert_never
@@ -26,9 +25,9 @@ from app.services.providers.withings.data_247 import Withings247Data
 from app.services.providers.withings.handlers.applis import APPLI_DOMAIN, SUBSCRIBED_APPLIS, Domain
 from app.services.providers.withings.workouts import WithingsWorkouts
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _MAX_NOTIFY_WINDOW = timedelta(days=31)
 
@@ -201,9 +200,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
                 metadata={"domain": domain},
             )
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Withings webhook processed",
             provider="withings",
             appli=notification.appli,
@@ -258,9 +255,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
                     revoked_at=connection.updated_at.isoformat(),
                 )
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Withings profile change revoked local connections",
             provider="withings",
             action=notification.action,

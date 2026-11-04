@@ -11,7 +11,6 @@ profile already ours?" cannot be the plain ``==`` Oura uses — a rotated token 
 to still read as ours — hence the two comparisons below.
 """
 
-import logging
 from typing import Any, Literal
 from urllib.parse import urlencode, urlsplit, urlunsplit
 from uuid import UUID
@@ -31,10 +30,9 @@ from app.services.providers.templates.base_webhook_service import BaseWebhookSer
 from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.handlers.errors import WithingsTokenError
 from app.services.providers.withings.handlers.rpc_client import withings_request
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Shown against the profile in Withings' own UI.
 MANAGED_COMMENT = "open-wearables"
@@ -158,17 +156,15 @@ class WithingsWebhookService(BaseWebhookService):
                 )
                 results.append({"status": "dispatched", "user_id": user_id})
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    logger,
+                logger.error(
                     "Withings subscription fan-out failed to dispatch",
-                    extra={"provider": "withings", "user_id": user_id},
+                    exc_info=e,
+                    provider="withings",
+                    user_id=user_id,
                 )
                 results.append({"status": "error", "user_id": user_id, "error": str(e)})
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Withings subscription sync fanned out",
             provider="withings",
             action="notify_fan_out",
@@ -205,28 +201,16 @@ class WithingsWebhookService(BaseWebhookService):
         except WithingsTokenError as e:
             if e.invalid_grant:
                 # An invalid grant is terminal until the user reconnects.
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Withings notify sync skipped: refresh token invalid",
                     provider="withings",
                     user_id=str(user_id),
                 )
                 return [{"status": "skipped", "reason": "invalid_grant"}]
-            log_and_capture_error(
-                e,
-                logger,
-                "Withings notify list failed",
-                extra={"provider": "withings", "user_id": str(user_id)},
-            )
+            logger.error("Withings notify list failed", exc_info=e, provider="withings", user_id=str(user_id))
             return [{"status": "error", "error": str(e)}]
         except Exception as e:
-            log_and_capture_error(
-                e,
-                logger,
-                "Withings notify list failed",
-                extra={"provider": "withings", "user_id": str(user_id)},
-            )
+            logger.error("Withings notify list failed", exc_info=e, provider="withings", user_id=str(user_id))
             return [{"status": "error", "error": str(e)}]
 
         existing_by_appli: dict[int, list[WithingsNotifyProfile]] = {}
@@ -275,9 +259,7 @@ class WithingsWebhookService(BaseWebhookService):
                 profiles.append(WithingsNotifyProfile.model_validate(raw_profile))
             except ValidationError as exc:
                 callback_url = raw_profile.get("callbackurl") if isinstance(raw_profile, dict) else None
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Skipping invalid Withings notify profile",
                     provider="withings",
                     action="notify_profile_validation_failed",
@@ -317,10 +299,12 @@ class WithingsWebhookService(BaseWebhookService):
             )
             return {"appli": appli, "status": _APPLIED_STATUS[action]}
         except Exception as e:
-            log_and_capture_error(
-                e,
-                logger,
-                f"Withings {action} failed",
-                extra={"provider": "withings", "appli": appli, "user_id": str(user_id)},
+            logger.error(
+                "Withings subscription action failed",
+                exc_info=e,
+                provider="withings",
+                action=action,
+                appli=appli,
+                user_id=str(user_id),
             )
             return {"appli": appli, "status": "error", "error": str(e)}

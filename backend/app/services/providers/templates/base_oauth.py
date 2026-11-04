@@ -1,6 +1,5 @@
 import hashlib
 import json
-import logging
 import secrets
 from abc import ABC, abstractmethod
 from base64 import b64encode, urlsafe_b64encode
@@ -28,9 +27,9 @@ from app.schemas.model_crud.credentials import (
 from app.schemas.model_crud.user_management import UserConnectionCreate
 from app.services.outgoing_webhooks.events import on_connection_created, on_connection_revoked
 from app.utils.exceptions import ReauthRequiredError
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseOAuthTemplate(ABC):
@@ -91,9 +90,7 @@ class BaseOAuthTemplate(ABC):
             state_data.update(pkce_data)
         self.redis_client.setex(redis_key, self.state_ttl, json.dumps(state_data))
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "OAuth authorization URL generated",
             provider=self.provider_name,
             task="get_authorization_url",
@@ -107,9 +104,7 @@ class BaseOAuthTemplate(ABC):
         oauth_state, code_verifier = self._validate_state(state)
 
         if oauth_state.provider != self.provider_name:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Provider mismatch in OAuth state",
                 provider=self.provider_name,
                 task="handle_callback",
@@ -124,9 +119,7 @@ class BaseOAuthTemplate(ABC):
 
         self._save_connection(db, oauth_state.user_id, token_response, user_info, oauth_state)
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "OAuth callback handled successfully",
             provider=self.provider_name,
             task="handle_callback",
@@ -165,9 +158,7 @@ class BaseOAuthTemplate(ABC):
                     token_response.expires_in,
                 )
 
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "OAuth token refreshed successfully",
                 provider=self.provider_name,
                 task="refresh_access_token",
@@ -177,14 +168,13 @@ class BaseOAuthTemplate(ABC):
             return token_response
 
         except httpx.HTTPStatusError as e:
-            log_structured(
-                logger,
-                "error",
-                f"Failed to refresh OAuth token: {e.response.text}",
+            logger.error(
+                "Failed to refresh OAuth token",
                 provider=self.provider_name,
                 task="refresh_access_token",
                 user_id=str(user_id),
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
             # 400/401 = refresh token is dead so revoke + notify
             if e.response.status_code in (HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED):
@@ -197,13 +187,12 @@ class BaseOAuthTemplate(ABC):
                 )
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=f"Failed to refresh token: {e.response.text}")
         except Exception as e:
-            log_structured(
-                logger,
-                "warning",
-                f"OAuth token refresh failed: {e}",
+            logger.warning(
+                "OAuth token refresh failed",
                 provider=self.provider_name,
                 task="refresh_access_token",
                 user_id=str(user_id),
+                error=str(e),
             )
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token refresh failed: {str(e)}")
 
@@ -213,9 +202,7 @@ class BaseOAuthTemplate(ABC):
         if not connection or connection.status == ConnectionStatus.REVOKED:
             return
         self.connection_repo.mark_as_revoked(db, connection)
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Connection revoked",
             action="connection_revoked",
             reason=reason,
@@ -303,25 +290,23 @@ class BaseOAuthTemplate(ABC):
             response.raise_for_status()
             return OAuthTokenResponse.model_validate(response.json())
         except httpx.HTTPStatusError as e:
-            log_structured(
-                logger,
-                "error",
-                f"Failed to exchange authorization code: {e.response.text}",
+            logger.error(
+                "Failed to exchange authorization code",
                 provider=self.provider_name,
                 task="exchange_token",
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=f"Failed to exchange authorization code: {e.response.text}",
             )
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
-                f"Token exchange failed: {e}",
+            logger.error(
+                "Token exchange failed",
                 provider=self.provider_name,
                 task="exchange_token",
+                error=str(e),
             )
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token exchange failed: {str(e)}")
 
@@ -374,9 +359,7 @@ class BaseOAuthTemplate(ABC):
 
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Notify provider that user is disconnecting. Override in subclasses that support deregistration."""
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Deregistering not supported",
             provider=self.provider_name,
             action="deregister_user",

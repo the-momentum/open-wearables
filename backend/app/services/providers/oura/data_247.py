@@ -50,7 +50,9 @@ from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import energy_difference, seconds_to_minutes
 from app.utils.dates import offset_of, offset_to_iso, parse_iso_datetime, to_rfc3339
-from app.utils.structured_logging import LogContext, log_structured
+from app.utils.structured_logging import LogContext, get_logger
+
+logger = get_logger(__name__)
 
 
 class Oura247Data(Base247DataTemplate):
@@ -122,9 +124,7 @@ class Oura247Data(Base247DataTemplate):
                     break
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     "Error fetching endpoint",
                     action="oura_api_fetch_error",
                     endpoint=endpoint,
@@ -132,9 +132,7 @@ class Oura247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
                 if all_data:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Returning partial data due to error",
                         action="oura_api_partial_data",
                         endpoint=endpoint,
@@ -366,9 +364,7 @@ class Oura247Data(Base247DataTemplate):
                         )
                     )
                 except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Failed to save activity metric",
                         action="oura_activity_save_error",
                         metric=key,
@@ -453,9 +449,7 @@ class Oura247Data(Base247DataTemplate):
                     )
                 )
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Failed to save cardiovascular age data",
                     action="oura_cardiovascular_age_save_error",
                     error=str(e),
@@ -605,9 +599,7 @@ class Oura247Data(Base247DataTemplate):
                             )
                         )
                     except Exception as e:
-                        log_structured(
-                            self.logger,
-                            "warning",
+                        logger.warning(
                             "Failed to save readiness metric",
                             action="oura_readiness_save_error",
                             field=field_name,
@@ -765,9 +757,7 @@ class Oura247Data(Base247DataTemplate):
                     end_dt = end_time
 
             if not start_dt or not end_dt:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Skipping sleep record: missing start/end time",
                     action="oura_sleep_skip",
                     sleep_id=str(sleep_id),
@@ -828,9 +818,7 @@ class Oura247Data(Base247DataTemplate):
                 count += 1
             except Exception as e:
                 db.rollback()
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     "Error saving sleep record",
                     action="oura_sleep_save_error",
                     sleep_id=str(sleep_id),
@@ -872,9 +860,7 @@ class Oura247Data(Base247DataTemplate):
                         timeseries_service.bulk_create_samples(db, samples)
                         db.commit()
                 except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Failed to save interval timeseries",
                         action=action,
                         sleep_id=str(sleep_id),
@@ -907,11 +893,10 @@ class Oura247Data(Base247DataTemplate):
                         )
                         db.commit()
                     except Exception as e:
-                        log_structured(
-                            self.logger,
-                            "warning",
-                            f"Failed to save {series_type.value}",
+                        logger.warning(
+                            "Failed to save sleep scalar series",
                             action=f"oura_{series_type.value}_save_error",
+                            series_type=series_type.value,
                             sleep_id=str(sleep_id),
                             error=str(e),
                             user_id=str(user_id),
@@ -1047,9 +1032,7 @@ class Oura247Data(Base247DataTemplate):
                         )
                     )
                 except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Failed to save SpO2 data",
                         action="oura_spo2_save_error",
                         error=str(e),
@@ -1073,9 +1056,7 @@ class Oura247Data(Base247DataTemplate):
                         )
                     )
                 except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Failed to save breathing disturbance index",
                         action="oura_bdi_save_error",
                         error=str(e),
@@ -1146,9 +1127,7 @@ class Oura247Data(Base247DataTemplate):
                     )
                 )
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Failed to save HR sample",
                     action="oura_hr_save_error",
                     error=str(e),
@@ -1186,9 +1165,7 @@ class Oura247Data(Base247DataTemplate):
                 "height": personal_info.height,
             }
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to normalize personal info",
                 action="oura_personal_info_normalization_error",
                 error=str(e),
@@ -1301,9 +1278,7 @@ class Oura247Data(Base247DataTemplate):
                     )
                 )
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Failed to save Vo2 data",
                     action="oura_vo2_save_error",
                     error=str(e),

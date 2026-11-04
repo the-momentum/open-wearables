@@ -492,9 +492,9 @@ class TestGarmin247Data:
 
         assert [sample["value"] for sample in normalized["steps"]] == [420]
 
-    @patch("app.services.providers.garmin.data_247.log_and_capture_error")
+    @patch("app.services.providers.garmin.data_247.logger")
     def test_normalize_epochs_reports_skipped_epochs_once(
-        self, mock_capture: MagicMock, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+        self, mock_logger: MagicMock, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
     ) -> None:
         """Malformed epochs are reported once per call, with how many were skipped."""
         broken = [
@@ -503,8 +503,8 @@ class TestGarmin247Data:
 
         garmin_247.normalize_epochs([*mixed_slot_epochs, *broken], uuid4())
 
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.kwargs["extra"]["skipped"] == 3
+        mock_logger.error.assert_called_once()
+        assert mock_logger.error.call_args.kwargs["skipped"] == 3
 
     def test_normalize_epochs_skips_a_non_numeric_metric(
         self, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]

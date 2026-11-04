@@ -63,8 +63,9 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import seconds_to_minutes
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 _T = TypeVar("_T", bound=BaseModel)
 
@@ -155,8 +156,8 @@ class Polar247Data(Base247DataTemplate):
         try:
             return schema.model_validate(raw)
         except ValidationError as e:
-            log_structured(
-                self.logger, "warning", f"Polar {context} validation error: {e}", provider="polar", user_id=str(user_id)
+            logger.warning(
+                "Polar validation error", provider="polar", context=context, user_id=str(user_id), error=str(e)
             )
             return None
 
@@ -247,12 +248,11 @@ class Polar247Data(Base247DataTemplate):
             if (parsed := self._parse(raw, SleepJSON, user_id, "sleep")) is None:
                 continue
             if not parsed.date or not parsed.sleep_start_time or not parsed.sleep_end_time:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Polar sleep record missing date or start/end time: {parsed.date}",
+                logger.warning(
+                    "Sleep record missing date or start/end time",
                     provider="polar",
                     user_id=str(user_id),
+                    date=parsed.date,
                 )
                 continue
 
@@ -399,12 +399,20 @@ class Polar247Data(Base247DataTemplate):
             try:
                 points.append((datetime.fromisoformat(sample.timestamp), sample.steps))
             except ValueError:
-                self.logger.warning("Skipping Polar step sample with an unreadable timestamp")
+                logger.warning(
+                    "Skipping Polar step sample with an unreadable timestamp",
+                    provider="polar",
+                    user_id=str(user_id),
+                )
         points.sort()
         counts = _expand_repeated_steps(points, timedelta(milliseconds=steps.interval_ms))
         if sum(counts.values()) > steps.total_steps:
             # A gap that is not a run of repeats, e.g. the device stopped; keep only what was sent.
-            self.logger.warning("Polar step samples exceed the day's total once expanded; storing them as sent")
+            logger.warning(
+                "Polar step samples exceed the day's total once expanded; storing them as sent",
+                provider="polar",
+                user_id=str(user_id),
+            )
             counts = dict(points)
         return [
             TimeSeriesSampleCreate(
@@ -1003,11 +1011,10 @@ class Polar247Data(Base247DataTemplate):
                 return {"circadian_bedtime": self._save_scores(db, self.normalize_circadian_bedtime([raw], user_id))}
 
             case _:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Targeted webhook fetch not implemented for event type: {event_type}",
+                logger.warning(
+                    "Targeted webhook fetch not implemented for event type",
                     provider="polar",
+                    event_type=str(event_type),
                 )
                 return {}
 
@@ -1055,11 +1062,12 @@ class Polar247Data(Base247DataTemplate):
                     scores.append(score.model_copy(update={"event_record_id": stored.id}))
                 hr_samples.extend(hr)
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    self.logger,
+                logger.error(
                     "Failed to save Polar sleep record",
-                    extra={"provider": "polar", "task": "_save_sleep", "user_id": str(user_id)},
+                    exc_info=e,
+                    provider="polar",
+                    task="_save_sleep",
+                    user_id=str(user_id),
                 )
 
         self._save_scores(db, scores)

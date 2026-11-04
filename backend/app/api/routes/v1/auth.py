@@ -1,4 +1,3 @@
-from logging import getLogger
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,10 +10,10 @@ from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdat
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.config_utils import EnvironmentType
 from app.utils.security import create_access_token, verify_password
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 router = APIRouter()
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _password_change_prompt(password: str) -> PasswordChangePrompt | None:
@@ -36,11 +35,8 @@ def login(
     # that only allows a password change, since whoever logs in first could set their own.
     # Checked before the account lookup so the response does not reveal who still uses it.
     if settings.environment == EnvironmentType.PRODUCTION and form_data.password == DEFAULT_ADMIN_PASSWORD:
-        log_structured(
-            logger,
-            "warning",
-            "Rejected a production login with the default admin password",
-            action="default_admin_password_login_refused",
+        logger.warning(
+            "Rejected a production login with the default admin password", action="default_admin_password_login_refused"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

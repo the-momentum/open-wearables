@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from logging import Logger, getLogger
 from typing import Any
 from uuid import UUID
 
@@ -55,6 +54,9 @@ from app.services.services import AppService
 from app.utils.context import current_sync_payload
 from app.utils.exceptions import ReconcileWindowTooLargeError, handle_exceptions
 from app.utils.pagination import decode_date_cursor, encode_bucket_cursor, encode_cursor, encode_date_cursor
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _best_per_bucket(samples: list[AggregatedSample], ranking: SourceRanking) -> list[AggregatedSample]:
@@ -257,8 +259,8 @@ class TimeSeriesService(
 ):
     """Coordinated access to unified device time series samples."""
 
-    def __init__(self, log: Logger):
-        super().__init__(crud_model=DataPointSeriesRepository, model=SeriesSample, log=log)
+    def __init__(self):
+        super().__init__(crud_model=DataPointSeriesRepository, model=SeriesSample)
         self.series_aggregate_repo = SeriesAggregateRepository()
 
     def bulk_create_samples(
@@ -327,7 +329,7 @@ class TimeSeriesService(
                     sync=sync,
                 )
         except Exception:
-            getLogger(__name__).warning("Failed to emit timeseries webhooks", exc_info=True)
+            logger.warning("Failed to emit timeseries webhooks", exc_info=True)
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
@@ -644,9 +646,9 @@ class TimeSeriesService(
         if queued:
             try:
                 rollup_queue.queue_reconcile_days((user_id, day) for day in days)
-            except Exception:
+            except Exception as exc:
                 # Queueing only saves a later read the merge; this read merges the days itself all the same.
-                self.logger.warning("Reconcile: could not queue merged days to be stored", exc_info=True)
+                logger.warning("Reconcile could not queue merged days to be stored", exc_info=exc)
                 queued = False
         if len(days) > settings.reconcile_on_the_fly_max_days:
             raise ReconcileWindowTooLargeError(len(days), settings.reconcile_on_the_fly_max_days, queued)
@@ -751,4 +753,4 @@ class TimeSeriesService(
         return _page(data, params, has_more, next_cursor, previous_cursor, total_count)
 
 
-timeseries_service = TimeSeriesService(log=getLogger(__name__))
+timeseries_service = TimeSeriesService()
