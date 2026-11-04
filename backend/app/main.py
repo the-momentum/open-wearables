@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import logging
 import sys
 from collections.abc import AsyncGenerator, Mapping, Sequence
@@ -17,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
+from app.api.routes.v1.auth import login
 from app.config import settings
 from app.extensions import mount_routers
 from app.integrations.celery import create_celery
@@ -34,6 +36,7 @@ from app.utils.exceptions import (
     UpstreamError,
     app_error_from_integrity_error,
     describe_integrity_error,
+    status_code_name,
 )
 from app.utils.logging_setup import configure_logging
 from app.utils.problem import (
@@ -41,7 +44,6 @@ from app.utils.problem import (
     VALIDATION_ERROR,
     add_problem_responses,
     problem_response,
-    status_code_name,
 )
 from app.utils.structured_logging import get_logger
 
@@ -153,9 +155,15 @@ def _problem(
     code: str,
     headers: Mapping[str, str] | None = None,
     errors: list[ValidationErrorItem] | None = None,
+    extensions: Mapping[str, Any] | None = None,
 ) -> Response:
     _capture_error_body(request, status_code, detail)
-    return problem_response(status_code, detail, code, headers, errors)
+    return problem_response(status_code, detail, code, headers, errors, extensions)
+
+
+def _is_login(route: object) -> bool:
+    """The login form: its validation errors are answered as a failed login, never a 422."""
+    return getattr(route, "endpoint", None) is login
 
 
 def _location(loc: Sequence[str | int]) -> str:
@@ -165,7 +173,7 @@ def _location(loc: Sequence[str | int]) -> str:
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> Response:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
-    if request.url.path.endswith("/auth/login"):
+    if _is_login(request.scope.get("route")):
         return _problem(
             request,
             status.HTTP_401_UNAUTHORIZED,
@@ -194,7 +202,7 @@ async def app_error_handler(request: Request, exc: AppError) -> Response:
     if not exc.is_client_error and not isinstance(exc, UpstreamError | ConfigurationError):
         raise exc  # unhandled → the catch-all 500, the traceback in the access log and Sentry
     _record_cause(request, exc)  # its type in the access log; the detail is the response body anyway
-    return _problem(request, exc.status_code, exc.detail, exc.code, exc.headers)
+    return _problem(request, exc.status_code, exc.detail, exc.code, exc.headers, extensions=exc.extensions)
 
 
 @api.exception_handler(IntegrityError)
@@ -236,7 +244,9 @@ async def http_exception_handler_with_body_log(request: Request, exc: StarletteH
         cause = exc.__context__
     if cause is not None:
         _record_cause(request, cause)
-    return _problem(request, exc.status_code, str(exc.detail), status_code_name(exc.status_code), exc.headers)
+    # FastAPI allows any JSON value as detail: serialize it rather than print a Python repr
+    detail = exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail, default=str)
+    return _problem(request, exc.status_code, detail, status_code_name(exc.status_code), exc.headers)
 
 
 api.include_router(head_router)
@@ -246,10 +256,7 @@ mount_routers(api, settings.api_v1, API_KEY_REQUIRED)
 def _openapi() -> dict[str, Any]:
     if not api.openapi_schema:
         schema = FastAPI.openapi(api)
-        # the login form's validation errors are answered as a failed login, never a 422
-        for path, operations in schema["paths"].items():
-            if path.endswith("/auth/login"):
-                operations["post"]["responses"].pop("422", None)
+        schema["paths"][api.url_path_for(login.__name__)]["post"]["responses"].pop("422", None)
         api.openapi_schema = add_problem_responses(schema)
     return api.openapi_schema
 

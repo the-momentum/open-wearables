@@ -64,7 +64,7 @@ response = httpx.post(
 if response.is_error:
     problem = response.json()
     match problem["code"]:
-        case "PROVIDER_NOT_CONNECTED" | "PROVIDER_REAUTHORIZATION_REQUIRED":
+        case "PROVIDER_NOT_CONNECTED" | "REAUTH_REQUIRED":
             print("Send the user through the OAuth flow again")
         case "PROVIDER_ERROR" | "PROVIDER_RATE_LIMITED":
             print("Provider trouble, retry later:", problem["detail"])
@@ -93,7 +93,7 @@ if (!response.ok) {
   const problem: Problem = await response.json();
   switch (problem.code) {
     case "PROVIDER_NOT_CONNECTED":
-    case "PROVIDER_REAUTHORIZATION_REQUIRED":
+    case "REAUTH_REQUIRED":
       console.log("Send the user through the OAuth flow again");
       break;
     case "VALIDATION_ERROR":
@@ -117,14 +117,16 @@ An error that needs no code of its own has the name of its HTTP status: `BAD_REQ
 | `VALIDATION_ERROR` | 422 | The request has an invalid or missing parameter or body field |
 | `INVALID_CURSOR` | 400 | The pagination `cursor` is malformed |
 | `INVALID_DATETIME` | 400 | A date parameter is neither ISO 8601 nor a Unix timestamp |
+| `RECONCILE_TOO_MANY_DAYS` | 400 | A `source_selection=reconcile` period needs more days merged than the server allows; `days`, `max_days` and `queued` say by how much |
 | `UNSUPPORTED_PROVIDER` | 400 | The provider does not support this operation |
 | `PROVIDER_TOKEN_UNAVAILABLE` | 400 | The user's connection has no API token (an SDK-based provider) |
 | `INVITATION_EXPIRED` | 400 | The developer invitation has expired |
 | `INVITATION_ALREADY_ACCEPTED` | 400 | The developer invitation has already been used |
 | `INVITATION_WITHDRAWN` | 400 | The developer invitation was revoked, or its email was never delivered |
 | `PROVIDER_NOT_CONNECTED` | 404 | The user has not connected this provider |
-| `PROVIDER_REAUTHORIZATION_REQUIRED` | 409 | The user's grant expired or was revoked; they must reconnect |
+| `REAUTH_REQUIRED` | 409 | The user's grant is dead and the connection revoked; they must reconnect |
 | `PROVIDER_ERROR` | 502 | The provider's API failed or did not respond |
+| `PROVIDER_AUTH_REJECTED` | 502 | The provider rejected the user's token for this request, often data the user did not consent to; the connection stays active |
 | `PROVIDER_RATE_LIMITED` | 503 | The provider kept rate-limiting the request after retries |
 | `CONFIGURATION_ERROR` | 503 | The deployment is missing a setting the request needs (storage, credentials) |
 | `INTERNAL_ERROR` | 500 | An unexpected server error |
@@ -269,7 +271,7 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
   "title": "Conflict",
   "status": 409,
   "detail": "Garmin authorization expired or was revoked; the user must reconnect.",
-  "code": "PROVIDER_REAUTHORIZATION_REQUIRED"
+  "code": "REAUTH_REQUIRED"
 }
 ```
 

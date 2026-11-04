@@ -10,26 +10,16 @@ from fastapi.utils import is_body_allowed_for_status_code
 from pydantic.json_schema import models_json_schema
 
 from app.schemas.utils.problem import Problem, ValidationErrorItem, ValidationProblem
+from app.utils.exceptions import status_code_name
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 
 VALIDATION_ERROR = "VALIDATION_ERROR"
-# not HTTPStatus' INTERNAL_SERVER_ERROR: it names our failure, whatever status carries it
-INTERNAL_ERROR = "INTERNAL_ERROR"
+INTERNAL_ERROR = status_code_name(500)
 
 
 class ProblemResponse(JSONResponse):
     media_type = PROBLEM_MEDIA_TYPE
-
-
-def status_code_name(status_code: int) -> str:
-    """The ``code`` of an error that has none of its own (an ``HTTPException``): the status' name."""
-    if status_code == HTTPStatus.INTERNAL_SERVER_ERROR:
-        return INTERNAL_ERROR
-    try:
-        return HTTPStatus(status_code).name
-    except ValueError:
-        return f"HTTP_{status_code}"
 
 
 def _title(status_code: int) -> str:
@@ -45,12 +35,15 @@ def problem_response(
     code: str,
     headers: Mapping[str, str] | None = None,
     errors: list[ValidationErrorItem] | None = None,
+    extensions: Mapping[str, Any] | None = None,
 ) -> Response:
     if not is_body_allowed_for_status_code(status_code):
         return Response(status_code=status_code, headers=headers)
     fields = {"title": _title(status_code), "status": status_code, "detail": detail, "code": code}
     problem = Problem(**fields) if errors is None else ValidationProblem(**fields, errors=errors)
-    return ProblemResponse(problem.model_dump(), status_code=status_code, headers=headers)
+    # extensions never replace the standard members
+    body = {**(extensions or {}), **problem.model_dump()}
+    return ProblemResponse(body, status_code=status_code, headers=headers)
 
 
 def problem_doc(status_code: int, description: str, detail: str, code: str | None = None) -> dict[int, Any]:
@@ -94,6 +87,16 @@ def add_problem_responses(schema: dict[str, Any]) -> dict[str, Any]:
                 response["content"] = {
                     PROBLEM_MEDIA_TYPE: {"schema": {"$ref": ref.format(model=model.__name__)}, **entry}
                 }
+
+    # Every other 4xx/5xx a route can answer (404, 409, 502, …) has the same shape
+    problem_ref = {"$ref": ref.format(model=Problem.__name__)}
+    for path in schema.get("paths", {}).values():
+        for operation in path.values():
+            responses = operation.setdefault("responses", {})
+            for status, description in (("4XX", "Client error"), ("5XX", "Server error")):
+                responses.setdefault(
+                    status, {"description": description, "content": {PROBLEM_MEDIA_TYPE: {"schema": problem_ref}}}
+                )
 
     components.pop("HTTPValidationError", None)
     components.pop("ValidationError", None)

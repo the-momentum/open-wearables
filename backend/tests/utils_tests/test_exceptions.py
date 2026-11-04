@@ -2,6 +2,8 @@
 Tests for the domain exceptions and the IntegrityError translation.
 """
 
+import re
+from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -10,6 +12,7 @@ from psycopg.errors import ForeignKeyViolation, NotNullViolation, UniqueViolatio
 from sqlalchemy.exc import DataError, IntegrityError, StatementError
 
 from app.utils.exceptions import (
+    STATUS_CODE_NAMES,
     AppError,
     AuthenticationError,
     ConfigurationError,
@@ -217,3 +220,28 @@ class TestPublicErrorText:
 
     def test_other_errors_keep_their_message(self) -> None:
         assert public_error_text(ValueError("bad payload")) == "bad payload"
+
+
+def _app_errors(cls: type[AppError] = AppError) -> list[type[AppError]]:
+    return [cls, *(sub for direct in cls.__subclasses__() for sub in _app_errors(direct))]
+
+
+class TestErrorCodes:
+    """Codes are part of the API contract: one source, every specific one documented."""
+
+    def test_a_class_with_a_status_and_no_code_gets_the_status_name(self) -> None:
+        class GoneError(AppError):
+            status_code = 410
+
+        assert GoneError.code == "HTTP_410"
+        assert NotFoundError.code == "NOT_FOUND"
+
+    def test_every_specific_code_is_in_the_docs_table(self) -> None:
+        table = (Path(__file__).parents[3] / "docs/api-reference/guides/error-handling.mdx").read_text()
+        documented = set(re.findall(r"^\| `([A-Z_]+)` \|", table, re.M))
+        # HTTP_<status>: a class defined in a test; WEBHOOK_VERIFICATION_FAILED goes to providers, not clients
+        codes = {cls.code for cls in _app_errors() if not cls.code.startswith("HTTP_")}
+        specific = codes - set(STATUS_CODE_NAMES.values()) - {"WEBHOOK_VERIFICATION_FAILED"}
+
+        assert specific - documented == set()
+        assert documented - specific - {"VALIDATION_ERROR", "INTERNAL_ERROR"} == set()
