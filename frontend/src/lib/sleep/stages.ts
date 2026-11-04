@@ -34,11 +34,13 @@ export function stageLanes(
 	intervals: StageInterval[],
 	describe: (span: StageInterval, seconds: number) => string
 ): StageLane[] {
-	// A night stored twice holds each interval twice; one copy is enough to draw
+	// A night stored twice holds each interval twice; one copy is enough to draw. Compared as
+	// instants, as the chart keys them, so a copy written with another offset matches too
+	const instant = (iso: string) => new Date(iso).getTime();
 	const uniqueIntervals = [
 		...new Map(
 			intervals.map((interval) => [
-				`${interval.stage}|${interval.start_time}|${interval.end_time}`,
+				`${interval.stage}|${instant(interval.start_time)}|${instant(interval.end_time)}`,
 				interval
 			])
 		).values()
@@ -51,8 +53,8 @@ export function stageLanes(
 		spans: uniqueIntervals
 			.filter((interval) => interval.stage === stage)
 			.map((interval) => {
-				const start = new Date(interval.start_time).getTime();
-				const end = new Date(interval.end_time).getTime();
+				const start = instant(interval.start_time);
+				const end = instant(interval.end_time);
 				return { start, end, title: describe(interval, Math.round((end - start) / 1000)) };
 			})
 	})).filter((lane) => lane.spans.length > 0);

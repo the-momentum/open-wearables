@@ -44,6 +44,17 @@ describe('stageLanes', () => {
 		expect(lanes.find((lane) => lane.key === 'light')?.spans).toHaveLength(1);
 	});
 
+	it('counts an interval written with another offset once', () => {
+		const utc = interval('light', '23:00', '23:30');
+		const shifted = {
+			...utc,
+			start_time: '2026-09-21T01:00:00+02:00',
+			end_time: '2026-09-21T01:30:00+02:00'
+		};
+		const lanes = stageLanes([utc, shifted], () => '');
+		expect(lanes.find((lane) => lane.key === 'light')?.spans).toHaveLength(1);
+	});
+
 	it('describes a span with the seconds it lasted', () => {
 		const seconds: number[] = [];
 		stageLanes([interval('deep', '23:30', '23:50')], (_, length) => {
