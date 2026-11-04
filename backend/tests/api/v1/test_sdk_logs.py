@@ -8,7 +8,7 @@ from starlette.testclient import TestClient
 from app.api.routes.v1.sdk_logs import _event_fields
 from app.schemas.enums import SeriesType
 from app.schemas.providers.mobile_sdk import SDKLogRequest
-from app.services.sdk_token_service import create_sdk_user_token
+from app.utils.security import create_access_token
 from tests.factories import ApiKeyFactory
 
 USER_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -248,7 +248,7 @@ class TestSDKLogsEventFields:
 class TestSDKLogsAuth:
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_sdk_token_accepted(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
-        token = create_sdk_user_token("app_123", USER_ID)
+        token = create_access_token(subject=USER_ID, scope="sdk", app_id="app_123")
         response = client.post(
             _url(),
             headers={"Authorization": f"Bearer {token}"},
@@ -275,7 +275,7 @@ class TestSDKLogsAuth:
 
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_token_user_id_mismatch_returns_403(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
-        token = create_sdk_user_token("app_123", "00000000-0000-0000-0000-000000000000")
+        token = create_access_token(subject="00000000-0000-0000-0000-000000000000", scope="sdk", app_id="app_123")
         response = client.post(
             _url(),
             headers={"Authorization": f"Bearer {token}"},

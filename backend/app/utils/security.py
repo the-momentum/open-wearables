@@ -7,14 +7,33 @@ from jose import jwt
 
 from app.config import settings
 
+RESERVED_CLAIMS = frozenset({"sub", "exp"})
 
-def create_access_token(subject: str | Any, expires_delta: timedelta | None = None) -> str:
+
+def create_access_token(
+    subject: str | Any,
+    expires_delta: timedelta | None = None,
+    **extra_claims: Any,
+) -> str:
+    """Create a signed JWT for `subject`, expiring after `expires_delta`.
+
+    Developer tokens carry only `sub` and `exp`. SDK user tokens add
+    `scope="sdk"` and `app_id=<application id>` through `extra_claims`;
+    `app.utils.auth` reads those two claims to route the request.
+
+    `sub` and `exp` always come from the arguments: passing them as extra
+    claims is a programming error and raises.
+    """
+    reserved = RESERVED_CLAIMS.intersection(extra_claims)
+    if reserved:
+        raise ValueError(f"Reserved JWT claims cannot be overridden: {', '.join(sorted(reserved))}")
+
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
 
-    to_encode = {"exp": expire, "sub": str(subject)}
+    to_encode = {**extra_claims, "exp": expire, "sub": str(subject)}
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 

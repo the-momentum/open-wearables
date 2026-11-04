@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
-from app.services.sdk_token_service import create_sdk_user_token
+from app.utils.security import create_access_token
 from tests.factories import ApiKeyFactory, DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -28,7 +28,7 @@ class TestSDKSyncWithSDKToken:
     ) -> None:
         """SDK token should be accepted for apple-health-sdk sync."""
         user_id = "123e4567-e89b-12d3-a456-426614174000"
-        token = create_sdk_user_token("app_123", user_id)
+        token = create_access_token(subject=user_id, scope="sdk", app_id="app_123")
 
         response = client.post(
             f"{api_v1_prefix}/sdk/users/{user_id}/sync/",
@@ -93,7 +93,7 @@ class TestSDKTokenBlockedElsewhere:
 
     def test_sdk_token_rejected_on_auth_me(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """SDK token should be rejected on /auth/me."""
-        token = create_sdk_user_token("app_123", "user_456")
+        token = create_access_token(subject="user_456", scope="sdk", app_id="app_123")
 
         response = client.get(
             f"{api_v1_prefix}/auth/me",
@@ -104,7 +104,7 @@ class TestSDKTokenBlockedElsewhere:
 
     def test_sdk_token_rejected_on_dashboard(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """SDK token should be rejected on dashboard endpoints."""
-        token = create_sdk_user_token("app_123", "user_456")
+        token = create_access_token(subject="user_456", scope="sdk", app_id="app_123")
 
         response = client.get(
             f"{api_v1_prefix}/dashboard/stats",
@@ -115,7 +115,7 @@ class TestSDKTokenBlockedElsewhere:
 
     def test_sdk_token_rejected_on_applications(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """SDK token should be rejected on applications endpoints."""
-        token = create_sdk_user_token("app_123", "user_456")
+        token = create_access_token(subject="user_456", scope="sdk", app_id="app_123")
 
         response = client.get(
             f"{api_v1_prefix}/applications",
@@ -126,7 +126,7 @@ class TestSDKTokenBlockedElsewhere:
 
     def test_sdk_token_rejected_on_api_keys(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """SDK token should be rejected on API keys endpoints."""
-        token = create_sdk_user_token("app_123", "user_456")
+        token = create_access_token(subject="user_456", scope="sdk", app_id="app_123")
 
         response = client.get(
             f"{api_v1_prefix}/developer/api-keys",
@@ -137,7 +137,7 @@ class TestSDKTokenBlockedElsewhere:
 
     def test_sdk_token_rejected_on_users_list(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """SDK token should be rejected on users list endpoint."""
-        token = create_sdk_user_token("app_123", "user_456")
+        token = create_access_token(subject="user_456", scope="sdk", app_id="app_123")
 
         response = client.get(
             f"{api_v1_prefix}/users",
