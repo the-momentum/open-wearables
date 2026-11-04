@@ -9,10 +9,11 @@ from sqlalchemy.dialects.postgresql import insert
 from app.database import DbSession
 from app.models import DataSource, HealthScore, SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
+from app.repositories.local_day import OFFSET_REACH, utc_midnight
 from app.repositories.repositories import CrudRepository, SourceRanking
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
-from app.utils.dates import as_utc
+from app.utils.dates import as_utc, local_date
 
 
 def _utc_midnight(moment: datetime) -> datetime:
@@ -184,18 +185,18 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         )
 
     def get_recovery_scores(
-        self, db_session: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
+        self, db_session: DbSession, user_id: UUID, first_day: date, last_day: date
     ) -> list[dict[str, Any]]:
-        """Recovery scores recorded in [start_date, end_date), earliest first, keyed by their device's data
-        source, else by the scoring provider; with the metrics a provider sent in the components."""
+        """Recovery scores of the local days from ``first_day`` to ``last_day``, earliest first, keyed by their
+        device's data source, else by the scoring provider; with the metrics a provider sent in the components."""
         rows = (
             db_session.query(HealthScore, DataSource)
             .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
             .filter(
                 HealthScore.user_id == user_id,
                 HealthScore.category == HealthScoreCategory.RECOVERY,
-                HealthScore.recorded_at >= start_date,
-                HealthScore.recorded_at < end_date,
+                HealthScore.recorded_at >= utc_midnight(first_day) - OFFSET_REACH,
+                HealthScore.recorded_at < utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
             )
             .order_by(HealthScore.recorded_at, HealthScore.id)
             .all()
@@ -203,7 +204,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
 
         return [
             {
-                "recovery_date": row.recorded_at.astimezone(timezone.utc).date(),
+                "recovery_date": local_date(row.recorded_at, row.zone_offset),
                 "provider": data_source.provider if data_source else row.provider,
                 "source": data_source.source if data_source else None,
                 "device_model": data_source.device_model if data_source else None,
@@ -216,6 +217,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                 "spo2_percentage": typing_cast(dict, row.components or {}).get("spo2_percentage", {}).get("value"),
             }
             for row, data_source in rows
+            if first_day <= local_date(row.recorded_at, row.zone_offset) <= last_day
         ]
 
     def get_latest_per_category(

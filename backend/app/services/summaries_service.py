@@ -691,7 +691,7 @@ class SummariesService:
         }
         # A day's earliest score.
         scores: dict[tuple, dict] = {}
-        for score in self.health_score_repo.get_recovery_scores(db_session, user_id, start, end):
+        for score in self.health_score_repo.get_recovery_scores(db_session, user_id, first_day, last_day):
             scores.setdefault(tuple(score[field] for field in identity), score)
 
         results = []

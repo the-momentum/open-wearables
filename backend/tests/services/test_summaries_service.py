@@ -706,6 +706,30 @@ class TestGetRecoverySummaries:
         assert apple_day.avg_hrv_sdnn_ms == 48.0
         assert apple_day.avg_hrv_rmssd_ms is None
 
+    def test_a_score_lands_on_its_local_day_beside_that_days_vitals(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """23:30 UTC at +02:00 is the next local day, the one the vitals and the night are read on."""
+        user = UserFactory()
+        whoop = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop", device_type="band")
+        provider_day(db, whoop, SeriesType.resting_heart_rate, date(2026, 1, 3), avg=Decimal("50"))
+        HealthScoreFactory(
+            data_source=whoop,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.RECOVERY,
+            recorded_at=_dt("2026-01-02T23:30:00+00:00"),
+            zone_offset="+02:00",
+            value=Decimal("70"),
+        )
+
+        result = service.get_recovery_summaries(
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-04T00:00:00+00:00"), cursor=None, limit=10
+        )
+
+        assert [(day.date, day.resting_heart_rate_bpm, day.recovery_score) for day in result.data] == [
+            (date(2026, 1, 3), 50, 70)
+        ]
+
 
 class TestRecoveryPagingPerDate:
     """A page holds `limit` days, however many providers scored each one."""
