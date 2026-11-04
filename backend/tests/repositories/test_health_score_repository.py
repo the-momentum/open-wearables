@@ -598,20 +598,18 @@ class TestProviderSleepScoreOfAReSentNight:
         )
         return user, record
 
-    def _write(self, db: Session, user: Any, at: datetime, value: int) -> None:
-        HealthScoreRepository(HealthScore).bulk_create(
-            db,
-            [
-                HealthScoreCreate(
-                    id=uuid4(),
-                    user_id=user.id,
-                    provider=ProviderName.WHOOP,
-                    category=HealthScoreCategory.SLEEP,
-                    value=value,
-                    recorded_at=at,
-                )
-            ],
+    def _score(self, user: Any, at: datetime, value: int) -> HealthScoreCreate:
+        return HealthScoreCreate(
+            id=uuid4(),
+            user_id=user.id,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.SLEEP,
+            value=value,
+            recorded_at=at,
         )
+
+    def _write(self, db: Session, user: Any, at: datetime, value: int) -> None:
+        HealthScoreRepository(HealthScore).bulk_create(db, [self._score(user, at, value)])
 
     def _scores(self, db: Session, user: Any) -> list[tuple[datetime, int]]:
         rows = db.query(HealthScore).filter(HealthScore.user_id == user.id).order_by(HealthScore.recorded_at)
@@ -642,6 +640,19 @@ class TestProviderSleepScoreOfAReSentNight:
         self._write(db, user, self.START + timedelta(hours=8), 80)
 
         assert self._scores(db, user) == [(self.START + timedelta(hours=8), 80)]
+
+    def test_an_earlier_version_in_the_same_batch_gives_way(self, db: Session) -> None:
+        user, _ = self._night(9)
+
+        HealthScoreRepository(HealthScore).bulk_create(
+            db,
+            [
+                self._score(user, self.START + timedelta(hours=8), 80),
+                self._score(user, self.START + timedelta(hours=9), 85),
+            ],
+        )
+
+        assert self._scores(db, user) == [(self.START + timedelta(hours=9), 85)]
 
     def test_other_nights_and_internal_scores_stay(self, db: Session) -> None:
         user, _ = self._night(8)

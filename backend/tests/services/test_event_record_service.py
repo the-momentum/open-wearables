@@ -43,6 +43,7 @@ from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
     EventRecordFactory,
+    HealthScoreFactory,
     SleepDetailsFactory,
     UserFactory,
 )
@@ -903,6 +904,31 @@ class TestCreateOrMergeSleep:
         db.commit()
 
         assert {day for _, day in pop_dirty_days(100)} == {self._dt(22, 0).date(), self._dt(6, 0, day=22).date()}
+
+    def test_a_shortened_night_drops_the_providers_score_at_its_former_end(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user, provider=ProviderName.WHOOP.value, source="whoop")
+        EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            external_id="night-1",
+            start_datetime=self._dt(22, 0),
+            end_datetime=self._dt(8, 0, day=22),
+        )
+        HealthScoreFactory(
+            user_id=user.id,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.SLEEP,
+            recorded_at=self._dt(8, 0, day=22),
+        )
+        record = self._record(data_source, self._dt(22, 0), self._dt(7, 0, day=22)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        event_record_service.create_or_merge_sleep(db, user.id, record, self._detail(record.id), self.THRESHOLD)
+
+        assert not db.query(HealthScore).filter(HealthScore.provider == ProviderName.WHOOP).all()
 
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""

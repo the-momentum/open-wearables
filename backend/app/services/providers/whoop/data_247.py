@@ -437,7 +437,8 @@ class Whoop247Data(Base247DataTemplate):
             normalized, health_score = self.normalize_sleep(raw, user_id)
             self.save_sleep_data(db, user_id, normalized)
             if health_score:
-                health_score_service.create(db, health_score)
+                health_score_service.bulk_create(db, [health_score])
+                db.commit()
             return 1, closed_at
         except Exception as e:
             logger.warning(

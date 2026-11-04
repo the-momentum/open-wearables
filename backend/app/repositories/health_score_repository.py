@@ -113,7 +113,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         if not creators:
             return WriteCounts(0, 0)
 
-        self._drop_earlier_scores_of_the_nights(db_session, creators)
+        creators = self._replace_earlier_scores_of_the_nights(db_session, creators)
         values = [c.model_dump() for c in creators]
 
         stmt = insert(HealthScore).values(values).on_conflict_do_nothing().returning(HealthScore.id)
@@ -122,31 +122,37 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         return WriteCounts(inserted, 0)
 
     @staticmethod
-    def _drop_earlier_scores_of_the_nights(db_session: DbSession, creators: list[HealthScoreCreate]) -> None:
+    def _replace_earlier_scores_of_the_nights(
+        db_session: DbSession, creators: list[HealthScoreCreate]
+    ) -> list[HealthScoreCreate]:
         """A provider sleep score sits at its night's end, which a re-sent night moves (Whoop extends a scored
-        night, Garmin a fragment): the night's earlier scores, from its start to its end, give way to the new one.
+        night, Garmin a fragment): the night's earlier scores, from its start to its end, give way to the new one,
+        stored or in the same batch.
 
         The night is the provider's sleep record ending at the score, stored before its score. A score linked to
         its record (Polar) is unique per record already.
         """
-        nights = {
+        ends = {
             (c.user_id, c.provider, c.recorded_at)
             for c in creators
             if c.category == HealthScoreCategory.SLEEP
             and c.provider != ProviderName.INTERNAL
             and c.event_record_id is None
         }
-        if not nights:
-            return
+        if not ends:
+            return creators
         night = (
             select(EventRecord.start_datetime, EventRecord.end_datetime, DataSource.user_id, DataSource.provider)
             .join(DataSource, DataSource.id == EventRecord.data_source_id)
             .where(
                 EventRecord.category == EventCategory.SLEEP,
-                tuple_(DataSource.user_id, DataSource.provider, EventRecord.end_datetime).in_(list(nights)),
+                tuple_(DataSource.user_id, DataSource.provider, EventRecord.end_datetime).in_(list(ends)),
             )
             .subquery()
         )
+        nights = db_session.execute(select(night)).all()
+        if not nights:
+            return creators
         db_session.execute(
             delete(HealthScore)
             .where(
@@ -156,6 +162,33 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                 HealthScore.provider == night.c.provider,
                 HealthScore.recorded_at >= night.c.start_datetime,
                 HealthScore.recorded_at <= night.c.end_datetime,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return [
+            c
+            for c in creators
+            if c.event_record_id is not None
+            or not any(
+                c.category == HealthScoreCategory.SLEEP
+                and (c.user_id, c.provider) == (n.user_id, n.provider)
+                and n.start_datetime <= c.recorded_at < n.end_datetime
+                for n in nights
+            )
+        ]
+
+    def drop_provider_sleep_score(self, db_session: DbSession, data_source_id: UUID, night_end: datetime) -> None:
+        """The provider score at a night's former end, left behind when the provider moved that end."""
+        db_session.execute(
+            delete(HealthScore)
+            .where(
+                HealthScore.category == HealthScoreCategory.SLEEP,
+                HealthScore.event_record_id.is_(None),
+                HealthScore.provider != ProviderName.INTERNAL,
+                tuple_(HealthScore.user_id, HealthScore.provider).in_(
+                    select(DataSource.user_id, DataSource.provider).where(DataSource.id == data_source_id)
+                ),
+                HealthScore.recorded_at == night_end,
             )
             .execution_options(synchronize_session=False)
         )
