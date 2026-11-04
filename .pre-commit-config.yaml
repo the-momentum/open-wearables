@@ -21,13 +21,15 @@ repos:
         pass_filenames: false
       - id: generate-coverage-docs
         name: regenerate coverage docs
-        entry: sh -c 'cd backend && uv run python scripts/generate_coverage_docs.py'
+        # Needs no real SECRET_KEY, so an outdated local .env must not block a commit.
+        entry: sh -c 'cd backend && SECRET_KEY=placeholder-not-a-real-secret-key-for-tooling uv run python scripts/generate_coverage_docs.py'
         language: system
         files: ^backend/app/(services/providers/.*/coverage\.py|services/providers/base_strategy\.py|api/routes/v1/meta\.py)$
         pass_filenames: false
       - id: export-openapi
         name: export openapi spec to docs/openapi.json
-        entry: sh -c 'cd backend && uv run python scripts/export_openapi.py'
+        # Needs no real SECRET_KEY, so an outdated local .env must not block a commit.
+        entry: sh -c 'cd backend && SECRET_KEY=placeholder-not-a-real-secret-key-for-tooling uv run python scripts/export_openapi.py'
         language: system
         files: ^backend/app/.*\.py$
         pass_filenames: false

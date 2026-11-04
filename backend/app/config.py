@@ -20,11 +20,15 @@ from app.utils.config_utils import (
     FernetDecryptorField,
     LogFormat,
     LogLevel,
+    derive_secret,
     parse_duration,
 )
 
 # Public in .env.example and the docs, so an account still using it is open to anyone.
 DEFAULT_ADMIN_PASSWORD = "your-secure-password"
+
+# SECRET_KEY signs every JWT (HS256); the old .env.example default is shorter, so it fails too
+MIN_SECRET_KEY_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -32,6 +36,8 @@ class Settings(BaseSettings):
         env_file=str(Path(__file__).parent.parent / "config" / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        # A rejected SECRET_KEY must not end up in the container logs
+        hide_input_in_errors=True,
         # default env_file solution search .env every time BaseSettings is instantiated
         # dotenv search .env when module is imported, without usecwd it starts from the file it was called
     )
@@ -88,7 +94,8 @@ class Settings(BaseSettings):
     GIT_SHA: str | None = None
 
     # AUTH SETTINGS
-    secret_key: str
+    # Empty by default so a missing key gets the length check's message instead of "Field required"
+    secret_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     token_lifetime: int = 3600
@@ -416,8 +423,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def derive_strava_webhook_verify_token(self) -> "Settings":
+        # Strava receives this token, so it must not be SECRET_KEY itself
         if self.strava_webhook_verify_token is None or self.strava_webhook_verify_token.get_secret_value() == "":
-            self.strava_webhook_verify_token = SecretStr(self.secret_key)
+            self.strava_webhook_verify_token = SecretStr(derive_secret(self.secret_key, "strava-webhook-verify-token"))
         return self
 
     @model_validator(mode="after")
@@ -434,6 +442,16 @@ class Settings(BaseSettings):
         if self.google_webhook_secret is None or self.google_webhook_secret.get_secret_value() == "":
             self.google_webhook_secret = SecretStr(self.secret_key)
         return self
+
+    @field_validator("secret_key", mode="after")
+    @classmethod
+    def reject_short_secret_key(cls, v: str) -> str:
+        if len(v) < MIN_SECRET_KEY_LENGTH:
+            problem = "is not set" if not v else f"must be at least {MIN_SECRET_KEY_LENGTH} characters"
+            raise ValueError(
+                f"SECRET_KEY {problem}. Run `make init` to generate one, or set it with `openssl rand -hex 32`."
+            )
+        return v
 
     @field_validator("cors_origins", mode="after")
     @classmethod
