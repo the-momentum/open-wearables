@@ -81,3 +81,16 @@ def test_final_record_ids_decides_by_state_then_by_the_providers_latest_data(db:
     found = final_record_ids(db, user.id, list(nights.values()), NOW)
 
     assert found == {nights["oura_synced_since"][0].id, nights["garmin"][0].id}
+
+
+def test_a_later_night_counts_as_the_providers_latest_data(db: Session) -> None:
+    """A Withings Sleep Analyzer sends nights and nothing else: a night is final once the next one arrives."""
+    user = UserFactory()
+    last_end = NOW - timedelta(hours=3)
+    earlier, last = (_night(user, ProviderName.WITHINGS, last_end - timedelta(days=days), None) for days in (1, 0))
+    data_type_coverage_repository.record(
+        db, [CoverageSpan(user.id, "withings", "sleep", DataTypeKind.EVENT, last_end - timedelta(days=2), last_end)]
+    )
+    db.expire_all()
+
+    assert final_record_ids(db, user.id, [earlier, last], NOW) == {earlier[0].id}
