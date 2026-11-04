@@ -35,21 +35,28 @@ from app.services.data_migration_service import data_migration_service
 _BATCH_SIZE = 10_000
 _PROVIDERS = [ProviderName.GARMIN.value, ProviderName.POLAR.value, ProviderName.WHOOP.value]
 
+# A linked score finds its night by id, since a re-sync may have moved its start; an unlinked one sits at it.
+# Two branches, not one join on an OR, so each probes its own index (the primary key, ix_event_record_source_time).
 _AT_START = """
-    SELECT DISTINCT ON (hs.id)
-        hs.id, hs.user_id, hs.provider, hs.data_source_id, hs.category, hs.created_at,
-        er.end_datetime AS wake_up, er.zone_offset
-    FROM health_score hs
-    JOIN data_source ds ON ds.user_id = hs.user_id AND ds.provider = hs.provider
-    -- A linked score finds its night by id, since a re-sync may have moved its start; an unlinked one sits at it
-    JOIN event_record er ON er.data_source_id = ds.id AND (
-        er.id = hs.event_record_id OR (hs.event_record_id IS NULL AND er.start_datetime = hs.recorded_at)
-    )
-    WHERE hs.provider = ANY(:providers)
-      AND hs.category = :category
-      AND er.category = 'sleep'
-      AND hs.recorded_at <> er.end_datetime
-    ORDER BY hs.id, er.end_datetime DESC
+    SELECT DISTINCT ON (id) id, user_id, provider, data_source_id, category, created_at, wake_up, zone_offset
+    FROM (
+        SELECT hs.id, hs.user_id, hs.provider, hs.data_source_id, hs.category, hs.created_at, hs.recorded_at,
+            er.end_datetime AS wake_up, er.zone_offset
+        FROM health_score hs
+        JOIN event_record er ON er.id = hs.event_record_id
+        JOIN data_source ds ON ds.id = er.data_source_id AND ds.user_id = hs.user_id AND ds.provider = hs.provider
+        WHERE hs.provider = ANY(:providers) AND hs.category = :category AND er.category = 'sleep'
+        UNION ALL
+        SELECT hs.id, hs.user_id, hs.provider, hs.data_source_id, hs.category, hs.created_at, hs.recorded_at,
+            er.end_datetime, er.zone_offset
+        FROM health_score hs
+        JOIN data_source ds ON ds.user_id = hs.user_id AND ds.provider = hs.provider
+        JOIN event_record er ON er.data_source_id = ds.id AND er.start_datetime = hs.recorded_at
+        WHERE hs.provider = ANY(:providers) AND hs.category = :category AND er.category = 'sleep'
+          AND hs.event_record_id IS NULL
+    ) night
+    WHERE recorded_at <> wake_up
+    ORDER BY id, wake_up DESC
 """
 _COUNT = text(f"SELECT count(*) FROM ({_AT_START}) at_start")
 # Collected in one pass into a session temp table, so batches cost a key lookup each and not a
