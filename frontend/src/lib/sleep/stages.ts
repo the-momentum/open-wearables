@@ -34,11 +34,21 @@ export function stageLanes(
 	intervals: StageInterval[],
 	describe: (span: StageInterval, seconds: number) => string
 ): StageLane[] {
+	// A night stored twice holds each interval twice, and the chart keys a span by its start
+	const uniqueIntervals = [
+		...new Map(
+			intervals.map((interval) => [
+				`${interval.stage}|${interval.start_time}|${interval.end_time}`,
+				interval
+			])
+		).values()
+	];
+
 	return ORDER.map(({ stage, shade }) => ({
 		key: stage,
 		label: stageLabel(stage),
 		shade,
-		spans: intervals
+		spans: uniqueIntervals
 			.filter((interval) => interval.stage === stage)
 			.map((interval) => {
 				const start = new Date(interval.start_time).getTime();
