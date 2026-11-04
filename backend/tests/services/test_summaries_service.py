@@ -1109,7 +1109,7 @@ class TestBodySummarySlowChanging:
         DataPointSeriesFactory(mapping=source, series_type=series, recorded_at=at, value=Decimal(value))
 
     def test_the_preferred_source_wins_a_day_both_reported(self, db: Session, service: SummariesService) -> None:
-        """#851: Oura's height a second newer than Whoop's must not show under Whoop's name."""
+        """Oura's height a second newer than Whoop's must not show under Whoop's name."""
         user = UserFactory()
         whoop = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop")
         oura = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
