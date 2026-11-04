@@ -5,13 +5,14 @@ from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
 from logging import Logger, getLogger
-from typing import Iterable, TypedDict
+from typing import Any, Iterable, TypedDict
 from uuid import UUID, uuid4
 
 import sentry_sdk
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
+from app.config import settings
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
@@ -20,6 +21,7 @@ from app.constants.series_types.sdk import (
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE, WORKOUT_SAMPLE_TYPES
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_ENERGY_SERIES, WORKOUT_STATISTIC_STAT
 from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SERIES
 from app.constants.workout_types import get_unified_sdk_workout_type
@@ -222,6 +224,25 @@ class ImportService:
                 workout_id,
             )
 
+            if settings.ingest_workout_samples:
+                time_series_samples.extend(
+                    self._build_workout_route_and_samples(
+                        wjson,
+                        {
+                            "user_id": user_uuid,
+                            "source": original_source_name,
+                            "device_model": device_model,
+                            "software_version": software_version,
+                            "device_type": device_type,
+                            "device_id": device_id,
+                            "source_app_id": source_app_id,
+                            "device_manufacturer": device_manufacturer,
+                            "provider": provider,
+                            "zone_offset": wjson.zoneOffset,
+                        },
+                    )
+                )
+
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
@@ -259,6 +280,61 @@ class ImportService:
             )
 
             yield record, detail, time_series_samples
+
+    def _build_workout_route_and_samples(
+        self,
+        wjson: Workout,
+        source_fields: dict[str, Any],
+    ) -> list[TimeSeriesSampleCreate]:
+        """Per-point series from workouts[].route and workouts[].samples.
+
+        Rows share the workout's own data source (`source_fields`), so a re-push upserts
+        on (data_source, series_type, recorded_at) instead of duplicating.
+        Points without a timestamp and sample types with no series mapping are skipped.
+        """
+        result: list[TimeSeriesSampleCreate] = []
+
+        def add(recorded_at: datetime, series_type: SeriesType, value: float) -> None:
+            result.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    **source_fields,
+                    recorded_at=recorded_at,
+                    value=Decimal(str(value)),
+                    series_type=series_type,
+                )
+            )
+
+        for point in wjson.route or []:
+            if point.timestamp is None:
+                continue
+            for field, series_type in WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE.items():
+                value = getattr(point, field)
+                if value is not None:
+                    add(point.timestamp, series_type, value)
+
+        unknown_types: Counter[str] = Counter()
+        unexpected_units: Counter[str] = Counter()
+        for sample in wjson.samples or []:
+            if sample.timestamp is None or sample.value is None:
+                continue
+            sample_type = sample.type or ""
+            if sample_type not in WORKOUT_SAMPLE_TYPES:
+                unknown_types[sample_type] += 1
+                continue
+            series_type, units = WORKOUT_SAMPLE_TYPES[sample_type]
+            unit = (sample.unit or "").strip().lower()
+            if unit and unit not in units:
+                unexpected_units[f"{sample_type}:{unit}"] += 1
+                continue
+            add(sample.timestamp, series_type, sample.value)
+
+        if unknown_types or unexpected_units:
+            self.log.debug(
+                "Skipped workout samples with unsupported types or units",
+                extra={"workout_id": wjson.id, "types": dict(unknown_types), "units": dict(unexpected_units)},
+            )
+        return result
 
     def _build_meal_bundles(
         self,
