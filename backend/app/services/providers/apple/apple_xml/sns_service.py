@@ -134,7 +134,10 @@ class SNSService:
                 task="sns_notification",
                 error=str(e),
             )
-            return UploadDataResponse(status_code=status.HTTP_400_BAD_REQUEST, response=str(e), user_id=None)
+            # The boto error names the topic ARN and account: logged above, never answered
+            return UploadDataResponse(
+                status_code=status.HTTP_400_BAD_REQUEST, response="Subscription confirmation failed", user_id=None
+            )
 
     def _process_s3_notification(self, notification: SNSNotification) -> UploadDataResponse:
         message_body = json.loads(notification.message)
