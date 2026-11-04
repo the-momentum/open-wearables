@@ -44,6 +44,8 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         SeriesType.body_fat_percentage,  # /wellness-api/rest/bodyComps
         SeriesType.body_mass_index,  # /wellness-api/rest/bodyComps
         SeriesType.skeletal_muscle_mass,  # /wellness-api/rest/bodyComps
+        SeriesType.bone_mass,  # /wellness-api/rest/bodyComps
+        SeriesType.body_water_percentage,  # /wellness-api/rest/bodyComps
         SeriesType.heart_rate_variability_rmssd,  # /wellness-api/rest/hrv + healthSnapshot
         SeriesType.heart_rate_variability_sdnn,  # /wellness-api/rest/healthSnapshot
         SeriesType.garmin_stress_level,  # /wellness-api/rest/stressDetails + healthSnapshot
@@ -121,3 +123,6 @@ HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset(
         HealthScoreCategory.BODY_BATTERY,
     }
 )
+
+# Activity ``activeKilocalories`` includes BMR despite its name (Activity API 1.2.4), unlike the dailies field.
+WORKOUT_ENERGY_SERIES = SeriesType.total_energy

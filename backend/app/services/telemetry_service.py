@@ -8,7 +8,6 @@ docs/dev-guides/telemetry.mdx for the full payload reference and opt-out.
 
 import platform
 from datetime import datetime, timedelta, timezone
-from logging import getLogger
 
 import httpx
 from sqlalchemy.orm import Session
@@ -17,9 +16,11 @@ from app import __version__
 from app.config import settings
 from app.models import TelemetryState
 from app.repositories.telemetry_repository import TelemetryRepository
+from app.schemas.enums import EventCategory
 from app.services.endpoint_usage import endpoint_usage, usage_bucket
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 TELEMETRY_SCHEMA_VERSION = 2
 SEND_TIMEOUT_SECONDS = 5.0
@@ -72,8 +73,8 @@ class TelemetryService:
             "inactive_connections": count_bucket(self.repo.count_inactive_connections(db)),
             "connections_by_provider": _bucket_values(connections_by_provider),
             "data_points_by_provider": _bucket_values(self.repo.count_data_points_by_provider(db)),
-            "workouts_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "workout")),
-            "sleep_sessions_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "sleep")),
+            "workouts_by_provider": _bucket_values(self.repo.count_events_by_provider(db, EventCategory.WORKOUT)),
+            "sleep_sessions_by_provider": _bucket_values(self.repo.count_events_by_provider(db, EventCategory.SLEEP)),
             "providers": [
                 {
                     "provider": provider_setting.provider,
@@ -119,7 +120,7 @@ class TelemetryService:
             self.repo.release_claim(db, claimed_at, previous_sent_at)
             raise
 
-        logger.info("Telemetry ping delivered (event=%s)", event)
+        logger.info("Telemetry ping delivered", event=event)
         return "sent"
 
     @staticmethod
@@ -142,8 +143,8 @@ class TelemetryService:
         day = (now - timedelta(days=1)).date()
         try:
             routes = endpoint_usage.read_day(day)
-        except Exception:
-            logger.debug("Could not read endpoint usage counters", exc_info=True)
+        except Exception as e:
+            logger.debug("Could not read endpoint usage counters", exc_info=e)
             return None
         return {"date": day.isoformat(), "routes": routes}
 

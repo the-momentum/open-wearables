@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource, EventRecord, HealthScore, User, UserConnection, WorkoutDetails
+from app.models import DataSource, EventRecord, HealthScore, SeriesSample, User, UserConnection, WorkoutDetails
 from app.schemas.auth import ConnectionStatus
 from app.services.sdk_token_service import create_sdk_user_token
 from tests.factories import (
@@ -226,16 +226,16 @@ class TestConnectionsEndpoints:
         assert response.status_code == 401
 
     def test_get_connections_invalid_user_id(self, client: TestClient, db: Session) -> None:
-        """Test handling of invalid user ID format returns 400."""
+        """Test handling of invalid user ID format returns 422."""
         # Arrange
         api_key = ApiKeyFactory()
         headers = api_key_headers(api_key.plain_key)
 
-        # Act - FastAPI/Starlette validates UUID path params and returns 400 Bad Request
+        # Act - FastAPI/Starlette validates UUID path params and returns 422
         response = client.get("/api/v1/users/not-a-uuid/connections", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_get_connections_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving connections for a user that doesn't exist."""
@@ -418,8 +418,8 @@ class TestDisconnectEndpoint:
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/not_a_provider", headers=headers)
 
-        # Assert - FastAPI returns 400 for invalid enum path params
-        assert response.status_code == 400
+        # Assert - FastAPI returns 422 for invalid enum path params
+        assert response.status_code == 422
 
     def test_disconnect_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""
@@ -698,7 +698,7 @@ class TestDeleteProviderDataEndpoint:
         assert db.query(DataSource).filter_by(user_id=user.id, provider="apple").count() == 0
         assert db.query(EventRecord).filter_by(data_source_id=ds_id).count() == 0
         assert db.query(WorkoutDetails).count() == 0
-        assert db.query(DataPointSeries).filter_by(data_source_id=ds_id).count() == 0
+        assert db.query(SeriesSample).filter_by(data_source_id=ds_id).count() == 0
         assert db.query(HealthScore).filter_by(user_id=user.id, provider="apple").count() == 0
         conn = db.query(UserConnection).filter_by(user_id=user.id, provider="apple").one()
         assert conn.status == ConnectionStatus.REVOKED

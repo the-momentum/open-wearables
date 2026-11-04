@@ -8,15 +8,28 @@ deliveries with no resolvable user (or from self-reporting Garmin) are dropped.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
-from unittest.mock import patch
-from uuid import uuid4
+from unittest.mock import ANY, MagicMock, patch
+from uuid import UUID, uuid4
 
 import pytest
+from celery.exceptions import Retry
+from psycopg.errors import CheckViolation, ForeignKeyViolation, NotNullViolation, UniqueViolation
+from sqlalchemy.exc import IntegrityError
 
 import app.integrations.celery.tasks.webhook_push_task as task
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.sync_status import SyncStatus
+from app.utils.exceptions import (
+    AppError,
+    NotFoundError,
+    ProviderAuthRejectedError,
+    ProviderError,
+    ProviderNotConnectedError,
+    ProviderRateLimitError,
+    ReauthRequiredError,
+)
 
 
 @pytest.fixture
@@ -102,3 +115,209 @@ def test_emission_never_raises() -> None:
         task._emit_webhook_sync_status("oura", None)
         task._emit_webhook_sync_status("oura", {"status": "processed", "records_saved": 1, "user_id": "not-a-uuid"})
     assert calls == []
+
+
+def _run_with_failing_handler(exc: Exception) -> dict[str, Any]:
+    handler = MagicMock()
+    handler.extract_user_id.return_value = "provider-user"
+    handler.process_payload.side_effect = exc
+    with (
+        patch.object(task, "ProviderFactory") as factory,
+        patch.object(task, "SessionLocal", MagicMock()),
+        patch.object(task.process_webhook_push, "retry", side_effect=Retry()),
+    ):
+        factory.return_value.get_provider.return_value.webhooks = handler
+        return task.process_webhook_push.run("oura", {}, "trace-1")
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        IntegrityError("stmt", {}, ForeignKeyViolation("user deleted meanwhile")),
+        ForeignKeyViolation("raw psycopg, from a COPY"),
+        NotFoundError("User not found."),
+    ],
+)
+def test_own_client_errors_are_dropped_not_retried(exc: Exception) -> None:
+    result = _run_with_failing_handler(exc)
+
+    assert result == {"status": "skipped", "reason": "non_retriable", "error_type": type(exc).__name__}
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        AppError("broken invariant"),
+        RuntimeError("database down"),
+        IntegrityError("INSERT ...", {"heart_rate": 187}, UniqueViolation("two pushes raced")),
+        ProviderAuthRejectedError("oura"),
+    ],
+)
+def test_server_errors_are_retried(exc: Exception) -> None:
+    with pytest.raises(Retry):
+        _run_with_failing_handler(exc)
+
+
+@pytest.mark.parametrize("upstream_status", [400, 403, 404, 410, 422])
+def test_upstream_client_errors_are_dropped_not_retried(upstream_status: int) -> None:
+    """A deleted or unqueryable object at the provider fails the same way on every attempt."""
+    result = _run_with_failing_handler(ProviderError("oura", upstream_status=upstream_status))
+
+    assert result == {"status": "skipped", "reason": "upstream_non_retriable", "upstream_status": upstream_status}
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ProviderError("oura", upstream_status=500),
+        ProviderError("oura"),  # no response: timeout, connection reset
+        ProviderRateLimitError("oura", upstream_status=429),
+    ],
+)
+def test_upstream_outages_are_retried(exc: ProviderError) -> None:
+    with pytest.raises(Retry):
+        _run_with_failing_handler(exc)
+
+
+@pytest.mark.parametrize(("upstream_status", "alerted"), [(400, True), (422, True), (404, False), (410, False)])
+def test_only_a_request_the_provider_refused_alerts_when_skipped(upstream_status: int, alerted: bool) -> None:
+    """A 400 or 422 is most likely our bug; a deleted object at the provider is not."""
+    with patch.object(task, "logger") as logger:
+        _run_with_failing_handler(ProviderError("oura", upstream_status=upstream_status))
+
+    assert logger.warning.call_args.kwargs["alert"] is alerted
+
+
+@pytest.mark.parametrize(
+    ("exc", "alerted"),
+    [(ProviderError("oura", upstream_status=503), False), (ProviderRateLimitError("oura", upstream_status=429), True)],
+)
+def test_last_failed_attempt_reports_that_the_payload_is_lost(exc: ProviderError, alerted: bool) -> None:
+    """CeleryIntegration reports the error the last attempt re-raises, except a throttle,
+    which before_send drops: the line alerts only on that, so nothing is reported twice."""
+    task.process_webhook_push.push_request(retries=task.process_webhook_push.max_retries)
+    try:
+        with patch.object(task, "logger") as logger, pytest.raises(Retry):
+            _run_with_failing_handler(exc)
+    finally:
+        task.process_webhook_push.pop_request()
+
+    assert logger.warning.call_args.args[0] == "Webhook push task failed upstream, giving up"
+    assert logger.warning.call_args.kwargs["alert"] is alerted
+
+
+def test_earlier_failed_attempts_do_not_alert() -> None:
+    with patch.object(task, "logger") as logger, pytest.raises(Retry):
+        _run_with_failing_handler(ProviderError("oura", upstream_status=503))
+
+    assert logger.warning.call_args.args[0] == "Webhook push task failed, scheduling retry"
+    assert "alert" not in logger.warning.call_args.kwargs
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ProviderNotConnectedError("oura"),
+    ],
+)
+def test_unusable_connection_is_dropped_not_retried(exc: Exception) -> None:
+    """No retry gets past a revoked grant or a missing connection: only the user can fix it."""
+    result = _run_with_failing_handler(exc)
+
+    assert result == {"status": "skipped", "reason": "non_retriable", "error_type": type(exc).__name__}
+
+
+@pytest.mark.parametrize(
+    ("exc", "violation"),
+    [
+        (IntegrityError("INSERT ...", {"heart_rate": 187}, NotNullViolation("not null")), "NotNullViolation"),
+        (CheckViolation("raw psycopg, from a COPY"), "CheckViolation"),
+    ],
+)
+def test_own_constraint_bug_fails_without_retry(exc: Exception, violation: str) -> None:
+    """Retrying the same payload violates the constraint again; raising gets it to Sentry."""
+    with patch.object(task, "logger") as logger, pytest.raises(type(exc)):
+        _run_with_failing_handler(exc)
+
+    kwargs = logger.error.call_args.kwargs
+    assert kwargs["error_type"] == violation
+    assert "187" not in str(kwargs)
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        NotFoundError("User not found."),
+        IntegrityError("INSERT ...", {}, NotNullViolation("not null")),
+    ],
+)
+def test_a_delivery_given_up_on_is_recorded_as_failed(exc: Exception) -> None:
+    """Dropped or failed without retry, the delivery still shows in the sync history."""
+    with patch.object(task, "_emit_final_failure") as final_failure, contextlib.suppress(type(exc)):
+        _run_with_failing_handler(exc)
+
+    final_failure.assert_called_once()
+    assert final_failure.call_args.args[-1] is exc
+
+
+def test_skipped_integrity_error_is_logged_without_the_payloads_values() -> None:
+    """The message of an IntegrityError carries the statement's parameters, i.e. health data."""
+    exc = IntegrityError("INSERT ...", {"heart_rate": 187}, ForeignKeyViolation("fk"))
+
+    with patch.object(task, "logger") as logger:
+        _run_with_failing_handler(exc)
+
+    kwargs = logger.warning.call_args.kwargs
+    assert kwargs["error_type"] == "ForeignKeyViolation"
+    assert "exc_info" not in kwargs
+    assert "187" not in str(kwargs)
+
+
+def test_reauth_required_fails_delivery_without_retry(user_id: str) -> None:
+    """A dead grant raised out of the handler is logged FAILED and not retried."""
+    calls, fake = _capture()
+    handler = MagicMock()
+    handler.extract_user_id.return_value = "athlete-1"
+    handler.process_payload.side_effect = ReauthRequiredError("strava", UUID(user_id), "reconnection required")
+    with (
+        patch.object(task, "SessionLocal"),
+        patch.object(task, "ProviderFactory") as factory,
+        patch.object(task.process_webhook_push, "retry") as retry,
+        patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake),
+    ):
+        factory.return_value.get_provider.return_value.webhooks = handler
+        result = task.process_webhook_push.run("strava", {}, "trace")
+
+    retry.assert_not_called()
+    assert result == {"status": "error", "error": "reauth_required", "user_id": user_id}
+    assert calls[0]["status"] == SyncStatus.FAILED
+
+
+@pytest.mark.parametrize(("retries", "expect_failed"), [(0, False), (3, True)])
+def test_failed_run_logged_only_when_retries_run_out(retries: int, expect_failed: bool, user_id: str) -> None:
+    """A retriable error logs nothing until the last attempt, which is logged FAILED."""
+    calls, fake = _capture()
+    handler = MagicMock()
+    handler.extract_user_id.return_value = "athlete-1"
+    handler.process_payload.side_effect = RuntimeError("upstream timeout")
+    handler.find_connection.return_value = MagicMock(user_id=UUID(user_id))
+    with (
+        patch.object(task, "SessionLocal"),
+        patch.object(task, "ProviderFactory") as factory,
+        patch.object(task.process_webhook_push, "retry", side_effect=RuntimeError("retry")),
+        patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake),
+    ):
+        factory.return_value.get_provider.return_value.webhooks = handler
+        task.process_webhook_push.push_request(retries=retries)
+        try:
+            with pytest.raises(RuntimeError, match="retry"):
+                task.process_webhook_push.run("strava", {}, "trace")
+        finally:
+            task.process_webhook_push.pop_request()
+
+    if expect_failed:
+        handler.find_connection.assert_called_once_with(ANY, "athlete-1")
+        assert calls[0]["status"] == SyncStatus.FAILED
+        assert calls[0]["error"] == "RuntimeError"
+    else:
+        assert calls == []

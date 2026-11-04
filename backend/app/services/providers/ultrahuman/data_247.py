@@ -1,11 +1,9 @@
 """Ultrahuman Ring Air 24/7 data implementation for sleep, recovery, and activity samples."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
-
-from fastapi import HTTPException
 
 from app.config import settings
 from app.constants.sleep import SleepStageType
@@ -13,8 +11,8 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import daily_total_flag
-from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
+from app.schemas.enums import EventCategory, daily_total_flag
+from app.schemas.model_crud.activities.data_point_series import CalendarPeriod, TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -26,7 +24,11 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES, DAILY_SCALAR_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.structured_logging import log_structured
+from app.utils.conversion import as_int, seconds_to_minutes
+from app.utils.exceptions import ProviderConnectionError, ProviderError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Ultrahuman sleep_graph.data stage names → our canonical SleepStageType.
 SLEEP_GRAPH_STAGE_MAP: dict[str, SleepStageType] = {
@@ -84,7 +86,8 @@ class Ultrahuman247Data(Base247DataTemplate):
             list[dict[str, Any]]: List of metrics for the day, or empty list on recoverable errors.
 
         Raises:
-            HTTPException: For fatal errors (401, 403) that require token refresh/invalidate connection.
+            ProviderConnectionError: The connection can't be used (token rejected or missing).
+            ProviderError: Ultrahuman answered 403, which every remaining day would get too.
         """
         date_str = date.strftime("%Y-%m-%d")
         try:
@@ -110,37 +113,40 @@ class Ultrahuman247Data(Base247DataTemplate):
                     if "object" in item and isinstance(item["object"], dict):
                         item["object"]["ultrahuman_date"] = date_str
                 return metrics
-        except HTTPException as e:
+        except ProviderConnectionError as e:
             # Fatal errors - should be raised to trigger token refresh or invalidate connection
-            if e.status_code in (401, 403):
-                log_structured(
-                    self.logger,
-                    "error",
+            logger.error(
+                "Authorization failed while fetching daily metrics",
+                provider="ultrahuman",
+                task="fetch_daily_metrics",
+                date=date_str,
+                error=e.detail,
+            )
+            raise
+        except ProviderError as e:
+            if e.upstream_status in (401, 403):
+                logger.error(
                     "Authorization failed while fetching daily metrics",
                     provider="ultrahuman",
                     task="fetch_daily_metrics",
                     date=date_str,
-                    status_code=e.status_code,
+                    upstream_status=e.upstream_status,
                     error=e.detail,
                 )
                 raise
             # Recoverable errors - log and continue with next day
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "API error while fetching daily metrics",
                 provider="ultrahuman",
                 task="fetch_daily_metrics",
                 date=date_str,
-                status_code=e.status_code,
+                upstream_status=e.upstream_status,
                 error=e.detail,
             )
             return []
         except Exception as e:
             # Network errors and other unexpected errors - log and continue
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to fetch daily metrics",
                 provider="ultrahuman",
                 task="fetch_daily_metrics",
@@ -210,11 +216,11 @@ class Ultrahuman247Data(Base247DataTemplate):
 
         # Extract sleep stages from sleep_stages array
         # "sleep_stages": [{"type": "deep_sleep", "stage_time": 3240}, ...]
-        sleep_stages = {s.get("type"): s.get("stage_time", 0) for s in raw_sleep.get("sleep_stages", [])}
-        deep_seconds = sleep_stages.get("deep_sleep", 0) or 0
-        rem_seconds = sleep_stages.get("rem_sleep", 0) or 0
-        light_seconds = sleep_stages.get("light_sleep", 0) or 0
-        awake_seconds = sleep_stages.get("awake", 0) or 0
+        sleep_stages = {s.get("type"): s.get("stage_time") for s in raw_sleep.get("sleep_stages", [])}
+        deep_seconds = as_int(sleep_stages.get("deep_sleep"))
+        rem_seconds = as_int(sleep_stages.get("rem_sleep"))
+        light_seconds = as_int(sleep_stages.get("light_sleep"))
+        awake_seconds = as_int(sleep_stages.get("awake"))
 
         # Efficiency from quick_metrics (type: "sleep_efic")
         efficiency = quick_metrics.get("sleep_efic")
@@ -234,10 +240,10 @@ class Ultrahuman247Data(Base247DataTemplate):
             "efficiency_percent": float(efficiency) if efficiency is not None else None,
             "is_nap": False,  # Ultrahuman doesn't explicitly mark naps in this structure
             "stages": {
-                "deep_seconds": int(deep_seconds),
-                "light_seconds": int(light_seconds),
-                "rem_seconds": int(rem_seconds),
-                "awake_seconds": int(awake_seconds),
+                "deep_seconds": deep_seconds,
+                "light_seconds": light_seconds,
+                "rem_seconds": rem_seconds,
+                "awake_seconds": awake_seconds,
             },
             "stage_timestamps": self._normalize_sleep_stages(raw_sleep),
             "ultrahuman_date": date_str,
@@ -259,9 +265,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         end_dt = normalized_sleep.get("end_time")
 
         if not start_dt or not end_dt:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Skipping sleep record: missing start/end time",
                 provider="ultrahuman",
                 task="save_sleep_data",
@@ -273,7 +277,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         # Create EventRecord for sleep
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Ultrahuman Ring Air",
             duration_seconds=normalized_sleep.get("duration_seconds"),
@@ -286,15 +290,16 @@ class Ultrahuman247Data(Base247DataTemplate):
 
         # Create detail with sleep-specific fields
         stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
-        total_sleep_minutes = total_sleep_seconds // 60
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
+        awake_minutes = seconds_to_minutes(stages.get("awake_seconds"))
+        total_sleep_minutes = seconds_to_minutes(deep_seconds, light_seconds, rem_seconds)
         time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
 
         # If total sleep is 0 but we have duration, try to infer
-        if total_sleep_minutes == 0 and time_in_bed_minutes > 0:
-            total_sleep_minutes = time_in_bed_minutes - (stages.get("awake_seconds", 0) // 60)
+        if not total_sleep_minutes and time_in_bed_minutes > 0:
+            total_sleep_minutes = time_in_bed_minutes - (awake_minutes or 0)
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
@@ -303,10 +308,10 @@ class Ultrahuman247Data(Base247DataTemplate):
             sleep_efficiency_score=Decimal(str(normalized_sleep.get("efficiency_percent", 0)))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=awake_minutes,
             is_nap=normalized_sleep.get("is_nap", False),
             sleep_stages=normalized_sleep.get("stage_timestamps") or None,
         )
@@ -480,9 +485,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                         )
                     )
                 except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Failed to build activity sample",
                         provider="ultrahuman",
                         task="build_activity_samples",
@@ -520,9 +523,9 @@ class Ultrahuman247Data(Base247DataTemplate):
 
         start_time, end_time = self.resolve_window(start_time, end_time)
 
-        # HTTPException from _fetch_daily_metrics (401/403) invalidates every remaining
+        # A lost grant or a 403 from _fetch_daily_metrics invalidates every remaining
         # day, so it propagates instead of being recorded against one data type.
-        run = self.sync_run(db, user_id, fatal=(HTTPException,))
+        run = self.sync_run(db, user_id, fatal=(ProviderConnectionError, ProviderError))
         run.expect("sleep", "activity_samples")
 
         current_date = datetime.combine(start_time.date(), datetime.min.time(), tzinfo=timezone.utc)
@@ -539,7 +542,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             # and EventRecord has no type that fits generic daily recovery metrics.
 
             with run.step("activity_samples", accumulate=True, commit=True) as step:
-                step.record(self._save_daily_activity(db, user_id, items_by_type))
+                step.record(self._save_daily_activity(db, user_id, items_by_type, current_date.date()))
 
             current_date += timedelta(days=1)
 
@@ -560,7 +563,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         """
         try:
             metrics_list = self._fetch_daily_metrics(db, user_id, day)
-        except HTTPException:
+        except (ProviderConnectionError, ProviderError):
             raise
         except Exception as e:
             run.fail("daily_metrics", e)
@@ -573,6 +576,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         items_by_type: dict[str, Any],
+        day: date | None = None,
     ) -> WriteCounts:
         """Persist one day's activity series plus its single-value daily metrics."""
         sample_inputs = [
@@ -591,15 +595,19 @@ class Ultrahuman247Data(Base247DataTemplate):
             value, day_start = scalar.get("value"), scalar.get("day_start_timestamp")
             if value is None or not day_start:
                 continue
+            # day_start is the local midnight as Ultrahuman reports it, stored as the UTC instant; the day row
+            # takes the same instant, so it and the sample read as one day everywhere.
+            recorded_at = datetime.fromtimestamp(day_start, tz=timezone.utc)
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
                     provider=self.provider_name,
-                    recorded_at=datetime.fromtimestamp(day_start, tz=timezone.utc),
+                    recorded_at=recorded_at,
                     value=Decimal(str(value)),
                     series_type=series_type,
                     is_daily_total=daily_total_flag(series_type, True),
+                    period=CalendarPeriod.local_day(recorded_at),
                 )
             )
 

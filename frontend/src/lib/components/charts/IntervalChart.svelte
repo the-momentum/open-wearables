@@ -34,7 +34,7 @@
 					>{row.label}</span
 				>
 				<div class="relative h-5 min-w-0 flex-1 overflow-hidden rounded bg-surface-muted/60">
-					{#each row.spans as gap (gap.start)}
+					{#each row.spans as gap (`${gap.start}-${gap.end}`)}
 						<span
 							class="absolute inset-y-0 rounded-sm {row.shade}"
 							style="left: {at(gap.start)}%; width: {Math.max(at(gap.end) - at(gap.start), 0.4)}%"

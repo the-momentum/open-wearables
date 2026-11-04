@@ -7,24 +7,36 @@ this task is a thin async wrapper providing acks_late and retry guarantees.
 Queue and retry policy are configured per-provider at the call site (send_task with queue= kwarg).
 """
 
-from logging import getLogger
 from typing import Any
 from uuid import UUID
 
 from celery import Task, shared_task
-from fastapi import HTTPException
+from psycopg.errors import ForeignKeyViolation
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
 from app.services.providers.factory import ProviderFactory
-from app.utils.structured_logging import log_structured
+from app.services.providers.sync_247_result import error_code_of
+from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.utils.exceptions import (
+    INTEGRITY_ERRORS,
+    REAUTH_REQUIRED,
+    AppError,
+    ProviderError,
+    ReauthRequiredError,
+    describe_integrity_error,
+    integrity_violation,
+    is_provider_state_error,
+    is_unique_violation,
+)
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
-# Upstream 4xx where retrying can't recover the object. 401 (token refresh) and
-# 429 (rate limit) are excluded — those still benefit from a retry.
+# Upstream 4xx where retrying can't recover the object. 429 (rate limit) is excluded,
+# it benefits from a retry; a 401 never gets here, it is a ProviderConnectionError.
 _NONRETRIABLE_UPSTREAM_STATUSES = frozenset({400, 403, 404, 410, 422})
 
 # Providers whose webhook deliveries are surfaced in the sync log via this task.
@@ -67,6 +79,24 @@ def _extract_breakdown(result: dict[str, Any], count: Any) -> dict[str, int] | N
     if inserted is None and updated is None:
         return None
     return {"inserted": inserted or 0, "updated": updated or 0}
+
+
+def _emit_final_failure(
+    provider_name: str, handler: BaseWebhookHandler | None, provider_user_id: str | None, exc: Exception
+) -> None:
+    """Record a delivery that ran out of retries as FAILED"""
+    if handler is None or not provider_user_id:
+        return
+    try:
+        with SessionLocal() as db:
+            connection = handler.find_connection(db, str(provider_user_id))
+        if connection:
+            _emit_webhook_sync_status(
+                provider_name,
+                {"status": "error", "error": error_code_of(exc), "user_id": str(connection.user_id)},
+            )
+    except Exception as emit_exc:  # pragma: no cover - sync log must never break processing
+        logger.debug("Failed to emit final webhook failure", provider=provider_name, error=str(emit_exc))
 
 
 def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
@@ -127,7 +157,24 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
                 metadata=breakdown,
             )
     except Exception as exc:  # pragma: no cover - sync log must never break processing
-        logger.debug("Failed to emit webhook sync status: %s", exc, exc_info=True)
+        logger.debug("Failed to emit webhook sync status", provider=provider_name, exc_info=exc)
+
+
+def _is_client_error(exc: Exception) -> bool:
+    """A 4xx domain error or an FK violation from our own writes (the user was deleted meanwhile): the same
+    payload fails the same way on retry, so drop it like an upstream 4xx. A duplicate is a race that a retry
+    resolves; a NOT NULL or CHECK violation is our bug and fails the task."""
+    if isinstance(exc, INTEGRITY_ERRORS):
+        return isinstance(integrity_violation(exc), ForeignKeyViolation)
+    return isinstance(exc, AppError) and exc.is_client_error
+
+
+def _error_attributes(exc: Exception) -> dict[str, str]:
+    """What failed, never str(exc) or a traceback: an IntegrityError's message carries the payload's values."""
+    if isinstance(exc, INTEGRITY_ERRORS):
+        violation_type, constraint = describe_integrity_error(exc)
+        return {"error_type": violation_type, "constraint": str(constraint)}
+    return {"error_type": type(exc).__name__, "error": str(exc)}
 
 
 @shared_task(
@@ -164,9 +211,7 @@ def process_webhook_push(
         return result
     except ValueError as exc:
         # Configuration error (unknown provider, missing handler) — retrying won't help.
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Webhook push task aborted — configuration error",
             provider=provider_name,
             trace_id=request_trace_id,
@@ -174,48 +219,98 @@ def process_webhook_push(
             error=str(exc),
         )
         raise
-    except HTTPException as exc:
+    except ReauthRequiredError as exc:
+        # The grant is dead (and already revoked): no retry can fetch anything until the
+        # user reconnects, so fail the delivery instead of retrying it.
+        logger.warning(
+            "Webhook push task failed - reconnection required",
+            provider=provider_name,
+            trace_id=request_trace_id,
+            provider_user_id=provider_user_id,
+            error=exc.reason,
+        )
+        result = {"status": "error", "error": REAUTH_REQUIRED, "user_id": str(exc.user_id)}
+        _emit_webhook_sync_status(provider_name, result)
+        return result
+    except ProviderError as exc:
         # Non-retriable upstream 4xx (deleted/unqueryable object): ack so the task
-        # drops instead of retrying forever. 5xx and 401/429 fall through to retry.
-        if exc.status_code in _NONRETRIABLE_UPSTREAM_STATUSES:
-            log_structured(
-                logger,
-                "warning",
+        # drops instead of retrying forever. 5xx, 429 and no response fall through to retry.
+        # A rejected token is a ProviderConnectionError, dropped below like any client error.
+        if exc.upstream_status in _NONRETRIABLE_UPSTREAM_STATUSES:
+            # A request the provider rejected (400, 422) is most likely our bug: alert on it.
+            logger.warning(
                 "Webhook push task skipped — upstream non-retriable response",
+                exc_info=exc if exc.request_rejected else None,
+                alert=exc.request_rejected,
                 provider=provider_name,
                 trace_id=request_trace_id,
                 provider_user_id=provider_user_id,
-                upstream_status=exc.status_code,
-                error=str(exc.detail),
+                upstream_status=exc.upstream_status,
+                error=exc.detail,
             )
             return {
                 "status": "skipped",
                 "reason": "upstream_non_retriable",
-                "upstream_status": exc.status_code,
+                "upstream_status": exc.upstream_status,
             }
-        log_structured(
-            logger,
-            "error",
-            "Webhook push task failed, scheduling retry",
-            provider=provider_name,
-            trace_id=request_trace_id,
-            provider_user_id=provider_user_id,
-            upstream_status=exc.status_code,
-            error=str(exc.detail),
-            attempt=self.request.retries,
-            max_retries=self.max_retries,
-        )
+        if self.request.retries >= self.max_retries:
+            # The payload is lost now. CeleryIntegration reports the error re-raised below, but
+            # drops a provider's answer about the user's state (a throttle), so alert on that here.
+            logger.warning(
+                "Webhook push task failed upstream, giving up",
+                exc_info=exc,
+                alert=is_provider_state_error(exc),
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                upstream_status=exc.upstream_status,
+                attempt=self.request.retries,
+            )
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
+        else:
+            logger.warning(
+                "Webhook push task failed, scheduling retry",
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                upstream_status=exc.upstream_status,
+                error=exc.detail,
+                attempt=self.request.retries,
+                max_retries=self.max_retries,
+            )
         raise self.retry(exc=exc)
     except Exception as exc:
-        log_structured(
-            logger,
-            "error",
+        if _is_client_error(exc):
+            logger.warning(
+                "Webhook push task skipped — non-retriable error",
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                **_error_attributes(exc),
+            )
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
+            return {"status": "skipped", "reason": "non_retriable", "error_type": type(exc).__name__}
+        if isinstance(exc, INTEGRITY_ERRORS) and not is_unique_violation(exc):
+            # Our bug, and the same payload violates the constraint again on every retry:
+            # fail now, CeleryIntegration reports the raised exception to Sentry.
+            logger.error(
+                "Webhook push task failed — constraint violation",
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                **_error_attributes(exc),
+            )
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
+            raise
+        logger.error(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
             provider_user_id=provider_user_id,
-            error=str(exc),
+            **_error_attributes(exc),
             attempt=self.request.retries,
             max_retries=self.max_retries,
         )
+        if self.request.retries >= self.max_retries:
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
         raise self.retry(exc=exc)

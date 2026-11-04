@@ -21,9 +21,20 @@ class RefreshTokenRepository:
         db_session.refresh(token)
         return token
 
-    def get_valid_token(self, db_session: DbSession, token_id: str) -> RefreshToken | None:
-        """Get a refresh token if it exists and is not revoked."""
-        stmt = select(self.model).where(self.model.id == token_id, self.model.revoked_at.is_(None))
+    def claim_valid_token(self, db_session: DbSession, token_id: str) -> RefreshToken | None:
+        """Revoke a token that is not revoked yet and return it, or None when there is none.
+
+        The check and the write are one UPDATE, so of concurrent claims only one gets the token.
+        Does not commit: the claim is committed together with the replacement token
+        when that is stored, and the row stays locked until then.
+        """
+        stmt = (
+            update(self.model)
+            .where(self.model.id == token_id, self.model.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+            .returning(self.model)
+            .execution_options(populate_existing=True)
+        )
         return db_session.execute(stmt).scalar_one_or_none()
 
     def get_by_user_id(self, db_session: DbSession, user_id: UUID) -> list[RefreshToken]:
@@ -35,13 +46,6 @@ class RefreshTokenRepository:
         """Get all refresh tokens for a developer."""
         stmt = select(self.model).where(self.model.developer_id == developer_id, self.model.revoked_at.is_(None))
         return list(db_session.execute(stmt).scalars().all())
-
-    def revoke_token(self, db_session: DbSession, token: RefreshToken) -> RefreshToken:
-        """Revoke a single refresh token."""
-        token.revoked_at = datetime.now(timezone.utc)
-        db_session.commit()
-        db_session.refresh(token)
-        return token
 
     def revoke_all_for_user(self, db_session: DbSession, user_id: UUID) -> int:
         """Revoke all refresh tokens for a user. Returns count of revoked tokens."""

@@ -127,26 +127,14 @@ class TestLogin:
         assert response.status_code == 200
         assert response.json()["password_change"] is None
 
-    @pytest.mark.parametrize(
-        ("environment", "expected"),
-        [
-            (EnvironmentType.PRODUCTION, "required"),
-            (EnvironmentType.LOCAL, "recommended"),
-        ],
-    )
-    def test_login_with_default_password_asks_for_a_change(
-        self,
-        client: TestClient,
-        db: Session,
-        api_v1_prefix: str,
-        environment: EnvironmentType,
-        expected: str,
+    def test_login_with_default_password_recommends_a_change_outside_production(
+        self, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
         # Arrange
         DeveloperFactory(email="admin@admin.com", password=DEFAULT_ADMIN_PASSWORD)
 
         # Act
-        with patch.object(settings, "environment", environment):
+        with patch.object(settings, "environment", EnvironmentType.LOCAL):
             response = client.post(
                 f"{api_v1_prefix}/auth/login",
                 data={"username": "admin@admin.com", "password": DEFAULT_ADMIN_PASSWORD},
@@ -154,7 +142,27 @@ class TestLogin:
 
         # Assert
         assert response.status_code == 200
-        assert response.json()["password_change"] == expected
+        assert response.json()["password_change"] == "recommended"
+
+    @pytest.mark.parametrize("email", ["admin@admin.com", "nobody@example.com"])
+    def test_login_with_default_password_is_refused_in_production(
+        self, client: TestClient, db: Session, api_v1_prefix: str, email: str
+    ) -> None:
+        """No session at all, and the same answer whether or not the account exists."""
+        # Arrange
+        DeveloperFactory(email="admin@admin.com", password=DEFAULT_ADMIN_PASSWORD)
+
+        # Act
+        with patch.object(settings, "environment", EnvironmentType.PRODUCTION):
+            response = client.post(
+                f"{api_v1_prefix}/auth/login",
+                data={"username": email, "password": DEFAULT_ADMIN_PASSWORD},
+            )
+
+        # Assert
+        assert response.status_code == 403
+        assert "ADMIN_PASSWORD" in response.json()["detail"]
+        assert "access_token" not in response.json()
 
 
 class TestLogout:
@@ -242,7 +250,7 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "The confirmation password does not match" in str(response.json())
 
     def test_change_password_too_short(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
@@ -257,7 +265,7 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 400
+        assert response.status_code == 422
 
 
 class TestGetCurrentDeveloper:
@@ -390,7 +398,7 @@ class TestUpdateCurrentDeveloper:
         response = client.patch(f"{api_v1_prefix}/auth/me", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
     def test_update_current_developer_short_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating with password that's too short."""
@@ -403,7 +411,7 @@ class TestUpdateCurrentDeveloper:
         response = client.patch(f"{api_v1_prefix}/auth/me", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
     def test_update_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test updating current developer fails without authentication."""
@@ -457,7 +465,7 @@ class TestGetDeveloperById:
         response = client.get(f"{api_v1_prefix}/developers/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
     def test_get_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer by ID fails without authentication."""
@@ -585,7 +593,7 @@ class TestUpdateDeveloperById:
         )
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
 
 class TestDeleteDeveloperById:
@@ -649,7 +657,7 @@ class TestDeleteDeveloperById:
         response = client.delete(f"{api_v1_prefix}/developers/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
 
 class TestPasswordChangeRevokesRefreshTokens:

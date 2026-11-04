@@ -16,7 +16,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataPointSeriesArchive, SeriesTypeDefinition
+from app.models import DataPointSeriesArchive, SeriesSample, SeriesTypeDefinition
 from app.schemas.enums.aggregation_method import AggregationMethod
 from app.schemas.enums.provider import ProviderName
 from tests.factories import DataPointSeriesFactory, DataSourceFactory
@@ -51,7 +51,7 @@ def _series_type(db: Session, type_id: int) -> SeriesTypeDefinition:
 
 def _make_hrv_point(
     db: Session, *, provider: ProviderName, type_id: int, recorded_at: datetime, value: str
-) -> DataPointSeries:
+) -> SeriesSample:
     source = DataSourceFactory(provider=provider)
     return DataPointSeriesFactory(
         data_source=source,
@@ -95,7 +95,7 @@ def test_relabels_oura_sdnn_to_rmssd(db: Session) -> None:
     result = relabel_oura_hrv(db, dry_run=False)
 
     assert result["series_updated"] == 2
-    type_ids = _type_ids(db, "data_point_series")
+    type_ids = _type_ids(db, "series_sample")
     assert type_ids == [RMSSD_ID, RMSSD_ID]
 
 
@@ -108,7 +108,7 @@ def test_leaves_non_oura_sdnn_untouched(db: Session) -> None:
     result = relabel_oura_hrv(db, dry_run=False)
 
     assert result["series_updated"] == 1
-    type_ids = sorted(_type_ids(db, "data_point_series"))
+    type_ids = sorted(_type_ids(db, "series_sample"))
     assert type_ids == [SDNN_ID, RMSSD_ID]
 
 
@@ -119,7 +119,7 @@ def test_dry_run_makes_no_changes(db: Session) -> None:
     result = relabel_oura_hrv(db, dry_run=True)
 
     assert result["series_updated"] == 1  # reported as "would update"
-    assert _type_ids(db, "data_point_series") == [SDNN_ID]
+    assert _type_ids(db, "series_sample") == [SDNN_ID]
 
 
 def test_idempotent_second_run_is_noop(db: Session) -> None:
@@ -131,7 +131,7 @@ def test_idempotent_second_run_is_noop(db: Session) -> None:
 
     assert second["series_updated"] == 0
     assert second["series_deleted"] == 0
-    assert _type_ids(db, "data_point_series") == [RMSSD_ID]
+    assert _type_ids(db, "series_sample") == [RMSSD_ID]
 
 
 def test_handles_unique_conflict_with_existing_rmssd(db: Session) -> None:
@@ -151,7 +151,7 @@ def test_handles_unique_conflict_with_existing_rmssd(db: Session) -> None:
 
     assert result["series_deleted"] == 1
     assert result["series_updated"] == 0
-    rows = db.query(DataPointSeries).filter(DataPointSeries.data_source_id == source.id).all()
+    rows = db.query(SeriesSample).filter(SeriesSample.data_source_id == source.id).all()
     assert len(rows) == 1
     assert rows[0].series_type_definition_id == RMSSD_ID
 

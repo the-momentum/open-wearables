@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from app.database import DbSession
 from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate
 from app.services import DeveloperDep, developer_service
+from app.utils.problem import problem_doc
 
 router = APIRouter()
 
@@ -25,10 +26,9 @@ def get_developer(developer_id: UUID, db: DbSession, _auth: DeveloperDep):
     "/{developer_id}",
     response_model=DeveloperRead,
     responses={
-        403: {
-            "description": "The ID is not the authenticated developer's own",
-            "content": {"application/json": {"example": {"detail": "You can only update your own developer account"}}},
-        },
+        **problem_doc(
+            403, "The ID is not the authenticated developer's own", "You can only update your own developer account"
+        ),
     },
 )
 def update_developer(

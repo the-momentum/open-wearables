@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -6,6 +5,7 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.fitbit import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -13,9 +13,9 @@ from app.schemas.model_crud.activities import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FitbitWorkouts(BaseWorkoutsTemplate):
@@ -83,7 +83,7 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             id=workout_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=source_name,
             device_model=source_name,
@@ -173,11 +173,11 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
                 detail_for_record = detail.model_copy(update={"record_id": created_record.id})
                 event_record_service.create_detail(db, detail_for_record)
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Failed to save Fitbit activity {raw.get('logId', 'unknown')}: {e}",
-                    extra={"user_id": str(user_id), "activity": raw.get("logId")},
+                logger.error(
+                    "Failed to save Fitbit activity",
+                    exc_info=e,
+                    user_id=str(user_id),
+                    activity=raw.get("logId"),
                 )
                 continue
 

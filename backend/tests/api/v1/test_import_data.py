@@ -1,7 +1,8 @@
 """
 Tests for import data endpoints.
 
-Tests the /api/v1/users/{user_id}/import/apple/xml endpoint for XML import.
+Tests the /api/v1/users/{user_id}/import/apple/xml endpoint for XML import
+and the /api/v1/sns/notification endpoint its uploads are announced on.
 """
 
 from unittest.mock import MagicMock
@@ -90,5 +91,28 @@ class TestXMLImportEndpoint:
         )
 
         # Assert
-        # Validation errors are converted to 400 by the error handler
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
+
+
+class TestSNSNotificationEndpoint:
+    """Test suite for the SNS notification endpoint."""
+
+    def test_unparsable_notification_does_not_echo_the_body(self, client: TestClient, db: Session) -> None:
+        """A body that is not an SNS notification is a 400 that does not quote it back."""
+        # Act
+        response = client.post("/api/v1/sns/notification", content=b'{"Type": "secret-marker"')
+
+        # Assert
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid SNS notification"
+        assert "secret-marker" not in response.text
+
+    def test_invalid_notification_does_not_echo_the_body(self, client: TestClient, db: Session) -> None:
+        """Valid JSON that fails the notification schema gets the same answer."""
+        # Act
+        response = client.post("/api/v1/sns/notification", json={"Type": "secret-marker"})
+
+        # Assert
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid SNS notification"
+        assert "secret-marker" not in response.text

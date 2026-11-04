@@ -1,6 +1,5 @@
 """Withings workouts (``getworkouts``) → unified EventRecord + EventRecordDetail."""
 
-import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -12,16 +11,17 @@ from app.config import settings
 from app.constants.withings_requests import WORKOUTS
 from app.constants.workout_types.withings import OFFICIAL_WITHINGS_CATEGORY_IDS, get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.providers.withings.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.withings.handlers.rpc_client import paginate
 from app.services.providers.withings.handlers.timezone import zone_offset_at
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # getworkouts requires both bounds; used only when PULL_SYNC_LOOKBACK is unset.
 _FALLBACK_LOOKBACK = timedelta(days=30)
@@ -81,9 +81,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
         try:
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).strftime("%Y-%m-%d")
         except (ValueError, TypeError):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Unparseable Withings workout date; falling back to the default window",
                 provider="withings",
                 action="workout_date_parse_failed",
@@ -107,7 +105,6 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
         zone_offset = zone_offset_at(
             raw_workout.timezone,
             end_dt,
-            logger,
             action="workout_timezone_invalid",
             user_id=str(user_id),
             workout_id=raw_workout.id,
@@ -121,7 +118,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             id=record_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Withings",
             duration_seconds=duration_seconds,
@@ -141,6 +138,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             heart_rate_max=data.hr_max,
             steps_count=data.steps,
             energy_burned=Decimal(str(data.calories)) if data.calories is not None else None,
+            energy_series=WORKOUT_ENERGY_SERIES,
             distance=Decimal(str(data.distance)) if data.distance is not None else None,
         )
         return record, detail
@@ -158,9 +156,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             try:
                 workout = WithingsWorkout.model_validate(raw)
             except ValidationError as e:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Skipping unparseable Withings workout",
                     provider=self.provider_name,
                     action="workout_validation_failed",
@@ -176,9 +172,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
                 workout.category not in OFFICIAL_WITHINGS_CATEGORY_IDS
                 and workout.category not in warned_unknown_categories
             ):
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Unknown Withings workout category; using OTHER",
                     provider=self.provider_name,
                     action="workout_category_unknown",
@@ -189,9 +183,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             try:
                 record, detail = self._normalize_workout(workout, user_id, user_connection_id)
             except ValueError as e:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Skipping invalid Withings workout",
                     provider=self.provider_name,
                     action="workout_normalization_failed",
@@ -210,23 +202,18 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             except Exception as e:
                 # Reset the session so one bad record doesn't poison the batch.
                 db.rollback()
-                log_and_capture_error(
-                    e,
-                    logger,
+                logger.error(
                     "Failed to save Withings workout",
-                    extra={
-                        "provider": self.provider_name,
-                        "action": "workout_save_failed",
-                        "user_id": str(user_id),
-                        "workout_id": workout.id,
-                    },
+                    exc_info=e,
+                    provider=self.provider_name,
+                    action="workout_save_failed",
+                    user_id=str(user_id),
+                    workout_id=workout.id,
                 )
                 failed += 1
                 continue
         if skipped or failed:
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Withings workouts sync completed with dropped records",
                 provider=self.provider_name,
                 action="workouts_sync_summary",

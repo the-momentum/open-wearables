@@ -27,24 +27,23 @@ Get Open Wearables running locally and start integrating wearable device data.
     ```
   </Accordion>
   <Accordion icon="gear" title="Configure environment variables">
-    Create environment files for both backend and frontend:
-    
-    **Backend configuration:**
+    Create environment files for both backend and frontend and generate their secrets:
+
     ```bash
-    cp ./backend/config/.env.example ./backend/config/.env
+    make init
     ```
-    
+
+    This copies both `.env.example` files to `.env` and generates `SECRET_KEY`; running it again keeps the key. Without `make`, copy the files yourself and set `SECRET_KEY` to the output of `openssl rand -hex 32` (at least 32 characters, or the backend does not start).
+
+    **Backend configuration:**
+
     Edit `./backend/config/.env` with your configuration. You'll need to set up:
     - Database credentials
     - Redis/Celery broker settings
     - OAuth credentials for wearable providers (Garmin, Fitbit, etc.)
-    - Secret keys for authentication
     
     **Frontend configuration:**
-    ```bash
-    cp ./frontend/.env.example ./frontend/.env
-    ```
-    
+
     Edit `./frontend/.env` with your frontend configuration:
     - `VITE_API_URL` - Backend API URL (default: `http://localhost:8000`)
     
@@ -146,7 +145,7 @@ Get Open Wearables running locally and start integrating wearable device data.
      Should return: `{"message": "Server is running!"}`
 
   2. **Create an API key**:
-     An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while the developer table is empty: once any developer account exists it is skipped, so changing `ADMIN_PASSWORD` later does not update an existing account - **change the default password from the developer portal right after your first login**. To add further accounts, invite them from **Settings → Team**. All developer accounts have the same permissions, see [Team](/developer-portal/settings/team#access-model).
+     An admin account is created on first startup from the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`), only while the developer table is empty. After that, changing `ADMIN_PASSWORD` does not update the account - **set your own `ADMIN_PASSWORD` before the first start, or change the default password from the developer portal right after your first login**. With `ENVIRONMENT=production` the default password is refused: a fresh deployment does not start until `ADMIN_PASSWORD` is set, and an admin that still has the default cannot sign in until you set `ADMIN_PASSWORD` (with `ADMIN_EMAIL` matching that account's email) and restart the backend, which then changes that account's password to it. To add further accounts, invite them from **Settings → Team**. All developer accounts have the same permissions, see [Team](/developer-portal/settings/team#access-model).
 
      Use the [developer portal](/developer-portal) at http://localhost:3000/ to log in and generate API keys. Copy the key right away - it is shown only once and cannot be retrieved later.
 

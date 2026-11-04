@@ -12,6 +12,10 @@ keywords: ["deploy open wearables", "open wearables railway", "open wearables se
 "twitter:card": "summary_large_image"
 ---
 
+<Warning>
+  **Railway security incident (October 2026):** Railway has disclosed that customer environment variables may have been accessed. If you run Open Wearables on Railway, rotate all secrets stored in your environment variables and review your logs for unusual activity. Railway builds are currently paused, so new deployments won't work until they're restored. See [Railway's disclosure](https://blog.railway.com/p/security-disclosure-wednesday-october-21st) for details and updates.
+</Warning>
+
 Railway provides the fastest way to get a production Open Wearables instance running. The template deploys all required services with sensible defaults - no manual infrastructure setup needed.
 
 <a href="https://railway.com/deploy/open-wearables-1" target="_blank">
@@ -29,7 +33,9 @@ Railway provides the fastest way to get a production Open Wearables instance run
 />
 
 <Tip>
-An admin account is created automatically on first startup (`admin@admin.com` / `your-secure-password`), but only while no developer account exists yet. To use custom credentials, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the **Backend** service before deploying (as shown on the video) - setting them after an account exists has no effect. **If you deployed with the default credentials, change the password from the developer portal right after your first login.** Additional accounts are added by invitation from the developer portal.
+The template asks for `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the **Backend** service, and the first startup creates the admin account from them (only while no developer account exists yet). Changing them later does not update that account, so change the password from the developer portal instead. Additional accounts are added by invitation from the developer portal.
+
+**Deployed before the template required these variables?** If your admin account still uses the public default password (`your-secure-password`), production refuses it at sign-in. On the Backend service set `ADMIN_EMAIL` to that account's email and `ADMIN_PASSWORD` to a new password, then redeploy: on startup the account's password is changed to the new value. Only the account whose email matches `ADMIN_EMAIL` is updated.
 </Tip>
 
 ## What gets deployed

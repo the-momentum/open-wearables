@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import NamedTuple, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, asc, delete, select, text
+from sqlalchemy import CursorResult, and_, delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.constants.devices_map import infer_device_type, is_host_model
@@ -14,6 +14,7 @@ from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
+from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.model_crud.data_priority import DataSourceCreate, DataSourceUpdate
@@ -177,8 +178,8 @@ class DataSourceRepository(
         if len(writer_rows) != 1:
             return None
         row = writer_rows[0]
-        incoming_unknown = device_model is None or is_host_model(source_app_id, device_model)
-        stored_unknown = row.device_model is None or is_host_model(row.source_app_id, row.device_model)
+        incoming_unknown = device_model is None or is_host_model(row.provider, source_app_id, device_model)
+        stored_unknown = row.device_model is None or is_host_model(row.provider, row.source_app_id, row.device_model)
         return row if incoming_unknown or stored_unknown else None
 
     @staticmethod
@@ -204,8 +205,28 @@ class DataSourceRepository(
         if identity.device_id and identity.source_app_id and (row := self._find(rows, app_id_row)):
             return row
         if identity.device_id or identity.source_app_id:
-            return self._find(rows, identity._replace(device_id=None, source_app_id=None))
+            legacy = identity._replace(device_id=None, source_app_id=None)
+            return self._find(rows, legacy) or self._relayed_legacy_row(rows, identity)
         return None
+
+    @staticmethod
+    def _relayed_legacy_row(rows: list[DataSource], identity: DataSourceIdentity) -> DataSource | None:
+        """A third-party writer's legacy row keyed by the relaying iPhone's code, for a record that no longer
+        carries it (iOS SDK fix, or the code dropped at ingest)."""
+        if identity.device_id:
+            return None
+        return next(
+            (
+                r
+                for r in rows
+                if r.user_id == identity.user_id
+                and r.device_id is None
+                and r.source_app_id is None
+                and (r.source or "") == (identity.source or "")
+                and is_host_model(r.provider, identity.source_app_id, r.device_model)
+            ),
+            None,
+        )
 
     def get_by_identity(
         self,
@@ -344,7 +365,11 @@ class DataSourceRepository(
     ) -> DataSource:
         user_id, device_model, source, device_id, source_app_id = identity
         device_type = infer_device_type(
-            provider, device_model, details.original_source_name or source, details.reported_type
+            provider,
+            device_model=device_model,
+            original_source_name=details.original_source_name or source,
+            reported_type=details.reported_type,
+            source_app_id=source_app_id,
         )
         return self.model(
             id=uuid4(),
@@ -386,11 +411,11 @@ class DataSourceRepository(
         if keyed_by_app and source and source != app_id and source != existing.source:
             updates["source"] = source
         # Keyed rows learn their model later (Polar sleep before the exercise, a writer's first model);
-        # a relaying host's code is replaced by the producing device's model
-        replaces_host = is_host_model(existing.source_app_id, existing.device_model) and not is_host_model(
-            source_app_id, device_model
-        )
-        if device_model and (existing.device_model is None or replaces_host):
+        # a relaying host's code is replaced by the producing device's model, or cleared when there is none
+        host_row = is_host_model(provider, app_id, existing.device_model)
+        incoming_host = is_host_model(provider, app_id, device_model)
+        replaces_host = host_row and not incoming_host
+        if replaces_host or (device_model and existing.device_model is None and not incoming_host):
             updates["device_model"] = device_model
         model_replaced = "device_model" in updates
         effective_model = device_model if model_replaced else existing.device_model or device_model
@@ -404,12 +429,13 @@ class DataSourceRepository(
             updates["original_source_name"] = original_source_name
         resolved = infer_device_type(
             provider,
-            effective_model,
-            original_source_name or existing.original_source_name or existing.source,
-            reported_type,
+            device_model=effective_model,
+            original_source_name=original_source_name or existing.original_source_name or existing.source,
+            reported_type=reported_type,
+            source_app_id=source_app_id or existing.source_app_id,
         )
-        # The stored type came from the host code, so it is replaced along with the model
-        if model_replaced and replaces_host:
+        # The stored type came from the host code, so it is always recomputed
+        if host_row:
             device_type = resolved.value if resolved != DeviceType.UNKNOWN else None
         else:
             device_type = self.next_device_type(provider, existing.device_type, resolved)
@@ -448,8 +474,9 @@ class DataSourceRepository(
     ) -> list[DataSource]:
         return (
             db_session.query(self.model)
-            .filter(self.model.user_id == user_id)
-            .order_by(asc(self.model.provider), asc(self.model.device_model))
+            # The reconciled source holds merged values, not a device the user connected.
+            .filter(self.model.user_id == user_id, NOT_RECONCILED_SOURCE)
+            .order_by(self.model.provider.asc(), self.model.device_model.asc())
             .all()
         )
 
@@ -484,7 +511,7 @@ class DataSourceRepository(
 
         Deletes the user's health_score rows for the provider (some are not linked to
         a data_source), then the data_source rows. ON DELETE CASCADE on the data_source
-        FK removes every dependent row - event_records, data_point_series (+ archive),
+        FK removes every dependent row - event_records, series_sample (+ archive),
         event/sleep/workout/menstrual details and health_scores linked via data_source
         or event_record. Returns the number of data_source rows deleted.
         """

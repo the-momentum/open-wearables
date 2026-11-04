@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.whoop import get_unified_workout_type
 from app.database import DbSession
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -18,10 +18,13 @@ from app.schemas.providers.whoop import WhoopWorkoutCollectionJSON, WhoopWorkout
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.providers.whoop.coverage import WORKOUT_ENERGY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.conversion import kilojoules_to_kcal
 from app.utils.dates import to_rfc3339
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class WhoopWorkouts(BaseWorkoutsTemplate):
@@ -79,23 +82,21 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Error fetching Whoop workout data: {e}",
+                logger.error(
+                    "Error fetching Whoop workout data",
                     provider="whoop",
                     task="get_workouts",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_workouts:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Returning partial workout data due to error: {e}",
+                    logger.warning(
+                        "Returning partial workout data due to error",
                         provider="whoop",
                         task="get_workouts",
                         user_id=str(user_id),
+                        error=str(e),
                     )
                     break
                 raise
@@ -134,17 +135,17 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
     def load_single_workout(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
         """Fetch a single workout by ID, normalize, and save to database. Returns 1 on success."""
+        raw = self.get_workout_detail_from_api(db, user_id, workout_id)
+        store_raw_payload(
+            source="api_response",
+            provider="whoop",
+            payload=raw,
+            user_id=str(user_id),
+            trace_id=f"/v2/activity/workout/{workout_id}",
+        )
+        if not isinstance(raw, dict) or not raw:
+            return 0
         try:
-            raw = self.get_workout_detail_from_api(db, user_id, workout_id)
-            store_raw_payload(
-                source="api_response",
-                provider="whoop",
-                payload=raw,
-                user_id=str(user_id),
-                trace_id=f"/v2/activity/workout/{workout_id}",
-            )
-            if not isinstance(raw, dict) or not raw:
-                return 0
             workout = WhoopWorkoutJSON(**raw)
             if workout.score_state != "SCORED" and workout.score is None:
                 return 0
@@ -156,12 +157,12 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 health_score_service.create(db, health_score.model_copy(update={"event_record_id": created.id}))
             return 1
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
-                f"Failed to save workout record {workout_id}: {e}",
+            logger.warning(
+                "Failed to save workout record",
                 provider="whoop",
                 task="load_single_workout",
+                workout_id=workout_id,
+                error=str(e),
             )
             return 0
 
@@ -220,6 +221,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         # Energy: Convert kilojoule to kcal
         if score.kilojoule is not None:
             metrics["energy_burned"] = kilojoules_to_kcal(score.kilojoule)
+            metrics["energy_series"] = WORKOUT_ENERGY_SERIES
 
         # Distance: Keep in meters (or convert to km if schema expects km)
         # Based on schema, distance is Decimal, so we'll keep in meters
@@ -297,7 +299,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
         # Create EventRecordCreate
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Whoop",
             device_model=None,  # Whoop doesn't provide device info in workout
@@ -414,23 +416,21 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Error fetching Whoop workout data: {e}",
+                logger.error(
+                    "Error fetching Whoop workout data",
                     provider="whoop",
                     task="load_data",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 # If we got some data, continue processing; otherwise re-raise
                 if all_workouts:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Processing partial workout data due to error: {e}",
+                    logger.warning(
+                        "Processing partial workout data due to error",
                         provider="whoop",
                         task="load_data",
                         user_id=str(user_id),
+                        error=str(e),
                     )
                     break
                 raise

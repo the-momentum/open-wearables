@@ -56,7 +56,6 @@ Self-upgrade to Standard Tier (up to 10 athletes) directly from your [API Settin
 
 - **App credentials**: Client ID + Client Secret
 - **OAuth scopes** configured
-- **Webhook verify token** set (a secret string you choose)
 - **Webhook subscription** created (so Strava sends activity events to your server)
 
 ## Prerequisites
@@ -102,7 +101,7 @@ API_BASE_URL=http://localhost:8000
 STRAVA_CLIENT_ID=your-strava-client-id
 STRAVA_CLIENT_SECRET=your-strava-client-secret
 STRAVA_DEFAULT_SCOPE=activity:read_all,profile:read_all
-STRAVA_WEBHOOK_VERIFY_TOKEN=your-secret-verify-token
+# STRAVA_WEBHOOK_VERIFY_TOKEN=  # optional: derived from SECRET_KEY when unset
 ```
 
     **Configuration details:**
@@ -113,24 +112,33 @@ STRAVA_WEBHOOK_VERIFY_TOKEN=your-secret-verify-token
     | `STRAVA_CLIENT_ID` | Client ID from the Strava API settings page |
     | `STRAVA_CLIENT_SECRET` | Client Secret from the Strava API settings page |
     | `STRAVA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Default `activity:read_all,profile:read_all` covers all activity data and athlete profile |
-    | `STRAVA_WEBHOOK_VERIFY_TOKEN` | A secret string you choose. Strava will send this back during webhook subscription verification to confirm ownership. Pick something unique and hard to guess |
+    | `STRAVA_WEBHOOK_VERIFY_TOKEN` | Optional. Strava sends this back during webhook subscription verification to confirm ownership. When unset, it is derived from `SECRET_KEY`, so Strava never receives `SECRET_KEY` itself |
 
   </Step>
 
   <Step title="Create a webhook subscription">
     To receive real-time activity notifications, you need to create a webhook subscription with the Strava API. Your server must be publicly accessible for Strava to reach the webhook endpoint.
 
-    Create the subscription using the Strava API:
+    Ask Open Wearables to create the subscription. It sends Strava the verify token from `STRAVA_WEBHOOK_VERIFY_TOKEN`, or the one it derives from `SECRET_KEY` when that is unset, so you never handle the token yourself:
+
+```bash
+curl -X POST "https://yourdomain.com/api/v1/providers/strava/webhooks/subscriptions?callback_url=https://yourdomain.com/api/v1/providers/strava/webhooks" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+    Strava then sends a GET request to your `callback_url` with a `hub.verify_token` parameter. Open Wearables checks it and echoes back the challenge to confirm the subscription. See [Provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions) for listing and deleting subscriptions.
+
+    <Note>
+    To create the subscription yourself with the Strava API instead, set `STRAVA_WEBHOOK_VERIFY_TOKEN` to your own random value (e.g. `openssl rand -hex 32`) and pass the same value as `verify_token`. The derived token is not shown anywhere, so it doesn't work with a manual request.
 
 ```bash
 curl -X POST https://www.strava.com/api/v3/push_subscriptions \
   -F client_id=YOUR_CLIENT_ID \
   -F client_secret=YOUR_CLIENT_SECRET \
-  -F callback_url=https://yourdomain.com/api/v1/strava/webhook \
+  -F callback_url=https://yourdomain.com/api/v1/providers/strava/webhooks \
   -F verify_token=YOUR_WEBHOOK_VERIFY_TOKEN
 ```
-
-    When Strava receives this request, it will send a GET request to your `callback_url` with a `hub.verify_token` parameter. Open Wearables will validate the token against your `STRAVA_WEBHOOK_VERIFY_TOKEN` and echo back the challenge to confirm the subscription.
+    </Note>
 
     <Warning>
     The `callback_url` must be publicly accessible over HTTPS. For local development, use a tunneling tool like [ngrok](https://ngrok.com/) to expose your local server.

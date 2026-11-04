@@ -7,6 +7,9 @@ class CeleryTask(StrEnum):
     """Registered Celery task names. Must stay import-free so any layer can use it."""
 
     RUN_DAILY_ARCHIVAL = f"{_PREFIX}.archival_task.run_daily_archival"
+    ROLL_UP_QUEUED_DAYS = f"{_PREFIX}.archival_task.roll_up_queued_days"
+    DROP_RECONCILED_DAYS = f"{_PREFIX}.archival_task.drop_reconciled_days"
+    RUN_AGGREGATE_BACKFILL = f"{_PREFIX}.aggregate_backfill_task.run_aggregate_backfill"
     BACKFILL_DATA_TYPE_COVERAGE = f"{_PREFIX}.backfill_data_type_coverage_task.backfill_data_type_coverage"
     CLOSE_STALE_SYNC_RUNS = f"{_PREFIX}.close_stale_sync_runs_task.close_stale_sync_runs"
     DELETE_USER_WEBHOOK_PAYLOADS = f"{_PREFIX}.delete_user_webhook_payloads_task.delete_user_webhook_payloads"
@@ -23,6 +26,7 @@ class CeleryTask(StrEnum):
     PROCESS_AWS_UPLOAD = f"{_PREFIX}.process_aws_upload_task.process_aws_upload"
     COMPLETE_AND_PROCESS_AWS_UPLOAD = f"{_PREFIX}.process_aws_upload_task.complete_and_process_aws_upload"
     PROCESS_SDK_UPLOAD = f"{_PREFIX}.process_sdk_upload_task.process_sdk_upload"
+    SAVE_SDK_SLEEP = f"{_PREFIX}.save_sdk_sleep_task.save_sdk_sleep"
     PROCESS_XML_UPLOAD = f"{_PREFIX}.process_xml_upload_task.process_xml_upload"
     RECONCILE_PROVIDER_WEBHOOKS = f"{_PREFIX}.provider_webhooks_task.reconcile_provider_webhooks"
     REFRESH_DASHBOARD_TOTAL_DATA_POINTS = f"{_PREFIX}.refresh_dashboard_stats_task.refresh_dashboard_total_data_points"

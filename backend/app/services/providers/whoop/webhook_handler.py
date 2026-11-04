@@ -27,13 +27,12 @@ import base64
 import hashlib
 import hmac
 import json
-import logging
 import time
 from typing import Any
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request
+from fastapi import Request
 from pydantic import ValidationError
 
 from app.config import settings
@@ -45,9 +44,10 @@ from app.services.providers.templates.base_webhook_handler import BaseWebhookHan
 from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.workouts import WhoopWorkouts
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import InvalidInputError
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WhoopWebhookHandler(BaseWebhookHandler):
@@ -69,9 +69,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         """Verify X-WHOOP-Signature using HMAC-SHA256 + base64."""
         secret_setting = settings.whoop_client_secret
         if not secret_setting:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "WHOOP_CLIENT_SECRET not configured; rejecting webhook",
                 provider="whoop",
                 action="webhook_signature_missing_secret",
@@ -82,9 +80,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         timestamp = request.headers.get("X-WHOOP-Signature-Timestamp")
 
         if not signature or not timestamp:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Missing Whoop webhook signature headers",
                 provider="whoop",
                 action="webhook_signature_missing",
@@ -96,24 +92,20 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         try:
             ts_seconds = int(timestamp) / 1000
         except ValueError:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Unparsable X-WHOOP-Signature-Timestamp",
                 provider="whoop",
                 action="webhook_signature_timestamp_unparsable",
-                timestamp=timestamp,
+                signature_timestamp=timestamp,
             )
             return False
 
         if abs(time.time() - ts_seconds) > 300:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Stale Whoop webhook timestamp",
                 provider="whoop",
                 action="webhook_signature_stale",
-                timestamp=timestamp,
+                signature_timestamp=timestamp,
             )
             return False
 
@@ -126,7 +118,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         try:
             return json.loads(body)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Store the raw payload and enqueue async processing. Returns immediately."""
@@ -134,9 +126,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         event_type = payload.get("type", "unknown")
         whoop_user_id = payload.get("user_id", "unknown")
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Received Whoop webhook",
             provider="whoop",
             trace_id=request_trace_id,
@@ -149,9 +139,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         task = celery_app.send_task(
             CeleryTask.PROCESS_WEBHOOK_PUSH, args=["whoop", payload, request_trace_id], queue=CeleryQueue.WEBHOOK_SYNC
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Enqueued Whoop webhook processing task",
             provider="whoop",
             trace_id=request_trace_id,
@@ -179,9 +167,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
 
         connection = self.connection_repo.get_by_provider_user_id(db, "whoop", str(notification.user_id))
         if not connection:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "No connection found for Whoop user",
                 provider="whoop",
                 trace_id=trace_id,
@@ -193,9 +179,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         user_id: UUID = connection.user_id
         resource_id = str(notification.id)
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Processing Whoop webhook notification",
             provider="whoop",
             trace_id=trace_id,
@@ -205,16 +189,12 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             resource_id=resource_id,
         )
 
-        self.connection_repo.update_last_synced_at(db, connection)
-
         if notification.type.is_delete_type:
             result = self._handle_deleted(db, notification.type, user_id, resource_id)
         elif notification.type.is_update_type:
             result = self._handle_updated(db, notification.type, user_id, resource_id)
         else:
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Unhandled Whoop webhook event type",
                 provider="whoop",
                 trace_id=trace_id,
@@ -223,6 +203,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             )
             result = {"status": "ignored", "reason": f"unhandled_event_type: {notification.type}"}
 
+        self.connection_repo.update_last_synced_at(db, connection)
         result.setdefault("user_id", str(user_id))
         return result
 
@@ -251,9 +232,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
                 sleep = self.data_247.get_sleep_record(db, user_id, resource_id)
                 cycle_id = sleep.get("cycle_id") if isinstance(sleep, dict) else None
                 if not cycle_id:
-                    log_structured(
-                        logger,
-                        "warning",
+                    logger.warning(
                         "No cycle_id found in sleep record for Whoop recovery.updated",
                         provider="whoop",
                         action="whoop_webhook_recovery_missing_cycle_id",
@@ -269,9 +248,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             case _:
                 return {"status": "ignored", "reason": f"unhandled_event_type: {event_type}"}
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Whoop webhook notification processed",
             provider="whoop",
             action="whoop_webhook_complete",
@@ -290,13 +267,11 @@ class WhoopWebhookHandler(BaseWebhookHandler):
     ) -> dict[str, Any]:
         """Delete the EventRecord matching external_id.
 
-        Recovery is stored as DataPointSeries (no external_id index), so
+        Recovery is stored as SeriesSample (no external_id index), so
         recovery.deleted is logged but not actioned.
         """
         if event_type == WhoopWebhookNotificationType.RECOVERY_DELETED:
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Ignoring recovery.deleted (recovery stored as time-series, no external_id index)",
                 provider="whoop",
                 action="whoop_webhook_recovery_delete_skipped",
@@ -307,9 +282,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
 
         deleted = self.data_247.event_record_repo.delete_by_external_id(db, user_id, resource_id, source="whoop")
         if not deleted:
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "No EventRecord found for deleted Whoop resource",
                 provider="whoop",
                 action="whoop_webhook_delete_not_found",
@@ -319,9 +292,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             )
             return {"status": "ignored", "reason": "record_not_found"}
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Deleted EventRecord for Whoop resource",
             provider="whoop",
             action="whoop_webhook_deleted",
