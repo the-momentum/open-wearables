@@ -236,3 +236,45 @@ def test_oura_revoke_success_does_not_raise(mock_post: MagicMock) -> None:
     _oura_oauth().deregister_user(FAKE_TOKEN)
 
     assert mock_post.call_args.kwargs["params"] == {"access_token": FAKE_TOKEN}
+
+
+@pytest.mark.parametrize("key", ["code", "verification_token", "hub.verify_token", "token", "access_token"])
+def test_shipped_events_carry_no_incoming_query_credentials(sentry_transport: _CapturingTransport, key: str) -> None:
+    query_string = f"{key}={FAKE_TOKEN}&start_date=2025-03-01"
+    with sentry_sdk.isolation_scope() as scope:
+        # What the ASGI integration attaches to an incoming request's events
+        scope.add_event_processor(lambda event, _: {**event, "request": {"query_string": query_string}})
+        sentry_sdk.capture_message("callback failed")
+        with sentry_sdk.start_transaction(name="callback"):
+            pass
+    sentry_sdk.flush()
+
+    payloads = sentry_transport.payloads()
+    assert {p.get("type", "event") for p in payloads} == {"event", "transaction"}
+    assert FAKE_TOKEN not in json.dumps(payloads, default=str)
+
+
+def test_sensitive_mode_keeps_other_query_values() -> None:
+    event = {"request": {"query_string": f"code={FAKE_TOKEN}&start_date=2025-03-01&flag"}}
+
+    shipped = sentry_integration._before_send_sensitive(cast("Event", event), {})
+
+    assert shipped is not None
+    assert shipped["request"]["query_string"] == f"code={FILTERED}&start_date=2025-03-01&flag"
+
+
+def _handle_callback(scope: dict[str, Any]) -> None:
+    raise RuntimeError("callback failed")
+
+
+def test_shipped_events_carry_no_query_credentials_in_scope_locals(sentry_transport: _CapturingTransport) -> None:
+    # Sensitive mode ships frame locals; a raw ASGI scope keeps the query as bytes.
+    try:
+        _handle_callback({"type": "http", "query_string": f"code={FAKE_TOKEN}".encode()})
+    except RuntimeError as e:
+        sentry_sdk.capture_exception(e)
+    sentry_sdk.flush()
+
+    payloads = sentry_transport.payloads()
+    assert payloads
+    assert FAKE_TOKEN not in json.dumps(payloads, default=str)

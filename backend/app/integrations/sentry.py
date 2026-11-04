@@ -72,9 +72,15 @@ _scrubber = EventScrubber(
 # "headers" covers raw ASGI scopes in frame locals (a Starlette Request is a mapping over its
 # scope), whose byte-string headers carry Authorization / API keys. Request headers themselves
 # are scrubbed per header (SDK defaults plus CREDENTIAL_DENYLIST), so the rest stay visible.
+# "query_string" covers the same scopes, whose raw query can carry the credentials below.
 _credentials_scrubber = EventScrubber(
-    denylist=[*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, "headers"],
+    denylist=[*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, "headers", "query_string"],
     recursive=True,
+)
+# Query parameters of incoming requests that carry a credential: the OAuth callback code and
+# webhook verification tokens (Oura, Strava; Withings sends "token", in the SDK defaults).
+_QUERY_CREDENTIALS = frozenset(
+    key.lower() for key in [*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, "code", "verification_token", "hub.verify_token"]
 )
 
 
@@ -126,12 +132,23 @@ def _route_upstream_error(event: "Event", hint: "Hint") -> "Event | None":
     return event
 
 
+def _mask_query_credentials(query_string: str) -> str:
+    parts = (part.partition("=") for part in query_string.split("&"))
+    return "&".join(
+        f"{key}={FILTERED}" if sep and key.lower() in _QUERY_CREDENTIALS else key + sep + value
+        for key, sep, value in parts
+    )
+
+
 def _before_send_sensitive(event: "Event", hint: "Hint") -> "Event | None":
-    """Credentials stay masked in the app log context too; EventScrubber skips contexts."""
+    """Credentials stay masked in the app log context and the query string too; EventScrubber skips both."""
     if _route_upstream_error(event, hint) is None:
         return None
     if "contexts" in event:
         event["contexts"] = _mask_keys(event["contexts"], _credentials_scrubber.denylist)
+    request = event.get("request") or {}
+    if isinstance(query_string := request.get("query_string"), str):
+        request["query_string"] = _mask_query_credentials(query_string)
     return event
 
 
@@ -194,6 +211,6 @@ def init_sentry() -> None:
         event_scrubber=_credentials_scrubber if sensitive else _scrubber,
         before_send=_before_send_sensitive if sensitive else before_send,
         # Sampled transactions carry the request (query string) too but skip before_send.
-        before_send_transaction=None if sensitive else before_send,
+        before_send_transaction=_before_send_sensitive if sensitive else before_send,
         integrations=integrations,
     )
