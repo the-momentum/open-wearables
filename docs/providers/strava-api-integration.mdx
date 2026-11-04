@@ -101,7 +101,8 @@ API_BASE_URL=http://localhost:8000
 STRAVA_CLIENT_ID=your-strava-client-id
 STRAVA_CLIENT_SECRET=your-strava-client-secret
 STRAVA_DEFAULT_SCOPE=activity:read_all,profile:read_all
-STRAVA_WEBHOOK_TOKEN=replace-with-output-of-openssl-rand-hex-32
+# Generate with: openssl rand -hex 32
+STRAVA_WEBHOOK_TOKEN=
 # STRAVA_WEBHOOK_VERIFY_TOKEN=  # optional: derived from SECRET_KEY when unset
 ```
 

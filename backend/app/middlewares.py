@@ -42,7 +42,10 @@ def _log_path(request: Request) -> str:
     except ValueError:
         # Unparseable query: drop it wholesale rather than risk logging a secret.
         return f"{path}?{_REDACTED}"
-    masked = [(key, _REDACTED if key.lower() in _REDACTED_QUERY_KEYS else value) for key, value in pairs]
+    # A value can itself be a callback URL (?callback_url= of the subscription endpoints).
+    masked = [
+        (key, _REDACTED if key.lower() in _REDACTED_QUERY_KEYS else redact_callback_url(value)) for key, value in pairs
+    ]
     return f"{path}?{urlencode(masked)}"
 
 

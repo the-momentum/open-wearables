@@ -46,7 +46,7 @@ def celery() -> Generator[MagicMock, None, None]:
         yield mock
 
 
-def _post_event(client: TestClient, path: str) -> object:
+def _post_event(client: TestClient, path: str) -> httpx.Response:
     now = int(time.time())
     return client.post(
         path,
@@ -55,7 +55,7 @@ def _post_event(client: TestClient, path: str) -> object:
     )
 
 
-def _handshake(client: TestClient, path: str) -> object:
+def _handshake(client: TestClient, path: str) -> httpx.Response:
     params = {
         "hub.mode": "subscribe",
         "hub.challenge": "15f7d1a91c1f40f8a748fd134752feb3",
