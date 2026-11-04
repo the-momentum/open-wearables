@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
 from app.repositories import AggregateRepository, data_point_series_repository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -30,6 +32,7 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.responses.activity import Meal, NutrientValue
+from app.schemas.sync_status import DataTypeKind
 from app.services.event_record_service import event_record_service
 from tests.factories import (
     DataPointSeriesFactory,
@@ -1343,7 +1346,13 @@ class TestGetSleepSessions:
         sessions = event_record_service.get_sleep_sessions(db, user_id, params).data
         return next(s for s in sessions if s.id == record_id).is_final
 
-    def test_a_session_is_final_once_its_source_sent_data_after_it(self, db: Session) -> None:
+    @staticmethod
+    def _oura_heart_rate_until(db: Session, user_id: UUID, until: datetime) -> None:
+        data_type_coverage_repository.record(
+            db, [CoverageSpan(user_id, "oura", "heart_rate", DataTypeKind.SERIES, until - timedelta(days=1), until)]
+        )
+
+    def test_a_session_is_final_once_its_provider_sent_data_after_it(self, db: Session) -> None:
         user = UserFactory()
         ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
         end = datetime(2026, 10, 31, 7, 0, tzinfo=timezone.utc)
@@ -1351,11 +1360,11 @@ class TestGetSleepSessions:
             mapping=ring, category="sleep", type_="sleep", start_datetime=end - timedelta(hours=8), end_datetime=end
         )
         SleepDetailsFactory(event_record=night)
-        DataPointSeriesFactory(data_source=ring, recorded_at=end + timedelta(minutes=29))
+        self._oura_heart_rate_until(db, user.id, end + timedelta(minutes=29))
 
         assert self._is_final(db, user.id, night.id) is False
 
-        DataPointSeriesFactory(data_source=ring, recorded_at=end + timedelta(minutes=30))
+        self._oura_heart_rate_until(db, user.id, end + timedelta(minutes=30))
 
         assert self._is_final(db, user.id, night.id) is True
 

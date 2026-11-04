@@ -1089,7 +1089,7 @@ class EventRecordService(
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
-        final_ids = final_record_ids(db_session, records, datetime.now(timezone.utc))
+        final_ids = final_record_ids(db_session, user_id, records, datetime.now(timezone.utc))
         data = []
         for record, data_source in records:
             details: SleepDetails | None = record.sleep_detail
