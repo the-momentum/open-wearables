@@ -390,6 +390,7 @@ class Whoop247Data(Base247DataTemplate):
             sleep_rem_minutes=seconds_to_minutes(rem_seconds),
             sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
+            provider_state=normalized_sleep.get("score_state"),
         )
 
         try:

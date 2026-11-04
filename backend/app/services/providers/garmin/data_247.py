@@ -327,6 +327,7 @@ class Garmin247Data(Base247DataTemplate):
         nap: dict[str, Any],
         user_id: UUID,
         parent_summary_id: str | None = None,
+        validation: str | None = None,
     ) -> tuple[EventRecordCreate, EventRecordDetailCreate] | None:
         """Build EventRecord + EventRecordDetail for a nap entry from a Garmin sleep summary."""
         start_ts = nap.get("napStartTimeInSeconds", 0)
@@ -354,6 +355,7 @@ class Garmin247Data(Base247DataTemplate):
             sleep_total_duration_minutes=duration // 60,
             sleep_time_in_bed_minutes=duration // 60,
             is_nap=True,
+            provider_state=validation,
         )
         return record, detail
 
@@ -422,6 +424,7 @@ class Garmin247Data(Base247DataTemplate):
             sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
             sleep_stages=normalized_sleep.get("stage_timestamps"),
+            provider_state=normalized_sleep.get("validation"),
         )
 
         return record, detail
@@ -1974,7 +1977,9 @@ class Garmin247Data(Base247DataTemplate):
                         if health_score:
                             all_health_scores.append(health_score)
                         for raw_nap in normalized.get("naps", []):
-                            nap_result = self._build_nap_record(raw_nap, user_id, normalized.get("garmin_summary_id"))
+                            nap_result = self._build_nap_record(
+                                raw_nap, user_id, normalized.get("garmin_summary_id"), normalized.get("validation")
+                            )
                             if nap_result:
                                 nap_record, nap_detail = nap_result
                                 all_records.append(nap_record)
