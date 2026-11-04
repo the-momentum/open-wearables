@@ -6,7 +6,7 @@ Polar Flow's actual sleep share, the night minus its interruptions over the nigh
 replaces the nights still in Polar's 90-day window; this sets it on the nights stored before, from
 their stored minutes awake. Those are whole minutes, which can raise an efficiency by less than a
 minute's share of the night, never past 100. A night whose interruptions weren't reported keeps no
-efficiency, and one awake for longer than it lasted is left as it is.
+efficiency, and one whose minutes awake could stand for longer than it lasted is left as it is.
 
 Waits for dedupe_polar_sleep: until that has run, a night without stages re-synced before #1870
 may hold its minutes awake several times. Runs once per instance (data_migration), in one
@@ -33,7 +33,8 @@ _NIGHTS = """
     AND sd.sleep_efficiency_score IS NULL
     AND sd.sleep_awake_minutes IS NOT NULL
     AND er.duration_seconds > 0
-    AND sd.sleep_awake_minutes * 60 <= er.duration_seconds
+    -- Whole minutes awake stand for up to 59 seconds more, which must fit the night too
+    AND sd.sleep_awake_minutes * 60 + 59 <= er.duration_seconds
 """
 _COUNT = text(f"""
     SELECT count(*)
