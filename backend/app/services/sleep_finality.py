@@ -17,7 +17,7 @@ _DATA_AFTER_END = timedelta(minutes=30)
 _GARMIN_TENTATIVE_FINAL_AFTER = timedelta(hours=12)
 # A scored Whoop night counts as final this long after its end: Whoop can still extend it for a few hours.
 _WHOOP_SCORED_FINAL_AFTER = timedelta(hours=6)
-# A Google Health night still processing counts as final this long after its end, in case processing never finishes.
+# A Google Health night not marked processed counts as final this long after its end, in case it never is.
 _GOOGLE_PROCESSING_FINAL_AFTER = timedelta(hours=24)
 # Data whose latest record tells when the provider last synced: series a device sends with every sync, and the
 # nights and workouts themselves, as some devices (a Withings Sleep Analyzer) send nothing else.
@@ -44,7 +44,7 @@ def finality_from_state(provider: str, provider_state: str | None, end: datetime
         if provider_state == "UNSCORABLE":
             return True  # it won't change
         return now >= end + _WHOOP_SCORED_FINAL_AFTER
-    if provider == ProviderName.GOOGLE_HEALTH and provider_state is not None:
+    if provider == ProviderName.GOOGLE_HEALTH:
         return provider_state == "processed" or now >= end + _GOOGLE_PROCESSING_FINAL_AFTER
     return None
 
@@ -53,15 +53,21 @@ def final_record_ids(
     db_session: DbSession, user_id: UUID, sessions: list[tuple[EventRecord, DataSource]], now: datetime
 ) -> set[UUID]:
     """The ids of the user's final sessions: by provider and state, else by the provider's latest data."""
-    latest_data = _latest_data_by_provider(db_session, user_id)
     final: set[UUID] = set()
+    by_data: list[tuple[EventRecord, str]] = []
     for record, data_source in sessions:
         state = record.sleep_detail.provider_state if record.sleep_detail else None
         decided = finality_from_state(data_source.provider, state, record.end_datetime, now)
         if decided is None:
-            latest = latest_data.get(data_source.provider)
-            decided = latest is not None and latest >= record.end_datetime + _DATA_AFTER_END
-        if decided:
+            by_data.append((record, data_source.provider))
+        elif decided:
+            final.add(record.id)
+    if not by_data:
+        return final
+    latest_data = _latest_data_by_provider(db_session, user_id)
+    for record, provider in by_data:
+        latest = latest_data.get(provider)
+        if latest is not None and latest >= record.end_datetime + _DATA_AFTER_END:
             final.add(record.id)
     return final
 
