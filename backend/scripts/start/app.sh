@@ -182,6 +182,13 @@ echo 'Running Polar sleep efficiency backfill...'
 uv run python scripts/data_migrations/backfill_polar_sleep_efficiency.py \
     || echo "Warning: Polar sleep efficiency backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Scales Apple Health XML percentages stored as 0-1 fractions to 0-100. Runs once per instance
+# (data_migration).
+echo 'Running Apple Health XML percentage scaling...'
+uv run python scripts/data_migrations/scale_apple_xml_percentages.py \
+    || echo "Warning: Apple Health XML percentage scaling failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
