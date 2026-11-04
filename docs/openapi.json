@@ -19811,6 +19811,12 @@
             "type": "boolean",
             "title": "Is Nap",
             "default": false
+          },
+          "is_final": {
+            "type": "boolean",
+            "title": "Is Final",
+            "description": "Whether no more data is expected for this session; until then the provider may still extend it",
+            "example": true
           }
         },
         "type": "object",
@@ -19819,7 +19825,8 @@
           "start_time",
           "end_time",
           "source",
-          "duration_seconds"
+          "duration_seconds",
+          "is_final"
         ],
         "title": "SleepSession"
       },

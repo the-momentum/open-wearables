@@ -48,6 +48,9 @@ class EventRecordDetailBase(BaseModel):
 
     sleep_stages: list[SleepStage] | None = None
 
+    # Sleep state as the provider sent it (SleepDetails.provider_state)
+    provider_state: str | None = Field(default=None, max_length=64)
+
     segments: list[dict] | None = None
     hr_zones: HRZones | None = None
     power_zones: PowerZones | None = None

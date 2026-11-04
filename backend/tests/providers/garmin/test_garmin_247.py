@@ -338,6 +338,29 @@ class TestGarmin247Data:
         assert detail.sleep_deep_minutes == 120
         assert detail.sleep_total_duration_minutes == 480
 
+    def test_build_sleep_record_keeps_the_validation(self, garmin_247: Garmin247Data) -> None:
+        """A *_TENTATIVE night may still grow; the state is kept for is_final."""
+        sleep_data = {
+            "summaryId": "sleep_123",
+            "startTimeInSeconds": 1705273200,
+            "durationInSeconds": 28800,
+            "validation": "ENHANCED_TENTATIVE",
+        }
+
+        normalized, _ = garmin_247.normalize_sleep(sleep_data, uuid4())
+        result = garmin_247._build_sleep_record(uuid4(), normalized)
+
+        assert result is not None
+        assert result[1].provider_state == "ENHANCED_TENTATIVE"
+
+    def test_a_nap_keeps_its_sleep_summary_validation(self, garmin_247: Garmin247Data) -> None:
+        nap = {"napStartTimeInSeconds": 1705320000, "napDurationInSeconds": 1800, "napOffsetInSeconds": 3600}
+
+        result = garmin_247._build_nap_record(nap, uuid4(), "sleep_123", "ENHANCED_FINAL")
+
+        assert result is not None
+        assert result[1].provider_state == "ENHANCED_FINAL"
+
     # -------------------------------------------------------------------------
     # Dailies Data Tests
     # -------------------------------------------------------------------------
