@@ -664,7 +664,7 @@ class SummariesService:
     def _recovery_days(self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
         """One row per day in [start, end) from the vitals' day and night values, the main sleep and the
         recovery score, best source per date."""
-        first_day, last_day = utc_date(start), utc_date(end) - timedelta(days=1)
+        first_day, last_day = utc_date(start), utc_date(end - timedelta(microseconds=1))
         identity = ("recovery_date", "provider", "source", "device_model", "device_type")
 
         nights = self.event_record_repo.night_values(
