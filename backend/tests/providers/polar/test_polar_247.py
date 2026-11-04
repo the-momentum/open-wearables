@@ -161,6 +161,14 @@ class TestPolar247SleepNormalization:
 
         assert detail.sleep_efficiency_score == Decimal("93.75")
 
+    def test_sleep_efficiency_is_kept_to_two_decimals(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        sample_sleep["total_interruption_duration"] = 1000
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score == Decimal("96.53")
+        assert str(detail.sleep_efficiency_score) == "96.53"
+
     def test_no_sleep_efficiency_without_interruptions(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         sample_sleep.pop("total_interruption_duration")
 

@@ -270,7 +270,7 @@ class Polar247Data(Base247DataTemplate):
             # Polar reports no efficiency. Its "actual sleep" share is the night minus its interruptions,
             # all the time awake between falling asleep and waking up, over the night
             efficiency_score = (
-                Decimal(str((duration_seconds - awake_s) / duration_seconds * 100))
+                round(Decimal(duration_seconds - awake_s) * 100 / duration_seconds, 2)
                 if awake_s is not None and duration_seconds > 0 and 0 <= awake_s <= duration_seconds
                 else None
             )
