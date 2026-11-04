@@ -108,6 +108,9 @@ class WorkoutStatistic(BaseModel):
 class WorkoutRoutePoint(BaseModel):
     """One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored."""
 
+    # NaN / Infinity fail validation, so the point is dropped instead of stored.
+    model_config = ConfigDict(allow_inf_nan=False)
+
     timestamp: datetime | None = None
     latitude: float | None = None
     longitude: float | None = None
@@ -116,6 +119,8 @@ class WorkoutRoutePoint(BaseModel):
 
 class WorkoutSample(BaseModel):
     """One per-sample measurement recorded during a workout (heart rate, speed, cadence, power)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
 
     timestamp: datetime | None = None
     type: str | None = None

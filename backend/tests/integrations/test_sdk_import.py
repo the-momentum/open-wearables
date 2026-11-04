@@ -1902,8 +1902,14 @@ class TestSDKWorkoutRouteAndSamples:
         user = UserFactory()
         payload = self._samsung_payload()
         workout = payload["data"]["workouts"][0]
-        workout["route"].append({"timestamp": "2026-02-24T06:02:00Z", "latitude": "north", "longitude": 21.0})
-        workout["samples"].append({"timestamp": "not a date", "type": "heartRate", "value": 120.0})
+        workout["route"] += [
+            {"timestamp": "2026-02-24T06:02:00Z", "latitude": "north", "longitude": 21.0},
+            {"timestamp": "2026-02-24T06:03:00Z", "latitude": float("nan"), "longitude": 21.0},
+        ]
+        workout["samples"] += [
+            {"timestamp": "not a date", "type": "heartRate", "value": 120.0},
+            {"timestamp": "2026-02-24T06:03:00Z", "type": "heartRate", "value": float("inf"), "unit": "bpm"},
+        ]
 
         result = import_service.load_data(db, payload, str(user.id))
 
