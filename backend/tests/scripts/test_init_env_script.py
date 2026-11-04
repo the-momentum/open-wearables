@@ -65,3 +65,12 @@ def test_replaces_only_the_old_default(repo: Path, line: str, replaced: bool) ->
 
     assert (_secret_key(repo) != line.partition("=")[2]) is replaced
     assert dotenv_values(_backend_env(repo))["OTHER"] == "1"
+
+
+def test_a_generated_key_leaves_the_env_readable_by_its_owner_only(repo: Path) -> None:
+    _backend_env(repo).write_text("SECRET_KEY=\n")
+    _backend_env(repo).chmod(0o644)
+
+    _run(repo)
+
+    assert stat.S_IMODE(_backend_env(repo).stat().st_mode) == 0o600

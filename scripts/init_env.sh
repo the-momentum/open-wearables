@@ -18,7 +18,7 @@ fi
 if grep -Eq '^SECRET_KEY=(secret-key-str)?$' "$BACKEND_ENV"; then
     key=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
     (umask 077 && sed -E "s/^SECRET_KEY=(secret-key-str)?$/SECRET_KEY=$key/" "$BACKEND_ENV" > "$BACKEND_ENV.tmp")
-    cat "$BACKEND_ENV.tmp" > "$BACKEND_ENV" && rm "$BACKEND_ENV.tmp"
+    mv "$BACKEND_ENV.tmp" "$BACKEND_ENV"
     echo "Generated SECRET_KEY (a replaced key signs everyone out)"
 fi
 

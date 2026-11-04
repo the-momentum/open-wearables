@@ -165,6 +165,8 @@ The defaults in `.env.example` are development values. Override at least these f
 | `VITE_API_URL` | URL of the API as reached from the browser |
 | `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 
+Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again and update the secret in the Suunto portal.
+
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 
 Open Wearables does not use `OTEL_PROPAGATORS`, but FastAPI loads the propagators it lists at startup. If your platform sets it to one that is not installed in the image, such as `b3`, every backend container fails with `ValueError: Propagator b3 not found`. Unset it for these containers.

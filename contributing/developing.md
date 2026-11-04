@@ -18,6 +18,9 @@ The easiest way to get started is using Docker Compose:
 git clone https://github.com/the-momentum/open-wearables.git
 cd open-wearables
 
+# Create the .env files and generate SECRET_KEY
+make init
+
 # Start all services with hot-reload (recommended for development)
 make watch
 
