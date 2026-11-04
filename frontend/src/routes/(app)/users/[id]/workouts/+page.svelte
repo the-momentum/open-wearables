@@ -9,6 +9,7 @@
 	import DeleteEventDialog from '$lib/components/events/DeleteEventDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import FilterSelect from '$lib/components/ui/FilterSelect.svelte';
+	import Segmented from '$lib/components/ui/Segmented.svelte';
 	import WorkoutCard from '$lib/components/workouts/WorkoutCard.svelte';
 	import WorkoutSummary from '$lib/components/workouts/WorkoutSummary.svelte';
 	import { providerLabel } from '$lib/providers/labels';
@@ -31,7 +32,9 @@
 	]);
 
 	const workouts = $derived(data.workouts.data);
-	const filtered = $derived(Boolean(data.provider || data.type || data.period.from));
+	const filtered = $derived(
+		Boolean(data.provider || data.type || data.topSourceOnly || data.period.from)
+	);
 
 	// One dialog for the page, not one per card, and the subject is separate from
 	// openness so closing does not have to null it mid-transition.
@@ -60,6 +63,20 @@
 				/>
 			</FilterGroup>
 		{/if}
+
+		<!-- One ride often reaches us from two providers. This is the same ranking
+		     the summaries use, applied by the backend so paging and the totals
+		     agree with it; done here it would have thinned each page instead. -->
+		<FilterGroup label="Sources">
+			<Segmented
+				label="Sources"
+				selected={data.topSourceOnly ? 'top' : 'all'}
+				items={[
+					{ value: 'all', label: 'Show duplicates', href: hrefFor({ top: null }) },
+					{ value: 'top', label: 'Hide duplicates', href: hrefFor({ top: '1' }) }
+				]}
+			/>
+		</FilterGroup>
 	</FilterBar>
 
 	<!-- A rule under the controls: the figures answer to them, so they have to
