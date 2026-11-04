@@ -6,13 +6,15 @@ the SDK would actually ship.
 
 import json
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import UUID, uuid4
 
 import pytest
 import sentry_sdk
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, ValidationError
 from sentry_sdk.envelope import Envelope
@@ -21,10 +23,18 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.integrations import sentry as sentry_integration
+from app.main import app_error_handler
 from app.services import raw_payload_storage
-from app.utils.sentry_helpers import log_and_capture_error
+from app.services.providers.sensorbio import data_247 as sensorbio_data_247
+from app.services.providers.sync_247_result import Sync247Run
+from app.utils.config_utils import LogLevel
+from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError, ProviderRateLimitError
+from app.utils.logging_setup import configure_app_logger
+from app.utils.structured_logging import get_logger, is_expected_error
 
-logger = logging.getLogger("app.test_sentry_scrubbing")
+# A library logger: its ERROR records keep becoming Sentry events, like before.
+logger = logging.getLogger("library.test_sentry_scrubbing")
+app_logger = get_logger("app.test_sentry_scrubbing")
 
 FAKE_HEART_RATE = 187.349  # a dot keeps it from matching numeric ids in the event
 FAKE_EMAIL = "jane.doe@example.com"
@@ -40,6 +50,8 @@ class _CapturingTransport(Transport):
         self.transactions: list[dict[str, Any]] = []
 
     def capture_envelope(self, envelope: Envelope) -> None:
+        # Encode it like the real transport: an event that cannot be encoded never ships.
+        envelope.serialize()
         if (event := envelope.get_event()) is not None:
             self.events.append(event)
         if (transaction := envelope.get_transaction_event()) is not None:
@@ -140,32 +152,186 @@ def test_database_error_keeps_its_statement_but_not_the_row(captured: list[dict[
     assert str(FAKE_HEART_RATE) not in _dump(captured[0])
 
 
-def test_log_and_capture_error_context_is_scrubbed(captured: list[dict[str, Any]]) -> None:
-    log_and_capture_error(
-        RuntimeError("sync failed"),
-        logger,
+def _raise(exc: Exception) -> Any:
+    raise exc
+
+
+def _raised(exc: Exception) -> Exception:
+    try:
+        raise exc
+    except Exception as caught:
+        return caught
+
+
+@pytest.fixture
+def app_log_level() -> Iterator[Any]:
+    """Apply a LOG_LEVEL to the app logger for the test."""
+
+    def apply(level: LogLevel | None) -> None:
+        with patch.object(settings, "log_level", level):
+            configure_app_logger()
+
+    yield apply
+    configure_app_logger()
+
+
+def test_log_context_is_scrubbed(captured: list[dict[str, Any]]) -> None:
+    app_logger.error(
         "sync failed",
-        extra={
-            "user_id": "u-1",
-            "email": FAKE_EMAIL,
-            "nested": {"provider_username": FAKE_USERNAME},
-            "error": f"[type=int_parsing, input_value='{FAKE_PAYLOAD}', input_type=str]",
-        },
+        exc_info=_raised(RuntimeError("sync failed")),
+        user_id="u-1",
+        run_id=UUID(int=1),
+        api_key=FAKE_TOKEN,
+        email=FAKE_EMAIL,
+        nested={"provider_username": FAKE_USERNAME},
+        error=f"[type=int_parsing, input_value='{FAKE_PAYLOAD}', input_type=str]",
     )
     sentry_sdk.flush()
 
-    # The ERROR log is its own event; the exception event carries the context.
-    event = next(e for e in captured if "exception" in e)
-    assert event["contexts"]["user_id"] == {"value": "u-1"}
-    for e in captured:
-        assert FAKE_EMAIL not in _dump(e)
-        assert FAKE_USERNAME not in _dump(e)
-        assert FAKE_PAYLOAD not in _dump(e)
+    # One exception event, carrying the call's attributes as a context; it must still encode.
+    [event] = captured
+    assert event["exception"]["values"][0]["value"] == "sync failed"
+    context = event["contexts"]["log"]
+    assert context["message"] == "sync failed"
+    assert context["logger"] == "app.test_sentry_scrubbing"
+    assert context["user_id"] == "u-1"
+    assert "00000000-0000-0000-0000-000000000001" in str(context["run_id"])
+    assert context["api_key"] == context["email"] == "[Filtered]"
+    assert FAKE_TOKEN not in _dump(event)
+    assert FAKE_EMAIL not in _dump(event)
+    assert FAKE_USERNAME not in _dump(event)
+    assert FAKE_PAYLOAD not in _dump(event)
+
+
+@pytest.mark.parametrize("captured", [False, True], indirect=True)
+def test_app_errors_without_an_exception_do_not_alert(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("Sync failed", user_id="u-1")
+    app_logger.warning("Fetch failed", exc_info=_raised(ValueError("boom")))
+    app_logger.error("Token refresh rejected", exc_info=_raised(HTTPException(status_code=401)))
+    app_logger.error("User missing", exc_info=_raised(NotFoundError("User not found.")))
+    sentry_sdk.flush()
+
+    assert captured == []
+
+
+def test_app_errors_do_not_go_through_the_logging_integration(captured: list[dict[str, Any]]) -> None:
+    """Otherwise every app ERROR record (each 4xx/5xx access log line) is built into an event first."""
+    with patch("sentry_sdk.integrations.logging.sentry_sdk.capture_event") as capture_event:
+        app_logger.error("http_request", status=401)
+        logger.error("library error")
+
+    assert capture_event.call_count == 1
+
+
+def test_log_level_does_not_silence_reports(captured: list[dict[str, Any]], app_log_level: Any) -> None:
+    """Quieter logs must not hide errors from Sentry."""
+    app_log_level(LogLevel.CRITICAL)
+    app_logger.error("Sync failed", exc_info=_raised(ValueError("filtered")), provider="garmin")
+    app_logger.error("Storage disabled", alert=True)
+    sentry_sdk.flush()
+
+    exception_event, message_event = captured
+    assert exception_event["exception"]["values"][-1]["type"] == "ValueError"
+    assert exception_event["tags"] | {"logger": None} == {"logger": None, "provider": "garmin"}
+    assert message_event["message"] == "Storage disabled"
+
+
+def test_alert_reports_lines_without_an_exception_or_below_error(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("Storage disabled", alert=True, user_id="u-1")
+    app_logger.warning("Fetch failed", exc_info=_raised(ValueError("boom")), alert=True, user_id="u-2")
+    sentry_sdk.flush()
+
+    message_event, exception_event = captured
+    assert message_event["level"] == "error"
+    assert message_event["message"] == "Storage disabled"
+    assert message_event["contexts"]["log"]["user_id"] == "u-1"
+    # A captured exception is an error in Sentry, whatever the level of the line.
+    assert exception_event["level"] == "error"
+    assert exception_event["exception"]["values"][0]["value"] == "boom"
+    assert exception_event["contexts"]["log"]["user_id"] == "u-2"
+
+
+def test_alert_below_error_without_an_exception_keeps_its_level(captured: list[dict[str, Any]]) -> None:
+    app_logger.warning("Fetch failed", alert=True)
+    sentry_sdk.flush()
+
+    [event] = captured
+    assert event["level"] == "warning"
+
+
+@pytest.mark.parametrize(
+    ("exc", "reported"),
+    [
+        (HTTPException(status_code=404), False),
+        (ProviderError("garmin", upstream_status=404), False),
+        (HTTPException(status_code=500), True),
+        (ProviderError("garmin", upstream_status=503), True),
+        (ValueError("boom"), True),
+    ],
+)
+def test_alert_can_leave_out_expected_errors(captured: list[dict[str, Any]], exc: Exception, reported: bool) -> None:
+    exc = _raised(exc)
+    with patch.object(app_logger.logger, "log", wraps=app_logger.logger.log) as log:
+        app_logger.warning("Fetch failed", exc_info=exc, alert=not is_expected_error(exc))
+    sentry_sdk.flush()
+
+    assert log.call_args.args[0] == logging.WARNING
+    assert [event["level"] for event in captured] == (["error"] if reported else [])
+
+
+@pytest.mark.parametrize(
+    ("make_exc", "events"),
+    [
+        (lambda: HTTPException(status_code=401), 0),
+        (lambda: ProviderError("sensorbio", upstream_status=404), 0),
+        (lambda: ProviderError("sensorbio", upstream_status=503), 3),
+        (lambda: RuntimeError("boom"), 3),
+    ],
+)
+def test_sensorbio_daily_details_do_not_alert_on_client_errors(
+    captured: list[dict[str, Any]], make_exc: Any, events: int
+) -> None:
+    """Like log_and_capture_error(level="warning") did: an expired token is no alert for each day of a sync."""
+    data_247 = sensorbio_data_247.SensorBio247Data("sensorbio", "https://api.sensorbio.com", MagicMock())
+    start, end = datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 3, tzinfo=timezone.utc)
+    sensorbio_logger = sensorbio_data_247.logger.logger
+    with (
+        # A new exception per day, as in a real sync: Sentry drops a repeat of the same object.
+        patch.object(data_247, "_make_api_request", side_effect=lambda *args, **kwargs: _raise(make_exc())),
+        patch.object(sensorbio_logger, "log", wraps=sensorbio_logger.log) as log,
+    ):
+        assert data_247._get_daily_details(MagicMock(), uuid4(), start, end, "/v1/activity/details") == []
+    sentry_sdk.flush()
+
+    assert [call.args[0] for call in log.call_args_list] == [logging.WARNING] * 3
+    assert len(captured) == events
+
+
+def test_attributes_do_not_replace_the_fields_of_the_log_context(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("Storage disabled", alert=True, logger="custom")
+    sentry_sdk.flush()
+
+    [event] = captured
+    context = event["contexts"]["log"]
+    assert context["logger"] == "app.test_sentry_scrubbing"
+    assert context["attr_logger"] == "custom"
+
+
+def test_misconfigured_raw_payload_storage_alerts(captured: list[dict[str, Any]]) -> None:
+    try:
+        raw_payload_storage.configure("s3", 1024 * 1024, s3_bucket=None)
+    finally:
+        raw_payload_storage.configure("disabled", 10 * 1024 * 1024)
+    sentry_sdk.flush()
+
+    [event] = captured
+    assert event["message"] == "S3 storage requested but no S3 bucket configured"
 
 
 def test_info_logs_do_not_become_breadcrumbs(captured: list[dict[str, Any]]) -> None:
     logger.info("Invitation sent to %s", FAKE_EMAIL)
     logger.warning("Skipping user %s", FAKE_EMAIL)
+    app_logger.info("Invitation sent", email=FAKE_EMAIL)
     sentry_sdk.capture_message("something happened")
     sentry_sdk.flush()
 
@@ -190,7 +356,7 @@ def test_query_string_values_are_filtered(captured: list[dict[str, Any]]) -> Non
 
 
 def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list[dict[str, Any]]) -> None:
-    logger.error(f"Failed to send invitation to {FAKE_EMAIL}")
+    logger.error(f"Failed to send invitation to {FAKE_EMAIL}")  # noqa: G004 - free text is what the filter must catch
     logger.error("Failed to send invitation to %s", FAKE_EMAIL)
     sentry_sdk.capture_exception(ValueError(f"User {FAKE_EMAIL} already exists"))
     sentry_sdk.flush()
@@ -198,6 +364,16 @@ def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list
     assert len(captured) == 3
     for event in captured:
         assert FAKE_EMAIL not in _dump(event)
+
+
+@pytest.mark.parametrize("captured", [True], indirect=True)
+def test_sensitive_mode_masks_credentials_in_the_log_context(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("sync failed", exc_info=_raised(RuntimeError("boom")), api_key=FAKE_TOKEN, email=FAKE_EMAIL)
+    sentry_sdk.flush()
+
+    [event] = captured
+    assert event["contexts"]["log"]["api_key"] == "[Filtered]"
+    assert event["contexts"]["log"]["email"] == FAKE_EMAIL
 
 
 @pytest.mark.parametrize("captured", [True], indirect=True)
@@ -272,3 +448,71 @@ def test_failed_s3_upload_adds_no_breadcrumb(captured: list[dict[str, Any]]) -> 
 
     crumbs = captured[0].get("breadcrumbs", {}).get("values", [])
     assert not [c for c in crumbs if c.get("category") == "raw_payload" and c["data"]["provider"] == "oura"]
+
+
+def _app_raising(error: Exception) -> TestClient:
+    """An app with the real AppError handler, whose only route raises ``error``."""
+    app = FastAPI()
+    app.add_exception_handler(AppError, app_error_handler)
+
+    @app.get("/provider-data")
+    async def provider_data() -> None:
+        raise error
+
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_provider_outage_is_answered_and_reported_grouped(captured: list[dict[str, Any]]) -> None:
+    """Not our bug, but it breaks syncs: one issue per provider and status, not per user."""
+    response = _app_raising(ProviderError("garmin", upstream_status=500)).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 502
+    assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "500"]]
+
+
+def test_providers_answer_about_a_user_is_answered_but_not_reported(captured: list[dict[str, Any]]) -> None:
+    """The SDK reports every handled 5xx; data the provider doesn't have for a user is nothing to fix."""
+    response = _app_raising(ProviderError("garmin", upstream_status=404)).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 502
+    assert captured == []
+
+
+def test_missing_setting_is_answered_and_reported(captured: list[dict[str, Any]]) -> None:
+    response = _app_raising(ConfigurationError("S3 bucket not configured")).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "S3 bucket not configured"
+    assert [event["exception"]["values"][-1]["type"] for event in captured] == ["ConfigurationError"]
+
+
+def test_providers_answer_about_a_user_is_a_warning_unless_alerted(captured: list[dict[str, Any]]) -> None:
+    error = _raised(ProviderError("garmin", upstream_status=404))
+    app_logger.error("Garmin fetch failed", exc_info=error)
+    app_logger.warning("Garmin fetch keeps failing", exc_info=error, alert=True)
+    sentry_sdk.flush()
+
+    assert [event["contexts"]["log"]["message"] for event in captured] == ["Garmin fetch keeps failing"]
+
+
+def test_request_the_provider_refused_is_reported_grouped(captured: list[dict[str, Any]]) -> None:
+    """Likely our bug (a provider changed its API): one issue per provider and status, not per user."""
+    response = _app_raising(ProviderError("garmin", upstream_status=400)).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 502
+    assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "400"]]
+
+
+def test_captured_sync_step_reports_failures_not_a_users_state(captured: list[dict[str, Any]]) -> None:
+    """A lost grant or missing data would report every hour per user; an outage is worth hearing about."""
+    run = Sync247Run("withings", MagicMock(), uuid4())
+    run.fail("sleep", _raised(ProviderError("withings", upstream_status=404)), capture=True)
+    run.fail("weight", _raised(ProviderRateLimitError("withings", "throttled (status=601)")), capture=True)
+    run.fail("activity", _raised(ProviderError("withings", upstream_status=503)), capture=True)
+    sentry_sdk.flush()
+
+    assert [event["contexts"]["log"]["data_type"] for event in captured] == ["activity"]

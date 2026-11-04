@@ -154,6 +154,41 @@ echo 'Running Sensor Bio sleep window backfill...'
 uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
     || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Types Google Health sleep rows saved without 'sleep_session', so a re-fetched night updates
+# its details instead of sending sleep.created again. Idempotent, no-op without Google data.
+echo 'Running Google sleep type backfill...'
+uv run python scripts/data_migrations/backfill_google_sleep_type.py \
+    || echo "Warning: Google sleep type backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Raises each Garmin body battery score to the highest sample of its day; scores kept the peak of
+# the day's first stressDetails push. Runs once per instance (data_migration).
+echo 'Running Garmin body battery peak backfill...'
+uv run python scripts/data_migrations/raise_garmin_body_battery_peaks.py \
+    || echo "Warning: Garmin body battery peak backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves Garmin, Polar and Whoop sleep scores from the night's start to its wake-up, so each falls
+# on the day the user wakes up. Runs once per instance (data_migration).
+echo 'Running provider sleep score restamp...'
+uv run python scripts/data_migrations/restamp_provider_sleep_scores.py \
+    || echo "Warning: provider sleep score restamp failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-04-01 once all deployments have migrated.
+# Sets the sleep efficiency of stored Polar nights from their time awake, once the Polar sleep
+# dedupe above has run. Runs once per instance (data_migration).
+echo 'Running Polar sleep efficiency backfill...'
+uv run python scripts/data_migrations/backfill_polar_sleep_efficiency.py \
+    || echo "Warning: Polar sleep efficiency backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Scales Apple Health XML percentages stored as 0-1 fractions to 0-100. Runs once per instance
+# (data_migration).
+echo 'Running Apple Health XML percentage scaling...'
+uv run python scripts/data_migrations/scale_apple_xml_percentages.py \
+    || echo "Warning: Apple Health XML percentage scaling failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

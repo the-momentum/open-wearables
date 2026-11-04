@@ -13,7 +13,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import delete, or_
 from sqlalchemy.orm import Session
 
@@ -22,6 +21,7 @@ from app.models.user_invitation_code import UserInvitationCode
 from app.schemas.auth import SDKTokenOrigin
 from app.services.refresh_token_service import refresh_token_service
 from app.services.user_invitation_code_service import user_invitation_code_service
+from app.utils.exceptions import AppError
 
 CONCURRENT_REQUESTS = 8
 
@@ -78,7 +78,7 @@ def _run_concurrently(session_factory: Any, call: Callable[[Session], object]) -
             barrier.wait()
             try:
                 return call(session)
-            except HTTPException as exc:
+            except AppError as exc:
                 return exc
 
     with ThreadPoolExecutor(max_workers=CONCURRENT_REQUESTS) as pool:
@@ -92,7 +92,7 @@ def test_concurrent_redeems_of_one_invitation_code_issue_tokens_once(session_fac
 
     results = _run_concurrently(session_factory, lambda s: user_invitation_code_service.redeem(s, generated.code))
 
-    failures = [r for r in results if isinstance(r, HTTPException)]
+    failures = [r for r in results if isinstance(r, AppError)]
     assert len(results) - len(failures) == 1
     assert all(f.status_code == 404 for f in failures)
     with session_factory() as session:
@@ -111,7 +111,7 @@ def test_concurrent_refreshes_of_one_refresh_token_rotate_it_once(session_factor
 
     results = _run_concurrently(session_factory, lambda s: refresh_token_service.refresh_token(s, old_token))
 
-    failures = [r for r in results if isinstance(r, HTTPException)]
+    failures = [r for r in results if isinstance(r, AppError)]
     assert len(results) - len(failures) == 1
     assert all(f.status_code == 401 for f in failures)
     with session_factory() as session:
@@ -129,7 +129,7 @@ def test_concurrent_refreshes_of_one_developer_refresh_token_rotate_it_once(
 
     results = _run_concurrently(session_factory, lambda s: refresh_token_service.refresh_token(s, old_token))
 
-    failures = [r for r in results if isinstance(r, HTTPException)]
+    failures = [r for r in results if isinstance(r, AppError)]
     assert len(results) - len(failures) == 1
     assert all(f.status_code == 401 for f in failures)
     with session_factory() as session:

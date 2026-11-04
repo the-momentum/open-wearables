@@ -5,7 +5,6 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from jose import jwt
 from sqlalchemy.orm import Session
 
@@ -17,6 +16,7 @@ from app.services.user_invitation_code_service import (
     CODE_LENGTH,
     user_invitation_code_service,
 )
+from app.utils.exceptions import NotFoundError
 from tests.factories import DeveloperFactory, UserFactory
 
 
@@ -69,7 +69,7 @@ class TestGenerate:
         developer = DeveloperFactory()
 
         # Act & Assert
-        with pytest.raises(HTTPException):
+        with pytest.raises(NotFoundError):
             user_invitation_code_service.generate(db, uuid4(), developer.id)
 
     def test_generate_revokes_previous_active_codes(self, db: Session) -> None:
@@ -160,12 +160,12 @@ class TestRedeem:
         user_invitation_code_service.redeem(db, generated.code)
 
         # Act & Assert
-        with pytest.raises(HTTPException):
+        with pytest.raises(NotFoundError):
             user_invitation_code_service.redeem(db, generated.code)
 
     def test_redeem_invalid_code_raises(self, db: Session) -> None:
         # Act & Assert
-        with pytest.raises(HTTPException):
+        with pytest.raises(NotFoundError):
             user_invitation_code_service.redeem(db, "ZZZZZZZZ")
 
     def test_redeem_revoked_code_raises(self, db: Session) -> None:
@@ -177,7 +177,7 @@ class TestRedeem:
         user_invitation_code_service.generate(db, user.id, developer.id)
 
         # Act & Assert
-        with pytest.raises(HTTPException):
+        with pytest.raises(NotFoundError):
             user_invitation_code_service.redeem(db, first.code)
 
     def test_redeem_expired_code_raises(self, db: Session) -> None:
@@ -198,7 +198,7 @@ class TestRedeem:
         db.flush()
 
         # Act & Assert
-        with pytest.raises(HTTPException):
+        with pytest.raises(NotFoundError):
             user_invitation_code_service.redeem(db, "XPRD2345")
 
     def test_redeem_normalizes_to_uppercase(self, db: Session) -> None:

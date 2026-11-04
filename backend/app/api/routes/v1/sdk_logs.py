@@ -1,10 +1,10 @@
 import uuid
-from logging import getLogger
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
 
+from app.constants.sdk_providers import normalize_sdk_provider
 from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.schemas.providers.mobile_sdk import SDKLogEventType, SDKLogRequest
 from app.schemas.responses.upload import UploadDataResponse
@@ -19,10 +19,11 @@ from app.services.raw_payload_storage import store_raw_payload
 from app.services.sync_status_service import emit_sync_started, try_record_data_types
 from app.utils.auth import SDKAuthDep
 from app.utils.sdk_request_metadata import sdk_request_metadata
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
-logger = getLogger(__name__)
 
 # Only for single-outcome batches: the SDK posts one event plus a device_state snapshot,
 # so this flattens onto the line already emitted rather than adding any.
@@ -130,12 +131,12 @@ def submit_sdk_logs(
         )
 
     batch_id = str(uuid.uuid4())
-    provider = (body.provider or "unknown").lower()
+    raw_provider = (body.provider or "").lower()
+    # Canonical like the upload's, or the run would not be found under it ("google" vs "health_connect").
+    provider = normalize_sdk_provider(raw_provider) or raw_provider or "unknown"
     event_types = [e.eventType for e in body.events]
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "SDK log events received",
         action="sdk_logs_received",
         batch_id=batch_id,

@@ -5,12 +5,12 @@ Unit tests for refresh token service.
 from unittest.mock import patch
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import RefreshToken
 from app.schemas.auth import SDKTokenOrigin, TokenType
 from app.services.refresh_token_service import refresh_token_service
+from app.utils.exceptions import AuthenticationError, NotFoundError
 from tests.factories import ApplicationFactory, DeveloperFactory, UserFactory
 
 
@@ -127,7 +127,7 @@ class TestRefreshToken:
         invalid_token = "rt-invalidtoken12345678901234567890"
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AuthenticationError) as exc_info:
             refresh_token_service.refresh_token(db, invalid_token)
 
         assert exc_info.value.status_code == 401
@@ -141,7 +141,7 @@ class TestRefreshToken:
         refresh_token_service.revoke_token(db, refresh_token)
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AuthenticationError) as exc_info:
             refresh_token_service.refresh_token(db, refresh_token)
 
         assert exc_info.value.status_code == 401
@@ -224,7 +224,7 @@ class TestRevokeToken:
         invalid_token = "rt-nonexistent123456789012345678"
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             refresh_token_service.revoke_token(db, invalid_token)
 
         assert exc_info.value.status_code == 404
@@ -237,7 +237,7 @@ class TestRevokeToken:
         refresh_token_service.revoke_token(db, refresh_token)
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             refresh_token_service.revoke_token(db, refresh_token)
 
         assert exc_info.value.status_code == 404

@@ -6,15 +6,14 @@ design: a failed delivery is logged and retried naturally on the next hourly
 run, never raised.
 """
 
-from logging import getLogger
-
 from celery import shared_task
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services.telemetry_service import telemetry_service
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(
@@ -26,6 +25,6 @@ def send_telemetry_ping(event: str = "daily") -> str:
     with SessionLocal() as db:
         try:
             return telemetry_service.send_ping(db, event=event)
-        except Exception:
-            logger.warning("Telemetry ping delivery failed (event=%s)", event, exc_info=True)
+        except Exception as e:
+            logger.warning("Telemetry ping delivery failed", event=event, exc_info=e)
             return "failed"

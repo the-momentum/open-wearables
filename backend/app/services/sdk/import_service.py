@@ -4,14 +4,14 @@ from collections import Counter
 from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
-from logging import Logger, getLogger
-from typing import Iterable, TypedDict
+from typing import Any, Iterable, TypedDict
 from uuid import UUID, uuid4
 
 import sentry_sdk
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
+from app.config import settings
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
@@ -20,6 +20,7 @@ from app.constants.series_types.sdk import (
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE, WORKOUT_SAMPLE_TYPES
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_ENERGY_SERIES, WORKOUT_STATISTIC_STAT
 from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SERIES
 from app.constants.workout_types import get_unified_sdk_workout_type
@@ -52,15 +53,13 @@ from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import window_seconds
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+from app.utils.units import BloodGlucoseUnit, EnergyUnit, UnitConverter, VolumeUnit
 
 from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
-from .sleep_service import handle_sleep_data
+from .sleep_service import save_sleep
 
-# Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
-# in mg/dL round-trip with a ~0.1% offset under this factor.
-MMOL_L_TO_MG_DL = Decimal("18.0182")
+logger = get_logger(__name__)
 
 # Energy series stored in kcal.
 _KCAL_SERIES = frozenset({SeriesType.dietary_energy_consumed, SeriesType.dietary_energy_from_fat})
@@ -121,6 +120,7 @@ class LoadDataResult(TypedDict):
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
     types: list[str]  # series types written
+    spans: dict[str, tuple[datetime, datetime]]  # per type the device exports itself: record series, workouts, sleep
     sleep_saved: int
     dropped: list[InvalidRecord]
     unsupported_types: dict[str, int]  # record types with no series mapping, skipped
@@ -176,9 +176,7 @@ def _parse_sync_request(raw: dict) -> tuple[SDKSyncRequest, list[InvalidRecord]]
 class ImportService:
     def __init__(
         self,
-        log: Logger,
     ):
-        self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
         self.user_connection_repo = UserConnectionRepository()
@@ -222,6 +220,25 @@ class ImportService:
                 workout_id,
             )
 
+            if settings.ingest_workout_samples:
+                time_series_samples.extend(
+                    self._build_workout_route_and_samples(
+                        wjson,
+                        {
+                            "user_id": user_uuid,
+                            "source": original_source_name,
+                            "device_model": device_model,
+                            "software_version": software_version,
+                            "device_type": device_type,
+                            "device_id": device_id,
+                            "source_app_id": source_app_id,
+                            "device_manufacturer": device_manufacturer,
+                            "provider": provider,
+                            "zone_offset": wjson.zoneOffset,
+                        },
+                    )
+                )
+
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
@@ -259,6 +276,63 @@ class ImportService:
             )
 
             yield record, detail, time_series_samples
+
+    def _build_workout_route_and_samples(
+        self,
+        wjson: Workout,
+        source_fields: dict[str, Any],
+    ) -> list[TimeSeriesSampleCreate]:
+        """Per-point series from workouts[].route and workouts[].samples.
+
+        Rows share the workout's own data source (`source_fields`), so a re-push upserts
+        on (data_source, series_type, recorded_at) instead of duplicating.
+        Points without a timestamp and sample types with no series mapping are skipped.
+        """
+        result: list[TimeSeriesSampleCreate] = []
+
+        def add(recorded_at: datetime, series_type: SeriesType, value: float) -> None:
+            result.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    **source_fields,
+                    recorded_at=recorded_at,
+                    value=Decimal(str(value)),
+                    series_type=series_type,
+                )
+            )
+
+        for point in wjson.route or []:
+            if point.timestamp is None:
+                continue
+            for field, series_type in WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE.items():
+                value = getattr(point, field)
+                if value is not None:
+                    add(point.timestamp, series_type, value)
+
+        unknown_types: Counter[str] = Counter()
+        unexpected_units: Counter[str] = Counter()
+        for sample in wjson.samples or []:
+            if sample.timestamp is None or sample.value is None:
+                continue
+            sample_type = sample.type or ""
+            if sample_type not in WORKOUT_SAMPLE_TYPES:
+                unknown_types[sample_type] += 1
+                continue
+            series_type, units = WORKOUT_SAMPLE_TYPES[sample_type]
+            unit = (sample.unit or "").strip().lower()
+            if unit and unit not in units:
+                unexpected_units[f"{sample_type}:{unit}"] += 1
+                continue
+            add(sample.timestamp, series_type, sample.value)
+
+        if unknown_types or unexpected_units:
+            logger.debug(
+                "Skipped workout samples with unsupported types or units",
+                workout_id=wjson.id,
+                types=dict(unknown_types),
+                units=dict(unexpected_units),
+            )
+        return result
 
     def _build_meal_bundles(
         self,
@@ -350,16 +424,16 @@ class ImportService:
 
             # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
             if series_type == SeriesType.blood_glucose and unit.startswith("mmol"):
-                value = value * MMOL_L_TO_MG_DL
+                value = UnitConverter.blood_glucose(value, BloodGlucoseUnit.mmol_l, BloodGlucoseUnit.mg_dl)
 
             # Convert hydration units to mL
             if series_type == SeriesType.hydration and unit in ("l", "liter", "liters", "litre", "litres"):
-                value *= 1000
+                value = UnitConverter.volume(value, VolumeUnit.liter, VolumeUnit.ml)
 
             # Energy is stored in kcal. Case matters: "cal" is a small calorie (1/1000 kcal),
             # "Cal" is the food Calorie (= kcal).
             if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
-                value = value / 1000
+                value = UnitConverter.energy(value, EnergyUnit.cal, EnergyUnit.kcal)
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source, provider)
@@ -518,6 +592,11 @@ class ImportService:
         records_updated = 0
         sleep_saved = 0
         types: set[str] = set()
+        spans: dict[str, tuple[datetime, datetime]] = {}
+
+        def widen(data_type: str, start: datetime, end: datetime) -> None:
+            held = spans.get(data_type)
+            spans[data_type] = (min(held[0], start), max(held[1], end)) if held else (start, end)
 
         # A nutrient record whose correlation isn't in this batch stays a loose sample.
         correlation_records = [r for r in request.data.records if (r.type or "") in MEAL_CORRELATION_TYPES]
@@ -575,6 +654,8 @@ class ImportService:
                     db_session, details_to_insert, detail_type=EventCategory.WORKOUT
                 )
             workouts_saved = len(inserted_ids)
+            for record in workout_records:
+                widen("workouts", record.start_datetime, record.end_datetime)
 
             # Bulk create time series samples
             if time_series_samples:
@@ -592,14 +673,18 @@ class ImportService:
             records_inserted += counts.inserted
             records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
+            for sample in samples:
+                widen(sample.series_type.value, sample.recorded_at, sample.recorded_at)
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()
 
         # Process sleep (count sleep segments from input)
-        if request.data.sleep:
-            handle_sleep_data(db_session, request, user_id)
+        # Sleep a busy lock deferred to a retrying task is not counted as saved here.
+        if request.data.sleep and save_sleep(db_session, request, user_id):
             sleep_saved = len(request.data.sleep)
+            for segment in request.data.sleep:
+                widen("sleep", segment.startDate, segment.endDate)
 
         return {
             "workouts_saved": workouts_saved,
@@ -608,6 +693,7 @@ class ImportService:
             "records_inserted": records_inserted,
             "records_updated": records_updated,
             "types": sorted(types),
+            "spans": spans,
             "sleep_saved": sleep_saved,
             "dropped": dropped,
             "unsupported_types": dict(unsupported_types),
@@ -631,9 +717,7 @@ class ImportService:
                 data = self._parse_json_content(request_content)
 
             if not data:
-                log_structured(
-                    self.log,
-                    "warning",
+                logger.warning(
                     "No valid data found in request",
                     action="sdk_validate_data",
                     batch_id=batch_id,
@@ -662,10 +746,8 @@ class ImportService:
                 self.user_connection_repo.update_last_synced_at(db_session, connection)
 
             # Log detailed processing results
-            log_structured(
-                self.log,
-                "info",
-                f"{provider.capitalize()} data import completed",
+            logger.info(
+                "SDK data import completed",
                 provider=f"{provider}",
                 action=f"{provider}_sdk_import_complete",
                 batch_id=batch_id,
@@ -707,10 +789,8 @@ class ImportService:
                 first_loc = f"{first['collection']}[{first['index']}]"
                 if first.get("loc"):
                     first_loc += f".{first['loc']}"
-                log_structured(
-                    self.log,
-                    "warning",
-                    f"{provider.capitalize()} SDK dropped invalid records",
+                logger.warning(
+                    "SDK dropped invalid records",
                     provider=f"{provider}",
                     action=f"{provider}_sdk_records_dropped",
                     batch_id=batch_id,
@@ -729,6 +809,7 @@ class ImportService:
                 records_inserted=saved_counts["records_inserted"],
                 records_updated=saved_counts["records_updated"],
                 types=saved_counts["types"],
+                spans=saved_counts["spans"],
                 workouts_saved=saved_counts["workouts_saved"],
                 meals_saved=saved_counts["meals_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
@@ -744,27 +825,15 @@ class ImportService:
             # Drop `input` (raw record value — may contain health data/PII) and `url`
             # before sending to Sentry; keep loc/msg/type. Preserve the 20-error cap.
             safe_errors = [{k: v for k, v in err.items() if k not in ("input", "url")} for err in errors[:20]]
-            log_and_capture_error(
-                e,
-                self.log,
-                f"{provider} SDK payload failed validation for user {user_id}",
-                extra={
-                    "user_id": user_id,
-                    "batch_id": batch_id,
-                    "provider": provider,
-                    "error_count": len(errors),
-                    "errors": safe_errors,
-                },
-            )
-            log_structured(
-                self.log,
-                "warning",
-                f"{provider.capitalize()} SDK payload validation failed",
-                provider=f"{provider}",
+            logger.error(
+                "SDK payload validation failed",
+                exc_info=e,
+                provider=provider,
                 action=f"{provider}_sdk_validation_failed",
                 batch_id=batch_id,
                 user_id=user_id,
                 error_count=len(errors),
+                errors=safe_errors,
                 first_error_loc=".".join(str(x) for x in first.get("loc", [])),
                 first_error_msg=first.get("msg"),
             )
@@ -775,21 +844,13 @@ class ImportService:
             )
 
         except Exception as e:
-            log_and_capture_error(
-                e,
-                self.log,
-                f"Import failed for user {user_id}",
-                extra={"user_id": user_id, "batch_id": batch_id, "provider": provider},
-            )
-            log_structured(
-                self.log,
-                "error",
-                f"Import failed for user {user_id}: {e}",
-                provider=f"{provider}",
+            logger.error(
+                "SDK import failed",
+                exc_info=e,
+                provider=provider,
                 action=f"{provider}_sdk_import_failed",
                 batch_id=batch_id,
                 user_id=user_id,
-                error_type=type(e).__name__,
             )
             return UploadDataResponse(
                 status_code=400,
@@ -831,4 +892,4 @@ class ImportService:
             return None
 
 
-import_service = ImportService(log=getLogger(__name__))
+import_service = ImportService()
