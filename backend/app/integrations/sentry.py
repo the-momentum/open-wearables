@@ -72,16 +72,15 @@ _scrubber = EventScrubber(
 # "headers" covers raw ASGI scopes in frame locals (a Starlette Request is a mapping over its
 # scope), whose byte-string headers carry Authorization / API keys. Request headers themselves
 # are scrubbed per header (SDK defaults plus CREDENTIAL_DENYLIST), so the rest stay visible.
-# "query_string" covers the same scopes, whose raw query can carry the credentials below.
+# Credentials that arrive in requests: OAuth callback and invitation codes, webhook verification
+# tokens (Oura, Strava; Withings sends "token", in the SDK defaults). Also local names in frames.
+_INCOMING_CREDENTIALS = ["code", "verification_token", "hub.verify_token"]
+# "query_string" covers the same scopes, whose raw query can carry those.
 _credentials_scrubber = EventScrubber(
-    denylist=[*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, "headers", "query_string"],
+    denylist=[*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, *_INCOMING_CREDENTIALS, "headers", "query_string"],
     recursive=True,
 )
-# Query parameters of incoming requests that carry a credential: the OAuth callback code and
-# webhook verification tokens (Oura, Strava; Withings sends "token", in the SDK defaults).
-_QUERY_CREDENTIALS = frozenset(
-    key.lower() for key in [*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, "code", "verification_token", "hub.verify_token"]
-)
+_QUERY_CREDENTIALS = frozenset(key.lower() for key in _credentials_scrubber.denylist)
 
 
 def _scrub_text(value: Any) -> Any:
@@ -133,11 +132,10 @@ def _route_upstream_error(event: "Event", hint: "Hint") -> "Event | None":
 
 
 def _mask_query_credentials(query_string: str) -> str:
-    parts = (part.partition("=") for part in query_string.split("&"))
-    return "&".join(
-        f"{key}={FILTERED}" if sep and key.lower() in _QUERY_CREDENTIALS else key + sep + value
-        for key, sep, value in parts
-    )
+    # The SDK hands over the query already decoded, so an encoded "&" in a credential splits it:
+    # a query holding one is masked whole.
+    keys = (part.partition("=")[0].lower() for part in query_string.split("&"))
+    return FILTERED if any(key in _QUERY_CREDENTIALS for key in keys) else query_string
 
 
 def _before_send_sensitive(event: "Event", hint: "Hint") -> "Event | None":

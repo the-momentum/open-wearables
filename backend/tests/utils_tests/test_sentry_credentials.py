@@ -254,13 +254,36 @@ def test_shipped_events_carry_no_incoming_query_credentials(sentry_transport: _C
     assert FAKE_TOKEN not in json.dumps(payloads, default=str)
 
 
-def test_sensitive_mode_keeps_other_query_values() -> None:
-    event = {"request": {"query_string": f"code={FAKE_TOKEN}&start_date=2025-03-01&flag"}}
+@pytest.mark.parametrize(
+    ("query_string", "shipped"),
+    [
+        ("code=abc&secret-tail&state=x", FILTERED),  # "abc%26secret-tail", decoded by the SDK
+        ("start_date=2025-03-01&flag", "start_date=2025-03-01&flag"),
+    ],
+    ids=["credential", "none"],
+)
+def test_sensitive_mode_masks_a_query_with_a_credential_whole(query_string: str, shipped: str) -> None:
+    event = sentry_integration._before_send_sensitive(cast("Event", {"request": {"query_string": query_string}}), {})
 
-    shipped = sentry_integration._before_send_sensitive(cast("Event", event), {})
+    assert event is not None
+    assert event["request"]["query_string"] == shipped
 
-    assert shipped is not None
-    assert shipped["request"]["query_string"] == f"code={FILTERED}&start_date=2025-03-01&flag"
+
+def _redeem(code: str) -> None:
+    raise RuntimeError("redeem failed")
+
+
+def test_shipped_events_carry_no_code_locals(sentry_transport: _CapturingTransport) -> None:
+    # An invitation or OAuth code is a credential in a local named "code"
+    try:
+        _redeem(FAKE_TOKEN)
+    except RuntimeError as e:
+        sentry_sdk.capture_exception(e)
+    sentry_sdk.flush()
+
+    payloads = sentry_transport.payloads()
+    assert payloads
+    assert FAKE_TOKEN not in json.dumps(payloads, default=str)
 
 
 def _handle_callback(scope: dict[str, Any]) -> None:
