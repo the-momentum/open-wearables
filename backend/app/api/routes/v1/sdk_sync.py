@@ -16,6 +16,7 @@ from app.services.raw_payload_storage import put_payload_to_s3, store_raw_payloa
 from app.services.sync_status_service import get_sdk_sync_state
 from app.utils.api_utils import inline_schema_defs
 from app.utils.auth import SDKAuthDep
+from app.utils.exceptions import unknown_provider
 from app.utils.sdk_request_metadata import sdk_request_metadata
 from app.utils.structured_logging import get_logger
 
@@ -82,10 +83,7 @@ def sync_sdk_data(
     # Validate provider (routing decision — needed to select an import service)
     provider = normalize_sdk_provider(raw_provider)
     if provider is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported provider: {raw_provider}. Supported: {', '.join(sorted(SDK_PROVIDERS))}",
-        )
+        raise unknown_provider(raw_provider, ("body", "provider"), SDK_PROVIDERS)
     # The worker and import service re-read the provider from the payload, so the
     # canonical slug has to replace the alias here rather than travel alongside it.
     body["provider"] = provider
@@ -193,10 +191,7 @@ def get_sdk_sync_status(
 
     canonical = normalize_sdk_provider(provider)
     if canonical is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported provider: {provider}. Supported: {', '.join(sorted(SDK_PROVIDERS))}",
-        )
+        raise unknown_provider(provider, ("query", "provider"), SDK_PROVIDERS)
 
     user_service.get(db, user_id, raise_404=True)
     return get_sdk_sync_state(db, user_id, canonical)

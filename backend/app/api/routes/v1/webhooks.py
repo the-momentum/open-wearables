@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
+from app.schemas.enums import ProviderName
 from app.schemas.responses.incoming_webhooks import (
     WebhookDeletedResponse,
     WebhookSubscriptionResponse,
@@ -40,6 +41,7 @@ from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.utils.auth import DeveloperDep
+from app.utils.exceptions import unknown_provider
 
 router = APIRouter()
 
@@ -51,7 +53,7 @@ def _get_strategy(provider: str) -> BaseProviderStrategy:
     try:
         return _factory.get_provider(from_url_slug(provider))
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
+        raise unknown_provider(provider, ("path", "provider"), (p.value for p in ProviderName)) from None
 
 
 StrategyDep = Annotated[BaseProviderStrategy, Depends(_get_strategy)]
@@ -66,7 +68,7 @@ def _get_webhook_handler(provider: str) -> BaseWebhookHandler:
     try:
         strategy = _factory.get_provider(from_url_slug(provider))
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
+        raise unknown_provider(provider, ("path", "provider"), (p.value for p in ProviderName)) from None
 
     if strategy.webhooks is None:
         raise HTTPException(

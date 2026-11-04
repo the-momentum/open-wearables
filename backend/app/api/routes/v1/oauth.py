@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
@@ -20,18 +20,17 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import UnsupportedProviderError
+from app.utils.exceptions import UnsupportedProviderError, unknown_provider
 
 router = APIRouter()
 factory = ProviderFactory()
 
 
 def resolve_provider(slug: str) -> ProviderName:
-    # 400 rather than 404 keeps the response the enum-typed parameter used to give.
     try:
         return ProviderName(from_url_slug(slug))
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown provider: '{slug}'")
+        raise unknown_provider(slug, ("path", "provider"), (p.value for p in ProviderName)) from None
 
 
 def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:

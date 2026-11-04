@@ -111,7 +111,7 @@ class TestOAuthAuthorizeEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_authorize_non_oauth_provider(self, client: TestClient, db: Session) -> None:
         """Test authorization with provider that doesn't support OAuth."""
@@ -434,4 +434,4 @@ class TestOAuthCallbackProbe:
 
     def test_head_callback_invalid_provider(self, client: TestClient, db: Session) -> None:
         response = client.head("/api/v1/oauth/not-a-provider/callback")
-        assert response.status_code == 400
+        assert response.status_code == 422
