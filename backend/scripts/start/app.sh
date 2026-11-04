@@ -175,6 +175,13 @@ echo 'Running provider sleep score restamp...'
 uv run python scripts/data_migrations/restamp_provider_sleep_scores.py \
     || echo "Warning: provider sleep score restamp failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-04-01 once all deployments have migrated.
+# Sets the sleep efficiency of stored Polar nights from their time awake, once the Polar sleep
+# dedupe above has run. Runs once per instance (data_migration).
+echo 'Running Polar sleep efficiency backfill...'
+uv run python scripts/data_migrations/backfill_polar_sleep_efficiency.py \
+    || echo "Warning: Polar sleep efficiency backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
