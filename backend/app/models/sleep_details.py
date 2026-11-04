@@ -39,6 +39,6 @@ class SleepDetails(EventRecordDetail):
     is_nap: Mapped[bool | None]
     sleep_stages: Mapped[json_binary | None]
 
-    # The provider's own word on the session's state, as sent: Garmin's validation, Whoop's score_state, Google
-    # Health's processed. app.services.sleep_finality reads it.
+    # Sleep state as the provider sent it (Garmin validation, Whoop score_state, Google Health processed), read by
+    # app.services.sleep_finality
     provider_state: Mapped[str_64 | None]

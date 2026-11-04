@@ -54,8 +54,8 @@ EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_s
 # Samsung has no `stepCount`/`recordingMethod`.
 SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "entry_source"}}
 
-# EventRecordDetail fields that are NOT part of the coverage matrix. provider_state is the provider's own word on a
-# sleep session's state, kept for is_final and never returned as data.
+# EventRecordDetail fields that are NOT part of the coverage matrix. provider_state is the sleep state as the provider
+# sent it, kept for is_final and never returned as data.
 STRUCTURAL_DETAIL_FIELDS = {"record_id", "energy_series", "provider_state"}
 
 
