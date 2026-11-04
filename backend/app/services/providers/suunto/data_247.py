@@ -263,6 +263,10 @@ class Suunto247Data(Base247DataTemplate):
             )
             return False
 
+        # The in-bed window, as for every provider. Suunto's own Duration is its sleep time
+        # (with awake time in the Gomore algorithm) and only fills in a missing edge.
+        window_seconds = int((end_dt - start_dt).total_seconds())
+
         # EventRecord
         record = EventRecordCreate(
             id=sleep_id,
@@ -270,7 +274,7 @@ class Suunto247Data(Base247DataTemplate):
             type="sleep_session",
             source_name="Suunto",
             device_model=None,
-            duration_seconds=normalized_sleep.get("duration_seconds"),
+            duration_seconds=window_seconds,
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=str(normalized_sleep["suunto_sleep_id"]) if normalized_sleep.get("suunto_sleep_id") else None,
@@ -283,7 +287,7 @@ class Suunto247Data(Base247DataTemplate):
         deep_seconds = stages.get("deep_seconds")
         light_seconds = stages.get("light_seconds")
         rem_seconds = stages.get("rem_seconds")
-        time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
+        time_in_bed_minutes = window_seconds // 60
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,

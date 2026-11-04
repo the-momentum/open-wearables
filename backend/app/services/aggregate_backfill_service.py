@@ -226,7 +226,7 @@ class AggregateBackfillService:
         if token is None:
             return
         try:
-            archival_service.roll_up_queued_days(db)
+            archival_service.roll_up_queued_days(db, reconcile=False)
         except SoftTimeLimitExceeded:
             raise
         except Exception as exc:

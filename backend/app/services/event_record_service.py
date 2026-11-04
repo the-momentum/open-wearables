@@ -18,7 +18,6 @@ from app.models import (
     HealthScore,
     MealDetails,
     MenstrualCycleDetails,
-    ProviderPriority,
     SeriesSample,
     SleepDetails,
     WorkoutDetails,
@@ -30,13 +29,11 @@ from app.repositories import (
     EventRecordDetailRepository,
     EventRecordRepository,
     HealthScoreRepository,
-    ProviderPriorityRepository,
 )
 from app.repositories.data_point_series_repository import WorkoutWindow
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
-from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.event_record_repository import local_days
-from app.schemas.enums import EventCategory, HealthScoreCategory, SeriesType, get_series_type_unit
+from app.schemas.enums import EventCategory, HealthScoreCategory, SeriesType, SourceSelection, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -76,6 +73,7 @@ from app.services.outgoing_webhooks.events import (
     on_sleep_created,
     on_workout_created,
 )
+from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
@@ -136,8 +134,6 @@ class EventRecordService(
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(SeriesSample)
         self.health_score_repo = HealthScoreRepository(HealthScore)
-        self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
-        self.device_type_priority_repo = DeviceTypePriorityRepository()
 
     def _resolve_avg_hr(
         self,
@@ -887,8 +883,17 @@ class EventRecordService(
         )
 
     @handle_exceptions
-    def get_workout_totals(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> WorkoutTotals:
-        count, seconds, energy, distance = self.crud.get_workout_totals(db_session, params, str(user_id))
+    def get_workout_totals(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+        source_selection: SourceSelection = SourceSelection.ALL,
+    ) -> WorkoutTotals:
+        restrict = self._winning_session_ids(db_session, user_id, params, EventCategory.WORKOUT, source_selection)
+        count, seconds, energy, distance = self.crud.get_workout_totals(
+            db_session, params, str(user_id), restrict_to_record_ids=restrict
+        )
         return WorkoutTotals(
             count=count,
             duration_seconds=seconds,
@@ -903,11 +908,15 @@ class EventRecordService(
         user_id: UUID,
         params: EventRecordQueryParams,
         include: Sequence[WorkoutInclude] = (),
+        source_selection: SourceSelection = SourceSelection.ALL,
     ) -> PaginatedResponse[Workout]:
         params.category = EventCategory.WORKOUT
         with_zones = WorkoutInclude.ZONES in include
         with_segments = WorkoutInclude.SEGMENTS in include
-        records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
+        restrict = self._winning_session_ids(db_session, user_id, params, EventCategory.WORKOUT, source_selection)
+        records, total_count = self._get_records_with_filters(
+            db_session, params, str(user_id), restrict_to_record_ids=restrict
+        )
         # Ensure total_count is always an int (not None)
         total_count = total_count if total_count is not None else 0
 
@@ -1009,11 +1018,22 @@ class EventRecordService(
             ),
         )
 
-    def _winning_sleep_ids(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> Query:
-        """An inline subquery of the top-priority source's sessions per night."""
-        provider_order = self.provider_priority_repo.get_priority_order(db_session)
-        device_type_order = self.device_type_priority_repo.get_priority_order(db_session)
-        return self.crud.winning_sleep_record_ids(db_session, str(user_id), params, provider_order, device_type_order)
+    def _winning_session_ids(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+        category: EventCategory,
+        source_selection: SourceSelection,
+    ) -> Query | None:
+        """An inline subquery of the sessions no better-ranked source also recorded, None when every source shows."""
+        # By value: a caller passing the plain string "per_session" takes this path too.
+        if source_selection != SourceSelection.PER_SESSION:
+            return None
+        params = params.model_copy(update={"category": category})
+        return self.crud.winning_session_record_ids(
+            db_session, str(user_id), params, priority_service.get_source_ranking(db_session)
+        )
 
     @handle_exceptions
     def get_sleep_totals(
@@ -1021,9 +1041,9 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
-        filter_by_priority: bool = False,
+        source_selection: SourceSelection = SourceSelection.ALL,
     ) -> SleepTotals:
-        restrict = self._winning_sleep_ids(db_session, user_id, params) if filter_by_priority else None
+        restrict = self._winning_session_ids(db_session, user_id, params, EventCategory.SLEEP, source_selection)
         count, naps, asleep, in_bed, efficiency = self.crud.get_sleep_totals(
             db_session, params, str(user_id), restrict_to_record_ids=restrict
         )
@@ -1041,12 +1061,14 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
-        filter_by_priority: bool = False,
+        source_selection: SourceSelection = SourceSelection.ALL,
         include: Sequence[SleepInclude] = (),
     ) -> PaginatedResponse[SleepSession]:
         params.category = EventCategory.SLEEP
         with_stages = SleepInclude.STAGES in include
-        restrict_to_record_ids = self._winning_sleep_ids(db_session, user_id, params) if filter_by_priority else None
+        restrict_to_record_ids = self._winning_session_ids(
+            db_session, user_id, params, EventCategory.SLEEP, source_selection
+        )
 
         records, total_count = self._get_records_with_filters(
             db_session, params, str(user_id), restrict_to_record_ids=restrict_to_record_ids

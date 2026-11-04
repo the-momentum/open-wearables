@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
 
+from app.constants.sdk_providers import normalize_sdk_provider
 from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.schemas.providers.mobile_sdk import SDKLogEventType, SDKLogRequest
 from app.schemas.responses.upload import UploadDataResponse
@@ -130,7 +131,9 @@ def submit_sdk_logs(
         )
 
     batch_id = str(uuid.uuid4())
-    provider = (body.provider or "unknown").lower()
+    raw_provider = (body.provider or "").lower()
+    # Canonical like the upload's, or the run would not be found under it ("google" vs "health_connect").
+    provider = normalize_sdk_provider(raw_provider) or raw_provider or "unknown"
     event_types = [e.eventType for e in body.events]
 
     logger.info(

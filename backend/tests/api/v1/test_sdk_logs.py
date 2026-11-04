@@ -118,6 +118,21 @@ class TestSDKLogsHappyPath:
         mock_store.assert_called_once()
         assert mock_store.call_args.kwargs["provider"] == "unknown"
 
+    @patch("app.api.routes.v1.sdk_logs.emit_sync_started")
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_provider_alias_opens_the_run_under_the_canonical_slug(
+        self, mock_store: MagicMock, mock_started: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        api_key = ApiKeyFactory()
+        response = client.post(
+            _url(),
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
+            json={**_payload(SYNC_START_EVENT), "provider": "google", "syncSessionId": "s1"},
+        )
+        assert response.status_code == 202
+        assert mock_started.call_args.args[1] == "health_connect"
+        assert mock_store.call_args.kwargs["provider"] == "health_connect"
+
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_time_range_without_start_date_accepted(
         self, mock_store: MagicMock, client: TestClient, db: Session
