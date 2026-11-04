@@ -71,6 +71,12 @@ end
 """
 _SOURCE_DAYS_PREFIX = SOURCE_DAYS_KEY.removesuffix("{source_id}")
 
+# Reading the queued sources and deleting their keys in one step, so a write in between leaves no orphan index.
+_CLEAR = """
+for _, source_id in ipairs(redis.call('SMEMBERS', KEYS[4])) do redis.call('DEL', KEYS[5] .. source_id) end
+redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+"""
+
 # A read waits this long for the queue before it goes on with the rows as the rollup left them.
 QUEUED_DAYS_TIMEOUT_SECONDS = 0.05
 # Shared by every request of the process: each asks once and briefly, so a few threads never make a queue.
@@ -160,14 +166,8 @@ def roll_up_soon() -> None:
 
 def clear_dirty_days() -> None:
     """Drop the queue, while the rollup is off."""
-    client = get_redis_client()
-    sources = cast(set[str], client.smembers(QUEUED_SOURCES_KEY))
-    client.delete(
-        DIRTY_DAYS_KEY,
-        IN_PROGRESS_KEY,
-        RECONCILE_DAYS_KEY,
-        QUEUED_SOURCES_KEY,
-        *(SOURCE_DAYS_KEY.format(source_id=source_id) for source_id in sources),
+    get_redis_client().eval(
+        _CLEAR, 5, DIRTY_DAYS_KEY, IN_PROGRESS_KEY, RECONCILE_DAYS_KEY, QUEUED_SOURCES_KEY, _SOURCE_DAYS_PREFIX
     )
 
 
@@ -233,9 +233,10 @@ def queued_days_soon(source_ids: Iterable[UUID], first_day: date, last_day: date
     def result() -> QueuedDays:
         try:
             return future.result(timeout=QUEUED_DAYS_TIMEOUT_SECONDS)
-        except Exception as exc:
+        except Exception:
+            # Expected under a slow Redis and harmless, so no Sentry event per read.
             future.cancel()
-            log_and_capture_error(exc, logger, "Could not read the rollup queue; day rows are read as they are")
+            logger.warning("Could not read the rollup queue; day rows are read as they are", exc_info=True)
             return QueuedDays()
 
     return result
