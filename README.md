@@ -74,7 +74,7 @@ make init
 docker compose up -d
 ```
 
-`make init` creates `backend/config/.env` and `frontend/.env` from their `.env.example` files and generates `SECRET_KEY`. Without `make`, copy both files yourself and set `SECRET_KEY` to the output of `openssl rand -hex 32`. The backend does not start while `SECRET_KEY` is empty, shorter than 32 characters, or the old default from `.env.example`.
+`make init` creates both `.env` files from their examples and generates `SECRET_KEY`. Without `make`, copy them yourself and set `SECRET_KEY` to the output of `openssl rand -hex 32` (at least 32 characters, or the backend does not start).
 
 - **Developer portal:** http://localhost:3000. Create API keys and add provider credentials here.
 - **API docs (Swagger):** http://localhost:8000/docs

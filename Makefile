@@ -10,7 +10,7 @@ help:	## Show this help.
 	@echo "============================================================"
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
-init:	## Creates the .env files and generates their secrets (keeps values you set)
+init:	## Creates the .env files and generates SECRET_KEY (keeps one you set)
 	sh scripts/init_env.sh
 
 build:	## Builds docker image

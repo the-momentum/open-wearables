@@ -33,7 +33,7 @@ Get Open Wearables running locally and start integrating wearable device data.
     make init
     ```
 
-    This copies `./backend/config/.env.example` and `./frontend/.env.example` to `.env` files and generates `SECRET_KEY`. Running it again keeps a `SECRET_KEY` the backend accepts. Without `make`, copy both files yourself and set `SECRET_KEY` to the output of `openssl rand -hex 32`: the backend does not start while `SECRET_KEY` is empty, shorter than 32 characters, or the old default from `.env.example`.
+    This copies both `.env.example` files to `.env` and generates `SECRET_KEY`; running it again keeps the key. Without `make`, copy the files yourself and set `SECRET_KEY` to the output of `openssl rand -hex 32` (at least 32 characters, or the backend does not start).
 
     **Backend configuration:**
 

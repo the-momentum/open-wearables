@@ -112,7 +112,7 @@ STRAVA_DEFAULT_SCOPE=activity:read_all,profile:read_all
     | `STRAVA_CLIENT_ID` | Client ID from the Strava API settings page |
     | `STRAVA_CLIENT_SECRET` | Client Secret from the Strava API settings page |
     | `STRAVA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Default `activity:read_all,profile:read_all` covers all activity data and athlete profile |
-    | `STRAVA_WEBHOOK_VERIFY_TOKEN` | Optional. Strava sends this back during webhook subscription verification to confirm ownership. When unset, it is derived from `SECRET_KEY` with HMAC, so Strava never receives `SECRET_KEY` itself. Earlier default values count as unset |
+    | `STRAVA_WEBHOOK_VERIFY_TOKEN` | Optional. Strava sends this back during webhook subscription verification to confirm ownership. When unset, it is derived from `SECRET_KEY`, so Strava never receives `SECRET_KEY` itself |
 
   </Step>
 
@@ -129,7 +129,7 @@ curl -X POST "https://yourdomain.com/api/v1/providers/strava/webhooks/subscripti
     Strava then sends a GET request to your `callback_url` with a `hub.verify_token` parameter. Open Wearables checks it and echoes back the challenge to confirm the subscription. See [Provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions) for listing and deleting subscriptions.
 
     <Note>
-    To create the subscription yourself with the Strava API instead, set `STRAVA_WEBHOOK_VERIFY_TOKEN` to your own random value (e.g. `openssl rand -hex 32`) and pass the same value as `verify_token`. The derived token is not shown anywhere, and the earlier example values are ignored, so neither works with a manual request.
+    To create the subscription yourself with the Strava API instead, set `STRAVA_WEBHOOK_VERIFY_TOKEN` to your own random value (e.g. `openssl rand -hex 32`) and pass the same value as `verify_token`. The derived token is not shown anywhere, so it doesn't work with a manual request.
 
 ```bash
 curl -X POST https://www.strava.com/api/v3/push_subscriptions \

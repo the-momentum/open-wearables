@@ -32,12 +32,7 @@ def parse_duration(value: str) -> timedelta:
 
 
 def derive_secret(secret_key: str, purpose: str) -> str:
-    """Derive a secret for one purpose from SECRET_KEY.
-
-    Use it for any value that leaves the instance, such as a token a provider receives:
-    whoever holds the result can neither recover SECRET_KEY nor forge the JWTs it signs.
-    Each purpose gets its own value, so leaking one does not expose the others.
-    """
+    """A secret for one purpose that doesn't reveal SECRET_KEY, for values a provider receives."""
     return hmac.new(secret_key.encode(), purpose.encode(), hashlib.sha256).hexdigest()
 
 

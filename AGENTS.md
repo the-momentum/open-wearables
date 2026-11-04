@@ -36,7 +36,7 @@ open-wearables/
 ### Docker (Recommended)
 
 ```bash
-# Create the .env files and generate their secrets (first run only; safe to repeat)
+# Create the .env files and generate SECRET_KEY (safe to repeat)
 make init
 
 # Start all services
@@ -63,7 +63,7 @@ make stop
 
 | Command | Description |
 |---------|-------------|
-| `make init` | Create the `.env` files and generate their secrets |
+| `make init` | Create the `.env` files and generate `SECRET_KEY` |
 | `make build` | Build Docker images |
 | `make run` | Start in detached mode |
 | `make up` | Start in foreground |

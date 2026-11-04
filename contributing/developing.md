@@ -89,12 +89,12 @@ bun run dev
 
 ## Environment Variables
 
-`make init` creates the environment files from their examples and generates `SECRET_KEY`. It keeps a `SECRET_KEY` the backend accepts, so it is safe to run again:
+`make init` creates the environment files from their examples and generates `SECRET_KEY`; running it again keeps the key:
 
 - Backend: `backend/config/.env.example` -> `backend/config/.env`
 - Frontend: `frontend/.env.example` -> `frontend/.env`
 
-The backend does not start while `SECRET_KEY` is empty, shorter than 32 characters, or the old default from `.env.example`.
+The backend does not start while `SECRET_KEY` is empty or shorter than 32 characters.
 
 ## Development Patterns
 
