@@ -6,6 +6,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
+from redis.exceptions import LockError
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
@@ -29,6 +30,7 @@ from app.schemas.providers.mobile_sdk import (
     SLEEP_START_STATES,
     SleepState,
     SleepStateStage,
+    SyncRequestData,
 )
 from app.schemas.providers.mobile_sdk import (
     SyncRequest as SDKSyncRequest,
@@ -41,6 +43,9 @@ from app.utils.sleep_stages import measured_stages
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
+
+# Seconds before a sleep the lock kept out is tried again, growing with each attempt.
+SLEEP_RETRY_SECONDS = 30
 
 _STAGE_TO_METRIC: dict[str, str] = {
     "awake": "awake_seconds",
@@ -327,8 +332,7 @@ def handle_sleep_data(
     try:
         acquired = lock.acquire()
         if not acquired:
-            logger.warning("Could not acquire sleep processing lock; skipping batch", user_id=user_id)
-            return
+            raise LockError(f"Could not acquire sleep processing lock for user {user_id}")
 
         states = load_sleep_states(user_id)
         provider = request.provider
@@ -430,6 +434,26 @@ def handle_sleep_data(
     # Dispatch the stale-sleep task so sessions that have gone quiet (including
     # other users' sessions) are finalised promptly without waiting for the next beat.
     celery_app.send_task(CeleryTask.FINALIZE_STALE_SLEEPS)
+
+
+def save_sleep(db_session: DbSession, request: SDKSyncRequest, user_id: str) -> bool:
+    """Save the request's sleep now, or, while another batch of the user holds the sleep lock, in a task that
+    retries it; True when saved now. The lock is per user, so waiting for it is what a busy export needs."""
+    try:
+        handle_sleep_data(db_session, request, user_id)
+        return True
+    except LockError:
+        sleep_only = request.model_copy(update={"data": SyncRequestData(sleep=request.data.sleep)})
+        celery_app.send_task(
+            CeleryTask.SAVE_SDK_SLEEP, args=[sleep_only.model_dump_json(), user_id], countdown=SLEEP_RETRY_SECONDS
+        )
+        logger.warning(
+            "Sleep lock busy; sleep saved by a retrying task",
+            provider=request.provider,
+            user_id=user_id,
+            sleep_count=len(request.data.sleep),
+        )
+        return False
 
 
 def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[SleepStage]]:

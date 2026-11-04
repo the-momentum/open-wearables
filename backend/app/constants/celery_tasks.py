@@ -26,6 +26,7 @@ class CeleryTask(StrEnum):
     PROCESS_AWS_UPLOAD = f"{_PREFIX}.process_aws_upload_task.process_aws_upload"
     COMPLETE_AND_PROCESS_AWS_UPLOAD = f"{_PREFIX}.process_aws_upload_task.complete_and_process_aws_upload"
     PROCESS_SDK_UPLOAD = f"{_PREFIX}.process_sdk_upload_task.process_sdk_upload"
+    SAVE_SDK_SLEEP = f"{_PREFIX}.save_sdk_sleep_task.save_sdk_sleep"
     PROCESS_XML_UPLOAD = f"{_PREFIX}.process_xml_upload_task.process_xml_upload"
     RECONCILE_PROVIDER_WEBHOOKS = f"{_PREFIX}.provider_webhooks_task.reconcile_provider_webhooks"
     REFRESH_DASHBOARD_TOTAL_DATA_POINTS = f"{_PREFIX}.refresh_dashboard_stats_task.refresh_dashboard_total_data_points"

@@ -169,7 +169,16 @@ class GoogleHealthApiSleep:
             sleep_efficiency_score=efficiency,
             is_nap=metadata.get("nap"),
             sleep_stages=self._build_stages(sleep.get("stages", [])) or None,
+            provider_state=self._processing_state(metadata),
         )
+
+    @staticmethod
+    def _processing_state(metadata: dict[str, Any]) -> str | None:
+        """`metadata.processed` as a state: processed, or processing while Google still computes the stages."""
+        processed = metadata.get("processed")
+        if processed is None:
+            return None
+        return "processed" if processed else "processing"
 
     @staticmethod
     def _build_stages(stages: list[dict[str, Any]]) -> list[SleepStage]:

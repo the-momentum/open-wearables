@@ -153,6 +153,17 @@ class TestWhoopSleepStages:
         assert detail.sleep_total_duration_minutes == 450
         assert detail.sleep_time_in_bed_minutes == 480
 
+
+class TestWhoopSleepState:
+    def test_a_scored_sleep_keeps_its_score_state(self, data_247: Whoop247Data) -> None:
+        assert _saved_detail(data_247, _raw_sleep()).provider_state == "SCORED"
+
+    def test_a_pending_sleep_keeps_its_score_state(self, data_247: Whoop247Data) -> None:
+        raw = _raw_sleep(score_state="PENDING_SCORE")
+        del raw["score"]
+
+        assert _saved_detail(data_247, raw).provider_state == "PENDING_SCORE"
+
     def test_scored_nap_keeps_reported_zero_stages(self, data_247: Whoop247Data) -> None:
         raw = _raw_sleep(nap=True)
         raw["score"]["stage_summary"].update(total_rem_sleep_time_milli=0, total_awake_time_milli=0)
