@@ -3,7 +3,7 @@ from typing import ClassVar
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
-from app.mappings import FKEventRecord, json_binary, numeric_5_2
+from app.mappings import FKEventRecord, json_binary, numeric_5_2, str_64
 from app.schemas.enums import EventCategory
 
 from .event_record_detail import DetailType, EventRecordDetail
@@ -38,3 +38,7 @@ class SleepDetails(EventRecordDetail):
 
     is_nap: Mapped[bool | None]
     sleep_stages: Mapped[json_binary | None]
+
+    # The provider's own word on the session's state, as sent: Garmin's validation, Whoop's score_state, Google
+    # Health's processed. app.services.sleep_finality reads it.
+    provider_state: Mapped[str_64 | None]
