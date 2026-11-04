@@ -21,6 +21,7 @@ from app.integrations import sentry as sentry_integration
 from app.integrations.sentry import FILTERED, _credentials_scrubber, _scrubber
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.exceptions import ProviderError
 
 if TYPE_CHECKING:
     from sentry_sdk._types import Event
@@ -181,11 +182,12 @@ def _oura_revoke_response(status_code: int, *args: Any, **kwargs: Any) -> httpx.
 def test_oura_revoke_error_does_not_carry_token(mock_post: MagicMock) -> None:
     mock_post.side_effect = lambda *a, **kw: _oura_revoke_response(400, *a, **kw)
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ProviderError) as exc_info:
         _oura_oauth().deregister_user(FAKE_TOKEN)
 
     exc = exc_info.value
-    assert str(exc) == "Oura token revoke failed: HTTP 400"
+    assert exc.upstream_status == 400
+    assert str(exc) == "Oura API error (status 400)"
     assert exc.__cause__ is None
     assert exc.__suppress_context__ is True
     # What Sentry and log handlers render: the hidden httpx error must not show up.
@@ -200,11 +202,12 @@ def _oura_revoke_connect_error(*args: Any, **kwargs: Any) -> httpx.Response:
 
 @patch("httpx.post", side_effect=_oura_revoke_connect_error)
 def test_oura_revoke_transport_error_does_not_carry_token(mock_post: MagicMock) -> None:
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(ProviderError) as exc_info:
         _oura_oauth().deregister_user(FAKE_TOKEN)
 
     exc = exc_info.value
-    assert str(exc) == "Oura token revoke failed: request error"
+    assert exc.upstream_status is None
+    assert str(exc) == "Oura API request failed"
     assert exc.__cause__ is None
     assert exc.__suppress_context__ is True
     assert FAKE_TOKEN not in "".join(traceback.format_exception(exc))
@@ -217,7 +220,7 @@ def test_shipped_oura_transport_error_carries_no_token(
     # Sensitive mode ships frame locals; the httpx frames holding the request must not be reported.
     try:
         _oura_oauth().deregister_user(FAKE_TOKEN)
-    except RuntimeError as e:
+    except ProviderError as e:
         sentry_sdk.capture_exception(e)
     sentry_sdk.flush()
 

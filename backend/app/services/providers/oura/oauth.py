@@ -11,6 +11,7 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.exceptions import ProviderError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -81,7 +82,7 @@ class OuraOAuth(BaseOAuthTemplate):
         except httpx.HTTPStatusError as e:
             # Oura takes the token as a query param, which httpx renders into str(e).
             # "from None" keeps the original error (and its URL) out of the reported chain.
-            raise RuntimeError(f"Oura token revoke failed: HTTP {e.response.status_code}") from None
+            raise ProviderError(self.provider_name, upstream_status=e.response.status_code) from None
         except httpx.HTTPError:
             # Transport errors carry the request (and its URL) in httpx frame locals.
-            raise RuntimeError("Oura token revoke failed: request error") from None
+            raise ProviderError(self.provider_name) from None
