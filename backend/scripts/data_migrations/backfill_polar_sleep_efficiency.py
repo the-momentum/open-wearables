@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Set the sleep efficiency of stored Polar nights from their time asleep and time in bed.
+"""Set the sleep efficiency of stored Polar nights from their time awake.
 
-Polar reports no sleep efficiency, so stored Polar nights have none. Ingestion now derives it
-like Garmin's, time asleep over time in bed, and a re-sync replaces the nights still in Polar's
-90-day window; this sets it on the nights stored before, from their stored minutes. Time in bed
-is the night's start-to-end window, which is what Polar sleep stores it as. A night without stages
-has no time asleep and keeps no efficiency, and a night holding more sleep than its window is left
-as it is.
+Polar reports no sleep efficiency, so stored Polar nights have none. Ingestion now derives it as
+Polar Flow's actual sleep share, the night minus its interruptions over the night, and a re-sync
+replaces the nights still in Polar's 90-day window; this sets it on the nights stored before, from
+their stored minutes awake. Those are whole minutes, which can raise an efficiency by less than a
+minute's share of the night, never past 100. A night whose interruptions weren't reported keeps no
+efficiency, and one awake for longer than it lasted is left as it is.
 
 Waits for dedupe_polar_sleep: until that has run, a night without stages re-synced before #1870
-may hold its sleep minutes several times. Runs once per instance (data_migration), in one
+may hold its minutes awake several times. Runs once per instance (data_migration), in one
 statement.
 
 Usage (inside Docker):
@@ -31,10 +31,9 @@ _NIGHTS = """
     ds.provider = :provider
     AND er.category = 'sleep'
     AND sd.sleep_efficiency_score IS NULL
-    AND sd.sleep_total_duration_minutes IS NOT NULL
+    AND sd.sleep_awake_minutes IS NOT NULL
     AND er.duration_seconds > 0
-    -- More sleep than the night lasted is no efficiency, and the sleep summary rejects one above 100
-    AND sd.sleep_total_duration_minutes * 60 <= er.duration_seconds
+    AND sd.sleep_awake_minutes * 60 <= er.duration_seconds
 """
 _COUNT = text(f"""
     SELECT count(*)
@@ -45,7 +44,9 @@ _COUNT = text(f"""
 """)
 _UPDATE = text(f"""
     UPDATE sleep_details sd
-    SET sleep_efficiency_score = round(sd.sleep_total_duration_minutes * 60 * 100.0 / er.duration_seconds, 2)
+    SET sleep_efficiency_score = round(
+        (er.duration_seconds - sd.sleep_awake_minutes * 60) * 100.0 / er.duration_seconds, 2
+    )
     FROM event_record er
     JOIN data_source ds ON ds.id = er.data_source_id
     WHERE sd.record_id = er.id AND {_NIGHTS}

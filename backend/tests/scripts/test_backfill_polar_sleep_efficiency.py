@@ -35,7 +35,7 @@ END = START + timedelta(hours=8)
 def _night(
     provider: ProviderName = ProviderName.POLAR,
     *,
-    asleep_minutes: int | None = 450,
+    awake_minutes: int | None = 30,
     efficiency: Decimal | None = None,
 ) -> SleepDetails:
     record = EventRecordFactory(
@@ -48,7 +48,7 @@ def _night(
     )
     return SleepDetailsFactory(
         event_record=record,
-        sleep_total_duration_minutes=asleep_minutes,
+        sleep_awake_minutes=awake_minutes,
         sleep_time_in_bed_minutes=8 * 60,
         sleep_efficiency_score=efficiency,
     )
@@ -60,7 +60,7 @@ def _efficiency(db: Session, details: SleepDetails) -> Decimal | None:
 
 
 class TestBackfillPolarSleepEfficiency:
-    def test_sets_time_asleep_over_time_in_bed_on_polar_nights(self, db: Session) -> None:
+    def test_sets_the_night_without_its_interruptions_on_polar_nights(self, db: Session) -> None:
         night = _night()
         other = _night(ProviderName.OURA)
 
@@ -70,13 +70,13 @@ class TestBackfillPolarSleepEfficiency:
 
     def test_leaves_reported_and_underivable_nights_alone(self, db: Session) -> None:
         reported = _night(efficiency=Decimal("88.00"))
-        without_stages = _night(asleep_minutes=None)
-        more_than_the_window = _night(asleep_minutes=9 * 60)
+        without_interruptions = _night(awake_minutes=None)
+        awake_longer_than_the_night = _night(awake_minutes=9 * 60)
 
         assert backfill_polar_sleep_efficiency(db, dry_run=False) == 0
         assert _efficiency(db, reported) == Decimal("88.00")
-        assert _efficiency(db, without_stages) is None
-        assert _efficiency(db, more_than_the_window) is None
+        assert _efficiency(db, without_interruptions) is None
+        assert _efficiency(db, awake_longer_than_the_night) is None
 
     def test_a_second_run_changes_nothing(self, db: Session) -> None:
         _night()

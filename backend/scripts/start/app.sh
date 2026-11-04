@@ -169,8 +169,8 @@ uv run python scripts/data_migrations/raise_garmin_body_battery_peaks.py \
     || echo "Warning: Garmin body battery peak backfill failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-04-01 once all deployments have migrated.
-# Sets the sleep efficiency of stored Polar nights from their time asleep and time in bed, once the
-# Polar sleep dedupe above has run. Runs once per instance (data_migration).
+# Sets the sleep efficiency of stored Polar nights from their time awake, once the Polar sleep
+# dedupe above has run. Runs once per instance (data_migration).
 echo 'Running Polar sleep efficiency backfill...'
 uv run python scripts/data_migrations/backfill_polar_sleep_efficiency.py \
     || echo "Warning: Polar sleep efficiency backfill failed — will retry on next startup."
