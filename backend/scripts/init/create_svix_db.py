@@ -11,8 +11,9 @@ import psycopg
 import psycopg.errors
 
 from app.config import settings
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("app.scripts.create_svix_db")
 
 
 def create_svix_db() -> None:
@@ -33,10 +34,10 @@ def create_svix_db() -> None:
                 logger.info("Created 'svix' database.")
             except psycopg.errors.DuplicateDatabase:
                 logger.info("Svix database already exists, skipping.")
-    except Exception:
+    except Exception as e:
         # Best-effort: never block app boot (e.g. managed Postgres without CREATEDB).
         # A real connectivity problem still surfaces at the next alembic step.
-        logger.warning("Could not ensure 'svix' database - continuing without it.", exc_info=True)
+        logger.warning("Could not ensure 'svix' database - continuing without it.", exc_info=e)
 
 
 if __name__ == "__main__":

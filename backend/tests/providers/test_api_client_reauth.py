@@ -35,7 +35,7 @@ def test_no_refresh_token_raises_reauth_required(db: Session, dead_connection: A
             revoke_on_failure=revoke_on_failure,
         )
 
-    assert exc_info.value.status_code == 401
+    assert exc_info.value.status_code == 409
     assert exc_info.value.user_id == dead_connection.user_id
     if revoke_on_failure:
         oauth.revoke_connection.assert_called_once_with(db, dead_connection.user_id, reason="no_refresh_token")

@@ -34,16 +34,18 @@ Providers indicate which modes they support through
 
 import hashlib
 import hmac
-import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories import UserConnectionRepository
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import WebhookVerificationError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseWebhookHandler(ABC):
@@ -63,7 +65,8 @@ class BaseWebhookHandler(ABC):
     Optional overrides
     ------------------
     * ``handle_challenge`` – GET-based subscription verification (Strava
-      ``hub.challenge``, Oura ``verification_token``).  Defaults to 501.
+      ``hub.challenge``, Oura ``verification_token``).  Without an override the
+      unified router answers 501.
     * ``handle`` – the full pipeline orchestrator; override only when the
       standard *verify → parse → dispatch* sequence is insufficient.
     """
@@ -74,7 +77,6 @@ class BaseWebhookHandler(ABC):
 
     def __init__(self, provider_name: str) -> None:
         self.provider_name = provider_name
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def extract_user_id(self, payload: dict[str, Any]) -> str | None:
         """Best-effort provider-side user id from a raw webhook payload (for log correlation)."""
@@ -130,7 +132,7 @@ class BaseWebhookHandler(ABC):
             and is passed as-is to ``dispatch()``.
 
         Raises:
-            ``HTTPException(400)`` on malformed JSON or schema validation errors.
+            ``InvalidInputError`` on malformed JSON or schema validation errors.
         """
 
     @abstractmethod
@@ -209,19 +211,17 @@ class BaseWebhookHandler(ABC):
             Result ``dict`` from ``dispatch()``.
 
         Raises:
-            ``HTTPException(401)`` if ``verify_signature`` returns ``False``.
-            ``HTTPException(400)`` if ``parse_payload`` raises a validation error.
+            ``WebhookVerificationError`` (401) if ``verify_signature`` returns ``False``.
+            ``InvalidInputError`` (400) if ``parse_payload`` raises a validation error.
         """
         if not self.verify_signature(request, body):
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Webhook signature verification failed",
                 provider=self.provider_name,
                 path=request.url.path,
                 client_host=request.client.host if request.client else None,
             )
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+            raise WebhookVerificationError("Invalid webhook signature")
 
         payload = self.parse_payload(body)
         return self.dispatch(db, payload)
@@ -233,9 +233,8 @@ class BaseWebhookHandler(ABC):
         to verify webhook subscriptions (Strava ``hub.challenge``, Oura
         ``verification_token``).
 
-        Default implementation raises ``501 Not Implemented`` so that the
-        unified router fails loudly for providers that have not wired up
-        challenge handling yet.
+        Default implementation raises ``NotImplementedError``, which the
+        unified router answers with ``501 Not Implemented``.
 
         Args:
             request: The incoming GET request (query params carry challenge data).
@@ -244,11 +243,10 @@ class BaseWebhookHandler(ABC):
             Provider-specific challenge response dict.
 
         Raises:
-            ``HTTPException(501)`` by default.
+            ``NotImplementedError`` by default.
         """
-        raise HTTPException(
-            status_code=501,
-            detail=f"Provider '{self.provider_name}' does not support webhook subscription verification via GET.",
+        raise NotImplementedError(
+            f"Provider '{self.provider_name}' does not support webhook subscription verification via GET."
         )
 
     # ------------------------------------------------------------------

@@ -14,6 +14,7 @@ from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
+from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.model_crud.data_priority import DataSourceCreate, DataSourceUpdate
@@ -177,8 +178,8 @@ class DataSourceRepository(
         if len(writer_rows) != 1:
             return None
         row = writer_rows[0]
-        incoming_unknown = device_model is None or is_host_model(source_app_id, device_model)
-        stored_unknown = row.device_model is None or is_host_model(row.source_app_id, row.device_model)
+        incoming_unknown = device_model is None or is_host_model(row.provider, source_app_id, device_model)
+        stored_unknown = row.device_model is None or is_host_model(row.provider, row.source_app_id, row.device_model)
         return row if incoming_unknown or stored_unknown else None
 
     @staticmethod
@@ -204,8 +205,28 @@ class DataSourceRepository(
         if identity.device_id and identity.source_app_id and (row := self._find(rows, app_id_row)):
             return row
         if identity.device_id or identity.source_app_id:
-            return self._find(rows, identity._replace(device_id=None, source_app_id=None))
+            legacy = identity._replace(device_id=None, source_app_id=None)
+            return self._find(rows, legacy) or self._relayed_legacy_row(rows, identity)
         return None
+
+    @staticmethod
+    def _relayed_legacy_row(rows: list[DataSource], identity: DataSourceIdentity) -> DataSource | None:
+        """A third-party writer's legacy row keyed by the relaying iPhone's code, for a record that no longer
+        carries it (iOS SDK fix, or the code dropped at ingest)."""
+        if identity.device_id:
+            return None
+        return next(
+            (
+                r
+                for r in rows
+                if r.user_id == identity.user_id
+                and r.device_id is None
+                and r.source_app_id is None
+                and (r.source or "") == (identity.source or "")
+                and is_host_model(r.provider, identity.source_app_id, r.device_model)
+            ),
+            None,
+        )
 
     def get_by_identity(
         self,
@@ -390,10 +411,11 @@ class DataSourceRepository(
         if keyed_by_app and source and source != app_id and source != existing.source:
             updates["source"] = source
         # Keyed rows learn their model later (Polar sleep before the exercise, a writer's first model);
-        # a relaying host's code is replaced by the producing device's model
-        host_row = is_host_model(existing.source_app_id, existing.device_model)
-        replaces_host = host_row and not is_host_model(source_app_id, device_model)
-        if device_model and (existing.device_model is None or replaces_host):
+        # a relaying host's code is replaced by the producing device's model, or cleared when there is none
+        host_row = is_host_model(provider, app_id, existing.device_model)
+        incoming_host = is_host_model(provider, app_id, device_model)
+        replaces_host = host_row and not incoming_host
+        if replaces_host or (device_model and existing.device_model is None and not incoming_host):
             updates["device_model"] = device_model
         model_replaced = "device_model" in updates
         effective_model = device_model if model_replaced else existing.device_model or device_model
@@ -452,7 +474,8 @@ class DataSourceRepository(
     ) -> list[DataSource]:
         return (
             db_session.query(self.model)
-            .filter(self.model.user_id == user_id)
+            # The reconciled source holds merged values, not a device the user connected.
+            .filter(self.model.user_id == user_id, NOT_RECONCILED_SOURCE)
             .order_by(self.model.provider.asc(), self.model.device_model.asc())
             .all()
         )

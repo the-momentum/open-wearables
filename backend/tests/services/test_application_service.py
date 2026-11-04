@@ -1,10 +1,10 @@
 """Tests for Application service."""
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.services.application_service import application_service
+from app.utils.exceptions import AuthenticationError, NotFoundError
 from tests.factories import DeveloperFactory
 
 
@@ -77,14 +77,14 @@ class TestApplicationServiceValidate:
         developer = DeveloperFactory()
         app, _ = application_service.create_application(db, developer.id, "Test App")
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AuthenticationError) as exc_info:
             application_service.validate_credentials(db, app.app_id, "wrong_secret")
 
         assert exc_info.value.status_code == 401
 
     def test_validate_credentials_nonexistent_app_raises_401(self, db: Session) -> None:
         """Should raise 401 for non-existent app."""
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AuthenticationError) as exc_info:
             application_service.validate_credentials(db, "nonexistent_app", "secret")
 
         assert exc_info.value.status_code == 401
@@ -135,7 +135,7 @@ class TestApplicationServiceDelete:
         developer2 = DeveloperFactory()
         app, _ = application_service.create_application(db, developer1.id, "Test App")
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             application_service.delete_application(db, app.app_id, developer2.id)
 
         assert exc_info.value.status_code == 404
@@ -163,7 +163,7 @@ class TestApplicationServiceRotateSecret:
         updated_app, new_secret = application_service.rotate_secret(db, app.app_id, developer.id)
 
         # Old secret should fail
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AuthenticationError) as exc_info:
             application_service.validate_credentials(db, app.app_id, old_secret)
 
         assert exc_info.value.status_code == 401
@@ -174,7 +174,7 @@ class TestApplicationServiceRotateSecret:
         developer2 = DeveloperFactory()
         app, _ = application_service.create_application(db, developer1.id, "Test App")
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             application_service.rotate_secret(db, app.app_id, developer2.id)
 
         assert exc_info.value.status_code == 404

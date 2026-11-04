@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
@@ -538,6 +539,25 @@ class TestFindAdjacentSleepRecord:
             provider="apple",
             source_app_id=source_app_id,
         )
+
+    def test_locks_only_the_sleep_record(self, db: Session) -> None:
+        """The data source stays unlocked: the rollup takes it (by FK) before the record, so locking both deadlocks."""
+        user = UserFactory()
+        self._night(user, "com.apple.health.11111111")
+        statements: list[str] = []
+
+        def capture(*args: Any) -> None:
+            statements.append(args[2])
+
+        sa_event.listen(db.get_bind(), "before_cursor_execute", capture)
+        try:
+            self._adjacent(db, user, "com.apple.health.11111111")
+        finally:
+            sa_event.remove(db.get_bind(), "before_cursor_execute", capture)
+
+        locking = [s for s in statements if "FOR UPDATE" in s]
+        assert len(locking) == 1
+        assert locking[0].rstrip().endswith("FOR UPDATE OF event_record")
 
     def test_matches_only_the_same_writer_app(self, db: Session) -> None:
         user = UserFactory()
