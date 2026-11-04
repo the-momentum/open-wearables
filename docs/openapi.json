@@ -8117,46 +8117,6 @@
               }
             }
           },
-          "400": {
-            "description": "Unsupported provider",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "Unsupported provider: fitbit. Supported: apple, health_connect, samsung"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "Authentication required: provide SDK token or API key"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "SDK token belongs to another user",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "Token does not match user_id"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "User not found",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found."
-                }
-              }
-            }
-          },
           "422": {
             "description": "Validation Error",
             "content": {

@@ -171,37 +171,7 @@ def sync_sdk_data(
     return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
 
 
-@router.get(
-    "/sdk/users/{user_id}/sync/status",
-    responses={
-        400: {
-            "description": "Unsupported provider",
-            "content": {
-                "application/json": {
-                    "example": {"detail": "Unsupported provider: fitbit. Supported: apple, health_connect, samsung"}
-                }
-            },
-        },
-        401: {
-            "description": "Authentication required",
-            "content": {
-                "application/json": {"example": {"detail": "Authentication required: provide SDK token or API key"}}
-            },
-        },
-        403: {
-            "description": "SDK token belongs to another user",
-            "content": {"application/json": {"example": {"detail": "Token does not match user_id"}}},
-        },
-        404: {
-            "description": "User not found",
-            "content": {
-                "application/json": {
-                    "example": {"detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found."}
-                }
-            },
-        },
-    },
-)
+@router.get("/sdk/users/{user_id}/sync/status")
 def get_sdk_sync_status(
     user_id: UUID,
     provider: Annotated[str, Query(description="SDK provider slug, e.g. `apple`, `samsung`, `health_connect`.")],
