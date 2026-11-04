@@ -79,6 +79,7 @@ from app.services.outgoing_webhooks.events import (
 )
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
+from app.services.sleep_finality import final_record_ids
 from app.utils.context import current_sync_payload
 from app.utils.conversion import as_dict_list, as_float, as_int, as_model, minutes_to_seconds, sum_optional
 from app.utils.exceptions import handle_exceptions
@@ -1088,6 +1089,7 @@ class EventRecordService(
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
+        final_ids = final_record_ids(db_session, records, datetime.now(timezone.utc))
         data = []
         for record, data_source in records:
             details: SleepDetails | None = record.sleep_detail
@@ -1105,6 +1107,7 @@ class EventRecordService(
                 time_in_bed_seconds=time_in_bed_seconds,
                 efficiency_percent=as_float(details.sleep_efficiency_score) if details else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
+                is_final=record.id in final_ids,
                 sleep_stage_intervals=details.sleep_stages if details and with_stages else None,
                 stages=SleepStagesSummary(
                     deep_minutes=details.sleep_deep_minutes,

@@ -1334,6 +1334,60 @@ class TestRecomputeSleepScores:
 class TestGetSleepSessions:
     """Test get_sleep_sessions response fields."""
 
+    def _is_final(self, db: Session, user_id: UUID, record_id: UUID) -> bool:
+        # Fresh params per call: get_sleep_sessions sets their category
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        )
+        sessions = event_record_service.get_sleep_sessions(db, user_id, params).data
+        return next(s for s in sessions if s.id == record_id).is_final
+
+    def test_a_session_is_final_once_its_source_sent_data_after_it(self, db: Session) -> None:
+        user = UserFactory()
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        end = datetime(2026, 10, 31, 7, 0, tzinfo=timezone.utc)
+        night = EventRecordFactory(
+            mapping=ring, category="sleep", type_="sleep", start_datetime=end - timedelta(hours=8), end_datetime=end
+        )
+        SleepDetailsFactory(event_record=night)
+        DataPointSeriesFactory(data_source=ring, recorded_at=end + timedelta(minutes=29))
+
+        assert self._is_final(db, user.id, night.id) is False
+
+        DataPointSeriesFactory(data_source=ring, recorded_at=end + timedelta(minutes=30))
+
+        assert self._is_final(db, user.id, night.id) is True
+
+    def test_a_session_from_the_sdk_is_final_at_once(self, db: Session) -> None:
+        user = UserFactory()
+        night = EventRecordFactory(
+            mapping=DataSourceFactory(user=user, provider=ProviderName.APPLE), category="sleep", type_="sleep"
+        )
+        SleepDetailsFactory(event_record=night)
+
+        assert self._is_final(db, user.id, night.id) is True
+
+    def test_a_tentative_garmin_session_waits_while_a_final_one_does_not(self, db: Session) -> None:
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        end = datetime.now(timezone.utc) - timedelta(hours=1)
+        tentative, final = (
+            EventRecordFactory(
+                mapping=watch,
+                category="sleep",
+                type_="sleep",
+                start_datetime=end - timedelta(hours=8, days=days),
+                end_datetime=end - timedelta(days=days),
+            )
+            for days in (0, 1)
+        )
+        SleepDetailsFactory(event_record=tentative, provider_state="AUTO_TENTATIVE")
+        SleepDetailsFactory(event_record=final, provider_state="ENHANCED_FINAL")
+
+        assert self._is_final(db, user.id, tentative.id) is False
+        assert self._is_final(db, user.id, final.id) is True
+
     def test_returns_sleep_duration_and_time_in_bed_when_details_present(self, db: Session) -> None:
         """sleep_duration_seconds should come from sleep_total_duration_minutes; duration_seconds stays time-in-bed."""
         user = UserFactory()
