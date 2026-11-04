@@ -349,7 +349,7 @@ def test_api_client_http2_flag_forwarded() -> None:
         mock_client_cls.return_value = mock_client_instance
 
         client_req(
-            db=DB,
+            db=MagicMock(info={}),  # real dict: get_valid_token caches the token in Session.info
             user_id=USER_ID,
             connection_repo=mock_repo,
             oauth=mock_oauth,

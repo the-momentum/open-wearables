@@ -23,6 +23,7 @@ from app.constants.series_types.sdk.metric_types import (
     APPLE_METRIC_TYPE_TO_SERIES_TYPE,
     SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
 )
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_SERIES, WORKOUT_SAMPLE_SERIES
 from app.constants.series_types.sdk.workout_statistics import (
     SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
     WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
@@ -50,11 +51,11 @@ SDK_SHARED_FILES = (
 EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_service.py"),)}
 
 # Fields the shared SDK pipeline sets, but only from inputs this provider never sends:
-# Samsung has no `stepCount`/`recordingMethod`, and nothing yields moving time.
-SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "moving_time_seconds", "entry_source"}}
+# Samsung has no `stepCount`/`recordingMethod`.
+SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "entry_source"}}
 
 # EventRecordDetail fields that are NOT part of the coverage matrix.
-STRUCTURAL_DETAIL_FIELDS = {"record_id"}
+STRUCTURAL_DETAIL_FIELDS = {"record_id", "energy_series"}
 
 
 def _all_detail_fields() -> set[str]:
@@ -144,6 +145,22 @@ def test_set_detail_fields_are_declared(provider: str) -> None:
     assert not undeclared, f"{provider}: sets EventRecordDetail fields not declared in coverage: {sorted(undeclared)}"
 
 
+_ENERGY_SERIES_RE = re.compile(r"energy_series\"?\]?\s*=\s*([A-Za-z_][\w.]*)")
+
+
+@pytest.mark.parametrize("provider", sorted(set(_providers_with_coverage()) - SDK_PROVIDERS))
+def test_workout_energy_comes_from_coverage(provider: str) -> None:
+    """A provider's workout energy goes to the series its coverage.py declares, never to a literal; a provider
+    whose energy semantics are not established declares none and sets none (the column keeps it)."""
+    cov = _load_coverage(provider)
+    assigned = set(_ENERGY_SERIES_RE.findall(_impl_source(provider)))
+
+    if getattr(cov, "WORKOUT_ENERGY_SERIES", None) is None:
+        assert not assigned, f"{provider}: sets energy_series but coverage declares no WORKOUT_ENERGY_SERIES"
+    else:
+        assert assigned <= {"WORKOUT_ENERGY_SERIES"}, f"{provider}: energy_series set from {sorted(assigned)}"
+
+
 _SDK_METRIC_MAP = {
     "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
     "samsung": SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
@@ -156,14 +173,23 @@ _SDK_WORKOUT_STATISTIC_MAP = {
     "health_connect": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
 }
 
+# workouts[].route goes to every SDK; only Samsung sends workouts[].samples.
+_SDK_WORKOUT_SERIES = {
+    "apple": WORKOUT_ROUTE_SERIES,
+    "samsung": WORKOUT_ROUTE_SERIES | WORKOUT_SAMPLE_SERIES,
+    "health_connect": WORKOUT_ROUTE_SERIES,
+}
+
 
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
 def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
-    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(_SDK_WORKOUT_STATISTIC_MAP[provider].values())
-    assert _timeseries(cov) == expected, (
-        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + workout-statistic maps"
+    expected = (
+        frozenset(_SDK_METRIC_MAP[provider].values())
+        | frozenset(_SDK_WORKOUT_STATISTIC_MAP[provider].values())
+        | _SDK_WORKOUT_SERIES[provider]
     )
+    assert _timeseries(cov) == expected, f"{provider}: TIMESERIES must equal the union of its SDK maps"
 
 
 @pytest.mark.parametrize("provider", _providers_with_coverage())

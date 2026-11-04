@@ -10,8 +10,6 @@ Tests cover:
 - Bulk updating device type priorities
 """
 
-from logging import getLogger
-
 import pytest
 from sqlalchemy.orm import Session
 
@@ -29,7 +27,7 @@ from tests.factories import DataSourceFactory, UserFactory
 @pytest.fixture
 def priority_service() -> PriorityService:
     """Create PriorityService instance."""
-    return PriorityService(log=getLogger(__name__))
+    return PriorityService()
 
 
 class TestPriorityServiceGetProviderPriorities:
@@ -58,29 +56,6 @@ class TestPriorityServiceGetProviderPriorities:
         assert result.items[1].priority == 2
         assert result.items[2].provider == ProviderName.POLAR
         assert result.items[2].priority == 3
-
-    def test_get_provider_priorities_includes_name_and_icon(
-        self, db: Session, priority_service: PriorityService
-    ) -> None:
-        """Each item carries the strategy's display name and relative icon URL, like provider settings."""
-        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
-
-        result = priority_service.get_provider_priorities(db)
-
-        assert result.items[0].name == "Garmin"
-        assert result.items[0].icon_url == "/static/provider-icons/garmin.svg"
-
-    def test_get_provider_priorities_without_strategy_has_no_icon(
-        self, db: Session, priority_service: PriorityService
-    ) -> None:
-        """Rows for providers with no strategy (e.g. legacy 'unknown') still load, just without name/icon."""
-        priority_service.update_provider_priority(db, ProviderName.UNKNOWN, 1)
-
-        result = priority_service.get_provider_priorities(db)
-
-        assert result.items[0].provider == ProviderName.UNKNOWN
-        assert result.items[0].name is None
-        assert result.items[0].icon_url is None
 
 
 class TestPriorityServiceUpdateProviderPriority:

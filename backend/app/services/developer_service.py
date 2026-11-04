@@ -1,4 +1,3 @@
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -13,14 +12,16 @@ from app.schemas.model_crud.user_management import (
 )
 from app.services.services import AppService
 from app.utils.security import get_password_hash
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreateInternal, DeveloperUpdateInternal]):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=DeveloperRepository,
             model=Developer,
-            log=log,
             **kwargs,
         )
 
@@ -60,9 +61,13 @@ class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreat
             # persisting the new hash: if the update fails, the old password still works and
             # the user simply logs in again, which is safer than the reverse order.
             revoked = refresh_token_repository.revoke_all_for_developer(db_session, developer.id)
-            self.logger.info(f"Password change for developer {developer.id}, revoked {revoked} refresh token(s)")
+            logger.info(
+                "Revoked refresh tokens after password change",
+                developer_id=str(developer.id),
+                revoked_count=revoked,
+            )
 
         return self.crud.update(db_session, developer, internal_updater)
 
 
-developer_service = DeveloperService(log=getLogger(__name__))
+developer_service = DeveloperService()

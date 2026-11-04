@@ -5,7 +5,6 @@ for classifying errors that should stop the entire backfill chain.
 """
 
 from datetime import datetime, timezone
-from logging import getLogger
 from typing import Any
 
 from celery import current_app as celery_app
@@ -31,9 +30,9 @@ from app.services.providers.garmin.backfill_state import (
     record_timed_out_entry,
     update_window_cell,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _classify_chain_stop_error(status_code: int | None, error_text: str) -> tuple[str, str] | None:
@@ -93,9 +92,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     status = get_redis_client().get(_get_key(user_id_str, "types", data_type, "status"))
 
     if status != "triggered":
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Timeout check: type already resolved",
             provider="garmin",
             trace_id=trace_id,
@@ -112,9 +109,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
         elapsed = (datetime.now(timezone.utc) - triggered_at).total_seconds()
         if elapsed < TRIGGERED_TIMEOUT_SECONDS:
             remaining = int(TRIGGERED_TIMEOUT_SECONDS - elapsed) + 1
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Timeout check: not yet expired, rescheduling",
                 provider="garmin",
                 trace_id=trace_id,

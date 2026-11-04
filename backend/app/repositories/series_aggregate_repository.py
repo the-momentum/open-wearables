@@ -1,0 +1,618 @@
+from collections import defaultdict
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any, cast
+from uuid import UUID
+
+from sqlalchemy import Date, Interval, func, text, tuple_
+from sqlalchemy import cast as sql_cast
+from sqlalchemy.orm import Query
+
+from app.database import DbSession
+from app.integrations import rollup_queue
+from app.models import DataSource, SeriesAggregate
+from app.models.archival_setting import ArchivalSetting
+from app.models.series_type_definition import SeriesTypeDefinition
+from app.repositories.local_day import OFFSET_REACH, sample_day_sql, utc_midnight
+from app.repositories.repositories import (
+    SourceRanking,
+    source_filter_conditions,
+    timeline_key_column,
+    utc_bucket_start,
+)
+from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
+from app.schemas.enums import (
+    ComputedBy,
+    PeriodKind,
+    ProviderName,
+    SeriesType,
+    TimelineBucket,
+    TimelineGroupBy,
+    get_series_type_from_id,
+    get_series_type_id,
+)
+from app.schemas.enums.aggregation_method import get_aggregation_method
+from app.schemas.model_crud.activities import CalendarPeriod, TimeSeriesQueryParams
+from app.schemas.responses.activity import ActivityAggregateResult
+
+LOCAL_DAY = sql_cast(
+    func.timezone("UTC", SeriesAggregate.period_start) + sql_cast(SeriesAggregate.zone_offset, Interval), Date
+).label("day")
+
+_ALL_TYPE_IDS = [get_series_type_id(series_type) for series_type in SeriesType]
+
+
+# Per (series, source) pair, the first (or last) day row in the range: one index probe per pair, ordered on the
+# index's period_start, where a MIN over a join filtered by the local day reads every row of the range.
+_EDGE_ROWS = {
+    latest: text(f"""
+        SELECT c.type_id, c.source_id, edge.period_start
+        FROM unnest(CAST(:type_ids AS integer[]), CAST(:source_ids AS uuid[])) AS c(type_id, source_id)
+        CROSS JOIN LATERAL (
+            SELECT a.period_start FROM series_aggregate a
+            WHERE a.data_source_id = c.source_id AND a.series_type_definition_id = c.type_id
+                AND a.period_kind = 'day' AND a.period_start >= :lo AND a.period_start < :hi
+                AND ((a.period_start AT TIME ZONE 'UTC') + a.zone_offset::interval)::date
+                    BETWEEN :first_day AND :last_day
+            ORDER BY a.period_start {"DESC" if latest else "ASC"} LIMIT 1
+        ) edge
+    """)
+    for latest in (False, True)
+}
+
+_SAMPLES_OF_PAIR = f"""
+    FROM series_sample s
+    WHERE s.data_source_id = c.source_id AND s.series_type_definition_id = c.type_id
+        AND s.recorded_at >= :lo AND s.recorded_at < :hi AND s.is_daily_total IS NOT TRUE
+        AND {sample_day_sql("s")} BETWEEN :first_day AND :last_day
+"""
+
+# Per (series, data source) pair, its days counted from the samples as the rollup would count them: one index
+# range per pair.
+_SAMPLE_DAYS = text(f"""
+    SELECT c.source_id AS data_source_id, c.type_id AS series_type_definition_id, d.*
+    FROM unnest(CAST(:type_ids AS integer[]), CAST(:source_ids AS uuid[])) AS c(type_id, source_id)
+    CROSS JOIN LATERAL (
+        SELECT {sample_day_sql("s")} AS day, sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min,
+            max(s.value) AS max, count(*) AS count, (array_agg(s.value ORDER BY s.recorded_at DESC))[1] AS last,
+            min(s.zone_offset) AS zone_offset
+        {_SAMPLES_OF_PAIR}
+        GROUP BY 1
+    ) d
+""")
+
+# The same, for only the local days in :days: those the rollup has not caught up with.
+_SAMPLE_DAYS_OF = text(f"""
+    SELECT c.source_id AS data_source_id, c.type_id AS series_type_definition_id, d.*
+    FROM unnest(CAST(:type_ids AS integer[]), CAST(:source_ids AS uuid[])) AS c(type_id, source_id)
+    CROSS JOIN LATERAL (
+        SELECT {sample_day_sql("s")} AS day, sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min,
+            max(s.value) AS max, count(*) AS count, (array_agg(s.value ORDER BY s.recorded_at DESC))[1] AS last,
+            min(s.zone_offset) AS zone_offset
+        {_SAMPLES_OF_PAIR} AND {sample_day_sql("s")} = ANY(:days)
+        GROUP BY 1
+    ) d
+""")
+
+# Per (series, data source) pair, the local day of its first (or last) sample in the range.
+_SAMPLE_EDGES = {
+    latest: text(f"""
+        SELECT edge.day
+        FROM unnest(CAST(:type_ids AS integer[]), CAST(:source_ids AS uuid[])) AS c(type_id, source_id)
+        CROSS JOIN LATERAL (
+            SELECT {sample_day_sql("s")} AS day
+            {_SAMPLES_OF_PAIR}
+            ORDER BY s.recorded_at {"DESC" if latest else "ASC"} LIMIT 1
+        ) edge
+    """)
+    for latest in (False, True)
+}
+
+
+@dataclass(frozen=True)
+class SampleDay:
+    """A day only the samples hold, read like our day row the rollup would write for it."""
+
+    data_source_id: UUID
+    series_type_definition_id: int
+    period_start: datetime
+    sum: Decimal | None
+    avg: Decimal | None
+    min: Decimal | None
+    max: Decimal | None
+    count: int
+    last: Decimal | None
+    zone_offset: str | None
+    computed_by: ComputedBy = ComputedBy.OPEN_WEARABLES
+
+
+# Per data source, its local days whose day rows are older than their samples, as the rollup has not caught up.
+StaleDays = dict[UUID, set[date]]
+
+
+def _sample_day(sample: Any) -> SampleDay:
+    return SampleDay(
+        data_source_id=sample.data_source_id,
+        series_type_definition_id=sample.series_type_definition_id,
+        period_start=CalendarPeriod.of_date(sample.day, sample.zone_offset).start,
+        sum=sample.sum,
+        avg=sample.avg,
+        min=sample.min,
+        max=sample.max,
+        count=sample.count,
+        last=sample.last,
+        zone_offset=sample.zone_offset,
+    )
+
+
+def _pair_params(pairs: list[tuple[int, UUID]], first_day: date, last_day: date) -> dict:
+    return {
+        "type_ids": [type_id for type_id, _ in pairs],
+        "source_ids": [source_id for _, source_id in pairs],
+        "lo": utc_midnight(first_day) - OFFSET_REACH,
+        "hi": utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
+        "first_day": first_day,
+        "last_day": last_day,
+    }
+
+
+class SeriesAggregateRepository:
+    """Reads day rows of series_aggregate: one per data source, series and local day, the provider's before ours."""
+
+    def get_day_rows(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        source_by_type: dict[int, UUID] | None = None,
+    ) -> list[tuple[SeriesAggregate, date]]:
+        """Day rows from ``first_day`` to ``last_day`` inclusive, ordered by day."""
+        rows = (
+            self._days(db_session, user_id, params, types, first_day, last_day, source_by_type)
+            .add_columns(LOCAL_DAY)
+            .distinct(SeriesAggregate.data_source_id, SeriesAggregate.series_type_definition_id, LOCAL_DAY)
+            .order_by(
+                SeriesAggregate.data_source_id,
+                SeriesAggregate.series_type_definition_id,
+                LOCAL_DAY,
+                (SeriesAggregate.computed_by == ComputedBy.PROVIDER).desc(),
+                # Two provider rows can land on one local day (a Whoop cycle starting 23:30, the next at 01:00
+                # the same date); the later one is the one the provider wrote last.
+                SeriesAggregate.period_start.desc(),
+            )
+            .all()
+        )
+        return sorted(((row, day) for row, day in rows), key=lambda pair: pair[1])
+
+    def day_rows_or_samples(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        from_samples: bool,
+        params: TimeSeriesQueryParams | None = None,
+        source_by_type: dict[int, UUID] | None = None,
+        stale: StaleDays | None = None,
+    ) -> list[tuple[SeriesAggregate | SampleDay, date]]:
+        """The user's day rows; with ``from_samples`` also every (data source, series, day) no row holds, counted
+        from its samples, as the readers were before the rollup. Without it, the days the rollup has not caught
+        up with yet (``stale``, else asked of its queue while the rows are read) are counted from their samples.
+        """
+        params = params or TimeSeriesQueryParams()
+        pairs = self._pairs(db_session, user_id, params, types, source_by_type)
+        pending = None
+        if not from_samples and stale is None:
+            pending = self.stale_days_soon(db_session, {source_id for _, source_id in pairs}, first_day, last_day)
+        rows: list[tuple[SeriesAggregate | SampleDay, date]] = list(
+            self.get_day_rows(db_session, user_id, params, types, first_day, last_day, source_by_type)
+        )
+        if pending is not None:
+            stale = pending()
+        if from_samples:
+            held = {(row.data_source_id, row.series_type_definition_id, day) for row, day in rows}
+            for sample in db_session.execute(_SAMPLE_DAYS, _pair_params(pairs, first_day, last_day)) if pairs else ():
+                if (sample.data_source_id, sample.series_type_definition_id, sample.day) not in held:
+                    rows.append((_sample_day(sample), sample.day))
+        elif stale := {
+            source_id: in_range
+            for source_id, days in (stale or {}).items()
+            if (in_range := {day for day in days if first_day <= day <= last_day})
+        }:
+            rows = self._recount_stale(db_session, rows, pairs, stale)
+        return sorted(rows, key=lambda pair: pair[1])
+
+    def stale_days_soon(
+        self, db_session: DbSession, source_ids: Iterable[UUID], first_day: date, last_day: date
+    ) -> Callable[[], StaleDays]:
+        """Ask the rollup queue which of the sources' days it has not caught up with, on a worker thread so the
+        caller's next query runs meanwhile; call the result for the answer. Days whose samples retention deleted
+        are left out: their rows are all they have."""
+        pending = rollup_queue.queued_days_soon(source_ids, first_day, last_day)
+
+        def result() -> StaleDays:
+            queued = pending()
+            if not queued:
+                return {}
+            frozen_before = db_session.query(ArchivalSetting.deleted_before).filter(ArchivalSetting.id == 1).scalar()
+            return {source_id: days for source_id in queued.days if (days := queued.of(source_id, frozen_before))}
+
+        return result
+
+    @staticmethod
+    def _recount_stale(
+        db_session: DbSession,
+        rows: list[tuple[SeriesAggregate | SampleDay, date]],
+        pairs: list[tuple[int, UUID]],
+        stale: StaleDays,
+    ) -> list[tuple[SeriesAggregate | SampleDay, date]]:
+        """``rows`` with our rows of the stale days counted again from their samples; a provider's row stays."""
+        pairs = [(type_id, source_id) for type_id, source_id in pairs if stale.get(source_id)]
+        if not pairs:
+            return rows
+        days = sorted(set().union(*(stale[source_id] for _, source_id in pairs)))
+        counted = {
+            (sample.data_source_id, sample.series_type_definition_id, sample.day): _sample_day(sample)
+            for sample in db_session.execute(_SAMPLE_DAYS_OF, {**_pair_params(pairs, days[0], days[-1]), "days": days})
+            if sample.day in stale[sample.data_source_id]
+        }
+        kept: list[tuple[SeriesAggregate | SampleDay, date]] = []
+        for row, day in rows:
+            key = (row.data_source_id, row.series_type_definition_id, day)
+            if row.computed_by == ComputedBy.PROVIDER:
+                counted.pop(key, None)
+            elif key in counted:
+                # Replaced by the count below; a series with no samples that day keeps its row, as the rollup does.
+                continue
+            kept.append((row, day))
+        kept.extend((sample_day, key[2]) for key, sample_day in counted.items())
+        return kept
+
+    def sample_edge_day(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        source_by_type: dict[int, UUID] | None = None,
+        latest: bool = False,
+    ) -> date | None:
+        """The earliest (or latest) local day in the range that holds a sample, None if none does."""
+        if not (pairs := self._pairs(db_session, user_id, params, types, source_by_type)):
+            return None
+        days = [row.day for row in db_session.execute(_SAMPLE_EDGES[latest], _pair_params(pairs, first_day, last_day))]
+        if not days:
+            return None
+        return max(days) if latest else min(days)
+
+    @staticmethod
+    def _pairs(
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        source_by_type: dict[int, UUID] | None,
+    ) -> list[tuple[int, UUID]]:
+        """Every (series, data source) pair a read covers: the ranked source per series, else every source."""
+        if source_by_type is not None:
+            return list(source_by_type.items())
+        sources = (
+            db_session.query(DataSource.id)
+            .filter(
+                DataSource.user_id == user_id, NOT_RECONCILED_SOURCE, *source_filter_conditions(params, DataSource.id)
+            )
+            .all()
+        )
+        type_ids = [get_series_type_id(t) for t in types] if types else _ALL_TYPE_IDS
+        return [(type_id, source_id) for type_id in type_ids for (source_id,) in sources]
+
+    def edge_rows(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        source_by_type: dict[int, UUID] | None = None,
+        latest: bool = False,
+    ) -> dict[tuple[int, UUID], datetime]:
+        """Every (series, data source) pair with a day row in the range, and its first (or last) row's start."""
+        if not (pairs := self._pairs(db_session, user_id, params, types, source_by_type)):
+            return {}
+        rows = db_session.execute(_EDGE_ROWS[latest], _pair_params(pairs, first_day, last_day))
+        return {(row.type_id, row.source_id): row.period_start for row in rows}
+
+    def edge_day(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        source_by_type: dict[int, UUID] | None = None,
+        latest: bool = False,
+        edge_starts: Iterable[datetime] | None = None,
+    ) -> date | None:
+        """The earliest (or latest) local day in the range that holds a row, None if none does."""
+        if edge_starts is None:
+            edge_starts = self.edge_rows(
+                db_session, user_id, params, types, first_day, last_day, source_by_type, latest
+            ).values()
+        if not (starts := list(edge_starts)):
+            return None
+        edge_start = max(starts) if latest else min(starts)
+        # The edge day lies among the rows within a day of the edge instant: an offset moves a day by at most that.
+        start = SeriesAggregate.period_start
+        near = self._days(db_session, user_id, params, types, first_day, last_day, source_by_type).filter(
+            start >= edge_start - 2 * OFFSET_REACH, start <= edge_start + 2 * OFFSET_REACH
+        )
+        return near.with_entities(func.max(LOCAL_DAY) if latest else func.min(LOCAL_DAY)).scalar()
+
+    def period_averages(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        ranking: SourceRanking,
+        night_values: dict[tuple[UUID, int, date], float] | None = None,
+        from_samples: bool = False,
+    ) -> dict[SeriesType, float]:
+        """Each series' mean of its day values from ``first_day`` to ``last_day`` inclusive: one value per local
+        day, the best-ranked source's (equally ranked ones averaged), the provider's row before ours, read from the
+        column the series is read by. Sources measuring a vital differently are never averaged across ranks.
+
+        ``night_values`` fill the days a source holds no day row for: the providers that send a resting pulse
+        or a night's HRV on the sleep, not on the day. With ``from_samples`` the samples fill what is left."""
+        found = self.day_values(db_session, user_id, types, first_day, last_day, night_values, from_samples)
+        rank_of = self._ranks(db_session, {source_id for values in found.values() for source_id, _ in values}, ranking)
+        averages: dict[SeriesType, float] = {}
+        for series_type, values in found.items():
+            by_day: dict[date, list[tuple[tuple[int, int], float]]] = defaultdict(list)
+            for (source_id, day), value in values.items():
+                by_day[day].append((rank_of[source_id], value))
+            day_values = []
+            for ranked in by_day.values():
+                best = min(rank for rank, _ in ranked)
+                tied = [value for rank, value in ranked if rank == best]
+                day_values.append(sum(tied) / len(tied))
+            if day_values:
+                averages[series_type] = sum(day_values) / len(day_values)
+        return averages
+
+    def day_values(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        night_values: dict[tuple[UUID, int, date], float] | None = None,
+        from_samples: bool = False,
+    ) -> dict[SeriesType, dict[tuple[UUID, date], float]]:
+        """Each series' value per data source and local day, picked as ``period_averages`` picks them."""
+        found: dict[SeriesType, dict[tuple[UUID, date], float]] = defaultdict(dict)
+        counted: list[tuple[SampleDay, date]] = []
+        for row, day in self.day_rows_or_samples(db_session, user_id, types, first_day, last_day, from_samples):
+            if isinstance(row, SampleDay):
+                counted.append((row, day))
+                continue
+            series_type = get_series_type_from_id(row.series_type_definition_id)
+            if (value := day_value(row, series_type)) is not None:
+                found[series_type][(row.data_source_id, day)] = value
+        for (source_id, type_id, day), value in (night_values or {}).items():
+            found[get_series_type_from_id(type_id)].setdefault((source_id, day), value)
+        for row, day in counted:
+            series_type = get_series_type_from_id(row.series_type_definition_id)
+            if (value := day_value(row, series_type)) is not None:
+                found[series_type].setdefault((row.data_source_id, day), value)
+        return found
+
+    def latest_day_value(
+        self, db_session: DbSession, user_id: UUID, series_type: SeriesType, since: date, ranking: SourceRanking
+    ) -> tuple[float, datetime] | None:
+        """The newest day value of the series on or after ``since``, the best-ranked source's on that day, at
+        the instant its day starts."""
+        last_day = date.today() + timedelta(days=1)
+        rows = [
+            (row, day)
+            for row, day in self.get_day_rows(
+                db_session, user_id, TimeSeriesQueryParams(), [series_type], since, last_day
+            )
+            if day_value(row, series_type) is not None
+        ]
+        if not rows:
+            return None
+        newest_day = max(day for _, day in rows)
+        newest = [row for row, day in rows if day == newest_day]
+        rank_of = self._ranks(db_session, {row.data_source_id for row in newest}, ranking)
+        best = min(newest, key=lambda row: (rank_of[row.data_source_id], str(row.data_source_id)))
+        return cast(float, day_value(best, series_type)), best.period_start
+
+    @staticmethod
+    def _ranks(db_session: DbSession, source_ids: set[UUID], ranking: SourceRanking) -> dict[UUID, tuple[int, int]]:
+        if not source_ids:
+            return {}
+        sources = db_session.query(DataSource).filter(DataSource.id.in_(source_ids))
+        return {source.id: ranking.rank(source.provider, source.device_type) for source in sources}
+
+    @staticmethod
+    def _days(
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        source_by_type: dict[int, UUID] | None,
+    ) -> Query:
+        query = (
+            db_session.query(SeriesAggregate)
+            .join(DataSource, SeriesAggregate.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                NOT_RECONCILED_SOURCE,
+                SeriesAggregate.period_kind == PeriodKind.DAY,
+                # The bounds keep the index in play; the local day decides.
+                SeriesAggregate.period_start >= utc_midnight(first_day) - OFFSET_REACH,
+                SeriesAggregate.period_start < utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
+                first_day <= LOCAL_DAY,
+                last_day >= LOCAL_DAY,
+                *source_filter_conditions(params, SeriesAggregate.data_source_id),
+            )
+        )
+        if types:
+            query = query.filter(SeriesAggregate.series_type_definition_id.in_([get_series_type_id(t) for t in types]))
+        if source_by_type is not None:
+            query = query.filter(
+                tuple_(SeriesAggregate.series_type_definition_id, SeriesAggregate.data_source_id).in_(
+                    list(source_by_type.items())
+                )
+            )
+        return query
+
+
+def provider_day_counts(
+    db_session: DbSession, user_id: UUID, start: datetime | None = None, end: datetime | None = None
+) -> list[tuple[str, str, int]]:
+    """A user's provider day values in [start, end), counted per provider and series like samples are: they are
+    the day values that were samples before the aggregate tables."""
+    query = _provider_days(db_session, user_id, start, end).with_entities(
+        DataSource.provider, SeriesTypeDefinition.code, func.count().label("count")
+    )
+    rows = query.group_by(DataSource.provider, SeriesTypeDefinition.code).all()
+    return [(provider, code, count) for provider, code, count in rows]
+
+
+def provider_day_timeline(
+    db_session: DbSession,
+    user_id: UUID,
+    bucket: TimelineBucket,
+    group_by: TimelineGroupBy,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    provider: ProviderName | None = None,
+) -> list[tuple[str, date, int]]:
+    """The same day values bucketed by time, so a stretch of provider day values is not a gap on the timeline."""
+    bucket_start = utc_bucket_start(bucket, SeriesAggregate.period_start)
+    key_column = timeline_key_column(group_by)
+    query = _provider_days(db_session, user_id, start, end).with_entities(key_column, bucket_start, func.count())
+    if provider is not None:
+        query = query.filter(DataSource.provider == provider)
+    rows = query.group_by(key_column, bucket_start).order_by(key_column, bucket_start).all()
+    return [(key, bucket_start_value, count) for key, bucket_start_value, count in rows]
+
+
+def _provider_days(db_session: DbSession, user_id: UUID, start: datetime | None, end: datetime | None) -> Query:
+    query = (
+        db_session.query(SeriesAggregate)
+        .join(DataSource, SeriesAggregate.data_source_id == DataSource.id)
+        .join(SeriesTypeDefinition, SeriesAggregate.series_type_definition_id == SeriesTypeDefinition.id)
+        .filter(
+            DataSource.user_id == user_id,
+            SeriesAggregate.computed_by == ComputedBy.PROVIDER,
+            SeriesAggregate.period_kind == PeriodKind.DAY,
+        )
+    )
+    if start is not None:
+        query = query.filter(SeriesAggregate.period_start >= start)
+    if end is not None:
+        query = query.filter(SeriesAggregate.period_start < end)
+    return query
+
+
+def utc_date(at: datetime) -> date:
+    return at.astimezone(timezone.utc).date()
+
+
+def day_value(row: SeriesAggregate | SampleDay, series_type: SeriesType) -> float | None:
+    """The one number a day row stands for: the statistic its series is read by, else the day's last value."""
+    value = getattr(row, get_aggregation_method(series_type).value)
+    if value is None:
+        value = row.last
+    return float(value) if value is not None else None
+
+
+# The day sums and heart rate an activity summary shows, by the key its rows carry.
+_ACTIVITY_SUMS = {
+    SeriesType.steps: "steps_sum",
+    SeriesType.active_energy: "active_energy_sum",
+    SeriesType.basal_energy: "basal_energy_sum",
+    SeriesType.total_energy: "total_energy_sum",
+    SeriesType.distance_walking_running: "distance_sum",
+    SeriesType.flights_climbed: "flights_climbed_sum",
+    SeriesType.active_time: "active_time_minutes",
+}
+_INT_SUMS = {"steps_sum", "flights_climbed_sum", "active_time_minutes"}
+_HEART_RATE_KEYS = ("hr_avg", "hr_max", "hr_min")
+_ENERGY_KEYS = ("active_energy_sum", "basal_energy_sum", "total_energy_sum")
+# An activity day's metrics, in the groups that come whole from one source: a total is not made of one source's
+# active and another's basal energy.
+ACTIVITY_METRIC_GROUPS: tuple[tuple[str, ...], ...] = (
+    *((key,) for key in _ACTIVITY_SUMS.values() if key not in _ENERGY_KEYS),
+    _ENERGY_KEYS,
+    _HEART_RATE_KEYS,
+)
+ACTIVITY_METRIC_KEYS = tuple(key for group in ACTIVITY_METRIC_GROUPS for key in group)
+
+
+def daily_activity(
+    db_session: DbSession, user_id: UUID, start: datetime, end: datetime, from_samples: bool = False
+) -> list[ActivityAggregateResult]:
+    """One row per local day and device in [start, end), from the day rows (the provider's, else ours), and with
+    ``from_samples`` from the samples where no row is.
+
+    Data sources that share provider, source, device model and type add up, as their samples did.
+    """
+    types = [*_ACTIVITY_SUMS, SeriesType.heart_rate]
+    # The bounds cut by their UTC date, as the workout and sleep queries of the same summary do in SQL:
+    # a day is in when its date lies in [start's date, end's date).
+    first_day, last_day = utc_date(start), utc_date(end) - timedelta(days=1)
+    rows = SeriesAggregateRepository().day_rows_or_samples(
+        db_session, user_id, types, first_day, last_day, from_samples
+    )
+    sources = {
+        s.id: s for s in db_session.query(DataSource).filter(DataSource.id.in_({r.data_source_id for r, _ in rows}))
+    }
+    days: dict[tuple, list[SeriesAggregate | SampleDay]] = {}
+    for row, day in rows:
+        source = sources[row.data_source_id]
+        days.setdefault((day, source.provider, source.source, source.device_model, source.device_type), []).append(row)
+
+    heart_rate_id = get_series_type_id(SeriesType.heart_rate)
+    sum_keys = {get_series_type_id(series_type): key for series_type, key in _ACTIVITY_SUMS.items()}
+    results: list[ActivityAggregateResult] = []
+    for (day, provider, source, device_model, device_type), day_rows in days.items():
+        result: dict = {
+            "activity_date": day,
+            "provider": provider,
+            "source": source,
+            "device_model": device_model,
+            "device_type": device_type,
+            **dict.fromkeys(ACTIVITY_METRIC_KEYS),
+        }
+        for type_id, key in sum_keys.items():
+            sums = [float(r.sum) for r in day_rows if r.series_type_definition_id == type_id and r.sum is not None]
+            if sums:
+                result[key] = round(sum(sums)) if key in _INT_SUMS else sum(sums)
+        heart_rate = [r for r in day_rows if r.series_type_definition_id == heart_rate_id]
+        # Each source's day counts once: a provider's row (count 1) and ours (one per sample) weigh the same.
+        if averages := [float(r.avg) for r in heart_rate if r.avg is not None]:
+            result["hr_avg"] = round(sum(averages) / len(averages))
+        if maxes := [int(r.max) for r in heart_rate if r.max is not None]:
+            result["hr_max"] = max(maxes)
+        if mins := [int(r.min) for r in heart_rate if r.min is not None]:
+            result["hr_min"] = min(mins)
+        results.append(cast(ActivityAggregateResult, result))
+    return sorted(results, key=lambda r: r["activity_date"])

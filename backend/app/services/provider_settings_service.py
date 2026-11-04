@@ -9,6 +9,7 @@ from app.schemas.model_crud.data_priority import (
 )
 from app.services.providers.base_strategy import ProviderCapabilities
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import InvalidInputError, UnsupportedProviderError
 
 _NON_PROVIDER_NAMES = {ProviderName.UNKNOWN, ProviderName.INTERNAL}
 
@@ -57,6 +58,7 @@ class ProviderSettingsService:
             name=strategy.display_name,
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled if setting else True,
+            credentials_configured=strategy.credentials_configured,
             icon_url=strategy.icon_url,
             live_sync_mode=(
                 setting.live_sync_mode
@@ -82,10 +84,10 @@ class ProviderSettingsService:
         try:
             strategy = self.factory.get_provider(provider)
         except ValueError:
-            raise ValueError(f"Unknown provider: {provider}")
+            raise InvalidInputError(f"Unknown provider: {provider}") from None
 
         if update.live_sync_mode is not None and not strategy.live_sync_configurable:
-            raise ValueError(f"Provider '{provider}' does not support live sync mode configuration")
+            raise UnsupportedProviderError(provider, "live sync mode configuration")
 
         db_settings_map = self.repo.get_all(db)
         current = db_settings_map.get(provider)
@@ -109,6 +111,7 @@ class ProviderSettingsService:
             name=strategy.display_name,
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled,
+            credentials_configured=strategy.credentials_configured,
             icon_url=strategy.icon_url,
             live_sync_mode=(
                 setting.live_sync_mode if setting.live_sync_mode is not None else strategy.default_live_sync_mode
@@ -123,7 +126,7 @@ class ProviderSettingsService:
             try:
                 self.factory.get_provider(provider)
             except ValueError:
-                raise ValueError(f"Unknown provider: {provider}")
+                raise InvalidInputError(f"Unknown provider: {provider}") from None
 
         self.repo.bulk_update(db, updates)
         return self.get_all_providers(db)

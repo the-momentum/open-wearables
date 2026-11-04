@@ -4,6 +4,7 @@ Tests for process_apple_upload Celery task.
 Tests Apple Health data import processing with user validation.
 """
 
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -12,7 +13,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
+from app.integrations.celery.tasks.process_sdk_upload_task import _batch_outcomes, process_sdk_upload
+from app.schemas.sync_status import SyncScope, SyncStatus
 from tests.factories import UserFactory
 
 
@@ -100,6 +102,35 @@ class TestProcessSDKUploadTask:
         # Assert
         assert result["status_code"] == 200
         mock_sdk_import_service.import_data_from_request.assert_called_once()
+
+    @pytest.mark.parametrize(("records_saved", "rolls_up"), [(3, True), (0, False)])
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
+    def test_a_saved_batch_rolls_its_days_up_right_away(
+        self,
+        mock_user_repo_class: MagicMock,
+        mock_session_local: MagicMock,
+        mock_sdk_import_service: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+        records_saved: int,
+        rolls_up: bool,
+    ) -> None:
+        """The SDK sends no day values: its days and summaries are ours, so they wait for no 15-minute run."""
+        user = UserFactory()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_user_repo_class.return_value.get.return_value = user
+        mock_sdk_import_service.import_data_from_request.return_value.model_dump.return_value = {
+            "status_code": 200,
+            "records_saved": records_saved,
+        }
+
+        with patch("app.integrations.rollup_queue.roll_up_soon") as roll_up_soon:
+            process_sdk_upload(content="{}", content_type="application/json", user_id=str(user.id), provider="apple")
+
+        assert roll_up_soon.called is rolls_up
 
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
@@ -251,3 +282,26 @@ class TestTransportedPayloadCleanup:
         mock_delete = _run_offloaded_batch(db, UserFactory(), archival="disabled", status_code=500)
 
         mock_delete.assert_not_called()
+
+
+class TestBatchOutcomes:
+    START, END = datetime(2026, 10, 1, tzinfo=timezone.utc), datetime(2026, 10, 2, tzinfo=timezone.utc)
+
+    def test_historical_batch_leaves_out_series_written_only_from_workouts(self) -> None:
+        """weather_temperature comes from workout statistics: no end event will ever close it."""
+        spans = {"heart_rate": (self.START, self.END), "workouts": (self.START, self.END)}
+
+        outcomes = _batch_outcomes(["heart_rate", "weather_temperature"], spans, 1, 0, SyncScope.HISTORICAL)
+
+        assert [(o.data_type, o.status, o.covered_start, o.covered_end) for o in outcomes] == [
+            ("heart_rate", SyncStatus.IN_PROGRESS, self.START, self.END),
+            ("workouts", SyncStatus.IN_PROGRESS, self.START, self.END),
+        ]
+
+    def test_live_batch_reports_every_series_it_wrote(self) -> None:
+        outcomes = _batch_outcomes(["heart_rate", "weather_temperature"], {}, 0, 0, SyncScope.LIVE)
+
+        assert [(o.data_type, o.status) for o in outcomes] == [
+            ("heart_rate", SyncStatus.SUCCESS),
+            ("weather_temperature", SyncStatus.SUCCESS),
+        ]

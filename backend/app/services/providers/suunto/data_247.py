@@ -3,8 +3,8 @@
 Syncs data from three Suunto Cloud API endpoints:
 - /247samples/sleep   → EventRecord (category=sleep) + SleepDetails
 - /247samples/recovery → HealthScore (category=RECOVERY, balance scaled 0-100)
-- /247samples/activity → DataPointSeries (HR, steps, SpO2, energy, HRV)
-- /247/daily-activity-statistics → DataPointSeries (aggregated daily steps/energy)
+- /247samples/activity → SeriesSample (HR, steps, SpO2, energy, HRV)
+- /247/daily-activity-statistics → SeriesSample (aggregated daily steps/energy)
 """
 
 from datetime import datetime, timedelta
@@ -14,16 +14,18 @@ from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord
+from app.models import DataSource, EventRecord, SeriesSample
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository, WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
     ScoreComponent,
+    SessionValue,
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
@@ -34,8 +36,11 @@ from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import align_tz_awareness, parse_iso_datetime
-from app.utils.structured_logging import log_structured
+from app.utils.conversion import as_int, seconds_to_minutes, sum_optional
+from app.utils.dates import align_tz_awareness, offset_of, parse_iso_datetime
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # StressState integer → text qualifier (0=Invalid is treated as missing)
 _STRESS_STATE_QUALIFIER: dict[int, str] = {
@@ -68,7 +73,7 @@ class Suunto247Data(Base247DataTemplate):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_source_repo = DataSourceRepository(DataSource)
         self.connection_repo = UserConnectionRepository()
-        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_repo = DataPointSeriesRepository(SeriesSample)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -139,13 +144,14 @@ class Suunto247Data(Base247DataTemplate):
                 if isinstance(response, list):
                     all_data.extend(response)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Error fetching chunk {current_start} to {current_end}: {e}",
+                logger.warning(
+                    "Error fetching chunk",
                     provider="suunto",
                     task="fetch_in_chunks",
                     user_id=str(user_id),
+                    chunk_start=current_start.isoformat(),
+                    chunk_end=current_end.isoformat(),
+                    error=str(e),
                 )
 
             current_start = current_end
@@ -191,12 +197,15 @@ class Suunto247Data(Base247DataTemplate):
             end_dt = parse_iso_datetime(bedtime_end)
             if end_dt:
                 bedtime_start = (end_dt - timedelta(seconds=duration_seconds)).isoformat()
-        deep_sleep = int(entry_data.get("DeepSleepDuration", 0))
-        light_sleep = int(entry_data.get("LightSleepDuration", 0))
-        rem_sleep = int(entry_data.get("REMSleepDuration", 0))
-        awake_duration = int(entry_data.get("WakeAfterSleepOnsetDuration", 0)) + int(
-            entry_data.get("WakeBeforeOffBedDuration", 0)
+        deep_sleep = as_int(entry_data.get("DeepSleepDuration"))
+        light_sleep = as_int(entry_data.get("LightSleepDuration"))
+        rem_sleep = as_int(entry_data.get("REMSleepDuration"))
+        awake_duration = sum_optional(
+            as_int(entry_data.get("WakeAfterSleepOnsetDuration")), as_int(entry_data.get("WakeBeforeOffBedDuration"))
         )
+        # Sessions Suunto didn't score (most naps) report 0 for every stage
+        if deep_sleep == light_sleep == rem_sleep == 0:
+            deep_sleep = light_sleep = rem_sleep = awake_duration = None
         # SpO2 — Suunto returns 0-1 range, convert to percent
         max_spo2 = entry_data.get("MaxSpo2")
         if max_spo2 is not None:
@@ -245,15 +254,18 @@ class Suunto247Data(Base247DataTemplate):
         )
 
         if not start_dt or not end_dt or end_dt <= start_dt:
-            log_structured(
-                self.logger,
-                "warning",
-                f"Skipping sleep record {sleep_id}: missing or degenerate start/end window",
+            logger.warning(
+                "Skipping sleep record: missing or degenerate start/end window",
                 provider="suunto",
                 task="save_sleep_data",
                 user_id=str(user_id),
+                sleep_id=str(sleep_id),
             )
             return False
+
+        # The in-bed window, as for every provider. Suunto's own Duration is its sleep time
+        # (with awake time in the Gomore algorithm) and only fills in a missing edge.
+        window_seconds = int((end_dt - start_dt).total_seconds())
 
         # EventRecord
         record = EventRecordCreate(
@@ -262,7 +274,7 @@ class Suunto247Data(Base247DataTemplate):
             type="sleep_session",
             source_name="Suunto",
             device_model=None,
-            duration_seconds=normalized_sleep.get("duration_seconds"),
+            duration_seconds=window_seconds,
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=str(normalized_sleep["suunto_sleep_id"]) if normalized_sleep.get("suunto_sleep_id") else None,
@@ -272,39 +284,41 @@ class Suunto247Data(Base247DataTemplate):
 
         # SleepDetails
         stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
-        time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
+        time_in_bed_minutes = window_seconds // 60
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=total_sleep_seconds // 60,
+            sleep_total_duration_minutes=seconds_to_minutes(deep_seconds, light_seconds, rem_seconds),
             sleep_time_in_bed_minutes=time_in_bed_minutes,
             sleep_efficiency_score=Decimal(str(normalized_sleep["efficiency_percent"]))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
         )
 
         try:
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            stored = event_record_service.create_or_merge_sleep(
+                db, user_id, record, detail, settings.sleep_end_gap_minutes
+            )
         except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Error saving sleep record {sleep_id}: {e}",
+            logger.error(
+                "Error saving sleep record",
                 provider="suunto",
                 task="save_sleep_data",
                 user_id=str(user_id),
+                sleep_id=str(sleep_id),
+                error=str(e),
             )
             return False
 
-        self._persist_sleep_series(db, user_id, normalized_sleep, end_dt)
+        self._persist_sleep_series(db, user_id, normalized_sleep, end_dt, stored.id)
         return True
 
     def _persist_sleep_series(
@@ -313,6 +327,7 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_sleep: dict[str, Any],
         recorded_at: datetime,
+        sleep_record_id: UUID | None = None,
     ) -> None:
         """Emit the per-night data points Suunto reports only inside a sleep entry.
 
@@ -335,8 +350,9 @@ class Suunto247Data(Base247DataTemplate):
                 series_type=series_type,
                 external_id=str(sleep_id) if sleep_id else None,
                 is_daily_total=True,
+                session=SessionValue(record_id=sleep_record_id, stat=stat) if sleep_record_id else None,
             )
-            for key, series_type in SLEEP_SERIES.items()
+            for key, (series_type, stat) in SLEEP_SERIES.items()
             if normalized_sleep.get(key) is not None
         ]
         if not samples:
@@ -347,13 +363,12 @@ class Suunto247Data(Base247DataTemplate):
             db.commit()
         except Exception as e:
             db.rollback()
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to persist sleep-derived series: {e}",
+            logger.error(
+                "Failed to persist sleep-derived series",
                 provider="suunto",
                 task="persist_sleep_series",
                 user_id=str(user_id),
+                error=str(e),
             )
 
     # ------------------------------------------------------------------
@@ -466,13 +481,12 @@ class Suunto247Data(Base247DataTemplate):
                 if normalized:
                     total_count += self.save_recovery_data(db, user_id, normalized)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to save recovery data: {e}",
+                logger.warning(
+                    "Failed to save recovery data",
                     provider="suunto",
                     task="load_and_save_recovery",
                     user_id=str(user_id),
+                    error=str(e),
                 )
 
         return total_count
@@ -620,13 +634,14 @@ class Suunto247Data(Base247DataTemplate):
                 if isinstance(response, list):
                     all_data.extend(response)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Error fetching daily activity chunk {current_start} to {current_end}: {e}",
+                logger.warning(
+                    "Error fetching daily activity chunk",
                     provider="suunto",
                     task="get_daily_activity_statistics",
                     user_id=str(user_id),
+                    chunk_start=current_start.isoformat(),
+                    chunk_end=current_end.isoformat(),
+                    error=str(e),
                 )
 
             current_start = current_end
@@ -661,7 +676,7 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_stats: list[dict[str, Any]],
     ) -> WriteCounts:
-        """Save daily activity statistics as DataPointSeries (bulk)."""
+        """Save daily activity statistics as SeriesSample (bulk)."""
         all_samples: list[TimeSeriesSampleCreate] = []
 
         for stat in normalized_stats:
@@ -693,6 +708,7 @@ class Suunto247Data(Base247DataTemplate):
                         value=final_value,
                         series_type=series_type,
                         is_daily_total=True,
+                        period=CalendarPeriod.of_date(recorded_at.date(), offset_of(recorded_at)),
                     ),
                 )
 
@@ -730,13 +746,12 @@ class Suunto247Data(Base247DataTemplate):
                     skipped += 1
             except Exception as e:
                 skipped += 1
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to save sleep data: {e}",
+                logger.warning(
+                    "Failed to save sleep data",
                     provider="suunto",
                     task="load_and_save_sleep",
                     user_id=str(user_id),
+                    error=str(e),
                 )
         return saved, skipped
 
@@ -762,13 +777,13 @@ class Suunto247Data(Base247DataTemplate):
         with run.step("recovery", rollback_on_error=False) as step:
             step.record(self.load_and_save_recovery(db, user_id, start_dt, end_dt))
 
-        # 3. Activity samples → DataPointSeries (HR, steps, SpO2, energy, HRV)
+        # 3. Activity samples → SeriesSample (HR, steps, SpO2, energy, HRV)
         with run.step("activity_samples", commit=True) as step:
             raw_activity = self.get_activity_samples(db, user_id, start_dt, end_dt)
             normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
             step.record(self.save_activity_samples(db, user_id, normalized_activity))
 
-        # 4. Daily aggregated statistics → DataPointSeries (steps, energy)
+        # 4. Daily aggregated statistics → SeriesSample (steps, energy)
         with run.step("daily_activity", commit=True) as step:
             raw_daily = self.get_daily_activity_statistics(db, user_id, start_dt, end_dt)
             normalized_daily = [self.normalize_daily_activity(item, user_id) for item in raw_daily]

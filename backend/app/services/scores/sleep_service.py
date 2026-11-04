@@ -9,22 +9,22 @@ four-pillar algorithm (duration, stages, consistency, interruptions):
 """
 
 from datetime import date, datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
 from app.algorithms.config_algorithms import sleep_config
-from app.algorithms.sleep import SleepScoreResult, calculate_overall_sleep_score
-from app.constants.sleep import SleepStageType
+from app.algorithms.sleep import SleepScoreResult, awakenings, calculate_overall_sleep_score
 from app.database import DbSession
 from app.models import EventRecord, SleepDetails
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordQueryParams, HealthScoreCreate, ScoreComponent
 from app.schemas.model_crud.activities.sleep import SleepStage
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ResourceNotFoundError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class WasoData(BaseModel):
@@ -35,8 +35,7 @@ class WasoData(BaseModel):
 class SleepScoreService:
     """Service for computing per-night sleep scores."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.event_record_repo = EventRecordRepository(EventRecord)
 
     @staticmethod
@@ -59,35 +58,15 @@ class SleepScoreService:
     def _parse_wearable_stages_for_interruptions(
         self,
         sleep_stages: list[SleepStage],
-    ) -> WasoData:
+    ) -> WasoData | None:
         """Strip sleep latency and morning lying-in-bed periods to calculate true WASO.
 
-        Returns total WASO minutes and individual awakening durations.
+        Returns total WASO minutes and individual awakening durations; None without a sleep stage.
         """
-        if not sleep_stages:
-            return WasoData(total_awake_minutes=0.0, awakening_durations=[])
-
-        sleep_indices = [i for i, s in enumerate(sleep_stages) if s.stage != SleepStageType.AWAKE]
-        if not sleep_indices:
-            return WasoData(total_awake_minutes=0.0, awakening_durations=[])
-
-        first_sleep_idx = sleep_indices[0]
-        last_sleep_idx = sleep_indices[-1]
-
-        true_sleep_period = sleep_stages[first_sleep_idx : last_sleep_idx + 1]
-
-        waso_total_minutes = 0.0
-        awakening_durations: list[float] = []
-        for block in true_sleep_period:
-            if block.stage == SleepStageType.AWAKE:
-                duration_mins = (block.end_time - block.start_time).total_seconds() / 60.0
-                waso_total_minutes += duration_mins
-                awakening_durations.append(duration_mins)
-
-        return WasoData(
-            total_awake_minutes=waso_total_minutes,
-            awakening_durations=awakening_durations,
-        )
+        awakening_durations = awakenings(sleep_stages)
+        if awakening_durations is None:
+            return None
+        return WasoData(total_awake_minutes=sum(awakening_durations), awakening_durations=awakening_durations)
 
     def get_sleep_score(
         self,
@@ -101,7 +80,7 @@ class SleepScoreService:
     ) -> SleepScoreResult:
         """Calculate a sleep score from raw sleep parameters for a single night.
 
-        If sleep_stages is provided it is used to derive true WASO (strips sleep
+        If sleep_stages holds a sleep stage it is used to derive true WASO (strips sleep
         latency and morning lie-in). Otherwise awake_minutes is used as a fallback
         for interruption scoring.
 
@@ -115,8 +94,8 @@ class SleepScoreService:
                 f" > 0, got {total_sleep_duration_minutes}"
             )
 
-        if sleep_stages:
-            waso = self._parse_wearable_stages_for_interruptions(sleep_stages)
+        waso = self._parse_wearable_stages_for_interruptions(sleep_stages or [])
+        if waso is not None:
             total_awake = waso.total_awake_minutes
             awakening_durations = waso.awakening_durations
         else:
@@ -133,7 +112,6 @@ class SleepScoreService:
             awakening_durations=awakening_durations,
         )
 
-    @handle_exceptions
     def get_sleep_score_for_user(
         self,
         db_session: DbSession,
@@ -374,10 +352,9 @@ class SleepScoreService:
                 skipped.append((r_id, str(record.id), str(exc)))
 
         if skipped:
-            log_structured(
-                self.logger,
-                "warning",
-                f"Skipped sleep score for {len(skipped)} record(s): invalid session data",
+            logger.warning(
+                "Skipped sleep scores for records with invalid session data",
+                skipped_count=len(skipped),
                 skipped=[{"record_id": rid, "reason": reason} for _, rid, reason in skipped],
             )
 
@@ -479,14 +456,13 @@ class SleepScoreService:
                 skipped.append((sleep_date, str(record.id), str(exc)))
 
         if skipped:
-            log_structured(
-                self.logger,
-                "warning",
-                f"Skipped sleep score for {len(skipped)} date(s): invalid session data",
+            logger.warning(
+                "Skipped sleep scores for dates with invalid session data",
+                skipped_count=len(skipped),
                 skipped=[{"date": str(d), "record_id": rid, "reason": reason} for d, rid, reason in skipped],
             )
 
         return results
 
 
-sleep_score_service = SleepScoreService(log=getLogger(__name__))
+sleep_score_service = SleepScoreService()
