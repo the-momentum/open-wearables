@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from psycopg.errors import ForeignKeyViolation, NotNullViolation, UniqueViolation
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, StatementError
 
 from app.utils.exceptions import (
     AppError,
@@ -21,6 +21,7 @@ from app.utils.exceptions import (
     ResourceNotFoundError,
     UnsupportedProviderError,
     app_error_from_integrity_error,
+    public_error_text,
 )
 
 
@@ -136,3 +137,20 @@ class TestAppErrorFromIntegrityError:
         exc = IntegrityError("stmt", {}, NotNullViolation("null value in column"))
 
         assert app_error_from_integrity_error(exc) is None
+
+
+class TestPublicErrorText:
+    """A database error stored in sync history or sent in a webhook keeps no SQL, parameters or row values."""
+
+    @pytest.mark.parametrize("error_class", [IntegrityError, DataError])
+    def test_database_errors_keep_only_their_type(self, error_class: type[StatementError]) -> None:
+        exc = error_class("INSERT INTO series_sample (value) VALUES (%(value)s)", {"value": 72}, Exception("dup 72"))
+
+        text = public_error_text(exc)
+
+        assert text == "Exception"
+        assert "72" not in text
+        assert "INSERT" not in text
+
+    def test_other_errors_keep_their_message(self) -> None:
+        assert public_error_text(ValueError("bad payload")) == "bad payload"
