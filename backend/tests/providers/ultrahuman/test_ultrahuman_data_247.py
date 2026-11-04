@@ -4,6 +4,12 @@ Tests for Ultrahuman 24/7 data implementation.
 Tests the Ultrahuman247Data class for sleep, recovery, and activity data handling.
 """
 
+from collections.abc import Iterator
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -11,6 +17,11 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
+from app.utils.exceptions import (
+    ProviderAuthRejectedError,
+    ProviderError,
+    ProviderNotConnectedError,
+)
 from tests.factories import UserFactory
 
 
@@ -135,6 +146,88 @@ class TestUltrahumanSleepData:
         assert normalized["ultrahuman_date"] == "2025-01-14"
         assert normalized["duration_seconds"] == 0
         assert normalized["efficiency_percent"] is None
+
+    @staticmethod
+    def _data_247() -> Ultrahuman247Data:
+        return Ultrahuman247Data(
+            provider_name="ultrahuman", api_base_url="https://partner.ultrahuman.com", oauth=MagicMock()
+        )
+
+    _NIGHT = {
+        "ultrahuman_date": "2025-01-14",
+        "bedtime_start": 1736816400,
+        "bedtime_end": 1736841600,
+        "quick_metrics": [{"type": "time_in_bed", "value": 25200}],
+    }
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_keeps_unreported_stages_none(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+        raw_sleep = {**self._NIGHT, "sleep_stages": [{"type": "awake", "stage_time": 1800}]}
+
+        normalized = data_247.normalize_sleep(raw_sleep, UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_awake_minutes == 30
+        # Total sleep falls back to time in bed minus awake time
+        assert detail.sleep_total_duration_minutes == 390
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_keeps_reported_zero_stages(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+        raw_sleep = {
+            **self._NIGHT,
+            "sleep_stages": [
+                {"type": "deep_sleep", "stage_time": 3600},
+                {"type": "rem_sleep", "stage_time": 0},
+                {"type": "light_sleep", "stage_time": 16200},
+                {"type": "awake", "stage_time": 0},
+            ],
+        }
+
+        normalized = data_247.normalize_sleep(raw_sleep, UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_awake_minutes == 0
+        assert detail.sleep_total_duration_minutes == 330
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_infers_total_when_phases_are_zero(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+        raw_sleep = {
+            **self._NIGHT,
+            "sleep_stages": [
+                {"type": "deep_sleep", "stage_time": 0},
+                {"type": "rem_sleep", "stage_time": 0},
+                {"type": "light_sleep", "stage_time": 0},
+                {"type": "awake", "stage_time": 1800},
+            ],
+        }
+
+        normalized = data_247.normalize_sleep(raw_sleep, UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes == 0
+        assert detail.sleep_total_duration_minutes == 390
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_without_stages_takes_time_in_bed_as_total(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+
+        normalized = data_247.normalize_sleep(dict(self._NIGHT), UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_total_duration_minutes == 420
 
     def test_normalize_sleep_parses_sleep_graph_stages(self, db: Session) -> None:
         """sleep_graph.data intervals are parsed into canonical SleepStage objects."""
@@ -320,3 +413,46 @@ class TestUltrahumanActivitySamples:
         assert normalized["hrv"][0]["value"] == 45
         assert normalized["temperature"][0]["value"] == 36.5
         assert normalized["steps"][0]["value"] == 8500
+
+
+class TestUltrahumanFetchFailures:
+    """Which failed fetches end the whole run and which only skip a day."""
+
+    WINDOW = {
+        "start_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "end_time": datetime(2026, 1, 2, tzinfo=timezone.utc),
+    }
+
+    @pytest.fixture
+    def data_247(self) -> Iterator[Ultrahuman247Data]:
+        data_247 = Ultrahuman247Data(
+            provider_name="ultrahuman", api_base_url="https://partner.ultrahuman.com", oauth=MagicMock()
+        )
+        with patch.object(data_247, "_save_daily_activity", return_value=0):
+            yield data_247
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            ProviderAuthRejectedError("ultrahuman"),
+            ProviderNotConnectedError("ultrahuman"),
+            ProviderError("ultrahuman", upstream_status=403),
+        ],
+    )
+    def test_unusable_access_ends_the_run(self, data_247: Ultrahuman247Data, error: Exception) -> None:
+        with (
+            patch.object(data_247, "_make_api_request", side_effect=error) as mock_request,
+            pytest.raises(type(error)),
+        ):
+            data_247.load_and_save_all(MagicMock(), uuid4(), **self.WINDOW)
+
+        # every remaining day would fail the same way, so the first one stops it
+        mock_request.assert_called_once()
+
+    def test_other_provider_failure_skips_the_day(self, data_247: Ultrahuman247Data) -> None:
+        with patch.object(
+            data_247, "_make_api_request", side_effect=ProviderError("ultrahuman", upstream_status=500)
+        ) as mock_request:
+            data_247.load_and_save_all(MagicMock(), uuid4(), **self.WINDOW)
+
+        assert mock_request.call_count == 2

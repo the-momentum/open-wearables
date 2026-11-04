@@ -13,7 +13,7 @@ from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
-from app.schemas.model_crud.activities import HealthScoreCreate, SleepStage
+from app.schemas.model_crud.activities import CalendarPeriod, HealthScoreCreate, SleepStage
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
@@ -38,10 +38,11 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.conversion import energy_difference
+from app.utils.conversion import energy_difference, seconds_to_minutes
 from app.utils.dates import as_utc
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger, is_expected_error
+
+logger = get_logger(__name__)
 
 _SchemaT = TypeVar("_SchemaT", bound=BaseModel)
 
@@ -100,13 +101,12 @@ class SensorBio247Data(Base247DataTemplate):
         try:
             return schema.model_validate(raw)
         except ValidationError as e:
-            log_structured(
-                self.logger,
-                "warning",
-                f"SensorBio {context} validation error — skipping record: {e}",
+            logger.warning(
+                "SensorBio validation error — skipping record",
                 provider="sensorbio",
                 user_id=str(user_id),
                 context=context,
+                error=str(e),
             )
             return None
 
@@ -149,12 +149,12 @@ class SensorBio247Data(Base247DataTemplate):
                         ]
                     all_sleep_data.extend(records)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Error fetching Sensor Bio sleep for {current_date}: {e}",
+                logger.warning(
+                    "Error fetching Sensor Bio sleep",
                     provider="sensorbio",
                     task="get_sleep_data",
+                    date=current_date.isoformat(),
+                    error=str(e),
                 )
             current_date += timedelta(days=1)
 
@@ -165,12 +165,12 @@ class SensorBio247Data(Base247DataTemplate):
         try:
             response = self._make_api_request(db, user_id, "/v1/sleep/details/day", params={"date": day.isoformat()})
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
-                f"Error fetching Sensor Bio sleep details for {day}: {e}",
+            logger.warning(
+                "Error fetching Sensor Bio sleep details",
                 provider="sensorbio",
                 task="get_sleep_data",
+                date=day.isoformat(),
+                error=str(e),
             )
             return None
         if not isinstance(response, dict):
@@ -227,7 +227,7 @@ class SensorBio247Data(Base247DataTemplate):
         score = parsed.score
         start_dt = self._from_epoch_seconds(parsed.start_timestamp)
         end_dt = self._from_epoch_seconds(parsed.end_timestamp)
-        duration_seconds = int((parsed.total_sleep_mins or 0) * 60)
+        duration_seconds = int((end_dt - start_dt).total_seconds()) if start_dt and end_dt else 0
 
         return {
             "id": uuid4(),
@@ -241,10 +241,10 @@ class SensorBio247Data(Base247DataTemplate):
             "is_nap": False,
             "stage_timestamps": self._extract_sleep_stages(raw_sleep, user_id, start_dt, end_dt),
             "stages": {
-                "deep_seconds": int((parsed.deep_sleep_mins or 0) * 60),
-                "light_seconds": int((parsed.light_sleep_mins or 0) * 60),
-                "rem_seconds": int((parsed.rem_sleep_mins or 0) * 60),
-                "awake_seconds": int((parsed.awake_time_mins or 0) * 60),
+                "deep_seconds": int(parsed.deep_sleep_mins * 60) if parsed.deep_sleep_mins is not None else None,
+                "light_seconds": int(parsed.light_sleep_mins * 60) if parsed.light_sleep_mins is not None else None,
+                "rem_seconds": int(parsed.rem_sleep_mins * 60) if parsed.rem_sleep_mins is not None else None,
+                "awake_seconds": int(parsed.awake_time_mins * 60) if parsed.awake_time_mins is not None else None,
             },
             "average_heart_rate": (biometrics.bpm if biometrics else None) or parsed.avg_heart_rate,
             "average_hrv": biometrics.hrv if biometrics else None,
@@ -260,11 +260,9 @@ class SensorBio247Data(Base247DataTemplate):
         sleep_id = normalized_sleep["id"]
         start_dt = normalized_sleep.get("start_time")
         end_dt = normalized_sleep.get("end_time")
-        if not start_dt or not end_dt:
-            log_structured(
-                self.logger,
-                "warning",
-                "Skipping sleep record: missing start/end time",
+        if not start_dt or not end_dt or end_dt <= start_dt:
+            logger.warning(
+                "Skipping sleep record: missing or degenerate start/end window",
                 provider="sensorbio",
                 task="save_sleep_data",
                 sleep_id=str(sleep_id),
@@ -288,20 +286,20 @@ class SensorBio247Data(Base247DataTemplate):
         )
 
         stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=total_sleep_seconds // 60,
+            sleep_total_duration_minutes=seconds_to_minutes(deep_seconds, light_seconds, rem_seconds),
             sleep_time_in_bed_minutes=(normalized_sleep.get("duration_seconds") or 0) // 60,
             sleep_efficiency_score=Decimal(str(normalized_sleep["efficiency_percent"]))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             sleep_stages=normalized_sleep.get("stage_timestamps"),
             is_nap=normalized_sleep.get("is_nap", False),
         )
@@ -312,12 +310,12 @@ class SensorBio247Data(Base247DataTemplate):
             event_record_service.create_detail(db, detail, detail_type=EventCategory.SLEEP)
             return True
         except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Error saving sleep record {sleep_id}: {e}",
+            logger.error(
+                "Error saving sleep record",
                 provider="sensorbio",
                 task="save_sleep_data",
+                sleep_id=str(sleep_id),
+                error=str(e),
             )
             return False
 
@@ -332,12 +330,11 @@ class SensorBio247Data(Base247DataTemplate):
                 if self.save_sleep_data(db, user_id, normalized):
                     count += 1
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to save sleep data: {e}",
+                logger.warning(
+                    "Failed to save sleep data",
                     provider="sensorbio",
                     task="load_and_save_sleep",
+                    error=str(e),
                 )
         return count
 
@@ -366,12 +363,12 @@ class SensorBio247Data(Base247DataTemplate):
                     record["date"] = record.get("date") or current_date.isoformat()
                     all_scores.append(record)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Error fetching Sensor Bio scores for {current_date}: {e}",
+                logger.warning(
+                    "Error fetching Sensor Bio scores",
                     provider="sensorbio",
                     task="get_recovery_data",
+                    date=current_date.isoformat(),
+                    error=str(e),
                 )
             current_date += timedelta(days=1)
 
@@ -434,6 +431,7 @@ class SensorBio247Data(Base247DataTemplate):
                     recorded_at=timestamp,
                     value=Decimal(str(value)),
                     series_type=series_type,
+                    period=CalendarPeriod.of_date(timestamp.date()),
                 )
             )
 
@@ -442,12 +440,11 @@ class SensorBio247Data(Base247DataTemplate):
             try:
                 written += timeseries_service.bulk_create_samples(db, samples)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to bulk-save recovery metrics: {e}",
+                logger.warning(
+                    "Failed to bulk-save recovery metrics",
                     provider="sensorbio",
                     task="save_recovery_data",
+                    error=str(e),
                 )
 
         health_scores: list[HealthScoreCreate] = []
@@ -493,12 +490,11 @@ class SensorBio247Data(Base247DataTemplate):
             try:
                 written += health_score_service.bulk_create(db, health_scores)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to bulk-save recovery health scores: {e}",
+                logger.warning(
+                    "Failed to bulk-save recovery health scores",
                     provider="sensorbio",
                     task="save_recovery_data",
+                    error=str(e),
                 )
 
         return written
@@ -515,16 +511,13 @@ class SensorBio247Data(Base247DataTemplate):
                     continue
                 written += self.save_recovery_data(db, user_id, normalized)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to save recovery data: {e}",
+                logger.warning(
+                    "Failed to save recovery data",
                     provider="sensorbio",
                     task="load_and_save_recovery",
+                    error=str(e),
                 )
-        log_structured(
-            self.logger,
-            "info",
+        logger.info(
             "Sensor Bio recovery sync complete",
             provider="sensorbio",
             task="load_and_save_recovery",
@@ -569,12 +562,11 @@ class SensorBio247Data(Base247DataTemplate):
                 if not (response.get("links") or {}).get("next"):
                     break
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Error fetching Sensor Bio biometrics: {e}",
+                logger.error(
+                    "Error fetching Sensor Bio biometrics",
                     provider="sensorbio",
                     task="get_activity_samples",
+                    error=str(e),
                 )
                 if all_samples:
                     break
@@ -633,12 +625,12 @@ class SensorBio247Data(Base247DataTemplate):
             try:
                 return timeseries_service.bulk_create_samples(db, all_samples)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Failed to bulk-save {len(all_samples)} activity samples: {e}",
+                logger.error(
+                    "Failed to bulk-save activity samples",
                     provider="sensorbio",
                     task="save_activity_samples",
+                    count=len(all_samples),
+                    error=str(e),
                 )
         return WriteCounts(0, 0)
 
@@ -673,18 +665,15 @@ class SensorBio247Data(Base247DataTemplate):
                 if isinstance(response, dict) and "metrics" in response:
                     all_stats.append(response)
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    self.logger,
+                logger.warning(
                     "Failed to fetch Sensor Bio daily details",
-                    level="warning",
-                    extra={
-                        "provider": "sensorbio",
-                        "endpoint": endpoint,
-                        "date": current_date.isoformat(),
-                        "user_id": str(user_id),
-                        "error": str(e),
-                    },
+                    exc_info=e,
+                    alert=not is_expected_error(e),
+                    provider="sensorbio",
+                    endpoint=endpoint,
+                    date=current_date.isoformat(),
+                    user_id=str(user_id),
+                    error=str(e),
                 )
             current_date += timedelta(days=1)
         return all_stats
@@ -757,6 +746,7 @@ class SensorBio247Data(Base247DataTemplate):
                     value=Decimal(str(value)),
                     series_type=series_type,
                     is_daily_total=True,
+                    period=CalendarPeriod.of_date(timestamp.date()),
                 )
             )
 
@@ -764,12 +754,12 @@ class SensorBio247Data(Base247DataTemplate):
             try:
                 return timeseries_service.bulk_create_samples(db, samples)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Failed to bulk-save {len(samples)} daily activity samples: {e}",
+                logger.error(
+                    "Failed to bulk-save daily activity samples",
                     provider="sensorbio",
                     task="save_daily_activity",
+                    count=len(samples),
+                    error=str(e),
                 )
 
         return WriteCounts(0, 0)
@@ -791,12 +781,11 @@ class SensorBio247Data(Base247DataTemplate):
                     continue
                 total_count += self.save_daily_activity(db, user_id, normalized)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to save daily activity data: {e}",
+                logger.warning(
+                    "Failed to save daily activity data",
                     provider="sensorbio",
                     task="load_and_save_daily_activity",
+                    error=str(e),
                 )
         return total_count
 

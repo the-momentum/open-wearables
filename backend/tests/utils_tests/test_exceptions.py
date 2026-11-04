@@ -1,443 +1,247 @@
 """
-Tests for exception utilities.
-
-Tests custom exceptions, exception handlers, and exception decorator.
+Tests for the domain exceptions and the IntegrityError translation.
 """
 
+import re
+from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi.exceptions import HTTPException, RequestValidationError
-from psycopg.errors import IntegrityError as PsycopgIntegrityError
-from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+from psycopg.errors import ForeignKeyViolation, NotNullViolation, UniqueViolation
+from sqlalchemy.exc import DataError, IntegrityError, StatementError
 
 from app.utils.exceptions import (
+    STATUS_CODE_NAMES,
+    AppError,
+    AuthenticationError,
+    ConfigurationError,
+    ConflictError,
+    DatetimeParseError,
+    InvalidCursorError,
+    InvalidInputError,
+    NotFoundError,
+    PermissionDeniedError,
+    ProviderError,
+    ProviderNotConnectedError,
     ResourceNotFoundError,
-    handle_exception,
-    handle_exceptions,
+    ServiceUnavailableError,
+    UnsupportedProviderError,
+    UpstreamError,
+    app_error_from_integrity_error,
+    is_provider_state_error,
+    public_error_text,
 )
+from app.utils.problem import status_code_name
 
 
 class TestResourceNotFoundError:
     """Test suite for ResourceNotFoundError exception."""
 
     def test_init_with_entity_name_only(self) -> None:
-        """Test creating error with only entity name."""
-        # Arrange
-        entity_name = "User"
+        error = ResourceNotFoundError("User")
 
-        # Act
-        error = ResourceNotFoundError(entity_name)
-
-        # Assert
-        assert error.entity_name == entity_name
+        assert error.entity_name == "User"
         assert error.detail == "User not found."
 
     def test_init_with_entity_name_and_int_id(self) -> None:
-        """Test creating error with entity name and integer ID."""
-        # Arrange
-        entity_name = "user"
-        entity_id = 123
+        error = ResourceNotFoundError("user", 123)
 
-        # Act
-        error = ResourceNotFoundError(entity_name, entity_id)
-
-        # Assert
-        assert error.entity_name == entity_name
+        assert error.entity_name == "user"
         assert error.detail == "User with ID: 123 not found."
 
     def test_init_with_entity_name_and_uuid_id(self) -> None:
-        """Test creating error with entity name and UUID."""
-        # Arrange
-        entity_name = "device"
         entity_id = uuid4()
 
-        # Act
-        error = ResourceNotFoundError(entity_name, entity_id)
+        error = ResourceNotFoundError("device", entity_id)
 
-        # Assert
-        assert error.entity_name == entity_name
-        assert str(entity_id) in error.detail
         assert error.detail == f"Device with ID: {entity_id} not found."
 
-    def test_init_capitalizes_entity_name(self) -> None:
-        """Test that entity name is capitalized in detail message."""
-        # Arrange
-        entity_name = "provider"
-        entity_id = 456
-
-        # Act
-        error = ResourceNotFoundError(entity_name, entity_id)
-
-        # Assert
-        assert error.detail.startswith("Provider")
-
     def test_init_with_none_id(self) -> None:
-        """Test creating error with None as entity_id."""
-        # Arrange
-        entity_name = "session"
+        error = ResourceNotFoundError("session", None)
 
-        # Act
-        error = ResourceNotFoundError(entity_name, None)
-
-        # Assert
         assert error.detail == "Session not found."
 
+    def test_is_a_not_found_error(self) -> None:
+        error = ResourceNotFoundError("user", 1)
+
+        assert isinstance(error, NotFoundError)
+        assert error.status_code == 404
+        assert str(error) == error.detail
+
+
+class TestStatusCodes:
+    """Each category carries the HTTP status the global handler responds with."""
+
+    @pytest.mark.parametrize(
+        ("error", "status_code"),
+        [
+            (AppError("boom"), 500),
+            (InvalidInputError("bad"), 400),
+            (AuthenticationError("who?"), 401),
+            (PermissionDeniedError("no"), 403),
+            (NotFoundError("gone"), 404),
+            (ConflictError("taken"), 409),
+            (InvalidCursorError("abc"), 400),
+            (DatetimeParseError("yesterday"), 400),
+            (UnsupportedProviderError("apple", "historical sync"), 400),
+        ],
+    )
+    def test_status_code(self, error: AppError, status_code: int) -> None:
+        assert error.status_code == status_code
+        assert error.is_client_error is (status_code < 500)
+
+    def test_authentication_error_sends_a_bearer_challenge(self) -> None:
+        assert AuthenticationError("who?").headers == {"WWW-Authenticate": "Bearer"}
+        assert NotFoundError("gone").headers is None
+
+    def test_datetime_parse_error_is_still_a_value_error(self) -> None:
+        # pydantic validators turn a ValueError into a validation error
+        assert isinstance(DatetimeParseError("yesterday"), ValueError)
+
+    @pytest.mark.parametrize(
+        "error_type",
+        [
+            AppError,
+            InvalidInputError,
+            AuthenticationError,
+            PermissionDeniedError,
+            NotFoundError,
+            ConflictError,
+            UpstreamError,
+            ServiceUnavailableError,
+        ],
+    )
+    def test_a_status_base_class_has_the_code_of_its_status(self, error_type: type[AppError]) -> None:
+        """So a client sees the same code for a route's HTTPException and a service's error."""
+        assert error_type.code == status_code_name(error_type.status_code)
+
+    def test_details(self) -> None:
+        assert InvalidCursorError("abc").detail == "Invalid cursor format: 'abc'. Expected 'timestamp|id'."
+        assert UnsupportedProviderError("apple", "historical sync").detail == (
+            "Provider 'apple' does not support historical sync."
+        )
+
 
-class TestHandleExceptionWithSQLAIntegrityError:
-    """Test suite for handle_exception with SQLAlchemy IntegrityError."""
+def _integrity_error(orig_type: type[Exception], table_name: str | None) -> IntegrityError:
+    orig = MagicMock(spec=orig_type)
+    orig.diag.table_name = table_name
+    orig.diag.message_detail = "Key (email)=(jane@example.com) already exists."
+    return IntegrityError("stmt", {}, orig)
 
-    def test_handle_sqlalchemy_integrity_error(self) -> None:
-        """Test handling SQLAlchemy IntegrityError."""
-        # Arrange
-        error_msg = "duplicate key value violates unique constraint"
-        exc = SQLAIntegrityError("statement", "params", Exception(error_msg))
-        entity = "user"
 
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert isinstance(result, HTTPException)
-        assert result.status_code == 400
-        assert "User entity already exists" in result.detail
-        assert error_msg in result.detail
-
-    def test_handle_sqlalchemy_integrity_error_capitalizes_entity(self) -> None:
-        """Test that entity name is capitalized in error message."""
-        # Arrange
-        exc = SQLAIntegrityError("statement", "params", Exception("error details"))
-        entity = "device"
-
-        # Act
-        result = handle_exception(exc, entity)
+class TestAppErrorFromIntegrityError:
+    def test_unique_violation_names_the_table(self) -> None:
+        error = app_error_from_integrity_error(_integrity_error(UniqueViolation, "user_connection"))
 
-        # Assert
-        assert result.detail.startswith("Device")
+        assert isinstance(error, ConflictError)
+        assert error.detail == "User connection already exists."
 
+    def test_unique_violation_never_echoes_the_values(self) -> None:
+        error = app_error_from_integrity_error(_integrity_error(UniqueViolation, "user"))
 
-class TestHandleExceptionWithPsycopgIntegrityError:
-    """Test suite for handle_exception with Psycopg IntegrityError."""
+        assert error is not None
+        assert "jane@example.com" not in error.detail
+        assert "email" not in error.detail
 
-    def test_handle_psycopg_integrity_error(self) -> None:
-        """Test handling Psycopg IntegrityError."""
-        # Arrange
-        error_msg = "unique constraint violation"
-        exc = PsycopgIntegrityError(error_msg)
-        entity = "provider"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert isinstance(result, HTTPException)
-        assert result.status_code == 400
-        assert "Provider entity already exists" in result.detail
-
-    def test_handle_psycopg_integrity_error_with_complex_message(self) -> None:
-        """Test handling Psycopg IntegrityError with complex error message."""
-        # Arrange
-        error_msg = 'duplicate key value violates unique constraint "users_email_key"'
-        exc = PsycopgIntegrityError(error_msg)
-        entity = "user"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.status_code == 400
-        assert error_msg in result.detail
-
-
-class TestHandleExceptionWithResourceNotFoundError:
-    """Test suite for handle_exception with ResourceNotFoundError."""
-
-    def test_handle_resource_not_found_error(self) -> None:
-        """Test handling ResourceNotFoundError."""
-        # Arrange
-        exc = ResourceNotFoundError("session", 999)
-        entity = "session"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert isinstance(result, HTTPException)
-        assert result.status_code == 404
-        assert result.detail == exc.detail
-
-    def test_handle_resource_not_found_error_preserves_detail(self) -> None:
-        """Test that ResourceNotFoundError detail is preserved."""
-        # Arrange
-        exc = ResourceNotFoundError("user")
-        entity = "user"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.detail == "User not found."
-
-
-class TestHandleExceptionWithAttributeError:
-    """Test suite for handle_exception with AttributeError."""
-
-    def test_handle_attribute_error(self) -> None:
-        """Test handling AttributeError."""
-        # Arrange
-        error_msg = "'NoneType' object has no attribute 'name'"
-        exc = AttributeError(error_msg)
-        entity = "device"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert isinstance(result, HTTPException)
-        assert result.status_code == 400
-        assert "Device doesn't support attribute or method" in result.detail
-        assert error_msg in result.detail
-
-    def test_handle_attribute_error_capitalizes_entity(self) -> None:
-        """Test that entity name is capitalized in AttributeError."""
-        # Arrange
-        exc = AttributeError("attribute error")
-        entity = "provider"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.detail.startswith("Provider")
-
-
-class TestHandleExceptionWithRequestValidationError:
-    """Test suite for handle_exception with RequestValidationError."""
-
-    def test_handle_request_validation_error_with_msg_and_ctx(self) -> None:
-        """Test handling RequestValidationError with message and context."""
-        # Arrange
-        error_data = [
-            {
-                "msg": "Invalid email format",
-                "ctx": {"error": "Must be a valid email address"},
-            },
-        ]
-        exc = RequestValidationError(error_data)
-        entity = "user"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert isinstance(result, HTTPException)
-        assert result.status_code == 400
-        assert "Invalid email format - Must be a valid email address" in result.detail
-
-    def test_handle_request_validation_error_with_msg_only(self) -> None:
-        """Test handling RequestValidationError with message but no context."""
-        # Arrange
-        error_data = [{"msg": "Field required"}]
-        exc = RequestValidationError(error_data)
-        entity = "user"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.status_code == 400
-        assert result.detail == "Field required"
-
-    def test_handle_request_validation_error_with_empty_ctx(self) -> None:
-        """Test handling RequestValidationError with empty context."""
-        # Arrange
-        error_data = [{"msg": "Validation failed", "ctx": {}}]
-        exc = RequestValidationError(error_data)
-        entity = "device"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.detail == "Validation failed"
-
-    def test_handle_request_validation_error_with_none_ctx(self) -> None:
-        """Test handling RequestValidationError with None context."""
-        # Arrange
-        error_data = [{"msg": "Type error", "ctx": None}]
-        exc = RequestValidationError(error_data)
-        entity = "session"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.detail == "Type error"
-
-
-class TestHandleExceptionWithUnknownError:
-    """Test suite for handle_exception with unknown exception types."""
-
-    def test_handle_unknown_exception_raises(self) -> None:
-        """Test that unknown exception types are re-raised."""
-        # Arrange
-        exc = ValueError("Unknown error")
-        entity = "user"
-
-        # Act & Assert
-        with pytest.raises(ValueError, match="Unknown error"):
-            handle_exception(exc, entity)
-
-    def test_handle_custom_exception_raises(self) -> None:
-        """Test that custom exceptions are re-raised."""
-
-        # Arrange
-        class CustomError(Exception):
-            pass
-
-        exc = CustomError("Custom error message")
-        entity = "device"
-
-        # Act & Assert
-        with pytest.raises(CustomError):
-            handle_exception(exc, entity)
-
-
-class TestHandleExceptionsDecorator:
-    """Test suite for handle_exceptions decorator."""
-
-    def test_decorator_successful_execution(self) -> None:
-        """Test decorator allows successful function execution."""
-        # Arrange
-        mock_service = MagicMock()
-        mock_service.name = "test_service"
-
-        @handle_exceptions
-        def test_function(instance: object, arg1: int, arg2: int) -> int:
-            return arg1 + arg2
-
-        # Act
-        result = test_function(mock_service, 5, 10)
-
-        # Assert
-        assert result == 15
-
-    def test_decorator_handles_resource_not_found_error(self) -> None:
-        """Test decorator converts ResourceNotFoundError to HTTPException."""
-        # Arrange
-        mock_service = MagicMock()
-        mock_service.name = "user"
-
-        @handle_exceptions
-        def test_function(instance: object) -> None:
-            raise ResourceNotFoundError("user", 123)
-
-        # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
-            test_function(mock_service)
-
-        assert exc_info.value.status_code == 404
-        assert "User with ID: 123 not found" in exc_info.value.detail
-
-    def test_decorator_handles_integrity_error(self) -> None:
-        """Test decorator converts IntegrityError to HTTPException."""
-        # Arrange
-        mock_service = MagicMock()
-        mock_service.name = "provider"
-
-        @handle_exceptions
-        def test_function(instance: object) -> None:
-            raise SQLAIntegrityError("stmt", "params", Exception("duplicate key"))
-
-        # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
-            test_function(mock_service)
-
-        assert exc_info.value.status_code == 400
-        assert "Provider entity already exists" in exc_info.value.detail
-
-    def test_decorator_handles_attribute_error(self) -> None:
-        """Test decorator converts AttributeError to HTTPException."""
-        # Arrange
-        mock_service = MagicMock()
-        mock_service.name = "device"
-
-        @handle_exceptions
-        def test_function(instance: object) -> None:
-            raise AttributeError("object has no attribute 'foo'")
-
-        # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
-            test_function(mock_service)
-
-        assert exc_info.value.status_code == 400
-        assert "Device doesn't support attribute or method" in exc_info.value.detail
-
-    def test_decorator_uses_instance_name_for_entity(self) -> None:
-        """Test decorator uses instance.name attribute for entity name."""
-        # Arrange
-        mock_service = MagicMock()
-        mock_service.name = "custom_entity"
-
-        @handle_exceptions
-        def test_function(instance: object) -> None:
-            raise ResourceNotFoundError("custom_entity", 999)
-
-        # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
-            test_function(mock_service)
-
-        assert "Custom_entity with ID: 999 not found" in exc_info.value.detail
-
-    def test_decorator_with_unknown_entity_name(self) -> None:
-        """Test decorator with service instance without name attribute."""
-        # Arrange
-        mock_service = MagicMock()
-        del mock_service.name  # Remove name attribute
-
-        @handle_exceptions
-        def test_function(instance: object) -> None:
-            raise ResourceNotFoundError("resource", 1)
-
-        # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
-            test_function(mock_service)
-
-        # Should default to "unknown"
-        assert exc_info.value.status_code == 404
-
-    def test_decorator_preserves_function_metadata(self) -> None:
-        """Test decorator preserves original function metadata."""
-
-        # Arrange
-        @handle_exceptions
-        def test_function() -> None:
-            """Test function docstring."""
-            pass
-
-        # Assert
-        assert test_function.__name__ == "test_function"
-        assert test_function.__doc__ == "Test function docstring."
-
-    def test_decorator_with_args_and_kwargs(self) -> None:
-        """Test decorator works with positional and keyword arguments."""
-        # Arrange
-        mock_service = MagicMock()
-        mock_service.name = "test"
-
-        @handle_exceptions
-        def test_function(
-            instance: object,
-            arg1: str,
-            arg2: str,
-            kwarg1: str | None = None,
-            kwarg2: str | None = None,
-        ) -> str:
-            return f"{arg1}-{arg2}-{kwarg1}-{kwarg2}"
-
-        # Act
-        result = test_function(mock_service, "a", "b", kwarg1="c", kwarg2="d")
-
-        # Assert
-        assert result == "a-b-c-d"
+    def test_unique_violation_without_diagnostics(self) -> None:
+        error = app_error_from_integrity_error(_integrity_error(UniqueViolation, None))
+
+        assert isinstance(error, ConflictError)
+        assert error.detail == "Resource already exists."
+
+    def test_foreign_key_violation_is_invalid_input(self) -> None:
+        error = app_error_from_integrity_error(_integrity_error(ForeignKeyViolation, "event_record"))
+
+        assert isinstance(error, InvalidInputError)
+        assert error.detail == "Referenced resource does not exist."
+
+    def test_raw_psycopg_errors_are_translated_too(self) -> None:
+        assert isinstance(app_error_from_integrity_error(ForeignKeyViolation("fk")), InvalidInputError)
+        assert app_error_from_integrity_error(NotNullViolation("null")) is None
+
+    def test_other_violations_are_not_the_clients_fault(self) -> None:
+        exc = IntegrityError("stmt", {}, NotNullViolation("null value in column"))
+
+        assert app_error_from_integrity_error(exc) is None
+
+
+class TestProviderErrors:
+    def test_label_spells_out_multi_word_providers(self) -> None:
+        assert ProviderNotConnectedError("google_health").detail == "User is not connected to Google Health."
+        assert ProviderError("garmin", upstream_status=500).detail == "Garmin API error (status 500)"
+
+    @pytest.mark.parametrize("upstream_status", [400, 405, 415, 422])
+    def test_a_refused_request_is_reported(self, upstream_status: int) -> None:
+        """The provider refused what we sent: most likely our bug, e.g. after an API change."""
+        error = ProviderError("garmin", upstream_status=upstream_status)
+
+        assert error.request_rejected
+        assert not is_provider_state_error(error)
+
+    @pytest.mark.parametrize("upstream_status", [None, 500, 502, 503])
+    def test_an_outage_is_reported(self, upstream_status: int | None) -> None:
+        """A provider that is down breaks syncs for all its users: Sentry is where we hear it first."""
+        error = ProviderError("garmin", upstream_status=upstream_status)
+
+        assert not error.request_rejected
+        assert not is_provider_state_error(error)
+
+    @pytest.mark.parametrize("upstream_status", [401, 403, 404, 409, 410, 412, 429])
+    def test_an_answer_about_a_users_state_is_not(self, upstream_status: int) -> None:
+        error = ProviderError("garmin", upstream_status=upstream_status)
+
+        assert not error.request_rejected
+        assert is_provider_state_error(error)
+
+    def test_the_caller_can_mark_a_refusal_the_status_does_not_show(self) -> None:
+        """e.g. Withings reports a bad request in the body of an HTTP 200, or a 404 from an
+        endpoint with no per-user resource."""
+        assert not is_provider_state_error(ProviderError("withings", request_rejected=True))
+        assert not is_provider_state_error(ProviderError("withings", upstream_status=404, request_rejected=True))
+
+    def test_storage_failures_are_reported(self) -> None:
+        assert not is_provider_state_error(ServiceUnavailableError("Failed to complete upload: SlowDown"))
+        assert not is_provider_state_error(ConfigurationError("S3 bucket not configured"))
+
+
+class TestPublicErrorText:
+    """A database error stored in sync history or sent in a webhook keeps no SQL, parameters or row values."""
+
+    @pytest.mark.parametrize("error_class", [IntegrityError, DataError])
+    def test_database_errors_keep_only_their_type(self, error_class: type[StatementError]) -> None:
+        exc = error_class("INSERT INTO series_sample (value) VALUES (%(value)s)", {"value": 72}, Exception("dup 72"))
+
+        text = public_error_text(exc)
+
+        assert text == "Exception"
+        assert "72" not in text
+        assert "INSERT" not in text
+
+    def test_other_errors_keep_their_message(self) -> None:
+        assert public_error_text(ValueError("bad payload")) == "bad payload"
+
+
+def _app_errors(cls: type[AppError] = AppError) -> list[type[AppError]]:
+    return [cls, *(sub for direct in cls.__subclasses__() for sub in _app_errors(direct))]
+
+
+class TestErrorCodes:
+    """Codes are part of the API contract: one source, every specific one documented."""
+
+    def test_a_class_with_a_status_and_no_code_gets_the_status_name(self) -> None:
+        class GoneError(AppError):
+            status_code = 410
+
+        assert GoneError.code == "HTTP_410"
+        assert NotFoundError.code == "NOT_FOUND"
+
+    def test_every_specific_code_is_in_the_docs_table(self) -> None:
+        table = (Path(__file__).parents[3] / "docs/api-reference/guides/error-handling.mdx").read_text()
+        documented = set(re.findall(r"^\| `([A-Z_]+)` \|", table, re.M))
+        # HTTP_<status>: a class defined in a test; WEBHOOK_VERIFICATION_FAILED goes to providers, not clients
+        codes = {cls.code for cls in _app_errors() if not cls.code.startswith("HTTP_")}
+        specific = codes - set(STATUS_CODE_NAMES.values()) - {"WEBHOOK_VERIFICATION_FAILED"}
+
+        assert specific - documented == set()
+        assert documented - specific - {"VALIDATION_ERROR", "INTERNAL_ERROR"} == set()

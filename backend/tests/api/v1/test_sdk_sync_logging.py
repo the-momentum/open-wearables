@@ -24,13 +24,15 @@ def mock_log() -> Generator[MagicMock, None, None]:
         patch("app.api.routes.v1.sdk_sync.process_sdk_upload"),
         patch("app.api.routes.v1.sdk_sync.store_raw_payload"),
         patch.object(settings, "sdk_payload_s3_offload", False),
-        patch("app.api.routes.v1.sdk_sync.log_structured") as mock,
+        patch("app.api.routes.v1.sdk_sync.logger") as mock,
     ):
         yield mock
 
 
 def _batch_received(mock_log: MagicMock) -> dict:
-    return next(call.kwargs for call in mock_log.call_args_list if call.kwargs["action"] == "apple_sdk_batch_received")
+    return next(
+        call.kwargs for call in mock_log.method_calls if call.kwargs.get("action") == "apple_sdk_batch_received"
+    )
 
 
 class TestSDKSyncAttribution:
@@ -53,6 +55,21 @@ class TestSDKSyncAttribution:
         assert attributes["sdk_platform"] == "ios"
         assert attributes["request_id"] == "req-1"
         assert attributes["user_agent"] == "OpenWearablesHealthSDK/0.15.0 (iOS 18.1.0; iPhone15,2)"
+
+    def test_sync_context_headers_are_logged(self, client: TestClient, api_v1_prefix: str, mock_log: MagicMock) -> None:
+        client.post(
+            f"{api_v1_prefix}/sdk/users/{_USER_ID}/sync/",
+            headers={
+                "X-Open-Wearables-API-Key": ApiKeyFactory().plain_key,
+                "X-Open-Wearables-App-State": "background",
+                "X-Open-Wearables-Sync-Trigger": "bg_app_refresh",
+            },
+            json=_BODY,
+        )
+
+        attributes = _batch_received(mock_log)
+        assert attributes["app_state"] == "background"
+        assert attributes["sync_trigger"] == "bg_app_refresh"
 
     def test_body_version_is_the_fallback(self, client: TestClient, api_v1_prefix: str, mock_log: MagicMock) -> None:
         client.post(

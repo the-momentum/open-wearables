@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS
 
@@ -55,6 +56,7 @@ def test_sums_moderate_and_vigorous_minutes(data_247: GoogleHealth247Data) -> No
     assert [(s.recorded_at, s.value) for s in samples] == [(datetime(2026, 9, 1, tzinfo=timezone.utc), Decimal(20))]
     assert samples[0].series_type is SeriesType.exercise_time
     assert samples[0].is_daily_total is True
+    assert samples[0].period == CalendarPeriod.of_date(date(2026, 9, 1))
 
 
 def test_a_day_with_only_light_activity_is_zero(data_247: GoogleHealth247Data) -> None:

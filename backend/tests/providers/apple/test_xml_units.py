@@ -2,7 +2,6 @@
 
 from decimal import Decimal
 from io import BytesIO
-from logging import getLogger
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -29,7 +28,7 @@ def _record(record_type: str, unit: str | None, value: str) -> dict[str, Any]:
 class TestAppleXmlRecordUnits:
     @pytest.fixture
     def service(self) -> XMLService:
-        return XMLService(Path("export.xml"), getLogger(__name__))
+        return XMLService(Path("export.xml"))
 
     @pytest.mark.parametrize(
         ("record_type", "unit", "value", "series_type", "expected"),
@@ -141,7 +140,7 @@ class TestAppleXmlRecordUnits:
 
 class TestAppleXmlWorkoutEnergyUnits:
     def test_converts_kilojoules_to_kcal(self) -> None:
-        service = XMLService(Path("export.xml"), getLogger(__name__))
+        service = XMLService(Path("export.xml"))
         metrics = service._init_metrics()
 
         service._update_metrics_from_stat(
@@ -151,7 +150,7 @@ class TestAppleXmlWorkoutEnergyUnits:
         assert metrics["energy_burned"] == pytest.approx(Decimal("100"))
 
     def test_keeps_and_counts_energy_without_unit(self) -> None:
-        service = XMLService(Path("export.xml"), getLogger(__name__))
+        service = XMLService(Path("export.xml"))
         metrics = service._init_metrics()
 
         service._update_metrics_from_stat(metrics, {"type": "HKQuantityTypeIdentifierActiveEnergyBurned", "sum": "100"})
@@ -177,7 +176,7 @@ EXPORT_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 
 class TestAppleXmlParseUnits:
     def test_parse_xml_converts_record_and_workout_units(self) -> None:
-        service = XMLService(BytesIO(EXPORT_XML), getLogger(__name__))
+        service = XMLService(BytesIO(EXPORT_XML))
 
         chunks = list(service.parse_xml(str(uuid4())))
         records = [record for time_series, _, _ in chunks for record in time_series]
