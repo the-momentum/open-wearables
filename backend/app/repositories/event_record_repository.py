@@ -1462,7 +1462,7 @@ class EventRecordRepository(
             .options(selectinload(self.model.sleep_detail))
             .filter(*filters)
             .order_by(self.model.start_datetime.desc())
-            .with_for_update()
+            .with_for_update(of=self.model)
             .first()
         )
 
