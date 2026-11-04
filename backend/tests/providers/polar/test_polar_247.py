@@ -1,6 +1,7 @@
 """Tests for Polar247Data normalization."""
 
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -109,6 +110,20 @@ class TestPolar247SleepNormalization:
 
         # total = (light + deep + rem) / 60
         assert detail.sleep_total_duration_minutes == (14400 + 5400 + 7200) // 60
+
+    def test_sleep_efficiency_is_time_asleep_over_time_in_bed(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        # 7.5 h asleep (light + deep + rem) in an 8 h night
+        assert detail.sleep_efficiency_score == Decimal("93.75")
+
+    def test_no_sleep_efficiency_without_stages(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        for field in ("light_sleep", "deep_sleep", "rem_sleep"):
+            sample_sleep.pop(field)
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score is None
 
     def test_sleep_score(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         user_id = uuid4()

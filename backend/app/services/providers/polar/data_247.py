@@ -62,7 +62,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.conversion import seconds_to_minutes
+from app.utils.conversion import seconds_to_minutes, sum_optional
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -264,6 +264,13 @@ class Polar247Data(Base247DataTemplate):
             light_s = parsed.light_sleep
             deep_s = parsed.deep_sleep
             rem_s = parsed.rem_sleep
+            asleep_s = sum_optional(light_s, deep_s, rem_s)
+            # Polar reports no efficiency, so it's derived like Garmin's: time asleep over time in bed
+            efficiency_score = (
+                Decimal(str(asleep_s / duration_seconds * 100))
+                if asleep_s is not None and duration_seconds > 0
+                else None
+            )
             sleep_stages = self._parse_hypnogram(parsed.hypnogram, start_dt, end_dt) if parsed.hypnogram else None
 
             record = EventRecordCreate(
@@ -282,8 +289,9 @@ class Polar247Data(Base247DataTemplate):
             )
             detail = EventRecordDetailCreate(
                 record_id=sleep_id,
-                sleep_total_duration_minutes=seconds_to_minutes(light_s, deep_s, rem_s),
+                sleep_total_duration_minutes=seconds_to_minutes(asleep_s),
                 sleep_time_in_bed_minutes=duration_seconds // 60 if duration_seconds else None,
+                sleep_efficiency_score=efficiency_score,
                 sleep_deep_minutes=seconds_to_minutes(deep_s),
                 sleep_light_minutes=seconds_to_minutes(light_s),
                 sleep_rem_minutes=seconds_to_minutes(rem_s),
