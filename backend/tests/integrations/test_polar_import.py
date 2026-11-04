@@ -73,7 +73,7 @@ class TestPolarOAuthFlow:
             data = response.json()
             assert "authorization_url" in data or "url" in data
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
+    @patch("app.services.providers.base_strategy.celery_app")
     @patch("app.services.providers.templates.base_oauth.get_redis_client")
     @patch("httpx.post")
     def test_polar_oauth_callback_success(

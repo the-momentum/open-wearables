@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from contextlib import suppress
 from typing import Annotated
 from uuid import UUID
 
@@ -8,7 +8,6 @@ from fastapi.responses import RedirectResponse
 from app.config import settings
 from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
-from app.integrations.celery.tasks import start_garmin_full_backfill, sync_vendor_data
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
 from app.schemas.model_crud.data_priority import (
@@ -18,8 +17,9 @@ from app.schemas.model_crud.data_priority import (
 )
 from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import DEFAULT_HISTORICAL_DAYS, BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import UnsupportedProviderError
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -113,25 +113,13 @@ def oauth_callback(
     # Grace-period flag: automatically kick off a historical sync so integrators
     # who haven't yet adopted the explicit /sync/historical call still get backfill.
     # Controlled by HISTORICAL_SYNC_ON_CONNECT (default: true).
+    # Same dispatch as POST /sync/historical; on a reconnect only the gap is backfilled.
     if settings.historical_sync_on_connect:
-        caps = strategy.capabilities
-        if caps.webhook_callback:
-            gap_start = user_connection_service.reconnect_gap_start(
-                db, oauth_state.user_id, provider_name.value, previous_synced_at
-            )
-            start_garmin_full_backfill.delay(str(oauth_state.user_id), gap_start.isoformat() if gap_start else None)
-        elif caps.rest_pull:
-            now = datetime.now(timezone.utc)
-            start_date = user_connection_service.historical_start_on_connect(
-                db, oauth_state.user_id, provider_name.value, previous_synced_at, days=90
-            )
-            sync_vendor_data.delay(
-                user_id=str(oauth_state.user_id),
-                start_date=start_date.isoformat(),
-                end_date=now.isoformat(),
-                providers=[provider_name.value],
-                is_historical=True,
-            )
+        gap_start = user_connection_service.reconnect_gap_start(
+            db, oauth_state.user_id, provider_name.value, previous_synced_at
+        )
+        with suppress(UnsupportedProviderError):
+            strategy.start_historical_sync(oauth_state.user_id, DEFAULT_HISTORICAL_DAYS, since=gap_start)
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:

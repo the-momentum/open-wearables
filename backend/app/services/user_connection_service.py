@@ -1,8 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
 
-from app.config import settings
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.data_source_repository import DataSourceRepository
@@ -191,16 +190,6 @@ class UserConnectionService(
         ):
             return None
         return last_synced_at
-
-    def historical_start_on_connect(
-        self, db_session: DbSession, user_id: UUID, provider: str, last_synced_at: datetime | None, days: int
-    ) -> datetime:
-        """Start of the on-connect pull: the gap since the last sync on a reconnect, else `days` back."""
-        full_window = datetime.now(timezone.utc) - timedelta(days=days)
-        gap_start = self.reconnect_gap_start(db_session, user_id, provider, last_synced_at)
-        if gap_start is None:
-            return full_window
-        return max(gap_start - (settings.pull_sync_lookback or timedelta()), full_window)
 
     def deregister_from_provider(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate
