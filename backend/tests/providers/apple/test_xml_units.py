@@ -68,24 +68,20 @@ class TestAppleXmlRecordUnits:
         assert sample is not None
         assert sample.series_type == series_type
         assert sample.value == pytest.approx(expected, abs=Decimal("0.000001"))
-        assert not service.stats.unconverted_units
+        assert not service.stats.records.skipped
 
-    @pytest.mark.parametrize("unit", [None, "furlong"])
-    def test_keeps_value_and_counts_unknown_unit(self, service: XMLService, unit: str | None) -> None:
+    @pytest.mark.parametrize("unit", ["furlong", "km/hr"])
+    def test_skips_a_value_whose_unit_cant_be_converted(self, service: XMLService, unit: str) -> None:
         sample = service._create_record(_record("HKQuantityTypeIdentifierDistanceWalkingRunning", unit, "5"), uuid4())
 
-        assert sample is not None
-        assert sample.value == Decimal("5")
-        assert service.stats.unconverted_units == {f"distance_walking_running:{unit}": 1}
+        assert sample is None
+        assert service.stats.records.reasons == {f"unconvertible_unit:distance_walking_running:{unit}": 1}
 
-    def test_keeps_value_and_counts_mismatched_quantity(self, service: XMLService) -> None:
-        sample = service._create_record(
-            _record("HKQuantityTypeIdentifierDistanceWalkingRunning", "km/hr", "5"), uuid4()
-        )
+    def test_a_value_without_a_unit_is_kept(self, service: XMLService) -> None:
+        sample = service._create_record(_record("HKQuantityTypeIdentifierDistanceWalkingRunning", None, "5"), uuid4())
 
         assert sample is not None
         assert sample.value == Decimal("5")
-        assert service.stats.unconverted_units == {"distance_walking_running:km/hr": 1}
 
     @pytest.mark.parametrize(
         ("record_type", "value", "series_type", "expected"),
@@ -120,7 +116,6 @@ class TestAppleXmlRecordUnits:
         assert sample is not None
         assert sample.series_type == series_type
         assert sample.value == expected
-        assert not service.stats.unconverted_units
 
     def test_does_not_scale_percent_unit_on_non_percent_series(self, service: XMLService) -> None:
         sample = service._create_record(_record("HKQuantityTypeIdentifierBloodAlcoholContent", "%", "0.08"), uuid4())
@@ -129,13 +124,12 @@ class TestAppleXmlRecordUnits:
         assert sample.series_type == SeriesType.blood_alcohol_content
         assert sample.value == Decimal("0.08")
 
-    def test_skipped_record_is_not_counted_as_unconverted(self, service: XMLService) -> None:
+    def test_a_record_skipped_earlier_is_skipped_once(self, service: XMLService) -> None:
         document = _record("HKQuantityTypeIdentifierDistanceWalkingRunning", "furlong", "5")
         document["startDate"] = "not a date"
 
         assert service._create_record(document, uuid4()) is None
         assert service.stats.records.reasons == {"invalid_date:HKQuantityTypeIdentifierDistanceWalkingRunning": 1}
-        assert not service.stats.unconverted_units
 
 
 class TestAppleXmlWorkoutEnergyUnits:
@@ -149,14 +143,15 @@ class TestAppleXmlWorkoutEnergyUnits:
 
         assert metrics["energy_burned"] == pytest.approx(Decimal("100"))
 
-    def test_keeps_and_counts_energy_without_unit(self) -> None:
+    def test_leaves_out_energy_in_an_unknown_unit(self) -> None:
         service = XMLService(Path("export.xml"))
         metrics = service._init_metrics()
 
-        service._update_metrics_from_stat(metrics, {"type": "HKQuantityTypeIdentifierActiveEnergyBurned", "sum": "100"})
+        service._update_metrics_from_stat(
+            metrics, {"type": "HKQuantityTypeIdentifierActiveEnergyBurned", "sum": "100", "unit": "BTU"}
+        )
 
-        assert metrics["energy_burned"] == Decimal("100")
-        assert service.stats.unconverted_units == {"workout_energy:None": 1}
+        assert metrics["energy_burned"] is None
 
 
 EXPORT_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -188,4 +183,4 @@ class TestAppleXmlParseUnits:
         assert len(workouts) == 1
         _, detail = workouts[0]
         assert detail.energy_burned == pytest.approx(Decimal("100"))
-        assert not service.stats.unconverted_units
+        assert not service.stats.any_skipped()
