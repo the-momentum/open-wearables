@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Open Wearables API",
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "paths": {
     "/": {
@@ -2051,10 +2051,10 @@
                   "type": "null"
                 }
               ],
-              "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page needing more days merged than the server allows is refused (400). Sources rank by provider, then device type priority. Defaults to `all`.",
+              "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. A week or month whose days different sources won has `source: null`. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page holds only as many periods as the server merges at once; a single period needing more is refused (400). Sources rank by provider, then device type priority. Defaults to `all`.",
               "title": "Source Selection"
             },
-            "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page needing more days merged than the server allows is refused (400). Sources rank by provider, then device type priority. Defaults to `all`."
+            "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. A week or month whose days different sources won has `source: null`. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page holds only as many periods as the server merges at once; a single period needing more is refused (400). Sources rank by provider, then device type priority. Defaults to `all`."
           },
           {
             "name": "filter_by_priority",
@@ -2323,10 +2323,10 @@
                   "type": "null"
                 }
               ],
-              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`.",
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
               "title": "Source Selection"
             },
-            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`."
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2610,10 +2610,10 @@
                   "type": "null"
                 }
               ],
-              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`.",
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
               "title": "Source Selection"
             },
-            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`."
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2852,10 +2852,10 @@
                   "type": "null"
                 }
               ],
-              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`.",
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
               "title": "Source Selection"
             },
-            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`."
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
           },
           {
             "name": "filter_by_priority",
@@ -3068,10 +3068,10 @@
                   "type": "null"
                 }
               ],
-              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`.",
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
               "title": "Source Selection"
             },
-            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least half of it (`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide each other. Defaults to `all`."
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
           },
           {
             "name": "filter_by_priority",
@@ -4735,7 +4735,7 @@
           "External: Data Sync"
         ],
         "summary": "Sync Historical Data",
-        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter may be ignored by\nproviders that enforce their own limits.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
+        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter is capped at the\nprovider's ``max_historical_days``.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
         "operationId": "sync_historical_data_api_v1_providers__provider__users__user_id__sync_historical_post",
         "security": [
           {
@@ -4769,13 +4769,13 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 365,
+              "maximum": 3650,
               "minimum": 1,
-              "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days).",
+              "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync.",
               "default": 90,
               "title": "Days"
             },
-            "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days)."
+            "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -7950,6 +7950,132 @@
                               ],
                               "title": "Values"
                             },
+                            "route": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "description": "One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored.",
+                                    "properties": {
+                                      "timestamp": {
+                                        "anyOf": [
+                                          {
+                                            "format": "date-time",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Timestamp"
+                                      },
+                                      "latitude": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Latitude"
+                                      },
+                                      "longitude": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Longitude"
+                                      },
+                                      "altitudeM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Altitudem"
+                                      }
+                                    },
+                                    "title": "WorkoutRoutePoint",
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Route"
+                            },
+                            "samples": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "description": "One per-sample measurement recorded during a workout (heart rate, speed, cadence, power).",
+                                    "properties": {
+                                      "timestamp": {
+                                        "anyOf": [
+                                          {
+                                            "format": "date-time",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Timestamp"
+                                      },
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "value": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Value"
+                                      },
+                                      "unit": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Unit"
+                                      }
+                                    },
+                                    "title": "WorkoutSample",
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Samples"
+                            },
                             "segments": {
                               "anyOf": [
                                 {
@@ -7979,36 +8105,6 @@
                                 }
                               ],
                               "title": "Laps"
-                            },
-                            "route": {
-                              "anyOf": [
-                                {
-                                  "items": {
-                                    "additionalProperties": true,
-                                    "type": "object"
-                                  },
-                                  "type": "array"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ],
-                              "title": "Route"
-                            },
-                            "samples": {
-                              "anyOf": [
-                                {
-                                  "items": {
-                                    "additionalProperties": true,
-                                    "type": "object"
-                                  },
-                                  "type": "array"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ],
-                              "title": "Samples"
                             },
                             "metadata": {
                               "anyOf": [
@@ -8061,6 +8157,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UploadDataResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sdk/users/{user_id}/sync/status": {
+      "get": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Get Sdk Sync Status",
+        "description": "Where the user's SDK sync for one provider stands, as the server sees it.\n\nThe server is the source of truth for sync progress; the device's own state is only a\ncache. Call this after login, before starting a sync, to restore that state:\n\n- `historicalSyncCompleted: true` - the historical export finished; only live sync is\n  left, continuing from `syncedUntil`.\n- `historicalSyncCompleted: false` - the export has not finished. It runs newest first, so\n  each type in `dataTypes` with `historicalSyncCompleted: false` resumes backwards from its\n  `exportedRange.startDate`. Types not listed have no data on the server yet.\n- `historicalSyncCompleted: null` - no historical export on record: nothing synced yet, or\n  an SDK version that does not send `syncSessionId`, so the server cannot tell. The same\n  applies per type in `dataTypes`.\n- `syncedUntil: null` and empty `dataTypes` - nothing synced yet; start a full export.\n\nA user who has never synced gets that empty state with 200, not 404.",
+        "operationId": "get_sdk_sync_status_api_v1_sdk_users__user_id__sync_status_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "SDK provider slug, e.g. `apple`, `samsung`, `health_connect`.",
+              "title": "Provider"
+            },
+            "description": "SDK provider slug, e.g. `apple`, `samsung`, `health_connect`."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SDKSyncState"
                 }
               }
             }
@@ -10066,7 +10238,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely.",
+        "description": "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -11728,6 +11900,12 @@
             "type": "boolean",
             "title": "Rollup Enabled",
             "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: activity and body summaries count them from the samples, day reads of sources without provider day values get no new days.",
+            "default": true
+          },
+          "history_rollup_enabled": {
+            "type": "boolean",
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too, once, in the background. Hours on a large instance; until it is done the summaries count those days from the samples.",
             "default": false
           },
           "delete_after_days": {
@@ -11750,10 +11928,28 @@
       "ArchivalSettingUpdate": {
         "properties": {
           "rollup_enabled": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Rollup Enabled",
-            "description": "Roll samples up into daily and per-session aggregates.",
-            "default": false
+            "description": "Roll samples up into daily and per-session aggregates. Left out or null: unchanged."
+          },
+          "history_rollup_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too; switched on, it starts in the background. Needs rollup_enabled. Left out or null: unchanged."
           },
           "delete_after_days": {
             "anyOf": [
@@ -11767,12 +11963,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before samples are deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely; left out: unchanged."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating data lifecycle settings."
+        "description": "Request schema for updating data lifecycle settings: a field left out keeps its saved value."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -11781,12 +11977,16 @@
           },
           "storage": {
             "$ref": "#/components/schemas/StorageEstimate"
+          },
+          "history_rollup": {
+            "$ref": "#/components/schemas/HistoryRollupStatus"
           }
         },
         "type": "object",
         "required": [
           "settings",
-          "storage"
+          "storage",
+          "history_rollup"
         ],
         "title": "ArchivalSettingWithEstimate",
         "description": "Combined archival settings + storage estimates response."
@@ -12435,6 +12635,28 @@
           "health_scores"
         ],
         "title": "CoverageResponse"
+      },
+      "CoveredRange": {
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Startdate",
+            "description": "Earliest timestamp in the span."
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enddate",
+            "description": "Latest timestamp in the span."
+          }
+        },
+        "type": "object",
+        "required": [
+          "startDate",
+          "endDate"
+        ],
+        "title": "CoveredRange"
       },
       "DataGranularity": {
         "type": "string",
@@ -13701,6 +13923,65 @@
           "success"
         ],
         "title": "HistoricalDataTypeSyncEndEvent"
+      },
+      "HistoryRollupStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "running",
+              "done"
+            ],
+            "title": "State"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rollup_recent",
+                  "rollup_all"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "The pass running"
+          },
+          "sources_done": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Done",
+            "description": "Data sources the running pass has finished"
+          },
+          "sources_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Total",
+            "description": "Data sources the pass goes through"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "HistoryRollupStatus",
+        "description": "Where the history's rollup is. It goes through every data source twice, the last 30 days first."
       },
       "IntensityMinutes": {
         "properties": {
@@ -15781,6 +16062,66 @@
         "title": "Resolution",
         "description": "Bucket width requested when reading time series. RAW returns stored samples untouched; day, week\nand month read the day aggregates instead of the samples."
       },
+      "SDKDataTypeSyncState": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Canonical data type: a series type slug (e.g. `heart_rate`) or an event category (`sleep`, `workout`).",
+            "examples": [
+              "heart_rate"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DataTypeKind",
+            "description": "`series` for time series samples, `event` for sleep and workouts."
+          },
+          "historicalSyncCompleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historicalsynccompleted",
+            "description": "Whether a historical export finished this type. When false, resume it backwards from `exportedRange.startDate`. Null when no historical export reported this type, e.g. on SDK versions that do not send `syncSessionId`."
+          },
+          "lastSyncedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Lastsyncedat",
+            "description": "When data of this type was last written on the server. For data held before this was tracked, the time of its newest sample instead."
+          },
+          "coveredRange": {
+            "$ref": "#/components/schemas/CoveredRange",
+            "description": "Oldest and newest data held for this type from any sync. Gaps inside it are not shown, and retention moves its start forward, so it is no resume point."
+          },
+          "exportedRange": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoveredRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the latest historical export has sent of this type so far. The export runs newest first, so an unfinished type resumes backwards from `exportedRange.startDate`. Null when no export recorded a span, e.g. data synced before the server tracked it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "kind",
+          "historicalSyncCompleted",
+          "lastSyncedAt",
+          "coveredRange",
+          "exportedRange"
+        ],
+        "title": "SDKDataTypeSyncState",
+        "description": "What the server holds for one data type from this provider."
+      },
       "SDKLogRequest": {
         "properties": {
           "sdkVersion": {
@@ -15845,6 +16186,62 @@
         ],
         "title": "SDKLogRequest",
         "description": "Top-level request for SDK log events endpoint."
+      },
+      "SDKSyncState": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Canonical SDK provider slug.",
+            "examples": [
+              "apple"
+            ]
+          },
+          "historicalSyncCompleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historicalsynccompleted",
+            "description": "Whether a historical export for this provider has finished every data type it covered. False when one exists but has not finished. Null when there is no historical export on record: nothing synced yet, or an SDK version that does not send `syncSessionId`."
+          },
+          "syncedUntil": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synceduntil",
+            "description": "Newest data held from this provider, across all types: where live sync continues from. Null when nothing has been synced yet.",
+            "examples": [
+              "2026-11-01T22:15:00Z"
+            ]
+          },
+          "dataTypes": {
+            "items": {
+              "$ref": "#/components/schemas/SDKDataTypeSyncState"
+            },
+            "type": "array",
+            "title": "Datatypes",
+            "description": "Data held per type from this provider. Empty when nothing has been synced yet."
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "historicalSyncCompleted",
+          "syncedUntil"
+        ],
+        "title": "SDKSyncState",
+        "description": "Where the server says a user's SDK sync for one provider stands.\n\nThe server is the source of truth: a device that lost its local state (e.g. after a\nlogout) reads this to know where to resume from."
       },
       "SDKTokenRequest": {
         "properties": {
@@ -16584,7 +16981,9 @@
           },
           "duration_seconds": {
             "type": "integer",
-            "title": "Duration Seconds"
+            "title": "Duration Seconds",
+            "description": "Time from start_time to end_time, awake time included; for a night merged from several sessions, the gaps between them too",
+            "example": 28800
           },
           "sleep_duration_seconds": {
             "anyOf": [
@@ -16595,7 +16994,9 @@
                 "type": "null"
               }
             ],
-            "title": "Sleep Duration Seconds"
+            "title": "Sleep Duration Seconds",
+            "description": "Time asleep, awake time excluded; whole minutes, so a multiple of 60",
+            "example": 25800
           },
           "time_in_bed_seconds": {
             "anyOf": [
@@ -16606,7 +17007,9 @@
                 "type": "null"
               }
             ],
-            "title": "Time In Bed Seconds"
+            "title": "Time In Bed Seconds",
+            "description": "Time in bed, awake time included; whole minutes, so a multiple of 60",
+            "example": 28200
           },
           "efficiency_percent": {
             "anyOf": [
@@ -16693,7 +17096,7 @@
               }
             ],
             "title": "Duration Minutes",
-            "description": "Session duration",
+            "description": "Main sleep: time asleep, awake time excluded; a session with no stored time asleep counts with its start-to-end time. Nap: start-to-end time, awake time included",
             "example": 420
           },
           "is_nap": {
@@ -16918,7 +17321,7 @@
               }
             ],
             "title": "Duration Minutes",
-            "description": "Total sleep duration excluding naps",
+            "description": "Time asleep in the day's main sleep, naps excluded; a session with no stored time asleep counts with its start-to-end time",
             "example": 450
           },
           "total_duration_minutes": {
@@ -16931,7 +17334,7 @@
               }
             ],
             "title": "Total Duration Minutes",
-            "description": "Total of all sleep + nap durations for the day",
+            "description": "duration_minutes plus nap_duration_minutes",
             "example": 480
           },
           "time_in_bed_minutes": {
@@ -16980,7 +17383,9 @@
                 "type": "null"
               }
             ],
-            "title": "Interruptions Count"
+            "title": "Interruptions Count",
+            "description": "Awakenings longer than 5 minutes within the main sleep (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)",
+            "example": 2
           },
           "nap_count": {
             "anyOf": [
@@ -17005,7 +17410,7 @@
               }
             ],
             "title": "Nap Duration Minutes",
-            "description": "Total nap duration",
+            "description": "Start-to-end time of the day's naps, awake time included",
             "example": 30
           },
           "sessions": {

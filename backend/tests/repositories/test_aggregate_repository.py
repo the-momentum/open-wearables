@@ -694,8 +694,9 @@ class TestDailyLifecycleJob:
         setting = db.get(ArchivalSetting, 1) or ArchivalSetting(id=1)
         setting.rollup_enabled, setting.delete_after_days = rollup_enabled, delete_after_days
         db.add(setting)
+        db.flush()
         if backfilled:
-            for step in aggregate_backfill_service.steps:
+            for step in aggregate_backfill_service.steps(db):
                 DataMigrationRepository().mark_completed(db, f"{BACKFILL_MIGRATION}:{step.name}")
         db.commit()
 

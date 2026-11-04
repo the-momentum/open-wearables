@@ -229,6 +229,7 @@ _TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
 
 # Rows per avg HR query; 5 bind parameters each keeps a query far below PostgreSQL's 65535
 _MAX_WINDOW_ROWS = 2000
+_TIE_COUNT_CAP = 10_000
 
 
 class WorkoutWindow(NamedTuple):
@@ -818,16 +819,24 @@ class DataPointSeriesRepository(
             if len(tied) == 1:
                 winners[type_id] = tied[0]
                 continue
-            # A tie goes to the source holding the most of the series here, not to the lowest random id: a phone
-            # with one stray weight entry must not hide the scale relayed through the same provider.
+            # A tie goes to the source holding the most here (capped), so one stray entry never hides a real device.
             counts = []
             for tie_probe in {id(found[(type_id, s)]): found[(type_id, s)] for s in tied}.values():
                 source, series, _, available = tie_probe
                 members = [s for s in tied if found[(type_id, s)] is tie_probe]
+                tied_sources = values(column("source_id", PGUUID(as_uuid=True)), name="tied").data(
+                    [(s,) for s in members]
+                )
+                held = (
+                    select(literal_column("1").label("one"))
+                    .where(source == tied_sources.c.source_id, series == type_id, *available)
+                    .limit(_TIE_COUNT_CAP)
+                    .lateral("held")
+                )
                 counts += db_session.execute(
-                    select(source, func.count())
-                    .where(series == type_id, source.in_(members), *available)
-                    .group_by(source)
+                    select(tied_sources.c.source_id, func.count())
+                    .select_from(tied_sources.join(held, true()))
+                    .group_by(tied_sources.c.source_id)
                 ).all()
             winners[type_id] = min(counts, key=lambda row: (-row[1], str(row[0])))[0]
         return winners
@@ -1498,12 +1507,7 @@ class DataPointSeriesRepository(
         series_types: list[SeriesType],
         ranking: SourceRanking,
     ) -> dict[SeriesType, LatestValue]:
-        """Per series, the best-ranked source's latest reading on the local day of the newest one before
-        ``before_date``.
-
-        Priority decides among the newest day's readings only, so a better source's height typed in years ago does
-        not beat today's from another, while two sources reporting the same day yield the preferred one's.
-        """
+        """Per series, the best-ranked source's last reading on the local day of the newest before ``before_date``."""
         type_ids = [get_series_type_id(t) for t in series_types]
         newest = (
             db_session.query(

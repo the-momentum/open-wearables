@@ -38,6 +38,7 @@ from app.schemas.model_crud.activities import (
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.responses.activity import Meal, NutrientValue
 from app.services.event_record_service import event_record_service
+from app.services.priority_service import priority_service
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -1490,7 +1491,6 @@ class TestGetSleepSessions:
 
     def test_is_nap_filter_applies_before_priority(self, db: Session) -> None:
         """A nap from the top source must not hide another source's main sleep that night, and vice versa."""
-        from app.services.priority_service import priority_service
 
         user = UserFactory()
         garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
@@ -1559,8 +1559,6 @@ class TestGetSleepSessions:
         )
 
     def _garmin_over_oura(self, db: Session) -> tuple[object, DataSource, DataSource]:
-        from app.services.priority_service import priority_service
-
         user = UserFactory()
         oura = DataSourceFactory(user=user, provider="oura", source="oura")
         garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
@@ -1579,6 +1577,18 @@ class TestGetSleepSessions:
 
         assert {s.id for s in response.data} == {garmin_record.id}
         assert oura_record.id not in {s.id for s in response.data}
+
+    def test_per_session_ranks_only_the_requested_provider(self, db: Session) -> None:
+        user, oura, garmin = self._garmin_over_oura(db)
+        oura_record = self._sleep_record(oura)
+        self._sleep_record(garmin)
+        params = self._params().model_copy(update={"provider": ProviderName.OURA})
+
+        response = event_record_service.get_sleep_sessions(
+            db, user.id, params, source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {s.id for s in response.data} == {oura_record.id}
 
     def test_per_session_given_as_a_plain_string_selects_too(self, db: Session) -> None:
         """Compared by value: a caller passing "per_session" rather than the enum member is not shown every source."""
@@ -1693,7 +1703,6 @@ class TestGetSleepSessions:
         user = UserFactory()
         garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
         strava = DataSourceFactory(user=user, provider="strava", source="strava")
-        from app.services.priority_service import priority_service
 
         priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
         priority_service.update_provider_priority(db, ProviderName.STRAVA, 2)
@@ -1716,7 +1725,6 @@ class TestGetSleepSessions:
         user = UserFactory()
         garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
         strava = DataSourceFactory(user=user, provider="strava", source="strava")
-        from app.services.priority_service import priority_service
 
         priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
         priority_service.update_provider_priority(db, ProviderName.STRAVA, 2)

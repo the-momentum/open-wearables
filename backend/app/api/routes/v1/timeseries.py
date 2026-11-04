@@ -36,11 +36,13 @@ def get_timeseries(
         Query(
             description="`all` returns every source. `per_range` keeps one source per series type for the whole "
             "range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, "
-            "per bucket below a day; not available for raw reads. `reconcile` (`1day`, `1week` and `1month` only) "
+            "per bucket below a day; not available for raw reads. A week or month whose days different sources won "
+            "has `source: null`. `reconcile` (`1day`, `1week` and `1month` only) "
             "merges steps, distance, active energy and the other movement series across sources per day, each moment "
             "counted once from the best-ranked source recording it, and reads other series as `per_period`; a "
-            "merged value names no source. A page needing more days merged than the server allows is refused "
-            "(400). Sources rank by provider, then device type priority. Defaults to `all`."
+            "merged value names no source. A page holds only as many periods as the server merges at once; a "
+            "single period needing more is refused (400). Sources rank by provider, then device type priority. "
+            "Defaults to `all`."
         ),
     ] = None,
     filter_by_priority: Annotated[bool, Query(deprecated=True, description="Same as source_selection=per_range.")] = (

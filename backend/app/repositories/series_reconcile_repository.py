@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from typing import NamedTuple
 from uuid import UUID, uuid4
 
-from sqlalchemy import Date, Interval, and_, func, or_, text
+from sqlalchemy import Date, Interval, and_, delete, func, or_, select, text
 from sqlalchemy import cast as sql_cast
 
 from app.config import settings
@@ -58,14 +58,6 @@ RECONCILED_SERIES: frozenset[SeriesType] = frozenset(
         SeriesType.exercise_time,
     }
 )
-# Left out on purpose:
-# - dietary_* and hydration: logged events, not spans; two apps logging a meal minutes apart are not one meal.
-# - insulin_delivery, inhaler_usage, number_of_times_fallen, number_of_alcoholic_beverages: discrete events,
-#   a merge could drop a real one.
-# - basal_energy, total_energy: each device's whole-day estimate; taking the best one is what per_period does.
-# - stand_time, time_in_daylight, uv_exposure, atrial_fibrillation_burden, sleeping_breathing_disturbances,
-#   nike_fuel: device-specific measures, not the same quantity across devices.
-# - Averaged series (heart rate and the like): a rate cannot be split by time.
 
 # What the SQL filters on.
 _RECONCILED_TYPE_IDS = sorted(get_series_type_id(series_type) for series_type in RECONCILED_SERIES)
@@ -94,13 +86,8 @@ _SOURCES_WITH_SAMPLES = text(f"""
     ) probe
 """)
 
-# Each sample counts for the share of its window no better-ranked source covers: the union of the better-ranked
-# samples' windows (a multirange) intersected with its own, so overlapping better samples never count a second twice.
-# Only (series, day) pairs two sources contributed to are returned.
-#
-# A better-ranked sample covers :tolerance seconds past each of its edges: two apps reading the same sensor record
-# the same steps in windows a few seconds apart (a phone's minutes starting at :19 next to the Fitbit app's on the
-# minute), and without it each partly covered minute would keep a share of steps that are duplicates.
+# Each sample counts for the share of its window the union of better-ranked windows (widened by :tolerance, as two
+# apps reading one sensor start their windows seconds apart) leaves uncovered; only days two sources fed come back.
 _MERGE = text(f"""
     WITH src(id, pos) AS (SELECT * FROM unnest(CAST(:source_ids AS uuid[]), CAST(:positions AS integer[]))),
     widest AS MATERIALIZED (
@@ -185,8 +172,8 @@ class SeriesReconcileRepository:
     ) -> int:
         """Recompute the reconciled rows of ``days`` from the samples stored now; returns the rows written.
 
-        ``keep_existing`` only adds or refreshes rows, never removes one: retention deletes a day's samples a source
-        at a time, and once one source's are gone the day can no longer be merged, only kept.
+        ``keep_existing`` only adds missing rows: retention deletes a day's samples a source at a time, and once one
+        source's are gone the day can no longer be merged, only kept.
         """
         days = sorted(set(days))
         if not days:
@@ -218,29 +205,39 @@ class SeriesReconcileRepository:
                     "count": day.count,
                 }
             )
+        if keep_existing:
+            # Later sources of a retention pass merge without the ones already deleted: never over a full merge.
+            return self.series_aggregate_repo.insert_missing(db_session, rows)
         return self.series_aggregate_repo.upsert(db_session, rows)
 
     def merge(
-        self, db_session: DbSession, user_id: UUID, days: Iterable[date], ranking: SourceRanking
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        days: Iterable[date],
+        ranking: SourceRanking,
+        type_ids: list[int] | None = None,
     ) -> list[MergedDay]:
-        """Each merged series' total on each of ``days`` two of the user's sources hold samples on."""
+        """Each merged series' total on each of ``days`` two of the user's sources hold samples on, unless a source
+        ranked above all of them holds only its own day value there: that day stays the best source's, as per_period.
+        """
         days = sorted(set(days))
         if not days:
             return []
         lo, hi = _bounds(days)
-        params = {"lo": lo, "hi": hi, "days": days, "type_ids": _RECONCILED_TYPE_IDS}
+        params = {"lo": lo, "hi": hi, "days": days, "type_ids": type_ids or _RECONCILED_TYPE_IDS}
         sources = db_session.query(DataSource).filter(DataSource.user_id == user_id, ~IS_RECONCILED_SOURCE).all()
-        with_samples = set(
-            db_session.execute(_SOURCES_WITH_SAMPLES, {**params, "source_ids": [s.id for s in sources]}).scalars()
-        )
+        with_samples = self.sources_with_samples(db_session, [s.id for s in sources], days, params["type_ids"])
         if len(with_samples) < 2:
             return []
         ordered = sorted(
             (source for source in sources if source.id in with_samples),
             key=lambda source: (*ranking.rank(source.provider, source.device_type), str(source.id)),
         )
-        # The planner overestimates the merge and compiles it, which takes far longer than running it. Measured on
-        # a user with 3 devices: 7 days 123 ms off vs 561 ms on, 30 days 449 vs 785, 90 days 1243 vs 1559.
+        best = ranking.rank(ordered[0].provider, ordered[0].device_type)
+        above = [s.id for s in sources if s.id not in with_samples and ranking.rank(s.provider, s.device_type) < best]
+        day_only = self._held_days(db_session, above, params["type_ids"], days) if above else set()
+        # The planner overestimates the merge and JIT-compiles it, which costs more than running it.
         db_session.execute(text("SET LOCAL jit = off"))
         rows = db_session.execute(
             _MERGE,
@@ -251,7 +248,48 @@ class SeriesReconcileRepository:
                 "tolerance": settings.reconcile_edge_tolerance_seconds,
             },
         )
-        return [MergedDay(row.type_id, row.day, row.zone_offset, float(row.sum), row.count) for row in rows]
+        return [
+            MergedDay(row.type_id, row.day, row.zone_offset, float(row.sum), row.count)
+            for row in rows
+            if (row.type_id, row.day) not in day_only
+        ]
+
+    @staticmethod
+    def sources_with_samples(
+        db_session: DbSession, source_ids: list[UUID], days: list[date], type_ids: list[int] | None = None
+    ) -> set[UUID]:
+        """Which of the sources hold a mergeable sample of the series in the local days' range."""
+        if not source_ids or not days:
+            return set()
+        lo, hi = _bounds(sorted(days))
+        params = {"lo": lo, "hi": hi, "type_ids": type_ids or _RECONCILED_TYPE_IDS, "source_ids": source_ids}
+        return set(db_session.execute(_SOURCES_WITH_SAMPLES, params).scalars())
+
+    @staticmethod
+    def _held_days(
+        db_session: DbSession, source_ids: list[UUID], type_ids: list[int], days: list[date]
+    ) -> set[tuple[int, date]]:
+        lo, hi = _bounds(days)
+        rows = db_session.query(SeriesAggregate.series_type_definition_id, _ROW_DAY).filter(
+            SeriesAggregate.data_source_id.in_(source_ids),
+            SeriesAggregate.series_type_definition_id.in_(type_ids),
+            SeriesAggregate.period_kind == PeriodKind.DAY,
+            SeriesAggregate.period_start >= lo,
+            SeriesAggregate.period_start < hi,
+            _ROW_DAY.in_(days),
+        )
+        return {(type_id, day) for type_id, day in rows.distinct()}
+
+    @staticmethod
+    def delete_reconciled_rows(db_session: DbSession, since: date | None, batch: int) -> int:
+        """Delete up to ``batch`` stored merged rows from ``since`` on (every one when None); returns how many."""
+        reconciled = select(DataSource.id).where(IS_RECONCILED_SOURCE).scalar_subquery()
+        chosen = select(SeriesAggregate.id).where(SeriesAggregate.data_source_id.in_(reconciled))
+        if since is not None:
+            chosen = chosen.where(SeriesAggregate.period_start >= utc_midnight(since) - OFFSET_REACH)
+        stmt = delete(SeriesAggregate).where(SeriesAggregate.id.in_(chosen.limit(batch)))
+        result = db_session.execute(stmt.execution_options(synchronize_session=False))
+        return result.rowcount  # ty: ignore[unresolved-attribute]
 
     @staticmethod
     def day_rows(

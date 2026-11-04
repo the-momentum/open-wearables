@@ -2,6 +2,7 @@
 its own budget for recent days, merged on the fly by reads up to a limit."""
 
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -9,9 +10,10 @@ from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.integrations import rollup_queue
 from app.integrations.rollup_queue import pop_reconcile_days, queue_reconcile_days, requeue_dirty_days
-from app.models import DataSource, ProviderPriority, SeriesTypeDefinition, User
+from app.models import DataSource, ProviderPriority, SeriesSample, SeriesTypeDefinition, User
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
@@ -37,6 +39,7 @@ from tests.factories import (
     DataSourceFactory,
     SeriesTypeDefinitionFactory,
     UserFactory,
+    provider_day,
 )
 
 DAY = date(2024, 3, 2)
@@ -73,12 +76,13 @@ def _walk(watch: DataSource, phone: DataSource, day: date) -> None:
     _steps(phone, day, 12, 30)
 
 
-def _read(db: Session, source: DataSource, first: date, last: date, **params: object) -> list[tuple]:
+def _read(
+    db: Session, source: DataSource, first: date, last: date, resolution: Resolution = Resolution.ONE_DAY
+) -> list[tuple]:
     query = TimeSeriesQueryParams(
         start_datetime=datetime.combine(first, datetime.min.time(), timezone.utc),
         end_datetime=datetime.combine(last + timedelta(days=1), datetime.min.time(), timezone.utc),
-        resolution=Resolution.ONE_DAY,
-        **params,
+        resolution=resolution,
     )
     result = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], query, SourceSelection.RECONCILE)
     return [(s.timestamp.date(), float(s.value), s.source.provider if s.source else None) for s in result.data]
@@ -90,6 +94,19 @@ class TestReconcileReads:
         _walk(watch, phone, DAY)
 
         assert _read(db, watch, DAY, DAY) == [(DAY, 180, None)]
+
+    def test_a_day_whose_best_source_holds_only_a_day_value_is_that_value(self, db: Session, devices: tuple) -> None:
+        """Oura sends steps only as its day total; ranked first, it is not outvoted by a merge of worse devices."""
+        watch, phone = devices
+        _walk(watch, phone, DAY)
+        ring = DataSourceFactory(user=db.get(User, watch.user_id), provider=ProviderName.OURA, source="oura")
+        provider_day(db, ring, SeriesType.steps, DAY, sum=Decimal(9800))
+        ProviderPriorityRepository(ProviderPriority).upsert(db, ProviderName.OURA, 0)
+
+        assert _read(db, watch, DAY, DAY) == [(DAY, 9800, "oura")]
+        assert (
+            SeriesReconcileRepository().merge(db, watch.user_id, [DAY], priority_service.get_source_ranking(db)) == []
+        )
 
     def test_a_day_one_device_holds_is_that_devices_own(self, db: Session, devices: tuple) -> None:
         _, phone = devices
@@ -111,7 +128,26 @@ class TestReconcileReads:
 
         assert _read(db, watch, DAY, DAY) == [(DAY, 180, None)]
 
-    def test_a_page_needing_more_merged_days_than_allowed_is_refused(
+    def test_a_page_is_shortened_to_the_days_it_may_merge(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        for day in (DAY, DAY + timedelta(days=1)):
+            _walk(watch, phone, day)
+        monkeypatch.setattr(settings, "reconcile_on_the_fly_max_days", 1)
+
+        assert _read(db, watch, DAY, DAY + timedelta(days=1)) == [(DAY, 180, None)]
+
+    def test_a_month_with_the_default_budget_is_merged(self, db: Session, devices: tuple) -> None:
+        watch, phone = devices
+        for offset in range(31):
+            _walk(watch, phone, date(2024, 3, 1) + timedelta(days=offset))
+
+        assert _read(db, watch, date(2024, 3, 1), date(2024, 3, 31), Resolution.ONE_MONTH) == [
+            (date(2024, 3, 1), 180 * 31, None)
+        ]
+
+    def test_a_period_needing_more_merged_days_than_allowed_is_refused(
         self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         watch, phone = devices
@@ -120,7 +156,7 @@ class TestReconcileReads:
         monkeypatch.setattr(settings, "reconcile_on_the_fly_max_days", 1)
 
         with pytest.raises(HTTPException) as refused:
-            _read(db, watch, DAY, DAY + timedelta(days=1))
+            _read(db, watch, DAY, DAY + timedelta(days=1), Resolution.ONE_WEEK)
 
         assert refused.value.status_code == 400
         assert refused.value.detail | {"message": None} == {
@@ -178,7 +214,7 @@ class TestReconcileReads:
         monkeypatch.setattr(settings, "reconcile_on_the_fly_max_days", 1)
 
         with pytest.raises(HTTPException) as refused:
-            _read(db, watch, DAY, DAY + timedelta(days=1))
+            _read(db, watch, DAY, DAY + timedelta(days=1), Resolution.ONE_WEEK)
 
         assert refused.value.detail["queued"] is False
 
@@ -337,6 +373,37 @@ class TestReconcileInTheRollup:
         rows = SeriesReconcileRepository.day_rows(db, reconciled.id, [STEPS], day, day)
         return [float(row.sum) for row in rows.values()]
 
+    def test_retention_never_overwrites_a_full_merge_with_a_partial_one(self, db: Session, devices: tuple) -> None:
+        """Retention deletes a source's samples at a time: what the rest merge without it must not replace the row."""
+        watch, phone = devices
+        ring = DataSourceFactory(user=db.get(User, watch.user_id), provider=ProviderName.OURA, source="oura")
+        ProviderPriorityRepository(ProviderPriority).upsert(db, ProviderName.OURA, 3)
+        _walk(watch, phone, DAY)
+        _steps(ring, DAY, 12, 30)
+        ranking = priority_service.get_source_ranking(db)
+        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], ranking, keep_existing=True)
+        db.query(SeriesSample).filter(SeriesSample.data_source_id == watch.id).delete()
+
+        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], ranking, keep_existing=True)
+
+        assert self._stored(db, watch.user_id, DAY) == [180]
+
+    def test_a_priority_change_drops_stored_merges(
+        self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        _walk(watch, phone, DAY)
+        SeriesReconcileRepository().reconcile(db, watch.user_id, [DAY], priority_service.get_source_ranking(db))
+        sent: list[str] = []
+        monkeypatch.setattr("app.services.priority_service.celery_app.send_task", lambda name, **_: sent.append(name))
+
+        priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
+        dropped, done = archival_service.drop_reconciled_days(db)
+
+        assert sent == [CeleryTask.DROP_RECONCILED_DAYS]
+        assert (dropped, done) == (1, True)
+        assert self._stored(db, watch.user_id, DAY) == []
+
     def test_recent_days_are_merged_and_stored_old_ones_are_not(self, db: Session, devices: tuple) -> None:
         watch, phone = devices
         recent, old = date.today() - timedelta(days=1), date.today() - timedelta(days=100)
@@ -430,5 +497,5 @@ def test_reconcile_is_off_by_default() -> None:
     assert (settings.reconcile_enabled, settings.reconcile_stored_days, settings.reconcile_on_the_fly_max_days) == (
         False,
         30,
-        30,
+        31,
     )
