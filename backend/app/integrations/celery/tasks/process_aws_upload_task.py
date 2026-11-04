@@ -27,7 +27,7 @@ from app.services.sync_status_service import (
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.context import sync_run_context
-from app.utils.exceptions import INTEGRITY_ERRORS, AppError, NotFoundError, ResourceNotFoundError
+from app.utils.exceptions import INTEGRITY_ERRORS, AppError, NotFoundError, ResourceNotFoundError, public_error_text
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -229,7 +229,7 @@ def _run_import_task(
                 run.source,
                 scope=run.scope,
                 run_id=run.run_id,
-                error=str(exc),
+                error=public_error_text(exc),
                 message="Apple Health XML import failed",
                 metadata=metadata,
             )

@@ -210,12 +210,12 @@ except Exception as e:
 
 **What reaches Sentry:**
 - ✅ `logger.error(..., exc_info=e)` - Celery tasks that return error responses instead of failing, batch processing that continues despite errors, multi-provider sync where one failure shouldn't stop others
-- ✅ `alert=True` - always reported, also without an exception (`logger.error("S3 storage requested but no S3 bucket configured", alert=True)`), below `error` (`logger.warning(..., exc_info=e, alert=True)` - the line is a warning, the Sentry event an error, as for every captured exception) and when `LOG_LEVEL` filters the line out of the logs
+- ✅ `alert=True` - always reported, also without an exception (`logger.error("S3 storage requested but no S3 bucket configured", alert=True)`), below `error` (`logger.warning(..., exc_info=e, alert=True)` - the line is a warning, the Sentry event an error, as for every captured exception) and whatever `LOG_LEVEL` is
 - ❌ `logger.warning(..., exc_info=e)` - expected failures nobody needs to be alerted about (a provider rejecting a revoked token, a malformed optional field): the line keeps the traceback, Sentry gets nothing
 - ❌ `logger.error(...)` without `exc_info` or `alert` - logged only
-- Passing `exc_info` for an exception that is re-raised is fine: the duplicate Sentry event is dropped by the SDK's deduplication.
+- An exception that is re-raised: log it without `exc_info`. Celery or the global handler reports it as unhandled; passing it here would report it first as handled, and deduplication drops the unhandled event.
 
-4xx `HTTPException`s and `AppError`s passed as `exc_info` are logged as warnings and not captured, unless the line has `alert=True`; a warning that should alert on every other exception passes `alert=not is_client_error(e)`. An error that `LOG_LEVEL` filters out (`LOG_LEVEL=CRITICAL`) is not reported either, unless it has `alert=True`. App code reports to Sentry through the logger itself: Sentry's logging integration ignores the `app` loggers, so app lines never become breadcrumbs.
+4xx `HTTPException`s and `AppError`s passed as `exc_info` are logged as warnings and not captured, unless the line has `alert=True`; a warning that should alert on every other exception passes `alert=not is_client_error(e)`. Reporting does not follow `LOG_LEVEL`: an error with `exc_info` reaches Sentry even when `LOG_LEVEL=CRITICAL` keeps it out of the logs. App code reports to Sentry through the logger itself: Sentry's logging integration ignores the `app` loggers, so app lines never become breadcrumbs.
 
 **Keep health data and PII out of Sentry:** for reported lines, the message and all attributes are sent to Sentry as event context. Put only identifiers and categories in them (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise, since they become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
 

@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from celery import Task, shared_task
+from psycopg.errors import ForeignKeyViolation
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
@@ -25,9 +26,10 @@ from app.utils.exceptions import (
     AppError,
     ProviderError,
     ReauthRequiredError,
-    app_error_from_integrity_error,
     describe_integrity_error,
+    integrity_violation,
     is_provider_state_error,
+    is_unique_violation,
 )
 from app.utils.structured_logging import get_logger
 
@@ -159,11 +161,11 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
 
 
 def _is_client_error(exc: Exception) -> bool:
-    """A 4xx domain error or a duplicate/FK violation from our own writes (e.g. the user was
-    deleted meanwhile): the same payload fails the same way on retry, so drop it like an
-    upstream 4xx. A NOT NULL or CHECK violation is our bug: it fails the task instead."""
+    """A 4xx domain error or an FK violation from our own writes (the user was deleted meanwhile): the same
+    payload fails the same way on retry, so drop it like an upstream 4xx. A duplicate is a race that a retry
+    resolves; a NOT NULL or CHECK violation is our bug and fails the task."""
     if isinstance(exc, INTEGRITY_ERRORS):
-        return app_error_from_integrity_error(exc) is not None
+        return isinstance(integrity_violation(exc), ForeignKeyViolation)
     return isinstance(exc, AppError) and exc.is_client_error
 
 
@@ -286,8 +288,9 @@ def process_webhook_push(
                 provider_user_id=provider_user_id,
                 **_error_attributes(exc),
             )
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
             return {"status": "skipped", "reason": "non_retriable", "error_type": type(exc).__name__}
-        if isinstance(exc, INTEGRITY_ERRORS):
+        if isinstance(exc, INTEGRITY_ERRORS) and not is_unique_violation(exc):
             # Our bug, and the same payload violates the constraint again on every retry:
             # fail now, CeleryIntegration reports the raised exception to Sentry.
             logger.error(
@@ -297,13 +300,14 @@ def process_webhook_push(
                 provider_user_id=provider_user_id,
                 **_error_attributes(exc),
             )
+            _emit_final_failure(provider_name, handler, provider_user_id, exc)
             raise
         logger.error(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
             provider_user_id=provider_user_id,
-            error=str(exc),
+            **_error_attributes(exc),
             attempt=self.request.retries,
             max_retries=self.max_retries,
         )

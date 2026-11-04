@@ -156,7 +156,7 @@ def init_sentry() -> None:
     ignore_logger(f"{APP_LOGGER}.*")
     if sensitive:
         logger.warning(
-            "SENTRY_SEND_SENSITIVE_DATA is on - Sentry receives request bodies, locals and log breadcrumbs, "
+            "SENTRY_SEND_SENSITIVE_DATA is on - Sentry receives request bodies, locals and library log breadcrumbs, "
             "which carry health data and PII",
             action="sentry_sensitive_data_enabled",
         )

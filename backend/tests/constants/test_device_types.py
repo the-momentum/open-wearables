@@ -5,12 +5,13 @@ import pytest
 from app.constants.devices_map import (
     infer_device_type,
     infer_device_type_from_model,
+    is_host_model,
     map_reported_device_type,
     normalize_device_model,
 )
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.providers.mobile_sdk import SourceInfo
-from app.services.sdk.device_resolution import extract_device_info
+from app.services.sdk.device_resolution import extract_device_info, extract_device_type
 
 
 class TestInferDeviceTypeFromModel:
@@ -163,12 +164,67 @@ def test_normalize_device_model(raw: str | None, expected: str | None) -> None:
     [
         ("com.apple.health.0BA80355-AAAA", "iPhone16,1", "Watch6,2", "Watch6,2"),
         ("com.apple.health.0BA80355-AAAA", "iPhone16,1", None, "iPhone16,1"),
-        ("com.apple.BTLEServer", "Watch7,9", "00760690.03", "Watch7,9"),
-        ("com.ouraring.oura", "iPhone15,2", "iPhone15,2", "iPhone15,2"),
+        ("com.apple.BTLEServer", "Watch7,9", "00760690.03", None),
+        ("com.ouraring.oura", "iPhone15,2", "iPhone15,2", None),
+        ("com.ouraring.oura", "Oura Ring Gen3", None, "Oura Ring Gen3"),
     ],
 )
 def test_sdk_device_model_uses_hardware_only_for_apple_own_sources(
-    app_id: str, device_model: str, hardware: str | None, expected: str
+    app_id: str, device_model: str, hardware: str | None, expected: str | None
 ) -> None:
     source = SourceInfo(app_id=app_id, device_model=device_model, device_hardware_version=hardware)
-    assert extract_device_info(source)[0] == expected
+    assert extract_device_info(source, ProviderName.APPLE)[0] == expected
+
+
+def test_sdk_drops_relaying_host_model_of_third_party_writer() -> None:
+    relayed = SourceInfo(app_id="com.ouraring.oura", name="Oura", device_model="iPhone16,1")
+    assert extract_device_info(relayed, ProviderName.APPLE)[0] is None
+
+
+@pytest.mark.parametrize(
+    ("app_id", "name", "device_model"),
+    [
+        ("com.garmin.connect.mobile", "Connect", "iPhone16,1"),
+        ("com.apple.shortcuts", "Shortcuts", "Watch7,9"),
+        # Cronometer attaches the local iPhone as its HKDevice, so even fixed SDKs send it
+        ("CRONOMETER-GOLD", "Cronometer", "iPhone"),
+    ],
+)
+def test_sdk_drops_relaying_host_type_of_third_party_writer(app_id: str, name: str, device_model: str) -> None:
+    relayed = SourceInfo(app_id=app_id, name=name, device_model=device_model, device_type="phone")
+    model, _, source_name = extract_device_info(relayed, ProviderName.APPLE)
+    reported = extract_device_type(relayed, ProviderName.APPLE)
+    assert reported is None
+    assert infer_device_type(ProviderName.APPLE, model, source_name, reported, app_id) == DeviceType.UNKNOWN
+
+
+def test_sdk_keeps_reported_type_of_apple_own_source() -> None:
+    watch = SourceInfo(app_id="com.apple.health.0BA80355-AAAA", device_model="Watch7,5", device_type="watch")
+    assert extract_device_type(watch, ProviderName.APPLE) == DeviceType.WATCH
+
+
+def test_sdk_keeps_apple_prefixed_model_outside_healthkit() -> None:
+    """Only HealthKit relays through a host, so a Health Connect "Watch GT 3" is the producing device."""
+    huawei = SourceInfo(app_id="com.huawei.health", device_model="Watch GT 3", device_type="watch")
+    assert extract_device_info(huawei, ProviderName.HEALTH_CONNECT)[0] == "Watch GT 3"
+    assert extract_device_type(huawei, ProviderName.HEALTH_CONNECT) == DeviceType.WATCH
+    assert not is_host_model(ProviderName.HEALTH_CONNECT, "com.huawei.health", "Watch GT 3")
+
+
+@pytest.mark.parametrize(
+    ("device_model", "expected"),
+    [
+        ("iPhone16,1", True),
+        ("Watch7,9", True),
+        ("iPad13,1", True),
+        ("iPod9,1", True),
+        ("iPhone", True),
+        ("Watch", True),
+        ("iPod touch", True),
+        # "Watch" is generic: another brand's watch is the producing device
+        ("Watch GT 3", False),
+        ("H10", False),
+    ],
+)
+def test_host_model_matches_apple_hardware_only(device_model: str, expected: bool) -> None:
+    assert is_host_model(ProviderName.APPLE, "com.huawei.health", device_model) is expected

@@ -8,13 +8,14 @@ deliveries with no resolvable user (or from self-reporting Garmin) are dropped.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 from unittest.mock import ANY, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 from celery.exceptions import Retry
-from psycopg.errors import CheckViolation, ForeignKeyViolation, NotNullViolation
+from psycopg.errors import CheckViolation, ForeignKeyViolation, NotNullViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
 
 import app.integrations.celery.tasks.webhook_push_task as task
@@ -148,6 +149,7 @@ def test_own_client_errors_are_dropped_not_retried(exc: Exception) -> None:
     [
         AppError("broken invariant"),
         RuntimeError("database down"),
+        IntegrityError("INSERT ...", {"heart_rate": 187}, UniqueViolation("two pushes raced")),
     ],
 )
 def test_server_errors_are_retried(exc: Exception) -> None:
@@ -240,6 +242,22 @@ def test_own_constraint_bug_fails_without_retry(exc: Exception, violation: str) 
     kwargs = logger.error.call_args.kwargs
     assert kwargs["error_type"] == violation
     assert "187" not in str(kwargs)
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        NotFoundError("User not found."),
+        IntegrityError("INSERT ...", {}, NotNullViolation("not null")),
+    ],
+)
+def test_a_delivery_given_up_on_is_recorded_as_failed(exc: Exception) -> None:
+    """Dropped or failed without retry, the delivery still shows in the sync history."""
+    with patch.object(task, "_emit_final_failure") as final_failure, contextlib.suppress(type(exc)):
+        _run_with_failing_handler(exc)
+
+    final_failure.assert_called_once()
+    assert final_failure.call_args.args[-1] is exc
 
 
 def test_skipped_integrity_error_is_logged_without_the_payloads_values() -> None:
