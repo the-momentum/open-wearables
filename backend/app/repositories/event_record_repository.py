@@ -1368,7 +1368,7 @@ class EventRecordRepository(
                 "device_model": row.device_model,
                 "device_type": row.device_type,
                 "sleep_duration_seconds": int(row.seconds) if row.seconds else None,
-                "sleep_efficiency_percent": float(row.weighted) / float(row.weight) if row.weight else None,
+                "sleep_efficiency_percent": round(float(row.weighted) / float(row.weight), 1) if row.weight else None,
             }
             for row in rows
         ]

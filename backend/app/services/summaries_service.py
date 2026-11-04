@@ -98,6 +98,12 @@ RECOVERY_COMPONENTS = {
     "avg_hrv_rmssd": "hrv_rmssd_milli",
     "avg_spo2": "spo2_percentage",
 }
+# Taken whole from the best-ranked source that has them, as the activity summary's metric groups.
+RECOVERY_METRIC_GROUPS: tuple[tuple[str, ...], ...] = (
+    *((key,) for key in RECOVERY_SERIES.values()),
+    ("sleep_duration_seconds", "sleep_efficiency_percent"),
+    ("recovery_score",),
+)
 
 # Default settings for body summary
 DEFAULT_AVERAGE_PERIOD_DAYS = 7
@@ -711,7 +717,9 @@ class SummariesService:
             )
 
         results.sort(key=lambda r: _activity_key(r, "recovery_date"))
-        return self._filter_by_priority(db_session, user_id, results, date_key="recovery_date")
+        return self._filter_by_priority(
+            db_session, user_id, results, date_key="recovery_date", fill=RECOVERY_METRIC_GROUPS
+        )
 
     def _add_workout_only_days(
         self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime, results: list
