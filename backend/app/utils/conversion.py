@@ -1,15 +1,14 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from logging import getLogger
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.inspection import inspect
 
 from app.database import BaseDbModel
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def to_decimal(value: Any) -> Decimal | None:
@@ -51,9 +50,7 @@ def as_model[ModelT: BaseModel](model: type[ModelT], value: Any) -> ModelT | Non
     except ValidationError as exc:
         # Log field locations only - the raw value / pydantic message may carry health data.
         locs = [".".join(str(x) for x in err["loc"]) for err in exc.errors()]
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Discarding malformed payload",
             action="discard_malformed_payload",
             model=model.__name__,

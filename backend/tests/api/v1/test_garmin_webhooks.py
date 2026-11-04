@@ -139,14 +139,14 @@ class TestGarminWebhookRouting:
         response = client.get(PUSH_ENDPOINT)
         assert response.status_code == 501
 
-    def test_unknown_provider_returns_404(self, client: TestClient, db: Session) -> None:
+    def test_unknown_provider_is_a_validation_error(self, client: TestClient, db: Session) -> None:
         """Unknown provider names return 404."""
         response = client.post(
             "/api/v1/providers/unknown_provider/webhooks",
             headers={"garmin-client-id": "x"},
             json={},
         )
-        assert response.status_code == 404
+        assert response.status_code == 422
 
 
 class TestGarminDeprecatedRoutes:

@@ -78,6 +78,8 @@ select = [
     "N",     # pep8-naming
     "E",     # pycodestyle errors
     "W",     # pycodestyle warnings
+    "G00",   # flake8-logging-format: no formatting in log messages, see AGENTS.md "Logging"
+    "TID251", # banned-api: app code logs through get_logger, see AGENTS.md "Logging"
 ]
 ignore = [
     "ANN002", # missing-type-args
@@ -87,8 +89,15 @@ ignore = [
     "RET503", # implicit-return
     "COM812", # trailing-comma (conflicts with ruff format)
 ]
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# A stdlib logger under app.* never reaches Sentry: the integration ignores those loggers.
+"logging.getLogger".msg = "use app.utils.structured_logging.get_logger"
+
 [tool.ruff.lint.per-file-ignores]
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
+# Logging setup itself, and third-party loggers configured at startup.
+"app/{main,utils/structured_logging,utils/logging_setup,integrations/otel,integrations/celery/core}.py" = ["TID251"]
+"{tests,scripts,migrations}/**" = ["TID251"]
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
 

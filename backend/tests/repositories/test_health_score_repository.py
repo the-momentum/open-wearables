@@ -22,7 +22,8 @@ from sqlalchemy.orm import Session
 from app.models import HealthScore, ProviderPriority
 from app.repositories import ProviderPriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
+from app.repositories.repositories import SourceRanking
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams
 from tests.factories import (
     DataSourceFactory,
@@ -41,8 +42,8 @@ def repo() -> HealthScoreRepository:
 NIGHT = datetime(2026, 9, 24, 7, tzinfo=timezone.utc)
 
 
-def _orders(db: Session) -> tuple[dict[ProviderName, int], dict[DeviceType, int]]:
-    return ProviderPriorityRepository(ProviderPriority).get_priority_order(db), {}
+def _ranking(db: Session) -> SourceRanking:
+    return SourceRanking(ProviderPriorityRepository(ProviderPriority).get_priority_order(db), {})
 
 
 def _prioritise(db: Session, *providers: ProviderName) -> None:
@@ -131,7 +132,7 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.RECOVERY)
 
         results, total = repo.get_with_filters(
-            db, user.id, HealthScoreQueryParams(category=HealthScoreCategory.SLEEP), {}, {}
+            db, user.id, HealthScoreQueryParams(category=HealthScoreCategory.SLEEP), SourceRanking({}, {})
         )
 
         assert total == 2
@@ -144,7 +145,7 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=data_source, provider=ProviderName.OURA)
 
         results, total = repo.get_with_filters(
-            db, user.id, HealthScoreQueryParams(provider=ProviderName.GARMIN), {}, {}
+            db, user.id, HealthScoreQueryParams(provider=ProviderName.GARMIN), SourceRanking({}, {})
         )
 
         assert total == 1
@@ -165,8 +166,7 @@ class TestHealthScoreRepositoryGetWithFilters:
                 start_datetime=now - timedelta(days=6),
                 end_datetime=now,
             ),
-            {},
-            {},
+            SourceRanking({}, {}),
         )
 
         assert total == 2
@@ -177,7 +177,7 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=DataSourceFactory(user=user_a))
         HealthScoreFactory(data_source=DataSourceFactory(user=user_b))
 
-        results, total = repo.get_with_filters(db, user_a.id, HealthScoreQueryParams(), {}, {})
+        results, total = repo.get_with_filters(db, user_a.id, HealthScoreQueryParams(), SourceRanking({}, {}))
 
         assert total == 1
 
@@ -345,7 +345,7 @@ class TestHealthScoreRepositorySourcePriority:
         garmin = self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN))
         self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), NIGHT + timedelta(hours=1))
 
-        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert total == 1
         assert [score.id for score, _ in results] == [garmin.id]
@@ -356,7 +356,7 @@ class TestHealthScoreRepositorySourcePriority:
         self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN))
         oura = self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA))
 
-        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert [score.id for score, _ in results] == [oura.id]
 
@@ -366,7 +366,7 @@ class TestHealthScoreRepositorySourcePriority:
         self._ow(source, category=HealthScoreCategory.SLEEP)
         self._ow(source, category=HealthScoreCategory.RESILIENCE)
 
-        _, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        _, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert total == 2
 
@@ -389,7 +389,7 @@ class TestHealthScoreRepositorySourcePriority:
             SleepDetailsFactory(event_record=session, is_nap=False, sleep_total_duration_minutes=hours * 60 - 20)
             scores.append(self._ow(source, wake_up, event_record_id=session.id))
 
-        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert [score.id for score, _ in results] == [scores[0].id]
 
@@ -401,7 +401,7 @@ class TestHealthScoreRepositorySourcePriority:
         garmin = self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN), NIGHT - timedelta(hours=6))
         self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), NIGHT)
 
-        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert [score.id for score, _ in results] == [garmin.id]
 
@@ -426,7 +426,7 @@ class TestHealthScoreRepositorySourcePriority:
         self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN), garmin_at)
         self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), oura_at)
 
-        results, total = repo.get_with_filters(db, user.id, params, *_orders(db))
+        results, total = repo.get_with_filters(db, user.id, params, _ranking(db))
 
         assert (results, total) == ([], 0)
 
@@ -441,7 +441,7 @@ class TestHealthScoreRepositorySourcePriority:
             db,
             user.id,
             HealthScoreQueryParams(start_datetime=day, end_datetime=day + timedelta(days=1)),
-            *_orders(db),
+            _ranking(db),
         )
 
         assert [score.id for score, _ in results] == [garmin.id]
@@ -455,7 +455,7 @@ class TestHealthScoreRepositorySourcePriority:
         self._ow(garmin)
         self._ow(oura)
 
-        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert total == 3
         assert sorted(score.provider for score, _ in results) == ["garmin", "internal", "oura"]
@@ -474,7 +474,7 @@ class TestHealthScoreRepositorySourcePriority:
             recorded_at=NIGHT,
         )
 
-        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), {}, {})
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), SourceRanking({}, {}))
 
         assert [score.id for score, _ in results] == [sourced.id]
 
@@ -486,7 +486,7 @@ class TestHealthScoreRepositorySourcePriority:
             self._ow(garmin, NIGHT + timedelta(days=day))
             self._ow(oura, NIGHT + timedelta(days=day))
 
-        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(offset=1, limit=1), *_orders(db))
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(offset=1, limit=1), _ranking(db))
 
         assert total == 3
         assert [score.recorded_at.date() for score, _ in results] == [(NIGHT + timedelta(days=1)).date()]
@@ -501,7 +501,7 @@ class TestHealthScoreRepositorySourcePriority:
             recorded_at=NIGHT,
         )
 
-        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert results == [(resilience, None)]
 
@@ -510,7 +510,7 @@ class TestHealthScoreRepositorySourcePriority:
         source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
         score = self._ow(source)
 
-        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), _ranking(db))
 
         assert results == [(score, source)]
 

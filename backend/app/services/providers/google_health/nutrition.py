@@ -1,6 +1,5 @@
 """Google Health API nutrition-log: each DataPoint is stored as its own meal, nutrients in MealDetails."""
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -121,7 +120,6 @@ class GoogleHealthApiNutrition:
         self.connection_repo = connection_repo
         self.provider_name = "google_health"
         self.api_base_url = api_base_url
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
         """Fetch nutrition-log entries starting in the window and upsert them as meals.
