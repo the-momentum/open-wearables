@@ -804,7 +804,7 @@ class DataPointSeriesRepository(
         # Each (series, source) pair with the probe that found it: a tie is broken by counting with that probe.
         found = dict.fromkeys(self._populated(db_session, pairs, *probe), probe)
         if params.resolution in PERIOD_RESOLUTIONS and sample_sources:
-            sample_probe = self._sample_probe(start, end, intraday_only=True)
+            sample_probe = self._sample_probe(start, end, intraday_only=True, local_days=True)
             unfound = [pair for pair in pairs if pair[1] in sample_sources and pair not in found]
             found |= dict.fromkeys(self._populated(db_session, unfound, *sample_probe), sample_probe)
 
@@ -841,12 +841,21 @@ class DataPointSeriesRepository(
             winners[type_id] = min(counts, key=lambda row: (-row[1], str(row[0])))[0]
         return winners
 
-    def _sample_probe(self, start: datetime | None, end: datetime | None, intraday_only: bool) -> tuple:
-        """The source, series and instant columns of samples, and the conditions a sample in the window meets."""
+    def _sample_probe(
+        self, start: datetime | None, end: datetime | None, intraday_only: bool, local_days: bool = False
+    ) -> tuple:
+        """The source, series and instant columns of samples, and the conditions a sample in the window meets;
+        with ``local_days``, a sample of the window's local days, as day reads count them."""
         at = self.model.recorded_at
-        available = [at >= start] if start is not None else []
+        reach = OFFSET_REACH if local_days else timedelta(0)
+        day = cast(func.timezone("UTC", at) + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval), Date)
+        available = [at >= start - reach] if start is not None else []
         if end is not None:
-            available.append(at < end)
+            available.append(at < end + reach)
+        if local_days and start is not None:
+            available.append(day >= start.date())
+        if local_days and end is not None:
+            available.append(day <= (end - timedelta(microseconds=1)).date())
         if intraday_only:
             # Bucketed and sample-counted day reads drop daily totals, so a source holding only those has
             # nothing to offer there and must not outrank one with real intraday samples.
