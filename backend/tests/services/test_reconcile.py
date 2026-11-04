@@ -180,13 +180,7 @@ class TestReconcileReads:
         with pytest.raises(ReconcileWindowTooLargeError) as refused:
             _read(db, watch, DAY, DAY + timedelta(days=1), Resolution.ONE_WEEK)
 
-        assert refused.value.detail | {"message": None} == {
-            "code": "reconcile_too_many_days",
-            "message": None,
-            "days": 2,
-            "max_days": 1,
-            "queued": False,
-        }
+        assert refused.value.extensions == {"days": 2, "max_days": 1, "queued": False}
 
     def test_with_reconcile_on_the_days_merged_on_the_fly_are_queued_to_be_stored(
         self, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
@@ -237,7 +231,7 @@ class TestReconcileReads:
         with pytest.raises(ReconcileWindowTooLargeError) as refused:
             _read(db, watch, DAY, DAY + timedelta(days=1), Resolution.ONE_WEEK)
 
-        assert refused.value.detail["queued"] is False
+        assert refused.value.extensions["queued"] is False
 
     def test_a_stored_merged_day_whose_samples_changed_since_is_merged_again(self, db: Session, devices: tuple) -> None:
         watch, phone = devices
@@ -534,13 +528,13 @@ class TestReconcileRoute:
         )
 
         assert response.status_code == 400
-        assert response.json()["detail"] | {"message": None} == {
-            "code": "reconcile_too_many_days",
-            "message": None,
-            "days": 2,
-            "max_days": 1,
-            "queued": False,
-        }
+        body = response.json()
+        assert (body["code"], body["days"], body["max_days"], body["queued"]) == (
+            "RECONCILE_TOO_MANY_DAYS",
+            2,
+            1,
+            False,
+        )
 
 
 def test_reconcile_is_off_by_default() -> None:
