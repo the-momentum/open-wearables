@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, HealthScore, SeriesAggregate, SeriesSample, SleepDetails
@@ -21,6 +22,7 @@ from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.handlers.wellness import process_wellness_items
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.utils.context import sync_run_var
+from app.utils.conversion import to_decimal
 from tests.factories import UserConnectionFactory, UserFactory
 
 # One day's stressDetails as Garmin sends it after midnight, and again in the morning with more data
@@ -468,18 +470,50 @@ class TestGarmin247Data:
         assert [sample["value"] for sample in normalized["steps"]] == [450]
         assert [sample["value"] for sample in normalized["energy"]] == [19]
 
-    def test_normalize_epochs_sums_a_slot_split_across_pushes(
-        self, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+    def test_normalize_epochs_sums_a_slot_split_across_requests_of_a_push(
+        self, db: Session, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
     ) -> None:
-        """A later push with another activity type of the slot adds to the earlier one instead of replacing it."""
+        """Garmin splits a push into requests: the second one adds the slot's other activity type to the first."""
         user_id = uuid4()
         walking, sedentary = mixed_slot_epochs
 
-        garmin_247.normalize_epochs([walking], user_id)
-        normalized = garmin_247.normalize_epochs([sedentary], user_id)
+        garmin_247.normalize_epochs([walking], user_id, db)
+        normalized = garmin_247.normalize_epochs([sedentary], user_id, db)
 
         assert [sample["value"] for sample in normalized["steps"]] == [420]
         assert [sample["value"] for sample in normalized["energy"]] == [18]
+
+    def test_requests_of_a_push_lock_their_slots_in_one_order(
+        self, db: Session, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+    ) -> None:
+        """Held to the commit, so a request writes its sum only after the earlier one committed its own."""
+        later = {**mixed_slot_epochs[0], "startTimeInSeconds": mixed_slot_epochs[0]["startTimeInSeconds"] + 900}
+        locked: list[str] = []
+
+        def capture(*args: Any) -> None:
+            if "pg_advisory_xact_lock" in args[2]:
+                locked.append(args[3]["key"])
+
+        sa_event.listen(db.get_bind(), "before_cursor_execute", capture)
+        try:
+            garmin_247.normalize_epochs([later, *mixed_slot_epochs], uuid4(), db)
+        finally:
+            sa_event.remove(db.get_bind(), "before_cursor_execute", capture)
+
+        assert len(locked) == 2
+        assert locked == sorted(locked)
+
+    def test_pulled_epochs_are_not_joined_with_pushed_ones(
+        self, db: Session, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+    ) -> None:
+        """A pull returns every type of its range at once, so it replaces the slot like a later push does."""
+        user_id = uuid4()
+        walking, sedentary = mixed_slot_epochs
+        garmin_247.normalize_epochs([walking], user_id, db)
+
+        normalized = garmin_247.normalize_epochs([sedentary], user_id)
+
+        assert [sample["value"] for sample in normalized["steps"]] == [to_decimal(sedentary["steps"])]
 
     def test_normalize_epochs_takes_the_slot_window_from_the_latest_epoch(
         self, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]

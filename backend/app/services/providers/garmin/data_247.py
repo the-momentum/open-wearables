@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from redis.exceptions import RedisError
+from sqlalchemy import text
 
 from app.config import settings
 from app.constants.sleep import SleepStageType
@@ -60,14 +61,14 @@ _ACTIVITY_DETAILS_SERIES_TYPES: frozenset[SeriesType] = frozenset(st for _, st i
     SeriesType.air_temperature
 }
 
-# Garmin re-sends a slot up to ~2 days later, so a partly received slot is kept for 3.
-EPOCH_SLOT_TTL_SECONDS = 3 * 24 * 3600
+# Garmin splits a large push into requests seconds apart, so a slot's types are joined within this window; a later
+# push of the slot replaces it, as the Health API requires (§7.2), and starts afresh.
+EPOCH_SLOT_TTL_SECONDS = 15 * 60
 EPOCH_SLOT_SECONDS = 900
 # Garmin sends one epoch per activity type in a slot: a per-type epoch field becomes a series only through this map,
 # so it is summed over the slot's types and merged across pushes.
 EPOCH_SUMMED_FIELDS = {"steps": "steps", "energy": "activeKilocalories"}
 EPOCH_STORED_FIELDS = (*EPOCH_SUMMED_FIELDS.values(), "activeTimeInSeconds")
-EPOCH_SUMMED_SERIES = frozenset(EPOCHS_SERIES[key] for key in EPOCH_SUMMED_FIELDS)
 
 
 class Garmin247Data(Base247DataTemplate):
@@ -681,12 +682,14 @@ class Garmin247Data(Base247DataTemplate):
         self,
         raw_epochs: list[dict[str, Any]],
         user_id: UUID,
+        db: DbSession | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
         """Normalize epoch data into categorized samples.
 
         Args:
             raw_epochs: List of raw epoch data from API
             user_id: User ID
+            db: Given for a push, whose slots may be split across requests and are joined in its transaction
 
         Returns:
             Dict with keys like 'heart_rate', 'steps', etc.
@@ -711,7 +714,8 @@ class Garmin247Data(Base247DataTemplate):
                 summary_ids=[summary_id for summary_id, _ in skipped[:5]],
             )
 
-        self._merge_stored_epochs(user_id, slots)
+        if db is not None:
+            self._merge_pushed_epochs(db, user_id, slots)
 
         summed: dict[str, list[dict[str, Any]]] = {key: [] for key in EPOCH_SUMMED_FIELDS}
         for slot in slots.values():
@@ -723,14 +727,19 @@ class Garmin247Data(Base247DataTemplate):
 
         return {"heart_rate": heart_rate_samples, **summed}
 
-    def _merge_stored_epochs(self, user_id: UUID, slots: dict[int, dict[str, Any]]) -> None:
-        """Merge each slot with the activity types earlier pushes stored, as Garmin can split a slot across requests.
+    def _merge_pushed_epochs(self, db: DbSession, user_id: UUID, slots: dict[int, dict[str, Any]]) -> None:
+        """Join each slot with the activity types the requests of the same push stored before it.
 
-        A slot whose active time fills it is dropped from Redis; without Redis each push sums only its own epochs.
+        A transaction lock per slot, held to the commit, makes requests of one push write in turn, so the last one
+        stores the full sum and a plain upsert is enough. A slot whose active time fills it is dropped from Redis;
+        without Redis each request sums only its own epochs.
         """
         if not slots:
             return
         keys = {start: f"garmin:epochs:{user_id}:{start}" for start in slots}
+        # One order for every request, so two of them never wait on each other's locks.
+        for key in sorted(keys.values()):
+            db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": key})
         try:
             redis_client = get_redis_client()
             pipe = redis_client.pipeline()
@@ -854,18 +863,8 @@ class Garmin247Data(Base247DataTemplate):
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
-        return self._write_epoch_samples(db, self._build_epochs_samples(user_id, normalized_epochs))
-
-    def _write_epoch_samples(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> WriteCounts:
-        """A slot's merged sum only grows, so a staler concurrent push must not lower it; other series are replaced."""
-        summed = [s for s in samples if s.series_type in EPOCH_SUMMED_SERIES]
-        rest = [s for s in samples if s.series_type not in EPOCH_SUMMED_SERIES]
-        count = WriteCounts(0, 0)
-        if summed:
-            count += self.data_point_repo.bulk_create(db, summed, keep_greater=True)
-        if rest:
-            count += self.data_point_repo.bulk_create(db, rest)
-        return count
+        samples = self._build_epochs_samples(user_id, normalized_epochs)
+        return self.data_point_repo.bulk_create(db, samples) if samples else WriteCounts(0, 0)
 
     # -------------------------------------------------------------------------
     # Body Composition - /wellness-api/rest/bodyComps
@@ -2163,11 +2162,10 @@ class Garmin247Data(Base247DataTemplate):
                     error=str(e),
                 )
 
-        count = WriteCounts(0, 0)
-
         if epoch_items:
-            epoch_samples = self._build_epochs_samples(user_id, self.normalize_epochs(epoch_items, user_id))
-            count += self._write_epoch_samples(db, epoch_samples)
+            all_samples.extend(self._build_epochs_samples(user_id, self.normalize_epochs(epoch_items, user_id, db)))
+
+        count = WriteCounts(0, 0)
 
         # Single bulk insert for SeriesSample
         if all_samples:
