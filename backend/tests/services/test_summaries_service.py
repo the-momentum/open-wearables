@@ -17,9 +17,7 @@ from app.models import DataSource, EventRecordAggregate, ProviderPriority
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, EventRecordRepository, ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
-from app.repositories.repositories import SourceRanking
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
-from app.services.priority_service import priority_service
 from app.services.summaries_service import SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
@@ -672,37 +670,65 @@ class TestSleepPagingPerDate:
 
 
 class TestGetRecoverySummaries:
-    def test_rmssd_input_is_exposed_as_rmssd_not_sdnn(
-        self, service: SummariesService, monkeypatch: pytest.MonkeyPatch
+    def test_days_without_a_recovery_score_come_from_the_series_and_sleep(
+        self, db: Session, service: SummariesService
     ) -> None:
-        row = {
-            "recovery_date": date(2026, 1, 2),
-            "provider": "whoop",
-            "source": "whoop",
-            "device_model": "WHOOP",
-            "device_type": "band",
-            "record_id": uuid4(),
-            "recorded_at": _dt("2026-01-02T00:00:00+00:00"),
-            "recovery_score": 74,
-            "resting_heart_rate": 51,
-            "hrv_rmssd_milli": 63.2,
-            "spo2_percentage": 98.4,
-        }
-        monkeypatch.setattr(service.health_score_repo, "get_recovery_summaries", lambda *_: [row])
-        monkeypatch.setattr(priority_service, "get_source_ranking", lambda _db: SourceRanking({}, {}))
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        provider_day(db, garmin, SeriesType.resting_heart_rate, date(2026, 1, 2), avg=Decimal("52"))
+        provider_day(db, garmin, SeriesType.heart_rate_variability_rmssd, date(2026, 1, 2), avg=Decimal("65"))
+        night = EventRecordFactory(
+            data_source=garmin,
+            category="sleep",
+            type="sleep",
+            start_datetime=_dt("2026-01-01T23:00:00+00:00"),
+            end_datetime=_dt("2026-01-02T07:00:00+00:00"),
+            duration_seconds=28800,
+            zone_offset="+00:00",
+        )
+        SleepDetailsFactory(event_record=night, sleep_efficiency_score=Decimal("95"))
+        provider_day(db, apple, SeriesType.heart_rate_variability_sdnn, date(2026, 1, 3), avg=Decimal("48"))
 
         result = service.get_recovery_summaries(
-            db_session=None,
-            user_id=uuid4(),
-            start_date=_dt("2026-01-01T00:00:00+00:00"),
-            end_date=_dt("2026-01-03T00:00:00+00:00"),
-            cursor=None,
-            limit=10,
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-04T00:00:00+00:00"), cursor=None, limit=10
         )
 
-        summary = result.data[0]
-        assert summary.avg_hrv_sdnn_ms is None
-        assert summary.avg_hrv_rmssd_ms == 63.2
+        garmin_day, apple_day = result.data
+        assert (garmin_day.date, garmin_day.source.provider) == (date(2026, 1, 2), "garmin")
+        assert garmin_day.resting_heart_rate_bpm == 52
+        assert garmin_day.avg_hrv_rmssd_ms == 65.0
+        assert garmin_day.avg_hrv_sdnn_ms is None
+        assert garmin_day.sleep_duration_seconds == 28800
+        assert garmin_day.sleep_efficiency_percent == 95.0
+        assert garmin_day.recovery_score is None
+        assert (apple_day.date, apple_day.source.provider) == (date(2026, 1, 3), "apple")
+        assert apple_day.avg_hrv_sdnn_ms == 48.0
+        assert apple_day.avg_hrv_rmssd_ms is None
+
+    def test_a_score_lands_on_its_local_day_beside_that_days_vitals(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """23:30 UTC at +02:00 is the next local day, the one the vitals and the night are read on."""
+        user = UserFactory()
+        whoop = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop", device_type="band")
+        provider_day(db, whoop, SeriesType.resting_heart_rate, date(2026, 1, 3), avg=Decimal("50"))
+        HealthScoreFactory(
+            data_source=whoop,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.RECOVERY,
+            recorded_at=_dt("2026-01-02T23:30:00+00:00"),
+            zone_offset="+02:00",
+            value=Decimal("70"),
+        )
+
+        result = service.get_recovery_summaries(
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-04T00:00:00+00:00"), cursor=None, limit=10
+        )
+
+        assert [(day.date, day.resting_heart_rate_bpm, day.recovery_score) for day in result.data] == [
+            (date(2026, 1, 3), 50, 70)
+        ]
 
 
 class TestRecoveryPagingPerDate:

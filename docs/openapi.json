@@ -1385,7 +1385,7 @@
           "External: Summaries"
         ],
         "summary": "Get Recovery Summary",
-        "description": "Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2).\n\n**Warning - known limitation:** this endpoint currently returns data **only for WHOOP**.\nMetrics are read from stored recovery-score records, which today are produced solely by\nWHOOP, so users connected only to other providers (e.g. Apple Health) receive an empty\nresult even when the underlying resting HR, HRV and SpO2 are available. This is a bug.\n\nThese values will soon be computed from the timeseries we already store in the database\nrather than from what a single provider reports, at which point recovery metrics will be\nreturned for all providers that supply the underlying data.",
+        "description": "Returns daily recovery metrics (resting HR, HRV, SpO2, main sleep, recovery score).\n\nOne row per day from the highest-priority source, for every provider that supplies the\nunderlying data. The recovery score is set only where a recovery-score record exists.",
         "operationId": "get_recovery_summary_api_v1_users__user_id__summaries_recovery_get",
         "security": [
           {
@@ -15985,7 +15985,7 @@
               }
             ],
             "title": "Avg Hrv Sdnn Ms",
-            "description": "Average HRV (SDNN). Currently always null: every record this endpoint returns today comes from WHOOP - a recovery-score record is required for a row to be returned, and only WHOOP produces one - and WHOOP reports HRV as RMSSD, which is exposed in avg_hrv_rmssd_ms. Once recovery metrics are computed from stored timeseries (and returned for all providers, not just WHOOP), this will carry SDNN for providers that report it (e.g. Apple Health)."
+            "description": "Average HRV (SDNN), for providers that report it (e.g. Apple Health)"
           },
           "avg_hrv_rmssd_ms": {
             "anyOf": [
@@ -15997,7 +15997,7 @@
               }
             ],
             "title": "Avg Hrv Rmssd Ms",
-            "description": "Average HRV (RMSSD)"
+            "description": "Average HRV (RMSSD), for providers that report it (e.g. WHOOP, Garmin, Oura)"
           },
           "avg_spo2_percent": {
             "anyOf": [
