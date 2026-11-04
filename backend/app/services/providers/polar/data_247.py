@@ -63,6 +63,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import seconds_to_minutes
+from app.utils.dates import offset_to_iso
 from app.utils.exceptions import ProviderError
 from app.utils.structured_logging import get_logger
 
@@ -303,13 +304,16 @@ class Polar247Data(Base247DataTemplate):
                 components: dict[str, ScoreComponent] = {
                     k: ScoreComponent(value=v) for k, v in raw_components.items() if v is not None
                 }
+                # The wake-up, with the offset Polar's timestamps carry
+                end_offset = end_dt.utcoffset()
                 score = HealthScoreCreate(
                     id=uuid4(),
                     user_id=user_id,
                     provider=ProviderName.POLAR,
                     category=HealthScoreCategory.SLEEP,
                     value=parsed.sleep_score,
-                    recorded_at=start_dt,
+                    recorded_at=end_dt,
+                    zone_offset=offset_to_iso(int(end_offset.total_seconds())) if end_offset is not None else None,
                     components=components or None,
                     event_record_id=sleep_id,
                 )

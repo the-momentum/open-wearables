@@ -449,6 +449,9 @@ class EventRecordService(
                     if new_val is not None:
                         setattr(adjacent, field, new_val)
                 adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
+                if adjacent.end_datetime != old_end:
+                    # Its provider score sits at the old end, which a shortened night leaves outside its window.
+                    self.health_score_repo.drop_provider_sleep_score(db_session, adjacent.data_source_id, old_end)
                 db_session.flush()
                 self._widen_sleep_coverage(db_session, adjacent)
                 # Its session rows are rolled up over the window it has now, on the days it left and joined.

@@ -285,6 +285,18 @@ class TestGarmin247Data:
         assert actual_end == expected_end
         assert normalized["duration_seconds"] == 9000  # 7200 asleep + 1800 awake
 
+    def test_sleep_score_is_recorded_at_the_wake_up(
+        self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]
+    ) -> None:
+        # A night that starts before midnight UTC belongs to the day the user wakes up
+        sleep = {**sample_sleep, "startTimeOffsetInSeconds": 3600, "overallSleepScore": {"value": 84}}
+
+        _, score = garmin_247.normalize_sleep(sleep, uuid4())
+
+        assert score is not None
+        assert score.recorded_at == datetime(2024, 1, 15, 7, 0, tzinfo=timezone.utc)  # 23:00 UTC + 8 h
+        assert score.zone_offset == "+01:00"
+
     def test_normalize_sleep_missing_stages(self, garmin_247: Garmin247Data) -> None:
         """A manually entered sleep carries no stage fields, so the stages stay unreported."""
         user_id = uuid4()
