@@ -5,7 +5,7 @@ from fastapi import status
 from psycopg import Error as PsycopgError
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 
 # ORM writes raise SQLAlchemy's wrapper; writes on the raw psycopg connection (COPY) raise psycopg's own
 INTEGRITY_ERRORS = (IntegrityError, PsycopgIntegrityError)
@@ -22,20 +22,17 @@ class AppError(Exception):
     """
 
     status_code: ClassVar[int] = status.HTTP_500_INTERNAL_SERVER_ERROR
+    # Stable across releases: sync history and webhooks report it, clients branch on it.
     code: ClassVar[str] = "INTERNAL_ERROR"
     headers: ClassVar[dict[str, str] | None] = None
 
-    def __init__(self, detail: str) -> None:
+    def __init__(self, detail: str | dict[str, object]) -> None:
         self.detail = detail
         super().__init__(detail)
 
     @property
     def is_client_error(self) -> bool:
         return 400 <= self.status_code < 500
-
-
-# Error code a dead grant is reported under, in sync logs and per-notification results
-REAUTH_REQUIRED = "reauth_required"
 
 
 class InvalidInputError(AppError):
@@ -92,6 +89,27 @@ class InvalidCursorError(InvalidInputError):
 
     def __init__(self, cursor: str):
         super().__init__(f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'.")
+
+
+class ReconcileWindowTooLargeError(InvalidInputError):
+    """A source_selection=reconcile page would merge more days on the fly than the server allows."""
+
+    code = "RECONCILE_TOO_MANY_DAYS"
+
+    def __init__(self, days: int, max_days: int, queued: bool):
+        self.days, self.max_days, self.queued = days, max_days, queued
+        # Structured, so a client can lower its page size by the numbers rather than parse a sentence.
+        super().__init__(
+            {
+                "code": "reconcile_too_many_days",
+                "message": "source_selection=reconcile would merge more days on the fly than allowed for one "
+                "page; lower `limit` or narrow the range.",
+                "days": days,
+                "max_days": max_days,
+                # Queued to be stored by the rollup; not a promise of when, as its budget decides.
+                "queued": queued,
+            }
+        )
 
 
 class DatetimeParseError(InvalidInputError, ValueError):
@@ -187,6 +205,17 @@ class ProviderRateLimitError(ProviderError):
     code = "PROVIDER_RATE_LIMITED"
 
 
+class ProviderAuthRejectedError(ProviderError):
+    """The provider rejected a token we just refreshed (or can't refresh): often a data type the user did not
+    consent to. Not proof the grant is dead, so the connection stays; ``api_client`` revokes it, raising
+    ``ReauthRequiredError``, only after a day of nothing but rejections."""
+
+    code = "PROVIDER_AUTH_REJECTED"
+
+    def __init__(self, provider: str, detail: str | None = None, *, upstream_body: str | None = None) -> None:
+        super().__init__(provider, detail, upstream_status=401, upstream_body=upstream_body)
+
+
 def is_provider_state_error(exc: BaseException | None) -> bool:
     """A provider's answer about a user's or a resource's state (data that isn't there, a
     throttle we couldn't wait out): nothing we can fix, logged as a warning, kept out of Sentry.
@@ -195,6 +224,9 @@ def is_provider_state_error(exc: BaseException | None) -> bool:
     every user of the provider, and a request it rejected (``ProviderError.request_rejected``)
     most likely means it changed its API. Sentry groups both per provider and status.
     """
+    if isinstance(exc, ProviderRateLimitError):
+        # Withings throttles in the body of an HTTP 200: the type says it, not the status.
+        return True
     return isinstance(exc, ProviderError) and not exc.request_rejected and exc.upstream_status in _STATE_STATUSES
 
 
@@ -223,17 +255,6 @@ class ProviderTokenUnavailableError(ProviderConnectionError, InvalidInputError):
         super().__init__(provider, f"No {provider_label(provider)} API access token for this user.")
 
 
-class ProviderReauthorizationRequiredError(ProviderConnectionError, ConflictError):
-    """The provider grant is gone: expired with no refresh token, or the provider rejected it."""
-
-    code = "PROVIDER_REAUTHORIZATION_REQUIRED"
-
-    def __init__(self, provider: str) -> None:
-        super().__init__(
-            provider, f"{provider_label(provider)} authorization expired or was revoked; the user must reconnect."
-        )
-
-
 class InvitationExpiredError(InvalidInputError):
     code = "INVITATION_EXPIRED"
 
@@ -257,16 +278,24 @@ class InvitationWithdrawnError(InvalidInputError):
         super().__init__(f"Invitation is {invitation_status}")
 
 
-class ReauthRequiredError(ProviderReauthorizationRequiredError):
+class ReauthRequiredError(ProviderConnectionError, ConflictError):
     """The grant is dead and the connection revoked: nothing fetches until the user reconnects.
 
     ``reason`` says why, for logs; the client gets the generic ``detail``.
     """
 
+    code = "REAUTH_REQUIRED"
+
     def __init__(self, provider: str, user_id: UUID, reason: str) -> None:
         self.user_id = user_id
         self.reason = reason
-        super().__init__(provider)
+        super().__init__(
+            provider, f"{provider_label(provider)} authorization expired or was revoked; the user must reconnect."
+        )
+
+
+# Error code a dead grant is reported under, in sync logs and per-notification results
+REAUTH_REQUIRED = ReauthRequiredError.code.lower()
 
 
 def integrity_violation(exc: IntegrityError | PsycopgIntegrityError) -> BaseException | None:
@@ -279,6 +308,24 @@ def describe_integrity_error(exc: IntegrityError | PsycopgIntegrityError) -> tup
     violation = integrity_violation(exc)
     constraint = violation.diag.constraint_name if isinstance(violation, PsycopgError) else None
     return type(violation).__name__, constraint
+
+
+def is_unique_violation(exc: IntegrityError | PsycopgIntegrityError) -> bool:
+    """A duplicate row, as opposed to a NOT NULL, CHECK or foreign key violation, which is our bug."""
+    return isinstance(integrity_violation(exc), UniqueViolation)
+
+
+def public_error_text(exc: BaseException) -> str:
+    """Text of ``exc`` safe to store or send: a database error's own text quotes the SQL, its parameters and row
+    values, so only its type (and a violated constraint) is kept."""
+    if isinstance(exc, INTEGRITY_ERRORS):
+        kind, constraint = describe_integrity_error(exc)
+        return f"{kind} ({constraint})" if constraint else kind
+    if isinstance(exc, StatementError):
+        return type(exc.orig or exc).__name__
+    if isinstance(exc, PsycopgError):
+        return type(exc).__name__
+    return str(exc)
 
 
 def app_error_from_integrity_error(exc: IntegrityError | PsycopgIntegrityError) -> AppError | None:
@@ -296,11 +343,10 @@ def app_error_from_integrity_error(exc: IntegrityError | PsycopgIntegrityError) 
 
 def provider_error_from_response(
     provider: str, upstream_status: int | None, upstream_body: str | None = None
-) -> ProviderError | ProviderReauthorizationRequiredError:
-    """The error for a failed provider response: a rejected token means the user must
-    reconnect, a throttle we couldn't wait out is a 503, anything else a 502."""
+) -> ProviderError:
+    """The error for a failed provider response: a throttle we couldn't wait out is a 503, anything else a 502."""
     if upstream_status == 401:
-        return ProviderReauthorizationRequiredError(provider)
+        return ProviderAuthRejectedError(provider, upstream_body=upstream_body)
     if upstream_status == 429:
         return ProviderRateLimitError(provider, upstream_status=upstream_status, upstream_body=upstream_body)
     return ProviderError(provider, upstream_status=upstream_status, upstream_body=upstream_body)

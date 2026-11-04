@@ -20,22 +20,13 @@ class SwallowedWriteError(Exception):
 
 
 def error_code_of(error: BaseException) -> str:
-    """A short, value-free label for an error: the provider's HTTP status when it has one,
-    else its type.
-
-    A domain error's own ``status_code`` is what we answer with, not what the provider did,
-    so it gets its type: a lost grant is ``ProviderReauthorizationRequiredError``, not a 409
-    that reads like the provider's, and a call that got no response is ``ProviderError``.
-    The exception text is left out: a database error carries the rows it failed on.
-    """
-    if isinstance(error, ProviderError):
-        status_code = error.upstream_status
-    elif isinstance(error, AppError):
-        status_code = None
-    else:
-        status_code = getattr(error, "status_code", None) or getattr(
-            getattr(error, "response", None), "status_code", None
-        )
+    """A short, value-free, stable label for an error: the provider's HTTP status when it has one (``http_404``),
+    else a domain error's ``code`` (``reauth_required``). Never the text: a database error carries its rows."""
+    if isinstance(error, ProviderError) and error.upstream_status is not None:
+        return f"http_{error.upstream_status}"
+    if isinstance(error, AppError):
+        return error.code.lower()
+    status_code = getattr(error, "status_code", None) or getattr(getattr(error, "response", None), "status_code", None)
     return f"http_{status_code}" if isinstance(status_code, int) else type(error).__name__
 
 
@@ -292,12 +283,11 @@ class Sync247Run:
     def fail(self, data_type: str, error: Exception, *, capture: bool = False) -> None:
         """Record and log a failure outside a ``step`` — e.g. a shared fetch feeding several types."""
         self.result.fail(data_type, error)
-        # The error's text stays out: a database error carries the rows it failed on.
-        # capture is an explicit ask, so a provider's answer about the user's state is reported too
+        # The error's text stays out: a database error carries the rows it failed on. With capture the logger
+        # reports it, except a provider's answer about the user's state (a lost grant, a throttle), logged as a warning.
         logger.error(
             "Failed to sync data type",
             exc_info=error if capture else None,
-            alert=capture,
             provider=self.result.provider,
             task=self.task,
             data_type=data_type,

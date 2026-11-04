@@ -40,6 +40,16 @@ def roll_up_queued_days() -> dict:
     return {"rolled_up_days": rolled_up}
 
 
+@shared_task(name=CeleryTask.DROP_RECONCILED_DAYS, soft_time_limit=120, time_limit=150)
+def drop_reconciled_days() -> dict:
+    """Delete the stored merged days a priority change left in the old order, in batches; reads merge them anew."""
+    with SessionLocal() as db:
+        dropped, done = archival_service.drop_reconciled_days(db)
+    if not done:
+        drop_reconciled_days.apply_async(countdown=1)
+    return {"dropped_rows": dropped}
+
+
 @shared_task(
     name=CeleryTask.RUN_DAILY_ARCHIVAL,
     bind=True,
@@ -68,8 +78,9 @@ def run_daily_archival(self: Task) -> dict:
             summary = archival_service.run_daily_archival(db)
             logger.info("Daily archival completed", **summary)
             return summary
-    except Exception as e:
-        logger.error("Daily archival task failed", exc_info=e)
+    except Exception:
+        # Raised on to Celery, whose integration reports it as unhandled; exc_info here would report it handled.
+        logger.error("Daily archival task failed")
         raise
     finally:
         rollup_queue.release_lock(token)

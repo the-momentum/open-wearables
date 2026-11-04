@@ -14,11 +14,12 @@ import pytest
 
 from app.services.providers import api_client
 from app.utils.exceptions import (
+    ProviderAuthRejectedError,
     ProviderError,
     ProviderNotConnectedError,
     ProviderRateLimitError,
-    ProviderReauthorizationRequiredError,
     ProviderTokenUnavailableError,
+    ReauthRequiredError,
 )
 
 URL = "https://api.provider.test/v1/data"
@@ -73,7 +74,7 @@ class TestGetValidToken:
             token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
 
-        with pytest.raises(ProviderReauthorizationRequiredError) as exc_info:
+        with pytest.raises(ReauthRequiredError) as exc_info:
             api_client.get_valid_token(**_token_args(connection))
 
         assert exc_info.value.status_code == 409
@@ -89,13 +90,16 @@ class TestMakeAuthenticatedRequest:
         return request
 
     @patch("app.services.providers.api_client._reload_token_after_401", return_value=None)
-    def test_rejected_token_means_the_user_must_reconnect(
+    def test_a_rejected_token_is_an_upstream_error_not_a_reconnect(
         self, mock_reload: MagicMock, mock_client: MagicMock, mock_token: MagicMock
     ) -> None:
+        """Not proof the grant is dead: only a day of rejections revokes it (ReauthRequiredError, 409)."""
         self._answer(mock_client, _response(401, text="invalid_token"))
 
-        with pytest.raises(ProviderReauthorizationRequiredError):
+        with pytest.raises(ProviderAuthRejectedError) as exc_info:
             api_client.make_authenticated_request(**_request_args())
+
+        assert exc_info.value.status_code == 502
 
     def test_error_response_keeps_the_body_out_of_the_detail(
         self, mock_client: MagicMock, mock_token: MagicMock

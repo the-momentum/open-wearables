@@ -28,7 +28,7 @@ from app.services import raw_payload_storage
 from app.services.providers.sensorbio import data_247 as sensorbio_data_247
 from app.services.providers.sync_247_result import Sync247Run
 from app.utils.config_utils import LogLevel
-from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError
+from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError, ProviderRateLimitError
 from app.utils.logging_setup import configure_app_logger
 from app.utils.structured_logging import get_logger, is_expected_error
 
@@ -223,16 +223,17 @@ def test_app_errors_do_not_go_through_the_logging_integration(captured: list[dic
     assert capture_event.call_count == 1
 
 
-def test_log_level_filters_reports_of_exceptions_but_not_alerts(
-    captured: list[dict[str, Any]], app_log_level: Any
-) -> None:
+def test_log_level_does_not_silence_reports(captured: list[dict[str, Any]], app_log_level: Any) -> None:
+    """Quieter logs must not hide errors from Sentry."""
     app_log_level(LogLevel.CRITICAL)
-    app_logger.error("Sync failed", exc_info=_raised(ValueError("filtered")))
+    app_logger.error("Sync failed", exc_info=_raised(ValueError("filtered")), provider="garmin")
     app_logger.error("Storage disabled", alert=True)
-    app_logger.warning("Fetch failed", alert=True)
     sentry_sdk.flush()
 
-    assert [event["message"] for event in captured] == ["Storage disabled", "Fetch failed"]
+    exception_event, message_event = captured
+    assert exception_event["exception"]["values"][-1]["type"] == "ValueError"
+    assert exception_event["tags"] | {"logger": None} == {"logger": None, "provider": "garmin"}
+    assert message_event["message"] == "Storage disabled"
 
 
 def test_alert_reports_lines_without_an_exception_or_below_error(captured: list[dict[str, Any]]) -> None:
@@ -506,11 +507,12 @@ def test_request_the_provider_refused_is_reported_grouped(captured: list[dict[st
     assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "400"]]
 
 
-def test_captured_sync_step_reports_a_users_state(captured: list[dict[str, Any]]) -> None:
-    """capture=True is an explicit ask to see the failure in Sentry, whatever it is."""
+def test_captured_sync_step_reports_failures_not_a_users_state(captured: list[dict[str, Any]]) -> None:
+    """A lost grant or missing data would report every hour per user; an outage is worth hearing about."""
     run = Sync247Run("withings", MagicMock(), uuid4())
     run.fail("sleep", _raised(ProviderError("withings", upstream_status=404)), capture=True)
-    run.fail("activity", _raised(ProviderError("withings", upstream_status=404)))
+    run.fail("weight", _raised(ProviderRateLimitError("withings", "throttled (status=601)")), capture=True)
+    run.fail("activity", _raised(ProviderError("withings", upstream_status=503)), capture=True)
     sentry_sdk.flush()
 
-    assert [event["contexts"]["log"]["data_type"] for event in captured] == ["sleep"]
+    assert [event["contexts"]["log"]["data_type"] for event in captured] == ["activity"]

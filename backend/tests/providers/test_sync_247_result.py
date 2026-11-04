@@ -21,10 +21,12 @@ from app.services.providers.sync_247_result import (
     error_code_of,
 )
 from app.utils.exceptions import (
+    ProviderAuthRejectedError,
     ProviderConnectionError,
     ProviderError,
     ProviderNotConnectedError,
-    ProviderReauthorizationRequiredError,
+    ProviderRateLimitError,
+    ReauthRequiredError,
 )
 
 
@@ -175,15 +177,17 @@ class TestSync247Result:
         assert (payload["status"], payload["items_reported"], payload["tasks"]) == ("skipped", None, {})
 
 
-def test_error_code_carries_the_http_status_or_the_error_type_never_its_text() -> None:
+def test_error_code_carries_the_http_status_or_the_error_code_never_its_text() -> None:
     assert error_code_of(HTTPException(status_code=403, detail="user 42 revoked")) == "http_403"
     # the provider's own status, not the 502 the client gets
     assert error_code_of(ProviderError("p", upstream_status=404, upstream_body="user 42 not found")) == "http_404"
+    assert error_code_of(ProviderAuthRejectedError("p")) == "http_401"
     # our own status would read like the provider's: a lost grant is not the provider's 409,
-    # a call that got no response not its 502
-    assert error_code_of(ProviderReauthorizationRequiredError("p")) == "ProviderReauthorizationRequiredError"
-    assert error_code_of(ProviderNotConnectedError("p")) == "ProviderNotConnectedError"
-    assert error_code_of(ProviderError("p")) == "ProviderError"
+    # a call that got no response not its 502; class names never reach clients
+    assert error_code_of(ReauthRequiredError("p", uuid4(), "revoked")) == "reauth_required"
+    assert error_code_of(ProviderNotConnectedError("p")) == "provider_not_connected"
+    assert error_code_of(ProviderError("p")) == "provider_error"
+    assert error_code_of(ProviderRateLimitError("withings", "throttled (status=601)")) == "provider_rate_limited"
     assert error_code_of(RuntimeError("heart_rate=72 violates constraint")) == "RuntimeError"
 
 
@@ -279,8 +283,8 @@ class TestSync247RunStep:
     def test_fatal_errors_propagate_instead_of_being_recorded(self, run: Sync247Run) -> None:
         run.fatal = (ProviderConnectionError,)
 
-        with pytest.raises(ProviderReauthorizationRequiredError), run.step("sleep"):
-            raise ProviderReauthorizationRequiredError("p")
+        with pytest.raises(ReauthRequiredError), run.step("sleep"):
+            raise ReauthRequiredError("p", uuid4(), "revoked")
 
         assert "sleep" not in run.result.outcomes
 

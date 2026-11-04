@@ -1,10 +1,9 @@
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import DataSource, HealthScore, ProviderPriority
-from app.repositories import HealthScoreRepository, ProviderPriorityRepository
+from app.models import DataSource, HealthScore
+from app.repositories import HealthScoreRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import (
     HealthScoreCreate,
@@ -13,6 +12,7 @@ from app.schemas.model_crud.activities import (
     HealthScoreUpdate,
 )
 from app.schemas.utils.metadata import SourceMetadata
+from app.services.priority_service import priority_service
 from app.services.services import AppService
 
 
@@ -32,6 +32,9 @@ class HealthScoreService(
 
     def bulk_create(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
         return self.crud.bulk_create(db_session, scores)
+
+    def bulk_create_keeping_highest(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
+        return self.crud.bulk_create_keeping_highest(db_session, scores)
 
     def get_latest_by_category(
         self,
@@ -59,8 +62,7 @@ class HealthScoreService(
             db_session,
             user_id,
             params,
-            ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session),
-            DeviceTypePriorityRepository().get_priority_order(db_session),
+            priority_service.get_source_ranking(db_session),
         )
         return [self._to_response(score, data_source) for score, data_source in rows], total_count
 

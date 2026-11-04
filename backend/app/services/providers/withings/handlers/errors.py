@@ -2,9 +2,9 @@
 
 from app.utils.exceptions import (
     InvalidInputError,
+    ProviderAuthRejectedError,
     ProviderError,
     ProviderRateLimitError,
-    ProviderReauthorizationRequiredError,
 )
 
 # Token-request statuses caused by invalid request inputs rather than provider faults.
@@ -21,7 +21,7 @@ def withings_token_error(
     withings_status: int | None = None,
     http_status: int | None = None,
     upstream_body: str | None = None,
-) -> InvalidInputError | ProviderError | ProviderReauthorizationRequiredError:
+) -> InvalidInputError | ProviderError:
     """The error for a failed token request, from the envelope status or the HTTP one.
 
     On refresh a failed authentication means the grant is spent: the user must reconnect.
@@ -38,7 +38,7 @@ def withings_token_error(
         )
     authentication_failed = withings_status in _AUTHENTICATION_FAILED_STATUSES or http_status in {400, 401}
     if task == "refresh_access_token" and authentication_failed:
-        return ProviderReauthorizationRequiredError("withings")
+        return ProviderAuthRejectedError("withings", detail, upstream_body=upstream_body)
     client_error = withings_status in _TOKEN_CLIENT_ERROR_STATUSES or (http_status is not None and http_status < 500)
     if task == "exchange_token" and (authentication_failed or client_error):
         return InvalidInputError("Failed to exchange authorization code")

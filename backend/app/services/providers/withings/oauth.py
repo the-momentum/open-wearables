@@ -20,7 +20,7 @@ from app.schemas.model_crud.credentials import (
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.handlers.errors import withings_token_error
 from app.services.providers.withings.webhook_service import WithingsWebhookService
-from app.utils.exceptions import ProviderError, ProviderReauthorizationRequiredError
+from app.utils.exceptions import ProviderAuthRejectedError, ProviderError, ReauthRequiredError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -73,10 +73,11 @@ class WithingsOAuth(BaseOAuthTemplate):
         }
         try:
             token_response = self._request_token(payload, task="refresh_access_token")
-        except ProviderReauthorizationRequiredError:
-            if revoke_on_failure:
-                self.revoke_connection(db, user_id, reason="refresh_failed")
-            raise
+        except ProviderAuthRejectedError as e:
+            if not revoke_on_failure:
+                raise
+            self.revoke_connection(db, user_id, reason="refresh_failed")
+            raise ReauthRequiredError(self.provider_name, user_id, "Refresh token rejected") from e
 
         connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.provider_name)
         if connection:

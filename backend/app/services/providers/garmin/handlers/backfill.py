@@ -31,8 +31,8 @@ def backfill_failure(exc: ProviderConnectionError | ProviderError) -> tuple[int 
     and rate-limit decisions read. A connection that can't be used stops it like Garmin's 401;
     the message keeps Garmin's answer (e.g. "before min start time"), unlike ``detail``."""
     if isinstance(exc, ProviderConnectionError):
-        return 401, exc.detail
-    message = f"{exc.detail}: {exc.upstream_body}" if exc.upstream_body else exc.detail
+        return 401, str(exc.detail)
+    message = f"{exc.detail}: {exc.upstream_body}" if exc.upstream_body else str(exc.detail)
     return exc.upstream_status, message
 
 

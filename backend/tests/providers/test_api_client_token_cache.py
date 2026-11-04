@@ -15,8 +15,8 @@ from app.repositories import UserConnectionRepository
 from app.services.providers import api_client
 from app.services.providers.api_client import download_binary_content, get_valid_token, make_authenticated_request
 from app.utils.exceptions import (
+    ProviderAuthRejectedError,
     ProviderError,
-    ProviderReauthorizationRequiredError,
     ProviderTokenUnavailableError,
     ReauthRequiredError,
 )
@@ -203,7 +203,7 @@ def test_a_401_after_a_successful_refresh_is_not_a_dead_grant(db: Session, conne
 
     with (
         patch("app.services.providers.api_client.httpx.Client", return_value=client),
-        pytest.raises(ProviderReauthorizationRequiredError) as exc_info,
+        pytest.raises(ProviderAuthRejectedError) as exc_info,
     ):
         _request(db, connection, repo, oauth)
 
@@ -220,7 +220,7 @@ def test_without_a_refresh_token_a_401_is_not_retried(db: Session, connection: A
 
     with (
         patch("app.services.providers.api_client.httpx.Client", return_value=client),
-        pytest.raises(ProviderReauthorizationRequiredError) as exc_info,
+        pytest.raises(ProviderAuthRejectedError) as exc_info,
     ):
         _request(db, connection, repo, oauth)
 

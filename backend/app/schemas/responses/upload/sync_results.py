@@ -34,10 +34,7 @@ class Sync247TaskSummary(BaseModel):
     items_skipped: int = Field(description="Records deliberately not stored, such as duplicates")
     truncated: bool = Field(description="The fetch stopped early, so the window is incomplete")
     error_code: str | None = Field(
-        description=(
-            "The provider's HTTP status (http_404) or the error type (ProviderReauthorizationRequiredError) "
-            "of the first failure"
-        )
+        description=("The provider's HTTP status (http_404) or the error's code (reauth_required) of the first failure")
     )
 
 

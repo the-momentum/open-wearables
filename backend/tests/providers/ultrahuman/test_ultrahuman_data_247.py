@@ -17,7 +17,11 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
-from app.utils.exceptions import ProviderError, ProviderNotConnectedError, ProviderReauthorizationRequiredError
+from app.utils.exceptions import (
+    ProviderAuthRejectedError,
+    ProviderError,
+    ProviderNotConnectedError,
+)
 from tests.factories import UserFactory
 
 
@@ -430,7 +434,7 @@ class TestUltrahumanFetchFailures:
     @pytest.mark.parametrize(
         "error",
         [
-            ProviderReauthorizationRequiredError("ultrahuman"),
+            ProviderAuthRejectedError("ultrahuman"),
             ProviderNotConnectedError("ultrahuman"),
             ProviderError("ultrahuman", upstream_status=403),
         ],

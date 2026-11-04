@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from psycopg.errors import ForeignKeyViolation, NotNullViolation, UniqueViolation
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, StatementError
 
 from app.utils.exceptions import (
     AppError,
@@ -27,6 +27,7 @@ from app.utils.exceptions import (
     UpstreamError,
     app_error_from_integrity_error,
     is_provider_state_error,
+    public_error_text,
 )
 from app.utils.problem import status_code_name
 
@@ -199,3 +200,20 @@ class TestProviderErrors:
     def test_storage_failures_are_reported(self) -> None:
         assert not is_provider_state_error(ServiceUnavailableError("Failed to complete upload: SlowDown"))
         assert not is_provider_state_error(ConfigurationError("S3 bucket not configured"))
+
+
+class TestPublicErrorText:
+    """A database error stored in sync history or sent in a webhook keeps no SQL, parameters or row values."""
+
+    @pytest.mark.parametrize("error_class", [IntegrityError, DataError])
+    def test_database_errors_keep_only_their_type(self, error_class: type[StatementError]) -> None:
+        exc = error_class("INSERT INTO series_sample (value) VALUES (%(value)s)", {"value": 72}, Exception("dup 72"))
+
+        text = public_error_text(exc)
+
+        assert text == "Exception"
+        assert "72" not in text
+        assert "INSERT" not in text
+
+    def test_other_errors_keep_their_message(self) -> None:
+        assert public_error_text(ValueError("bad payload")) == "bad payload"

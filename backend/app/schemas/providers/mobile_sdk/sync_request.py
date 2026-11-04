@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, ValidationInfo, field_validator
 
 from app.constants.series_types.sdk import SDKMetricType, SleepPhase, WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
@@ -105,6 +105,29 @@ class WorkoutStatistic(BaseModel):
     value: float | int
 
 
+class WorkoutRoutePoint(BaseModel):
+    """One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored."""
+
+    # NaN / Infinity fail validation, so the point is dropped instead of stored.
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    timestamp: datetime | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    altitudeM: float | None = None
+
+
+class WorkoutSample(BaseModel):
+    """One per-sample measurement recorded during a workout (heart rate, speed, cadence, power)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    timestamp: datetime | None = None
+    type: str | None = None
+    value: float | None = None
+    unit: str | None = None
+
+
 class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
@@ -118,12 +141,27 @@ class Workout(BaseModel):
     title: str | None = None
     notes: str | None = None
     values: list[WorkoutStatistic] | None = None
+    route: list[WorkoutRoutePoint] | None = None
+    samples: list[WorkoutSample] | None = None
+
+    @field_validator("route", "samples", mode="before")
+    @classmethod
+    def _drop_invalid_items(cls, items: Any, info: ValidationInfo) -> Any:
+        """A malformed route point or sample is dropped on its own instead of failing the workout."""
+        if not isinstance(items, list):
+            return items
+        model = WorkoutRoutePoint if info.field_name == "route" else WorkoutSample
+        valid = []
+        for item in items:
+            try:
+                valid.append(model.model_validate(item))
+            except ValidationError:
+                continue
+        return valid
 
     # everything below is unused for now
     segments: list[dict[str, Any]] | None = None
     laps: list[dict[str, Any]] | None = None
-    route: list[dict[str, Any]] | None = None
-    samples: list[dict[str, Any]] | None = None
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 

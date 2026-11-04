@@ -9,7 +9,7 @@ import pytest
 
 from app.schemas.providers.withings import WithingsMeasure
 from app.services.providers.withings.handlers import rpc_client
-from app.utils.exceptions import ProviderRateLimitError, ProviderReauthorizationRequiredError
+from app.utils.exceptions import ProviderAuthRejectedError, ProviderRateLimitError
 
 
 def _request(**overrides: Any) -> Any:
@@ -55,13 +55,13 @@ def test_nonzero_status_is_an_error_even_on_http_200(mock_req: MagicMock) -> Non
 
 
 @patch("app.services.providers.withings.handlers.rpc_client.make_authenticated_request")
-def test_authentication_status_means_the_user_must_reconnect(mock_req: MagicMock) -> None:
+def test_authentication_status_is_a_rejected_token(mock_req: MagicMock) -> None:
     mock_req.return_value = {"status": 100, "body": {}}
 
-    with pytest.raises(ProviderReauthorizationRequiredError) as exc_info:
+    with pytest.raises(ProviderAuthRejectedError) as exc_info:
         rpc_client.withings_request(**_request())
 
-    assert exc_info.value.status_code == 409
+    assert exc_info.value.status_code == 502
 
 
 THROTTLED = {"status": 601, "body": {}, "error": "Too Many Requests (#/min)"}

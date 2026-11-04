@@ -208,6 +208,14 @@ async def integrity_error_handler(request: Request, exc: IntegrityError | Psycop
     violation_type, constraint = describe_integrity_error(exc)
     request.state.error_cause_type = violation_type
     request.state.error_cause_msg = f"constraint {constraint}"
+    # The services check what a client can collide with first, so reaching here is a race or a missing check.
+    logger.warning(
+        "Constraint violation answered as a client error",
+        alert=True,
+        violation=violation_type,
+        constraint=constraint,
+        path=request.url.path,
+    )
     return response
 
 

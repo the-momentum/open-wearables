@@ -204,7 +204,7 @@ Pass `cursor=<next_cursor>` until `has_more` is `false`. `total_count` is only s
 
 <CardGroup cols={2}>
   <Card title="Activity summary" icon="person-running" href="/api-reference/external:-summaries/get-activity-summary">
-    Daily steps, distance, floors, calories, active/sedentary minutes, intensity minutes, heart rate.
+    Daily steps, distance, floors, calories, active/sedentary minutes, intensity minutes, heart rate. Each day reports its highest-priority source. A metric that source lacks is taken from the next source reporting it: steps, distance, floors and provider-reported active time one by one, active, basal and total energy together, and average, max and min heart rate together. So `source` may not be the origin of every metric on that day. Minutes counted from steps or heart rate (active/sedentary, intensity) always come from the winning source.
   </Card>
   <Card title="Sleep summary" icon="moon" href="/api-reference/external:-summaries/get-sleep-summary">
     Daily sleep duration, efficiency, stages, sessions, naps, and average HR/HRV/SpO2.
@@ -228,7 +228,7 @@ Things to know when reading the data:
 - **Nullable fields.** Apart from identifiers, dates and `source`, any field can be `null` - providers report different subsets. See the [coverage matrix](/providers/coverage).
 - **`source.provider`** is the provider slug (`garmin`, `apple`, `health_connect`, ...). `source.device` is the raw device model.
 - **Sleep** durations are in minutes and exclude naps, which are reported separately.
-- **Recovery summary** returns data only for WHOOP.
+- **Recovery summary** is built from each day's resting HR, HRV, SpO2 and main sleep, for every provider. `avg_hrv_sdnn_ms` carries SDNN (e.g. Apple Health) and `avg_hrv_rmssd_ms` RMSSD (e.g. WHOOP, Garmin, Oura). `recovery_score` is set only where the source reports one.
 - **Body summary** is a single object, not a paginated list, and is `null` when the user has no body data.
 - **Timeseries** requires `start_time` and `end_time`. `types` is optional and repeated (`?types=heart_rate&types=steps`) - without it, all series types are returned.
 

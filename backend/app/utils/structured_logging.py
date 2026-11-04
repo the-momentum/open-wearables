@@ -110,6 +110,9 @@ def _report(level: int, msg: str, exc: BaseException | None, context: dict[str, 
     with sentry_sdk.new_scope() as scope:
         scope.set_level(logging.getLevelName(level).lower())  # ty: ignore[invalid-argument-type]
         scope.set_context("log", context)
+        scope.set_tag("logger", context["logger"])
+        if context.get("provider"):
+            scope.set_tag("provider", context["provider"])
         if exc is not None:
             sentry_sdk.capture_exception(exc)
         else:
@@ -122,10 +125,9 @@ class StructuredLogger:
     Every method accepts:
 
     - ``exc_info``: an exception (or True inside ``except``) - adds ``error_type`` and
-      ``traceback`` to the line. At ``error`` and above it is also reported to Sentry, unless
-      LOG_LEVEL filters the line out; at ``warning`` it is not. 4xx ``HTTPException``\\s and
-      ``AppError``\\s and a provider's answers about a user's state are logged as warnings
-      (``is_expected_error``).
+      ``traceback`` to the line. At ``error`` and above it is also reported to Sentry, whatever
+      LOG_LEVEL; at ``warning`` it is not. 4xx ``HTTPException``\\s and ``AppError``\\s and a
+      provider's answers about a user's state are logged as warnings (``is_expected_error``).
     - ``provider``: provider name, printed right after the message.
     - ``alert``: always report the line to Sentry - without an exception, below ``error``,
       and also when LOG_LEVEL filters it out of the logs. ``alert=not is_expected_error(e)``
@@ -182,7 +184,9 @@ class StructuredLogger:
         if level > logging.WARNING and is_expected_error(exc):
             level = logging.WARNING
         enabled = self.logger.isEnabledFor(level)
-        if not (enabled or alert):
+        # Reporting does not follow LOG_LEVEL: quieter logs must not silence Sentry.
+        report = alert or (exc is not None and level >= logging.ERROR)
+        if not (enabled or report):
             return
         if attributes.get("trace_id") is None and (tid := trace_id_var.get()):
             attributes["trace_id"] = tid
@@ -194,7 +198,7 @@ class StructuredLogger:
                 stacklevel=_STACKLEVEL,
                 extra={STRUCTURED: {"provider": provider, "attributes": attributes}},
             )
-        if alert or (enabled and exc is not None and level >= logging.ERROR):
+        if report:
             context: dict[str, Any] = {"message": msg, "logger": self.logger.name, "provider": provider}
             for key, value in attributes.items():
                 # Like on the line: an attribute must not replace a base field.

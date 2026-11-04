@@ -15,7 +15,7 @@ from app.utils.exceptions import (
     InvalidInputError,
     ProviderError,
     ProviderRateLimitError,
-    ProviderReauthorizationRequiredError,
+    ReauthRequiredError,
 )
 
 
@@ -52,7 +52,7 @@ def test_exchange_token_unwraps_the_envelope_body(mock_post: MagicMock) -> None:
 @pytest.mark.parametrize(
     ("withings_status", "error_class", "http_status", "invalid_grant"),
     [
-        (100, ProviderReauthorizationRequiredError, 409, True),
+        (100, ReauthRequiredError, 409, True),
         (601, ProviderRateLimitError, 503, False),
         (247, ProviderError, 502, False),
     ],
