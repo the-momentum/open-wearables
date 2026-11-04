@@ -1027,7 +1027,7 @@
           "External: Summaries"
         ],
         "summary": "Get Activity Summary",
-        "description": "Returns daily aggregated activity metrics.\n\nAggregates time-series data (steps, energy, heart rate, etc.) by day.",
+        "description": "Returns daily aggregated activity metrics.\n\nEach day reports its highest-priority source; metrics it lacks are filled from lower-priority sources.\n\nAggregates time-series data (steps, energy, heart rate, etc.) by day.",
         "operationId": "get_activity_summary_api_v1_users__user_id__summaries_activity_get",
         "security": [
           {

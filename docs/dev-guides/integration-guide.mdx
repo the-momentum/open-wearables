@@ -204,7 +204,7 @@ Pass `cursor=<next_cursor>` until `has_more` is `false`. `total_count` is only s
 
 <CardGroup cols={2}>
   <Card title="Activity summary" icon="person-running" href="/api-reference/external:-summaries/get-activity-summary">
-    Daily steps, distance, floors, calories, active/sedentary minutes, intensity minutes, heart rate. Each day reports the highest-priority source. Steps, energy, distance, floors, provider-reported active time and heart-rate metrics the winning source lacks are filled from lower-priority sources, so `source` may not identify the origin of every metric on that day. Active/sedentary and intensity minutes always come from the winning source.
+    Daily steps, distance, floors, calories, active/sedentary minutes, intensity minutes, heart rate. Each day reports its highest-priority source. A metric that source lacks is taken from the next source reporting it: steps, distance, floors and provider-reported active time one by one, active, basal and total energy together, and average, max and min heart rate together. So `source` may not be the origin of every metric on that day. Minutes counted from steps or heart rate (active/sedentary, intensity) always come from the winning source.
   </Card>
   <Card title="Sleep summary" icon="moon" href="/api-reference/external:-summaries/get-sleep-summary">
     Daily sleep duration, efficiency, stages, sessions, naps, and average HR/HRV/SpO2.
