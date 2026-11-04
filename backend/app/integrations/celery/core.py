@@ -194,6 +194,7 @@ def create_celery() -> Celery:
         task_queues={queue: {} for queue in CeleryQueue},
         task_routes={
             CeleryTask.PROCESS_SDK_UPLOAD: {"queue": CeleryQueue.SDK_SYNC},
+            CeleryTask.SAVE_SDK_SLEEP: {"queue": CeleryQueue.SDK_SYNC},
             CeleryTask.PROCESS_AWS_UPLOAD: {"queue": CeleryQueue.XML_SYNC},
             CeleryTask.COMPLETE_AND_PROCESS_AWS_UPLOAD: {"queue": CeleryQueue.XML_SYNC},
             CeleryTask.PROCESS_XML_UPLOAD: {"queue": CeleryQueue.XML_SYNC},

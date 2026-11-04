@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.constants.celery_tasks import CeleryTask
 from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
@@ -173,6 +174,29 @@ class TestAppleSDKImport:
         assert details.distance == Decimal("2165.35")
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
+
+    def test_sleep_a_busy_lock_keeps_out_is_saved_by_a_retrying_task(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+        mock_sleep_redis: MagicMock,
+    ) -> None:
+        """Another batch of the user holds the sleep lock: the rest is saved now, the sleep goes to a task."""
+        mock_sleep_redis.lock.return_value.acquire.return_value = False
+
+        with patch("app.services.sdk.sleep_service.celery_app") as celery:
+            result = import_service.load_data(db, sample_sdk_payload, str(UserFactory().id))
+
+        assert (result["workouts_saved"], result["sleep_saved"], result["dropped"]) == (1, 0, [])
+        task, (request_json, _) = celery.send_task.call_args.args[0], celery.send_task.call_args.kwargs["args"]
+        assert task == CeleryTask.SAVE_SDK_SLEEP
+        deferred = SDKSyncRequest.model_validate_json(request_json)
+        assert (len(deferred.data.sleep), deferred.data.records, deferred.data.workouts) == (
+            len(sample_sdk_payload["data"]["sleep"]),
+            [],
+            [],
+        )
 
     def test_spans_cover_only_types_the_device_exports_itself(
         self,

@@ -56,7 +56,7 @@ from app.utils.dates import window_seconds
 from app.utils.structured_logging import get_logger
 
 from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
-from .sleep_service import handle_sleep_data
+from .sleep_service import save_sleep
 
 logger = get_logger(__name__)
 
@@ -683,8 +683,8 @@ class ImportService:
         db_session.commit()
 
         # Process sleep (count sleep segments from input)
-        if request.data.sleep:
-            handle_sleep_data(db_session, request, user_id)
+        # Sleep a busy lock deferred to a retrying task is not counted as saved here.
+        if request.data.sleep and save_sleep(db_session, request, user_id):
             sleep_saved = len(request.data.sleep)
             for segment in request.data.sleep:
                 widen("sleep", segment.startDate, segment.endDate)
