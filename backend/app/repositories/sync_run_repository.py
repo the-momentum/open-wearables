@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import NamedTuple
 from uuid import UUID, uuid4
 
 from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select, update
@@ -27,6 +28,15 @@ def _overlaps(
     if range_start is not None:
         conditions.append(end_column > range_start)
     return conditions
+
+
+class HistoricalTypeRow(NamedTuple):
+    run_id: UUID
+    run_started_at: datetime
+    data_type: str | None
+    status: SyncStatus | None
+    covered_start: datetime | None
+    covered_end: datetime | None
 
 
 class SyncRunRepository:
@@ -201,19 +211,17 @@ class SyncRunRepository:
 
     def historical_data_type_statuses(
         self, db_session: DbSession, user_id: UUID, provider: str, source: SyncSource
-    ) -> list[tuple[UUID, str | None, SyncStatus | None]]:
-        """(run id, data type, status) of every type reported by this provider's historical runs.
-
-        A run with no type rows yet comes back once with None for both, so the caller can
-        tell an export that has started from no export at all.
-
-        Returned raw rather than judged in SQL: one SDK export records the same type under more
-        than one name (a batch writes `sleep`, the device's end event `HKCategoryTypeIdentifierSleepAnalysis`),
-        so the caller has to fold the names together before it can tell whether a type finished.
-        Historical runs are a handful per user, so this stays small.
-        """
+    ) -> list[HistoricalTypeRow]:
+        """Every type row of this provider's historical runs, raw; a run with no rows yet comes back once with Nones."""
         stmt = (
-            select(SyncRun.id, SyncRunDataType.data_type, SyncRunDataType.status)
+            select(
+                SyncRun.id,
+                SyncRun.started_at,
+                SyncRunDataType.data_type,
+                SyncRunDataType.status,
+                SyncRunDataType.covered_start,
+                SyncRunDataType.covered_end,
+            )
             .outerjoin(SyncRunDataType, SyncRunDataType.run_id == SyncRun.id)
             .where(
                 SyncRun.user_id == user_id,
@@ -222,7 +230,7 @@ class SyncRunRepository:
                 SyncRun.scope == SyncScope.HISTORICAL,
             )
         )
-        return [(run_id, data_type, status) for run_id, data_type, status in db_session.execute(stmt).all()]
+        return [HistoricalTypeRow(*row) for row in db_session.execute(stmt).all()]
 
     def list_for_user(
         self,

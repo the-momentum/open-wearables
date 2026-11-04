@@ -174,9 +174,32 @@ def sync_sdk_data(
 @router.get(
     "/sdk/users/{user_id}/sync/status",
     responses={
-        400: {"description": "Unsupported provider."},
-        403: {"description": "SDK token does not belong to this user."},
-        404: {"description": "User not found."},
+        400: {
+            "description": "Unsupported provider",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Unsupported provider: fitbit. Supported: apple, health_connect, samsung"}
+                }
+            },
+        },
+        401: {
+            "description": "Authentication required",
+            "content": {
+                "application/json": {"example": {"detail": "Authentication required: provide SDK token or API key"}}
+            },
+        },
+        403: {
+            "description": "SDK token belongs to another user",
+            "content": {"application/json": {"example": {"detail": "Token does not match user_id"}}},
+        },
+        404: {
+            "description": "User not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found."}
+                }
+            },
+        },
     },
 )
 def get_sdk_sync_status(
@@ -194,7 +217,7 @@ def get_sdk_sync_status(
       left, continuing from `syncedUntil`.
     - `historicalSyncCompleted: false` - the export has not finished. It runs newest first, so
       each type in `dataTypes` with `historicalSyncCompleted: false` resumes backwards from its
-      `coveredRange.startDate`. Types not listed have no data on the server yet.
+      `exportedRange.startDate`. Types not listed have no data on the server yet.
     - `historicalSyncCompleted: null` - no historical export on record: nothing synced yet, or
       an SDK version that does not send `syncSessionId`, so the server cannot tell. The same
       applies per type in `dataTypes`.

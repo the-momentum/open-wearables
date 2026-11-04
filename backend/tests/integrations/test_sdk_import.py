@@ -175,6 +175,19 @@ class TestAppleSDKImport:
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
 
+    def test_spans_cover_only_types_the_device_exports_itself(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        """A series filled from workout statistics has no export of its own on the device."""
+        result = import_service.load_data(db, sample_sdk_payload, str(UserFactory().id))
+
+        assert "weather_temperature" in result["types"]
+        assert "weather_temperature" not in result["spans"]
+        assert {"workouts", "sleep"} <= result["spans"].keys()
+
     def test_workout_statistics_are_mirrored_onto_their_workout(
         self,
         db: Session,

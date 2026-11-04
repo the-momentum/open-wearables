@@ -8,11 +8,8 @@ from app.schemas.sync_status import DataTypeKind
 
 
 class CoveredRange(BaseModel):
-    startDate: datetime = Field(
-        description="Earliest data held for this type. The SDK exports newest first, so an unfinished "
-        "type resumes from here, backwards."
-    )
-    endDate: datetime = Field(description="Latest data held for this type.")
+    startDate: datetime = Field(description="Earliest timestamp in the span.")
+    endDate: datetime = Field(description="Latest timestamp in the span.")
 
 
 class SDKDataTypeSyncState(BaseModel):
@@ -26,11 +23,22 @@ class SDKDataTypeSyncState(BaseModel):
     kind: DataTypeKind = Field(description="`series` for time series samples, `event` for sleep and workouts.")
     historicalSyncCompleted: bool | None = Field(
         description="Whether a historical export finished this type. When false, resume it backwards "
-        "from `coveredRange.startDate`. Null when no historical export reported this type, e.g. on SDK "
+        "from `exportedRange.startDate`. Null when no historical export reported this type, e.g. on SDK "
         "versions that do not send `syncSessionId`.",
     )
-    lastSyncedAt: datetime = Field(description="When data of this type was last written on the server.")
-    coveredRange: CoveredRange
+    lastSyncedAt: datetime = Field(
+        description="When data of this type was last written on the server. For data held before this was "
+        "tracked, the time of its newest sample instead."
+    )
+    coveredRange: CoveredRange = Field(
+        description="Oldest and newest data held for this type from any sync. Gaps inside it are not shown, "
+        "and retention moves its start forward, so it is no resume point."
+    )
+    exportedRange: CoveredRange | None = Field(
+        description="What the latest historical export has sent of this type so far. The export runs newest "
+        "first, so an unfinished type resumes backwards from `exportedRange.startDate`. Null when no "
+        "export recorded a span, e.g. data synced before the server tracked it."
+    )
 
 
 class SDKSyncState(BaseModel):

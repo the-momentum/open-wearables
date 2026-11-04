@@ -40,7 +40,7 @@ from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
 from app.models import SyncRun
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
-from app.repositories.sync_run_repository import sync_run_repository
+from app.repositories.sync_run_repository import HistoricalTypeRow, sync_run_repository
 from app.schemas.enums import EventCategory
 from app.schemas.providers.mobile_sdk import CoveredRange, SDKDataTypeSyncState, SDKSyncState
 from app.schemas.sync_status import (
@@ -371,9 +371,7 @@ def last_backfill_requested_until(db: DbSession, user_id: UUID, provider: str) -
     return sync_run_repository.last_window_end(db, user_id, provider, SyncSource.BACKFILL)
 
 
-# Sleep and workouts have no series type, so each writer of an SDK export names them its own
-# way: the upload batch by event kind, the device's end event by its native identifier. Folded
-# onto the event category, which is also what data_type_coverage keys them by.
+# One SDK export names sleep and workouts differently per writer (batch vs the device's end event).
 _SDK_EVENT_TYPE_NAMES: dict[str, str] = {
     "sleep": EventCategory.SLEEP,
     "SLEEP": EventCategory.SLEEP,
@@ -384,27 +382,20 @@ _SDK_EVENT_TYPE_NAMES: dict[str, str] = {
     "HKWorkoutTypeIdentifier": EventCategory.WORKOUT,
 }
 
-# A type the device said it finished, or that had nothing to write.
 _FINISHED_STATUSES = frozenset({SyncStatus.SUCCESS, SyncStatus.SKIPPED})
-# A verdict that the type did not finish. IN_PROGRESS is not one: it is what a batch writes
-# while waiting for the end event, and it stays behind once that event lands under another name.
+# IN_PROGRESS is no verdict: a batch writes it while the end event is still to come.
 _UNFINISHED_STATUSES = frozenset({SyncStatus.FAILED, SyncStatus.UNFINISHED, SyncStatus.STALE, SyncStatus.CANCELLED})
 
 
-def _finished_types_by_run(
-    rows: list[tuple[UUID, str | None, SyncStatus | None]],
-) -> dict[UUID, dict[str, bool]]:
-    """Per historical run, whether each data type it reported finished, with its names folded together.
-
-    A run with no types reported yet maps to an empty dict, which is not finished.
-    """
+def _finished_types_by_run(rows: list[HistoricalTypeRow]) -> dict[UUID, dict[str, bool]]:
+    """Per historical run, whether each type it reported finished; a run with no types yet maps to {}."""
     statuses: dict[UUID, dict[str, set[SyncStatus]]] = {}
-    for run_id, data_type, status in rows:
-        by_type = statuses.setdefault(run_id, {})
-        if data_type is None or status is None:
+    for row in rows:
+        by_type = statuses.setdefault(row.run_id, {})
+        if row.data_type is None or row.status is None:
             continue
-        name = _SDK_EVENT_TYPE_NAMES.get(data_type, data_type)
-        by_type.setdefault(name, set()).add(SyncStatus(status))
+        name = _SDK_EVENT_TYPE_NAMES.get(row.data_type, row.data_type)
+        by_type.setdefault(name, set()).add(SyncStatus(row.status))
     return {
         run_id: {
             name: bool(seen & _FINISHED_STATUSES) and not seen & _UNFINISHED_STATUSES for name, seen in by_type.items()
@@ -413,36 +404,35 @@ def _finished_types_by_run(
     }
 
 
+def _exported_ranges(rows: list[HistoricalTypeRow]) -> dict[str, CoveredRange]:
+    """Per type, the span the latest historical export that reported one has sent so far."""
+    latest: dict[str, tuple[datetime, CoveredRange]] = {}
+    for row in rows:
+        if row.data_type is None or row.covered_start is None or row.covered_end is None:
+            continue
+        name = _SDK_EVENT_TYPE_NAMES.get(row.data_type, row.data_type)
+        if name not in latest or row.run_started_at > latest[name][0]:
+            latest[name] = (row.run_started_at, CoveredRange(startDate=row.covered_start, endDate=row.covered_end))
+    return {name: span for name, (_, span) in latest.items()}
+
+
 def get_sdk_sync_state(db: DbSession, user_id: UUID, provider: str) -> SDKSyncState:
-    """Where a user's SDK sync for this provider stands, from the runs and data we hold.
-
-    Mirrors what the SDK keeps on the device, so it can be restored after a logout. The SDK
-    exports newest first, round-robin across types, so it resumes each unfinished type
-    backwards from that type's coveredRange.startDate, and continues live sync forward from
-    syncedUntil. A user with nothing synced yet gets an empty state rather than an error.
-
-    Completion is None, not False, when there is no historical export to judge it by: SDK
-    versions that send no syncSessionId never record one, so False would claim an unfinished
-    export that may have finished. Per type, likewise None when no export reported that type.
-    """
-    finished_by_run = _finished_types_by_run(
-        sync_run_repository.historical_data_type_statuses(db, user_id, provider, SyncSource.SDK)
-    )
+    """Where a user's SDK sync for this provider stands, from the runs and data we hold."""
+    rows = sync_run_repository.historical_data_type_statuses(db, user_id, provider, SyncSource.SDK)
+    finished_by_run = _finished_types_by_run(rows)
+    exported = _exported_ranges(rows)
+    # None, not False, without an export to judge by: SDKs without syncSessionId never record one.
     export_completed: bool | None = (
         any(types and all(types.values()) for types in finished_by_run.values()) if finished_by_run else None
     )
-    # A type's verdict across every export: finished in any one of them is finished.
     type_finished: dict[str, bool] = {}
     for types in finished_by_run.values():
         for name, done in types.items():
             type_finished[name] = type_finished.get(name, False) or done
 
     def type_completed(data_type: str) -> bool | None:
-        # Once the whole export finished, every type is done, including those whose end
-        # event the device never sent (it skips types with no records).
-        if export_completed:
-            return True
-        return type_finished.get(data_type)
+        # A finished export covers types the device skipped for having no records.
+        return True if export_completed else type_finished.get(data_type)
 
     held = data_type_coverage_repository.list_for_user(db, user_id, provider=provider)
     return SDKSyncState(
@@ -456,6 +446,7 @@ def get_sdk_sync_state(db: DbSession, user_id: UUID, provider: str) -> SDKSyncSt
                 historicalSyncCompleted=type_completed(row.data_type),
                 lastSyncedAt=row.last_written_at,
                 coveredRange=CoveredRange(startDate=row.coverage_start, endDate=row.coverage_end),
+                exportedRange=exported.get(row.data_type),
             )
             for row in held
         ],

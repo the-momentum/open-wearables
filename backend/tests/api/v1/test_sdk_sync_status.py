@@ -58,10 +58,17 @@ def _open_export(user_id: UUID, session_id: str, started_at: datetime, provider:
     return run_key
 
 
-def _report(run_key: str, data_type: str, status: SyncStatus, kind: DataTypeKind = DataTypeKind.SERIES) -> None:
+def _report(
+    run_key: str,
+    data_type: str,
+    status: SyncStatus,
+    kind: DataTypeKind = DataTypeKind.SERIES,
+    covered: tuple[datetime, datetime] | None = None,
+) -> None:
+    span = {"covered_start": covered[0], "covered_end": covered[1]} if covered else {}
     try_record_data_types(
         run_key,
-        [DataTypeOutcome(data_type=data_type, kind=kind, status=status)],
+        [DataTypeOutcome(data_type=data_type, kind=kind, status=status, **span)],
         scope=SyncScope.HISTORICAL,
     )
 
@@ -103,10 +110,9 @@ class TestSDKSyncState:
 
     @pytest.mark.usefixtures("stored_runs")
     def test_interrupted_export_reports_where_each_type_resumes(self, client: TestClient, db: Session) -> None:
-        """Newest first: a type that is not finished resumes backwards from the oldest data held."""
         user = UserFactory()
         run_key = _open_export(user.id, "s1", _at(30))
-        _report(run_key, "heart_rate", SyncStatus.IN_PROGRESS)
+        _report(run_key, "heart_rate", SyncStatus.IN_PROGRESS, covered=(_at(25), _at(30, 18)))
         _report(run_key, "steps", SyncStatus.SUCCESS)
         _hold(db, user.id, _at(20), _at(30, 18), data_type="heart_rate")
         _hold(db, user.id, _at(1), _at(30, 17), data_type="steps")
@@ -118,17 +124,28 @@ class TestSDKSyncState:
         heart_rate, steps = _types(body)["heart_rate"], _types(body)["steps"]
         assert heart_rate["historicalSyncCompleted"] is False
         assert heart_rate["coveredRange"] == {"startDate": "2026-10-20T00:00:00Z", "endDate": "2026-10-30T18:00:00Z"}
+        assert heart_rate["exportedRange"] == {"startDate": "2026-10-25T00:00:00Z", "endDate": "2026-10-30T18:00:00Z"}
         assert steps["historicalSyncCompleted"] is True
+
+    @pytest.mark.usefixtures("stored_runs")
+    def test_resume_point_comes_from_the_latest_export_not_the_data_held(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        old = _open_export(user.id, "s1", _at(5))
+        _report(old, "heart_rate", SyncStatus.UNFINISHED, covered=(_at(1), _at(5)))
+        new = _open_export(user.id, "s2", _at(30))
+        _report(new, "heart_rate", SyncStatus.IN_PROGRESS, covered=(_at(20), _at(30)))
+        _hold(db, user.id, _at(1), _at(30))
+
+        heart_rate = _types(_get(client, user.id))["heart_rate"]
+
+        assert heart_rate["coveredRange"]["startDate"] == "2026-10-01T00:00:00Z"
+        assert heart_rate["exportedRange"] == {"startDate": "2026-10-20T00:00:00Z", "endDate": "2026-10-30T00:00:00Z"}
 
     @pytest.mark.usefixtures("stored_runs")
     def test_sleep_and_workouts_reported_under_native_names_still_complete(
         self, client: TestClient, db: Session
     ) -> None:
-        """A batch writes `sleep`/`workouts`, the end event the device's own identifier.
-
-        The batch row keeps IN_PROGRESS since the verdict lands on the other name, so without
-        folding the names together no export with sleep or workouts would ever complete.
-        """
+        """A batch writes `sleep`/`workouts`, the end event the device's own identifier."""
         user = UserFactory()
         run_key = _open_export(user.id, "s1", _at(28))
         _report(run_key, "heart_rate", SyncStatus.SUCCESS)
@@ -219,6 +236,7 @@ class TestSDKSyncState:
                 "kind": "series",
                 "historicalSyncCompleted": False,
                 "coveredRange": {"startDate": "2026-10-20T00:00:00Z", "endDate": "2026-10-30T18:00:00Z"},
+                "exportedRange": None,
             }
         ]
 
