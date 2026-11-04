@@ -142,6 +142,20 @@ def _saved_detail(data_247: Whoop247Data, raw: dict[str, Any]) -> EventRecordDet
     return mock_event.create_or_merge_sleep.call_args[0][3]
 
 
+class TestWhoopSleepScore:
+    def test_sleep_score_is_recorded_at_the_wake_up(self, data_247: Whoop247Data) -> None:
+        # A night that starts before midnight UTC belongs to the day the user wakes up
+        raw = _raw_sleep(timezone_offset="+01:00")
+        raw["score"]["sleep_performance_percentage"] = 84
+
+        normalized, score = data_247.normalize_sleep(raw, uuid4())
+
+        assert normalized["zone_offset"] == "+01:00"
+        assert score is not None
+        assert score.recorded_at == datetime(2024, 1, 15, 7, 0, tzinfo=timezone.utc)
+        assert score.zone_offset == "+01:00"
+
+
 class TestWhoopSleepStages:
     def test_scored_sleep_saves_stage_minutes(self, data_247: Whoop247Data) -> None:
         detail = _saved_detail(data_247, _raw_sleep())

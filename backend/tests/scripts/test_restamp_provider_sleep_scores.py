@@ -108,6 +108,18 @@ class TestRestampProviderSleepScores:
         assert _stamp(db, old) is None
         assert _stamp(db, new) == (WAKE_UP, "+01:00")
 
+    def test_keeps_the_newest_of_two_scores_moving_to_one_wake_up(self, db: Session) -> None:
+        """Two copies of a night that differ in their start send both scores to one wake-up."""
+        user = UserFactory()
+        _night(user, ProviderName.GARMIN)
+        _night(user, ProviderName.GARMIN, start=START + timedelta(minutes=10))
+        older = _score(user, ProviderName.GARMIN, START, created_at=START)
+        newer = _score(user, ProviderName.GARMIN, START + timedelta(minutes=10), created_at=WAKE_UP)
+
+        assert restamp_provider_sleep_scores(db, dry_run=False) == 1
+        assert _stamp(db, older) is None
+        assert _stamp(db, newer) == (WAKE_UP, "+01:00")
+
     def test_a_score_of_another_source_at_the_wake_up_does_not_block_the_move(self, db: Session) -> None:
         """The unique key includes the source (#1877), so that time is still free for the score."""
         user = UserFactory()
