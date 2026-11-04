@@ -1265,7 +1265,9 @@ class TestCreateOrMergeSleep:
         event_record_service.create_or_merge_sleep(
             db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
         )
-        coverage = data_type_coverage_repository.get(db, data_source.user_id, "oura", "sleep", DataTypeKind.EVENT)
+        coverage = data_type_coverage_repository.get(
+            db, data_source.user_id, data_source.provider, "sleep", DataTypeKind.EVENT
+        )
         assert coverage is not None
         return coverage.coverage_end
 
