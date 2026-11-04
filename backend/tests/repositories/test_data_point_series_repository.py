@@ -1031,3 +1031,44 @@ class TestPerTypeWriteCounts:
         assert (merged.covered_start, merged.covered_end) == (start - timedelta(days=1), start + timedelta(days=2))
         # A plain int has no split to keep, so the sum is a plain int.
         assert (type(with_int), with_int) == (int, 8)
+
+
+class TestHasSamplesInRange:
+    START = datetime(2026, 3, 1, 8, tzinfo=timezone.utc)
+
+    def _probe(self, db: Session, source: DataSource, device_model: str | None) -> bool:
+        return DataPointSeriesRepository(SeriesSample).has_samples_in_range(
+            db,
+            source.user_id,
+            "strava",
+            device_model,
+            [SeriesType.heart_rate, SeriesType.power],
+            self.START,
+            self.START + timedelta(hours=1),
+        )
+
+    def _sample(self, db: Session, source: DataSource, series_type: SeriesType, at: datetime) -> None:
+        db.add(
+            SeriesSample(
+                id=uuid4(),
+                data_source_id=source.id,
+                series_type_definition_id=get_series_type_id(series_type),
+                recorded_at=at,
+                value=Decimal(1),
+            )
+        )
+        db.flush()
+
+    def test_a_sample_of_the_types_in_the_window_counts(self, db: Session) -> None:
+        source = DataSourceFactory(user=UserFactory(), provider="strava", source="strava", device_model="Edge")
+        self._sample(db, source, SeriesType.power, self.START + timedelta(minutes=5))
+
+        assert self._probe(db, source, "Edge")
+        assert not self._probe(db, source, "Watch")
+
+    def test_other_types_and_times_dont(self, db: Session) -> None:
+        source = DataSourceFactory(user=UserFactory(), provider="strava", source="strava", device_model="Edge")
+        self._sample(db, source, SeriesType.steps, self.START + timedelta(minutes=5))
+        self._sample(db, source, SeriesType.heart_rate, self.START + timedelta(hours=1))
+
+        assert not self._probe(db, source, "Edge")

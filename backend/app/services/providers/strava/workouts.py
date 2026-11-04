@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -34,7 +33,7 @@ from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
-logger = getLogger(__name__)
+_STREAM_SERIES_TYPES = frozenset(STREAM_KEY_SERIES_TYPE.values())
 
 
 class StravaWorkouts(BaseWorkoutsTemplate):
@@ -331,19 +330,15 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         activity: StravaActivityJSON,
         user_id: UUID,
         record: EventRecordCreate,
-    ) -> int:
-        """Fetch + persist per-sample streams on workout arrival, flag-gated and failure-isolated."""
+    ) -> int | None:
+        """Fetch + persist per-sample streams on workout arrival, flag-gated and failure-isolated.
+
+        Returns the samples saved, or None when Strava has no streams for the workout (yet).
+        """
         if not settings.ingest_workout_samples:
             return 0
-        # Streams are immutable, so skip re-fetching when this device already has samples in the workout window.
-        if record.end_datetime is not None and timeseries_service.has_samples_in_range(
-            db,
-            user_id,
-            "strava",
-            activity.device_name or None,
-            record.start_datetime,
-            record.end_datetime,
-        ):
+        # Stored streams aren't fetched again; an activity cropped in Strava keeps its earlier ones.
+        if self._has_stored_streams(db, user_id, activity, record):
             return 0
         try:
             samples = self._build_workout_samples(
@@ -360,7 +355,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             )
             return 0
         if not samples:
-            return 0
+            return None
         # Savepoint so a failed bulk insert rolls back only the samples and
         # leaves the workout's outer transaction usable (no PendingRollbackError).
         nested = db.begin_nested()
@@ -377,6 +372,27 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 sample_count=len(samples),
             )
             return 0
+
+    def _has_stored_streams(
+        self, db: DbSession, user_id: UUID, activity: StravaActivityJSON, record: EventRecordCreate
+    ) -> bool:
+        """A failed probe reads as nothing stored, so the streams are fetched as before."""
+        if record.end_datetime is None:
+            return False
+        try:
+            with db.begin_nested():
+                return timeseries_service.has_samples_in_range(
+                    db,
+                    user_id,
+                    "strava",
+                    activity.device_name or None,
+                    _STREAM_SERIES_TYPES,
+                    record.start_datetime,
+                    record.end_datetime,
+                )
+        except Exception as exc:
+            logger.error("Failed to check stored Strava workout streams", exc_info=exc, activity_id=activity.id)
+            return False
 
     def load_data(
         self,
@@ -464,27 +480,20 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         record, detail = self._normalize_workout(activity, user_id)
         created_record = event_record_service.create(db, record)
         # Retries re-run this flow; skip the detail (and its workout webhook) when it already exists.
-        if event_record_service.event_record_detail_repo.get_by_record_id(db, created_record.id, "workout") is None:
+        if (
+            event_record_service.event_record_detail_repo.get_by_record_id(db, created_record.id, EventCategory.WORKOUT)
+            is None
+        ):
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
         created_ids.append(created_record.id)
-        ingested = self._ingest_workout_streams(db, activity, user_id, record)
-
         # The webhook often beats Strava's stream processing and the pull won't re-cover it, so retry later.
-        if (
-            ingested == 0
-            and settings.ingest_workout_samples
-            and record.end_datetime is not None
-            and not timeseries_service.has_samples_in_range(
-                db, user_id, "strava", activity.device_name or None, record.start_datetime, record.end_datetime
-            )
-        ):
+        # A manual activity never gets streams.
+        if self._ingest_workout_streams(db, activity, user_id, record) is None and not activity.manual:
             if stream_retry_attempt <= settings.strava_stream_retry_max_attempts:
                 schedule_stream_retry(str(user_id), str(activity.id), attempt=stream_retry_attempt)
             else:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Strava streams still empty after final retry, giving up",
                     provider="strava",
                     action="stream_retry_exhausted",
@@ -502,9 +511,7 @@ def schedule_stream_retry(user_id: str, activity_id: str, attempt: int) -> None:
         kwargs={"user_id": user_id, "activity_id": activity_id, "attempt": attempt},
         countdown=countdown,
     )
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Strava streams not ready; scheduled delayed ingest",
         provider="strava",
         action="stream_retry_scheduled",

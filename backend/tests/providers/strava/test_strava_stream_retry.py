@@ -9,6 +9,7 @@ from app.config import settings
 from app.integrations.celery.tasks.strava_stream_retry_task import retry_strava_stream_ingest
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.services.providers.strava.workouts import StravaWorkouts, schedule_stream_retry
+from app.utils.exceptions import ProviderError, ReauthRequiredError
 
 _ACTIVITY = StravaActivityJSON(
     id=19769960003,
@@ -37,53 +38,46 @@ class TestWebhookSchedulesRetry:
     def _process(
         self,
         workouts: StravaWorkouts,
-        ingested: int,
-        has_samples: bool,
+        ingested: int | None,
         attempt: int = 1,
+        activity: StravaActivityJSON = _ACTIVITY,
     ) -> MagicMock:
-        user_id = uuid4()
         with (
             patch("app.services.providers.strava.workouts.event_record_service") as mock_service,
             patch.object(workouts, "_ingest_workout_streams", return_value=ingested),
-            patch(
-                "app.services.providers.strava.workouts.timeseries_service.has_samples_in_range",
-                return_value=has_samples,
-            ),
             patch("app.services.providers.strava.workouts.schedule_stream_retry") as mock_schedule,
-            patch("app.services.providers.strava.workouts.settings") as mock_settings,
         ):
-            mock_settings.ingest_workout_samples = True
-            mock_settings.strava_stream_retry_max_attempts = settings.strava_stream_retry_max_attempts
             mock_service.create.return_value = MagicMock(id=uuid4())
             workouts.process_push_activity(
-                db=MagicMock(), activity=_ACTIVITY, user_id=user_id, stream_retry_attempt=attempt
+                db=MagicMock(), activity=activity, user_id=uuid4(), stream_retry_attempt=attempt
             )
         return mock_schedule
 
     def test_empty_streams_schedule_delayed_retry(self, workouts: StravaWorkouts) -> None:
-        mock_schedule = self._process(workouts, ingested=0, has_samples=False)
+        mock_schedule = self._process(workouts, ingested=None)
+
         mock_schedule.assert_called_once()
-        args, kwargs = mock_schedule.call_args
-        assert str(_ACTIVITY.id) in args or kwargs.get("activity_id") == str(_ACTIVITY.id)
-        assert kwargs.get("attempt", args[-1] if args else None) == 1
+        assert mock_schedule.call_args.args[1] == str(_ACTIVITY.id)
+        assert mock_schedule.call_args.kwargs["attempt"] == 1
 
     def test_retry_attempt_is_propagated(self, workouts: StravaWorkouts) -> None:
-        mock_schedule = self._process(workouts, ingested=0, has_samples=False, attempt=2)
-        assert mock_schedule.call_args.kwargs.get("attempt") == 2
+        mock_schedule = self._process(workouts, ingested=None, attempt=2)
 
-    def test_no_retry_when_samples_ingested(self, workouts: StravaWorkouts) -> None:
-        mock_schedule = self._process(workouts, ingested=4752, has_samples=True)
-        mock_schedule.assert_not_called()
+        assert mock_schedule.call_args.kwargs["attempt"] == 2
 
-    def test_no_retry_when_samples_already_exist(self, workouts: StravaWorkouts) -> None:
-        # skip-guard returned 0 because samples are already there — nothing to retry
-        mock_schedule = self._process(workouts, ingested=0, has_samples=True)
-        mock_schedule.assert_not_called()
+    @pytest.mark.parametrize("ingested", [4752, 0], ids=["saved", "already_stored"])
+    def test_no_retry_when_streams_are_stored(self, workouts: StravaWorkouts, ingested: int) -> None:
+        self._process(workouts, ingested=ingested).assert_not_called()
+
+    def test_no_retry_for_a_manual_activity(self, workouts: StravaWorkouts) -> None:
+        manual = _ACTIVITY.model_copy(update={"manual": True})
+
+        self._process(workouts, ingested=None, activity=manual).assert_not_called()
 
     def test_gives_up_after_attempt_budget(self, workouts: StravaWorkouts) -> None:
         exhausted = settings.strava_stream_retry_max_attempts + 1
-        mock_schedule = self._process(workouts, ingested=0, has_samples=False, attempt=exhausted)
-        mock_schedule.assert_not_called()
+
+        self._process(workouts, ingested=None, attempt=exhausted).assert_not_called()
 
 
 class TestRetryTask:
@@ -112,26 +106,38 @@ class TestRetryTask:
         mock_workouts.process_push_activity.assert_not_called()
 
 
-class TestTransientFailureReschedule:
-    def _run_with_error(self, attempt: int) -> MagicMock:
+class TestFailureReschedule:
+    def _run_with_error(self, error: Exception, attempt: int = 1) -> MagicMock:
         with (
-            patch(
-                "app.integrations.celery.tasks.strava_stream_retry_task._retry_ingest",
-                side_effect=RuntimeError("strava 500"),
-            ),
+            patch("app.integrations.celery.tasks.strava_stream_retry_task._retry_ingest", side_effect=error),
             patch("app.integrations.celery.tasks.strava_stream_retry_task.SessionLocal"),
             patch("app.integrations.celery.tasks.strava_stream_retry_task.schedule_stream_retry") as mock_schedule,
         ):
             retry_strava_stream_ingest(str(uuid4()), "a-1", attempt=attempt)
         return mock_schedule
 
-    def test_task_reschedules_on_transient_error(self) -> None:
-        mock_schedule = self._run_with_error(attempt=1)
+    @pytest.mark.parametrize(
+        "error",
+        [ProviderError("strava", upstream_status=503), ProviderError("strava"), RuntimeError("db down")],
+        ids=["5xx", "no_response", "other"],
+    )
+    def test_transient_error_reschedules(self, error: Exception) -> None:
+        mock_schedule = self._run_with_error(error)
+
         mock_schedule.assert_called_once()
         assert mock_schedule.call_args.args[2] == 2
 
-    def test_task_gives_up_on_transient_error_at_budget(self) -> None:
-        mock_schedule = self._run_with_error(attempt=settings.strava_stream_retry_max_attempts)
+    @pytest.mark.parametrize(
+        "error",
+        [ProviderError("strava", upstream_status=404), ReauthRequiredError("strava", uuid4(), "gone")],
+        ids=["activity_deleted", "connection_lost"],
+    )
+    def test_lasting_error_gives_up(self, error: Exception) -> None:
+        self._run_with_error(error).assert_not_called()
+
+    def test_transient_error_gives_up_at_budget(self) -> None:
+        mock_schedule = self._run_with_error(RuntimeError("db down"), attempt=settings.strava_stream_retry_max_attempts)
+
         mock_schedule.assert_not_called()
 
 

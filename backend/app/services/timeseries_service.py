@@ -1,6 +1,6 @@
 import threading
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -294,11 +294,13 @@ class TimeSeriesService(
         user_id: UUID,
         source: str,
         device_model: str | None,
+        series_types: Iterable[SeriesType],
         start_datetime: datetime,
         end_datetime: datetime,
     ) -> bool:
-        """Whether any sample from `source` and `device_model` already exists for the user in [start, end)."""
-        return self.crud.has_samples_in_range(db_session, user_id, source, device_model, start_datetime, end_datetime)
+        return self.crud.has_samples_in_range(
+            db_session, user_id, source, device_model, series_types, start_datetime, end_datetime
+        )
 
     @staticmethod
     def _emit_timeseries_webhooks(
