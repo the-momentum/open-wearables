@@ -4,7 +4,6 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from logging import getLogger
 from typing import cast
 from uuid import UUID
 
@@ -20,8 +19,7 @@ from app.repositories.local_day import utc_midnight
 from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.enums import ProviderName, SeriesType
 from app.schemas.utils import HistoryRollupStatus
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 # Set once every step is done; retention waits for it.
 BACKFILL_MIGRATION = "aggregate_backfill"
@@ -36,7 +34,7 @@ _SOURCES_PER_QUERY = 50
 _WINDOW_DAYS = 365
 _FIRST = UUID(int=0)
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -99,11 +97,10 @@ class AggregateBackfillService:
                 continue
             started = time.monotonic()
             done = step.run(db, budget)
-            log_structured(
-                logger,
-                "info",
-                f"Aggregate backfill: {step.name} {'done' if done else 'paused'}",
+            logger.info(
+                "Aggregate backfill: step run ended",
                 step=step.name,
+                done=done,
                 seconds=round(time.monotonic() - started, 1),
             )
             if not done:
@@ -234,7 +231,7 @@ class AggregateBackfillService:
             raise
         except Exception as exc:
             db.rollback()
-            log_and_capture_error(exc, logger, "Aggregate backfill: the queued days failed; the backfill goes on")
+            logger.error("Aggregate backfill: the queued days failed; the backfill goes on", exc_info=exc)
         finally:
             rollup_queue.release_lock(token)
 
@@ -341,7 +338,12 @@ class AggregateBackfillService:
             except Exception as exc:
                 db.rollback()
                 if attempt == 2:
-                    log_and_capture_error(exc, logger, f"Aggregate backfill: {step} skips data source {source_id}")
+                    logger.error(
+                        "Aggregate backfill: skips a data source",
+                        exc_info=exc,
+                        step=step,
+                        data_source_id=str(source_id),
+                    )
         self.migrations.mark_completed(db, f"{SKIPPED_SOURCE}{source_id}")
         db.commit()
         return True

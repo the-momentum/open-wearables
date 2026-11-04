@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from logging import getLogger
 from typing import Any
 from uuid import UUID
 
@@ -36,9 +35,9 @@ from app.services.sync_status_service import (
 )
 from app.services.user_connection_service import user_connection_service
 from app.utils.context import sync_run_context
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_import_service(provider: str) -> SDKImportService:
@@ -132,9 +131,7 @@ def process_sdk_upload(
         try:
             content = get_payload_from_s3(payload_ref)
         except Exception:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Failed to load SDK payload from S3",
                 provider=provider,
                 action="load_payload_ref",
@@ -145,9 +142,7 @@ def process_sdk_upload(
             raise
 
     if content is None:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "No payload content or reference provided",
             provider=provider,
             action="validate_payload_present",
@@ -166,9 +161,7 @@ def process_sdk_upload(
     try:
         user_uuid = UUID(user_id)
     except ValueError:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Invalid user_id format",
             provider=provider,
             action="validate_user_id",
@@ -181,9 +174,7 @@ def process_sdk_upload(
     with SessionLocal() as db:
         user_repo = UserRepository(User)
         if not user_repo.get(db, user_uuid):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Skipping import for non-existent user",
                 provider=provider,
                 action="validate_user_exists",
@@ -193,10 +184,8 @@ def process_sdk_upload(
             return {"status": "skipped", "reason": "user_not_found", "batch_id": batch_id}
 
     # Log task start
-    log_structured(
-        logger,
-        "info",
-        f"{provider.capitalize()} sync batch processing started",
+    logger.info(
+        "SDK sync batch processing started",
         action=f"{provider}_batch_processing_start",
         batch_id=batch_id,
         user_id=user_id,
@@ -228,10 +217,8 @@ def process_sdk_upload(
         result = response.model_dump()
 
         # Log processing completion with results
-        log_structured(
-            logger,
-            "info",
-            f"{provider.capitalize()} sync batch processing completed",
+        logger.info(
+            "SDK sync batch processing completed",
             action=f"{provider}_batch_processing_complete",
             batch_id=batch_id,
             user_id=user_id,

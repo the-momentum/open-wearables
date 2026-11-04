@@ -20,6 +20,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
+from app.utils.exceptions import InvalidInputError, UnsupportedProviderError
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -214,13 +215,13 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         assert isinstance(result.has_cloud_api, bool)
 
     def test_update_provider_setting_invalid_provider_raises_error(self, db: Session) -> None:
-        """Should raise ValueError for invalid provider name."""
+        """Should raise InvalidInputError for invalid provider name."""
         # Arrange
         service = ProviderSettingsService()
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.update_provider_setting(db, "invalid_provider", update)
 
     def test_update_provider_setting_case_sensitive(self, db: Session) -> None:
@@ -230,7 +231,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert - uppercase should fail
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.update_provider_setting(db, "APPLE", update)
 
 
@@ -266,7 +267,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         }
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.bulk_update_providers(db, updates)
 
         # Verify no updates were applied (transaction rolled back)
@@ -336,7 +337,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         }
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.bulk_update_providers(db, updates)
 
         # Verify apple is still disabled (update didn't go through)
@@ -370,7 +371,7 @@ class TestProviderSettingsServiceProviderFactory:
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.update_provider_setting(db, "nonexistent", update)
 
 
@@ -394,13 +395,13 @@ class TestProviderSettingsServiceLiveSyncMode:
         assert suunto.live_sync_mode == LiveSyncMode.WEBHOOK
 
     def test_update_live_sync_mode_non_configurable_provider_raises(self, db: Session) -> None:
-        """Should raise ValueError when trying to set live_sync_mode on a non-configurable provider."""
+        """Should raise UnsupportedProviderError when trying to set live_sync_mode on a non-configurable provider."""
         # Garmin: webhook_stream=True, webhook_callback=True, rest_pull=False → live_sync_configurable=False
         service = ProviderSettingsService()
 
         update = ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
 
-        with pytest.raises(ValueError, match="does not support live sync mode configuration"):
+        with pytest.raises(UnsupportedProviderError, match="does not support live sync mode configuration"):
             service.update_provider_setting(db, "garmin", update)
 
     def test_update_live_sync_mode_explicit_null_raises(self, db: Session) -> None:

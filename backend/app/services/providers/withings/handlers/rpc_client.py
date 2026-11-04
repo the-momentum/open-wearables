@@ -7,7 +7,6 @@ callers; the HTTP transport, token refresh and HTTP 429 retries stay in
 ``api_client``, while the envelope's own throttle status is retried here.
 """
 
-import logging
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -15,16 +14,15 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException
-
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.providers.withings import WithingsMeasure
 from app.services.providers.api_client import MAX_RETRIES, RETRY_BASE_DELAY, make_authenticated_request
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ProviderAuthRejectedError, ProviderError, ProviderRateLimitError
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 WITHINGS_API_BASE_URL = "https://wbsapi.withings.net"
 
@@ -37,29 +35,36 @@ _AUTHENTICATION_STATUSES = {100, 101, 102, 200, 401}
 _MAX_PAGES = 200
 
 
-class WithingsAPIError(HTTPException):
-    """Map Withings status 601 to HTTP 429 and other provider failures to 5xx."""
+class WithingsAPIError(ProviderError):
+    """A non-zero envelope status that is neither a throttle nor a lost grant."""
 
     def __init__(self, withings_status: int | None, action: str) -> None:
         self.withings_status = withings_status
         self.action = action
-        if withings_status == _RATE_LIMIT_STATUS:
-            status_code = 429
-        elif withings_status in _AUTHENTICATION_STATUSES:
-            status_code = 401
-        else:
-            status_code = 502
-        detail = f"Withings API error (status={withings_status}) for action={action}"
-        super().__init__(status_code=status_code, detail=detail)
+        super().__init__("withings", f"Withings API error (status={withings_status}) for action={action}")
 
 
-class WithingsPaginationError(HTTPException):
+class WithingsPaginationError(ProviderError):
     """Withings reported another page but did not provide a usable continuation."""
 
     def __init__(self, action: str, reason: str) -> None:
         self.action = action
         self.reason = reason
-        super().__init__(status_code=502, detail=f"Incomplete Withings pagination for action={action}: {reason}")
+        super().__init__("withings", f"Incomplete Withings pagination for action={action}: {reason}")
+
+
+def withings_api_error(
+    withings_status: int | None, action: str
+) -> WithingsAPIError | ProviderRateLimitError | ProviderAuthRejectedError:
+    """The error for a failed envelope: Withings reports a throttle and a rejected token in
+    ``status`` on HTTP 200, so they map here rather than in ``api_client``."""
+    if withings_status == _RATE_LIMIT_STATUS:
+        return ProviderRateLimitError(
+            "withings", f"Withings API rate limit (status={withings_status}) for action={action}"
+        )
+    if withings_status in _AUTHENTICATION_STATUSES:
+        return ProviderAuthRejectedError("withings", f"Withings rejected the token (status={withings_status})")
+    return WithingsAPIError(withings_status, action)
 
 
 def scale_measure(measure: WithingsMeasure) -> Decimal:
@@ -80,7 +85,7 @@ def withings_request(
 ) -> dict[str, Any]:
     """POST an action to a Withings service and return the unwrapped ``body``.
 
-    Raises ``HTTPException`` on a non-zero ``status``. Withings answers HTTP 200 with the
+    Raises the error from ``withings_api_error`` on a non-zero ``status``. Withings answers HTTP 200 with the
     status in the envelope next to an ``error`` message, so the shared client must not raise
     on that message; a throttle (601) is retried with the backoff it applies to HTTP 429.
     """
@@ -105,9 +110,7 @@ def withings_request(
         if status != _RATE_LIMIT_STATUS or attempt == MAX_RETRIES:
             break
         backoff_delay = RETRY_BASE_DELAY * (2**attempt)
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Withings throttled the request, retrying",
             provider="withings",
             action=action,
@@ -117,16 +120,14 @@ def withings_request(
             user_id=str(user_id),
         )
         time.sleep(backoff_delay)
-    log_structured(
-        logger,
-        "error",
+    logger.error(
         "Withings API error status",
         provider="withings",
         action=action,
         withings_status=status,
         user_id=str(user_id),
     )
-    raise WithingsAPIError(withings_status=status if isinstance(status, int) else None, action=action)
+    raise withings_api_error(status if isinstance(status, int) else None, action)
 
 
 @dataclass(frozen=True)
@@ -170,9 +171,7 @@ def _walk_pages(
         next_offset = int(body.get("offset") or 0)
         if next_offset <= offset:
             # Non-advancing offset would refetch the same page indefinitely.
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Withings pagination made no progress; stopping",
                 provider="withings",
                 action=action,
@@ -182,9 +181,7 @@ def _walk_pages(
             raise WithingsPaginationError(action, "offset did not advance")
         offset = next_offset
 
-    log_structured(
-        logger,
-        "warning",
+    logger.warning(
         "Withings pagination hit page cap; results may be truncated",
         provider="withings",
         action=action,

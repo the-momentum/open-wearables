@@ -3,7 +3,6 @@
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.algorithms.sleep import awakenings, significant_awakenings
@@ -52,12 +51,14 @@ from app.schemas.utils import (
 )
 from app.services.aggregate_backfill_service import days_from_samples
 from app.services.priority_service import priority_service
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
     encode_activity_cursor,
     encode_cursor,
 )
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Activity summary constants
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
@@ -137,8 +138,7 @@ def _interruptions_count(sessions: list[dict]) -> int | None:
 class SummariesService:
     """Service for aggregating daily health summaries."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_point_repo = DataPointSeriesRepository(SeriesSample)
         self.series_aggregate_repo = SeriesAggregateRepository()
@@ -229,7 +229,6 @@ class SummariesService:
             "vigorous_max": int(max_hr * HR_ZONE_VIGOROUS[1]),
         }
 
-    @handle_exceptions
     def get_sleep_summaries(
         self,
         db_session: DbSession,
@@ -240,7 +239,12 @@ class SummariesService:
         limit: int,
     ) -> PaginatedResponse[SleepSummary]:
         """Get daily sleep summaries aggregated by date, provider, and device."""
-        self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
+        logger.debug(
+            "Fetching sleep summaries",
+            user_id=str(user_id),
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
 
         results = self.event_record_repo.get_sleep_summaries(
             db_session, user_id, start_date, end_date, cursor, limit, priority_service.get_source_ranking(db_session)
@@ -361,7 +365,6 @@ class SummariesService:
             ),
         )
 
-    @handle_exceptions
     def get_recovery_summaries(
         self,
         db_session: DbSession,
@@ -429,7 +432,6 @@ class SummariesService:
             ),
         )
 
-    @handle_exceptions
     def get_activity_summaries(
         self,
         db_session: DbSession,
@@ -453,7 +455,12 @@ class SummariesService:
         - Intensity minutes (HR zones using max HR = 220 - age):
           light 50-63%, moderate 64-76%, vigorous 77-93%
         """
-        self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
+        logger.debug(
+            "Fetching activity summaries",
+            user_id=str(user_id),
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
 
         # Only this page's days are aggregated, so its cost follows the page, not the period.
         results = self._page_days(
@@ -826,7 +833,6 @@ class SummariesService:
         bmi = weight_kg / (height_m * height_m)
         return round(bmi, 1)
 
-    @handle_exceptions
     def get_body_summary(
         self,
         db_session: DbSession,
@@ -856,9 +862,11 @@ class SummariesService:
         if not 1 <= latest_window_hours <= 24:
             raise ValueError("latest_window_hours must be between 1 and 24")
 
-        self.logger.debug(
-            f"Fetching body summary for user {user_id} "
-            f"(avg_period={average_period_days}d, latest_window={latest_window_hours}h)"
+        logger.debug(
+            "Fetching body summary",
+            user_id=str(user_id),
+            average_period_days=average_period_days,
+            latest_window_hours=latest_window_hours,
         )
 
         now = datetime.now(timezone.utc)
@@ -1028,4 +1036,4 @@ class SummariesService:
         )
 
 
-summaries_service = SummariesService(log=getLogger(__name__))
+summaries_service = SummariesService()

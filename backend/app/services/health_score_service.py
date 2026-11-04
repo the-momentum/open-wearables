@@ -1,4 +1,3 @@
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -15,7 +14,6 @@ from app.schemas.model_crud.activities import (
 from app.schemas.utils.metadata import SourceMetadata
 from app.services.priority_service import priority_service
 from app.services.services import AppService
-from app.utils.exceptions import handle_exceptions
 
 
 class HealthScoreService(
@@ -23,26 +21,21 @@ class HealthScoreService(
 ):
     """Coordinated access to health scores."""
 
-    def __init__(self, log: Logger):
-        super().__init__(crud_model=HealthScoreRepository, model=HealthScore, log=log)
+    def __init__(self):
+        super().__init__(crud_model=HealthScoreRepository, model=HealthScore)
 
-    @handle_exceptions
     def get_by_all_components(self, db_session: DbSession, components: list[str]) -> list[HealthScore]:
         return self.crud.get_by_all_components(db_session, components)
 
-    @handle_exceptions
     def get_by_any_component(self, db_session: DbSession, components: list[str]) -> list[HealthScore]:
         return self.crud.get_by_any_component(db_session, components)
 
-    @handle_exceptions
     def bulk_create(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
         return self.crud.bulk_create(db_session, scores)
 
-    @handle_exceptions
     def bulk_create_keeping_highest(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
         return self.crud.bulk_create_keeping_highest(db_session, scores)
 
-    @handle_exceptions
     def get_latest_by_category(
         self,
         db_session: DbSession,
@@ -51,7 +44,6 @@ class HealthScoreService(
     ) -> HealthScore | None:
         return self.crud.get_latest_by_category(db_session, user_id, category)
 
-    @handle_exceptions
     def get_latest_per_category(
         self,
         db_session: DbSession,
@@ -59,7 +51,6 @@ class HealthScoreService(
     ) -> list[HealthScore]:
         return self.crud.get_latest_per_category(db_session, user_id)
 
-    @handle_exceptions
     def get_scores_with_filters(
         self,
         db_session: DbSession,
@@ -93,4 +84,4 @@ class HealthScoreService(
         )
 
 
-health_score_service = HealthScoreService(log=getLogger(__name__))
+health_score_service = HealthScoreService()

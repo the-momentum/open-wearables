@@ -8,11 +8,9 @@ from collections import defaultdict
 from collections.abc import Callable, Iterator
 from datetime import date, timedelta, timezone
 from itertools import batched
-from logging import Logger, getLogger
 from uuid import UUID
 
 from celery.exceptions import SoftTimeLimitExceeded
-from fastapi import HTTPException
 
 from app.config import settings
 from app.database import DbSession
@@ -39,9 +37,10 @@ from app.schemas.utils import (
 )
 from app.services.aggregate_backfill_service import aggregate_backfill_service
 from app.services.priority_service import priority_service
-from app.utils.exceptions import handle_exceptions
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import InvalidInputError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Queued (data source, day) pairs taken off the queue at once.
 ROLLUP_BATCH_SIZE = 500
@@ -64,8 +63,7 @@ _FIRST_ID = UUID(int=0)
 class ArchivalService:
     """Orchestrates archival settings CRUD, storage estimates, and the daily archival job."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.settings_repo = ArchivalSettingRepository()
         self.archive_repo = DataPointSeriesArchiveRepository()
         self.rollup_repo = SeriesRollupRepository()
@@ -73,12 +71,10 @@ class ArchivalService:
 
     # ── Settings CRUD ─────────────────────────────────────────────
 
-    @handle_exceptions
     def get_settings(self, db: DbSession) -> ArchivalSettingWithEstimate:
         """Return current archival configuration together with table-size estimates."""
         return self._settings_with_estimate(db, self.settings_repo.get(db))
 
-    @handle_exceptions
     def update_settings(self, db: DbSession, update: ArchivalSettingUpdate) -> ArchivalSettingWithEstimate:
         """Persist new archival settings and return updated estimates; switching the history's rollup on starts
         the backfill that runs it, not waiting for the next restart or beat."""
@@ -87,9 +83,8 @@ class ArchivalService:
 
         new = update.applied_to(ArchivalSettingRead.model_validate(self.settings_repo.get(db)))
         if new.history_rollup_enabled and not new.rollup_enabled:
-            raise HTTPException(
-                status_code=422,
-                detail="history_rollup_enabled needs rollup_enabled: the days after it would not be rolled up",
+            raise InvalidInputError(
+                "history_rollup_enabled needs rollup_enabled: the days after it would not be rolled up"
             )
         setting = self.settings_repo.update(db, new.rollup_enabled, new.history_rollup_enabled, new.delete_after_days)
         if setting.history_rollup_enabled and not aggregate_backfill_service.is_done(db):
@@ -141,21 +136,20 @@ class ArchivalService:
         except Exception as exc:
             # Retention rolls up the days it deletes itself: a queue that fails must not hold it back.
             db.rollback()
-            log_and_capture_error(exc, self.logger, "Rollup: the queued days failed; retention goes on")
+            logger.error("Rollup: the queued days failed; retention goes on", exc_info=exc)
 
         # Old samples still hold day and session values the backfill has not copied yet.
         if cutoff is not None and not aggregate_backfill_service.is_done(db):
-            log_structured(self.logger, "info", "Retention: waiting for the aggregate backfill")
+            logger.info("Retention: waiting for the aggregate backfill")
             cutoff = None
 
         if cutoff is not None:
             deleted, complete = self._delete_before(db, cutoff, setting.rollup_enabled, frozen_before)
             summary["deleted_live_rows"] = deleted
-            log_structured(
-                self.logger,
-                "info",
-                f"Retention: deleted {deleted} live rows before {cutoff}",
+            logger.info(
+                "Retention: deleted live rows",
                 delete_after_days=setting.delete_after_days,
+                cutoff=cutoff.isoformat(),
                 deleted_live_rows=deleted,
             )
             summary["deleted_archive_rows"] = self._delete_archive_before(db, cutoff)
@@ -191,17 +185,17 @@ class ArchivalService:
             return time.monotonic() - started >= budget_seconds
 
         if recovered := rollup_queue.recover_dirty_days():
-            log_structured(self.logger, "warning", f"Rollup: {recovered} days left by a run that died, queued again")
+            logger.warning("Rollup: days left by a run that died, queued again", recovered_days=recovered)
         while not out_of_time():
             batch = rollup_queue.pop_dirty_days(ROLLUP_BATCH_SIZE)
             if not batch:
                 break
             rolled_up += self._roll_up_batch(db, batch, cutoff, frozen_before, out_of_time)
-        log_structured(self.logger, "info", f"Rollup: {rolled_up} days", rolled_up_days=rolled_up)
+        logger.info("Rollup finished", rolled_up_days=rolled_up)
         if reconcile and settings.reconcile_enabled:
             # Its own budget after the rollup's, not what the rollup left: neither can starve the other.
             merged = self._reconcile_queued_days(db, frozen_before, settings.reconcile_seconds_per_run)
-            log_structured(self.logger, "info", "Reconcile: user days merged", reconciled_days=merged)
+            logger.info("Reconcile finished", reconciled_days=merged)
         return rolled_up
 
     def _roll_up_batch(
@@ -261,11 +255,11 @@ class ArchivalService:
             rollup_queue.requeue_dirty_days(batch)
             raise failed[0][2]
         for source_id, days, exc in failed:
-            log_and_capture_error(
-                exc,
-                self.logger,
+            logger.error(
                 "Rollup: skipped the days of a data source",
-                extra={"data_source_id": str(source_id), "days": [day.isoformat() for day in days]},
+                exc_info=exc,
+                data_source_id=str(source_id),
+                days=[day.isoformat() for day in days],
             )
         rollup_queue.requeue_dirty_days(left)
         rollup_queue.finish_dirty_days(batch)
@@ -333,11 +327,11 @@ class ArchivalService:
                         except Exception as exc:
                             db.rollback()
                             failed.extend((user_id, day) for day in chunk)
-                            log_and_capture_error(
-                                exc,
-                                self.logger,
-                                "Reconcile: failed merging a user's sources, queued for the next run",
-                                extra={"user_id": str(user_id), "days": [day.isoformat() for day in chunk]},
+                            logger.error(
+                                "Reconcile failed merging a user's sources, queued for the next run",
+                                exc_info=exc,
+                                user_id=str(user_id),
+                                days=[day.isoformat() for day in chunk],
                             )
             except SoftTimeLimitExceeded:
                 # Killed next; merging again what is already committed is harmless.
@@ -376,9 +370,7 @@ class ArchivalService:
                 except Exception as exc:
                     db.rollback()
                     failed += 1
-                    log_and_capture_error(
-                        exc, self.logger, "Retention: skipped a data source", extra={"data_source_id": str(source_id)}
-                    )
+                    logger.error("Retention: skipped a data source", exc_info=exc, data_source_id=str(source_id))
                 if out_of_budget():
                     return BatchedRun(deleted, complete=False)
         return BatchedRun(deleted, complete=not failed)
@@ -429,14 +421,14 @@ class ArchivalService:
         try:
             return rollup_queue.source_deleted_before(source_id)
         except Exception as exc:
-            log_and_capture_error(exc, self.logger, "Retention: could not read a source's deleted days")
+            logger.error("Retention: could not read a source's deleted days", exc_info=exc)
             return None
 
     def _mark_source_deleted_before(self, source_id: UUID, day: date) -> None:
         try:
             rollup_queue.mark_source_deleted_before(source_id, day)
         except Exception as exc:
-            log_and_capture_error(exc, self.logger, "Retention: could not record a source's deleted days")
+            logger.error("Retention: could not record a source's deleted days", exc_info=exc)
 
     # ── Private helpers ───────────────────────────────────────────
 
@@ -451,4 +443,4 @@ class ArchivalService:
         return StorageEstimate(**raw)
 
 
-archival_service = ArchivalService(log=getLogger(__name__))
+archival_service = ArchivalService()

@@ -1,7 +1,6 @@
 """API endpoints for managing global provider priorities."""
 
 import contextlib
-from logging import getLogger
 from typing import Annotated
 
 from fastapi import APIRouter, Path
@@ -22,7 +21,7 @@ from app.services import DeveloperDep, PriorityService
 from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
-priority_service = PriorityService(log=getLogger(__name__))
+priority_service = PriorityService()
 
 
 def _with_display(item: ProviderPriorityResponse) -> ProviderPriorityResponse:

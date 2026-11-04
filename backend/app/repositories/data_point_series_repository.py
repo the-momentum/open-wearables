@@ -1,7 +1,6 @@
 from collections.abc import Collection, Iterable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from logging import getLogger
 from typing import Any, LiteralString, NamedTuple, overload
 from typing import cast as typing_cast
 from uuid import UUID
@@ -91,11 +90,10 @@ from app.schemas.responses.activity import (
 )
 from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import as_utc, local_date
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TypeCounts(NamedTuple):
@@ -275,7 +273,6 @@ class DataPointSeriesRepository(
         self.series_aggregate_repo = AggregateRepository(SeriesAggregate)
         self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
 
-    @handle_exceptions
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> SeriesSample:
         """Create a data point sample, or return existing if duplicate.
 
@@ -305,7 +302,6 @@ class DataPointSeriesRepository(
         mark_dirty_days(db_session, [(data_source.id, local_date(creator.recorded_at, creator.zone_offset))])
         return self.try_commit(db_session, creation)
 
-    @handle_exceptions
     def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
         """Bulk create data point samples.
 
@@ -374,9 +370,7 @@ class DataPointSeriesRepository(
         ids = cast(list(record_ids), postgresql.ARRAY(PGUUID(as_uuid=True)))
         live = {record_id for (record_id,) in db_session.query(EventRecord.id).filter(EventRecord.id == func.any(ids))}
         if gone := record_ids - live:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Session values point at deleted records; kept as samples only",
                 samples=sum(1 for c in creators if c.session is not None and c.session.record_id in gone),
             )
