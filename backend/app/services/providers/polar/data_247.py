@@ -271,7 +271,7 @@ class Polar247Data(Base247DataTemplate):
             # all the time awake between falling asleep and waking up, over the night
             efficiency_score = (
                 Decimal(str((duration_seconds - awake_s) / duration_seconds * 100))
-                if awake_s is not None and duration_seconds > 0 and awake_s <= duration_seconds
+                if awake_s is not None and duration_seconds > 0 and 0 <= awake_s <= duration_seconds
                 else None
             )
             sleep_stages = self._parse_hypnogram(parsed.hypnogram, start_dt, end_dt) if parsed.hypnogram else None

@@ -31,7 +31,7 @@ _NIGHTS = """
     ds.provider = :provider
     AND er.category = 'sleep'
     AND sd.sleep_efficiency_score IS NULL
-    AND sd.sleep_awake_minutes IS NOT NULL
+    AND sd.sleep_awake_minutes >= 0
     AND er.duration_seconds > 0
     -- Whole minutes awake stand for up to 59 seconds more, which must fit the night too
     AND sd.sleep_awake_minutes * 60 + 59 <= er.duration_seconds

@@ -141,10 +141,11 @@ class TestPolar247SleepNormalization:
 
         assert detail.sleep_efficiency_score is None
 
-    def test_no_sleep_efficiency_when_the_interruptions_outlast_the_night(
-        self, data_247: Polar247Data, sample_sleep: dict
+    @pytest.mark.parametrize("awake", [9 * 3600, -60])
+    def test_no_sleep_efficiency_when_the_interruptions_dont_fit_the_night(
+        self, data_247: Polar247Data, sample_sleep: dict, awake: int
     ) -> None:
-        sample_sleep["total_interruption_duration"] = 9 * 3600
+        sample_sleep["total_interruption_duration"] = awake
 
         _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
 

@@ -74,12 +74,14 @@ class TestBackfillPolarSleepEfficiency:
         awake_longer_than_the_night = _night(awake_minutes=9 * 60)
         # 480 stored minutes may be up to 59 seconds more than the 8 h night
         awake_the_whole_night = _night(awake_minutes=8 * 60)
+        negative = _night(awake_minutes=-1)
 
         assert backfill_polar_sleep_efficiency(db, dry_run=False) == 0
         assert _efficiency(db, reported) == Decimal("88.00")
         assert _efficiency(db, without_interruptions) is None
         assert _efficiency(db, awake_longer_than_the_night) is None
         assert _efficiency(db, awake_the_whole_night) is None
+        assert _efficiency(db, negative) is None
 
     def test_a_second_run_changes_nothing(self, db: Session) -> None:
         _night()
