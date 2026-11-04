@@ -267,8 +267,8 @@ class SeriesAggregateRepository:
             key = (row.data_source_id, row.series_type_definition_id, day)
             if row.computed_by == ComputedBy.PROVIDER:
                 counted.pop(key, None)
-            elif day in stale.get(row.data_source_id, ()):
-                # Counted again below; a day whose samples are all gone since keeps no row.
+            elif key in counted:
+                # Replaced by the count below; a series with no samples that day keeps its row, as the rollup does.
                 continue
             kept.append((row, day))
         kept.extend((sample_day, key[2]) for key, sample_day in counted.items())
