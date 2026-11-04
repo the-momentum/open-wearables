@@ -5,13 +5,14 @@ from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
 from logging import Logger, getLogger
-from typing import Iterable, TypedDict
+from typing import Any, Iterable, TypedDict
 from uuid import UUID, uuid4
 
 import sentry_sdk
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
+from app.config import settings
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
@@ -20,6 +21,7 @@ from app.constants.series_types.sdk import (
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE, WORKOUT_SAMPLE_TYPES
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_ENERGY_SERIES, WORKOUT_STATISTIC_STAT
 from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SERIES
 from app.constants.workout_types import get_unified_sdk_workout_type
@@ -121,6 +123,7 @@ class LoadDataResult(TypedDict):
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
     types: list[str]  # series types written
+    spans: dict[str, tuple[datetime, datetime]]  # per type the device exports itself: record series, workouts, sleep
     sleep_saved: int
     dropped: list[InvalidRecord]
     unsupported_types: dict[str, int]  # record types with no series mapping, skipped
@@ -202,8 +205,8 @@ class ImportService:
             workout_id = uuid4()
             external_id = wjson.id if wjson.id else None
 
-            device_model, software_version, original_source_name = extract_device_info(wjson.source)
-            device_type = extract_device_type(wjson.source)
+            device_model, software_version, original_source_name = extract_device_info(wjson.source, provider)
+            device_type = extract_device_type(wjson.source, provider)
             device_id, source_app_id, device_manufacturer = extract_device_ids(wjson.source)
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
@@ -221,6 +224,25 @@ class ImportService:
                 device_manufacturer,
                 workout_id,
             )
+
+            if settings.ingest_workout_samples:
+                time_series_samples.extend(
+                    self._build_workout_route_and_samples(
+                        wjson,
+                        {
+                            "user_id": user_uuid,
+                            "source": original_source_name,
+                            "device_model": device_model,
+                            "software_version": software_version,
+                            "device_type": device_type,
+                            "device_id": device_id,
+                            "source_app_id": source_app_id,
+                            "device_manufacturer": device_manufacturer,
+                            "provider": provider,
+                            "zone_offset": wjson.zoneOffset,
+                        },
+                    )
+                )
 
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
@@ -260,6 +282,61 @@ class ImportService:
 
             yield record, detail, time_series_samples
 
+    def _build_workout_route_and_samples(
+        self,
+        wjson: Workout,
+        source_fields: dict[str, Any],
+    ) -> list[TimeSeriesSampleCreate]:
+        """Per-point series from workouts[].route and workouts[].samples.
+
+        Rows share the workout's own data source (`source_fields`), so a re-push upserts
+        on (data_source, series_type, recorded_at) instead of duplicating.
+        Points without a timestamp and sample types with no series mapping are skipped.
+        """
+        result: list[TimeSeriesSampleCreate] = []
+
+        def add(recorded_at: datetime, series_type: SeriesType, value: float) -> None:
+            result.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    **source_fields,
+                    recorded_at=recorded_at,
+                    value=Decimal(str(value)),
+                    series_type=series_type,
+                )
+            )
+
+        for point in wjson.route or []:
+            if point.timestamp is None:
+                continue
+            for field, series_type in WORKOUT_ROUTE_FIELD_TO_SERIES_TYPE.items():
+                value = getattr(point, field)
+                if value is not None:
+                    add(point.timestamp, series_type, value)
+
+        unknown_types: Counter[str] = Counter()
+        unexpected_units: Counter[str] = Counter()
+        for sample in wjson.samples or []:
+            if sample.timestamp is None or sample.value is None:
+                continue
+            sample_type = sample.type or ""
+            if sample_type not in WORKOUT_SAMPLE_TYPES:
+                unknown_types[sample_type] += 1
+                continue
+            series_type, units = WORKOUT_SAMPLE_TYPES[sample_type]
+            unit = (sample.unit or "").strip().lower()
+            if unit and unit not in units:
+                unexpected_units[f"{sample_type}:{unit}"] += 1
+                continue
+            add(sample.timestamp, series_type, sample.value)
+
+        if unknown_types or unexpected_units:
+            self.log.debug(
+                "Skipped workout samples with unsupported types or units",
+                extra={"workout_id": wjson.id, "types": dict(unknown_types), "units": dict(unexpected_units)},
+            )
+        return result
+
     def _build_meal_bundles(
         self,
         correlation_records: list[MetricRecord],
@@ -276,7 +353,8 @@ class ImportService:
 
             meal_id = uuid4()
             metadata = rjson.metadata if isinstance(rjson.metadata, dict) else {}
-            device_model, software_version, original_source_name = extract_device_info(rjson.source)
+            device_model, software_version, original_source_name = extract_device_info(rjson.source, provider)
+            device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
 
             record = EventRecordCreate(
                 category=EventCategory.MEAL,
@@ -290,6 +368,10 @@ class ImportService:
                 external_id=rjson.id,
                 source=original_source_name,
                 software_version=software_version,
+                device_type=extract_device_type(rjson.source, provider),
+                device_id=device_id,
+                source_app_id=source_app_id,
+                device_manufacturer=device_manufacturer,
                 provider=provider,
                 user_id=user_uuid,
             )
@@ -357,7 +439,7 @@ class ImportService:
                 value = value / 1000
 
             # Extract device info
-            device_model, software_version, original_source_name = extract_device_info(rjson.source)
+            device_model, software_version, original_source_name = extract_device_info(rjson.source, provider)
             device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
 
             sample = TimeSeriesSampleCreate(
@@ -367,7 +449,7 @@ class ImportService:
                 source=original_source_name,
                 device_model=device_model,
                 software_version=software_version,
-                device_type=extract_device_type(rjson.source),
+                device_type=extract_device_type(rjson.source, provider),
                 device_id=device_id,
                 source_app_id=source_app_id,
                 device_manufacturer=device_manufacturer,
@@ -513,6 +595,11 @@ class ImportService:
         records_updated = 0
         sleep_saved = 0
         types: set[str] = set()
+        spans: dict[str, tuple[datetime, datetime]] = {}
+
+        def widen(data_type: str, start: datetime, end: datetime) -> None:
+            held = spans.get(data_type)
+            spans[data_type] = (min(held[0], start), max(held[1], end)) if held else (start, end)
 
         # A nutrient record whose correlation isn't in this batch stays a loose sample.
         correlation_records = [r for r in request.data.records if (r.type or "") in MEAL_CORRELATION_TYPES]
@@ -570,6 +657,8 @@ class ImportService:
                     db_session, details_to_insert, detail_type=EventCategory.WORKOUT
                 )
             workouts_saved = len(inserted_ids)
+            for record in workout_records:
+                widen("workouts", record.start_datetime, record.end_datetime)
 
             # Bulk create time series samples
             if time_series_samples:
@@ -587,6 +676,8 @@ class ImportService:
             records_inserted += counts.inserted
             records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
+            for sample in samples:
+                widen(sample.series_type.value, sample.recorded_at, sample.recorded_at)
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()
@@ -595,6 +686,8 @@ class ImportService:
         if request.data.sleep:
             handle_sleep_data(db_session, request, user_id)
             sleep_saved = len(request.data.sleep)
+            for segment in request.data.sleep:
+                widen("sleep", segment.startDate, segment.endDate)
 
         return {
             "workouts_saved": workouts_saved,
@@ -603,6 +696,7 @@ class ImportService:
             "records_inserted": records_inserted,
             "records_updated": records_updated,
             "types": sorted(types),
+            "spans": spans,
             "sleep_saved": sleep_saved,
             "dropped": dropped,
             "unsupported_types": dict(unsupported_types),
@@ -724,6 +818,7 @@ class ImportService:
                 records_inserted=saved_counts["records_inserted"],
                 records_updated=saved_counts["records_updated"],
                 types=saved_counts["types"],
+                spans=saved_counts["spans"],
                 workouts_saved=saved_counts["workouts_saved"],
                 meals_saved=saved_counts["meals_saved"],
                 sleep_saved=saved_counts["sleep_saved"],

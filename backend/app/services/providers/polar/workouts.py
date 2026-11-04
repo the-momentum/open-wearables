@@ -66,10 +66,10 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         start_time_utc_offset: int,
         duration: str,
     ) -> tuple[datetime, datetime]:
-        """Extract start and end dates from timestamps with UTC offset."""
-        start_date = isodate.parse_datetime(start_time)
+        """Start and end in UTC: ``start_time`` is naive local time, ``start_time_utc_offset`` its offset in minutes."""
+        local_start = isodate.parse_datetime(start_time)
         offset = timedelta(minutes=start_time_utc_offset)
-        start_date = start_date + offset
+        start_date = local_start - offset
         duration_td = isodate.parse_duration(duration)
         end_date = start_date + duration_td
         return start_date, end_date

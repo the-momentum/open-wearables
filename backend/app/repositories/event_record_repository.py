@@ -28,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
 from app.config import settings
+from app.constants.devices_map.device_types import APPLE_SOURCE_APP_PREFIX, is_apple_own_source
 from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.integrations.rollup_queue import mark_dirty_days
@@ -723,19 +724,14 @@ class EventRecordRepository(
         query_params: EventRecordQueryParams,
         ranking: SourceRanking,
     ) -> Query:
-        """Ids of the sessions (of ``query_params.category``) no better-ranked source also recorded.
-
-        A session is dropped when the sessions of one source ranked strictly higher by provider, then device type,
-        cover at least ``settings.session_duplicate_overlap`` of it, summed: a night that source split in two still
-        covers a copy recorded whole. Sessions nothing better covers stay, so a nap only the phone caught or a long
-        ride around a watch's short warm-up are kept, and equally ranked sources never hide each other.
-
-        Everything of the category overlapping the requested window competes, whatever the other filters, so a
-        better copy starting just before the window or labelled another type still counts. Returned unexecuted
-        so callers inline it as ``id IN (...)`` and keep pagination in one statement.
-        """
+        """Unexecuted ids of the sessions no better-ranked source of the requested ones covers by the overlap share."""
         provider_rank, device_rank, _ = ranking.order_terms()
-        filters = [DataSource.user_id == UUID(user_id), EventRecord.category == query_params.category]
+        # Not narrowed by type: a better copy labelled another type still counts.
+        filters = [
+            DataSource.user_id == UUID(user_id),
+            EventRecord.category == query_params.category,
+            *source_filter_conditions(query_params, EventRecord.data_source_id),
+        ]
         if query_params.start_datetime:
             filters.append(EventRecord.end_datetime > query_params.start_datetime)
         if query_params.end_datetime:
@@ -753,8 +749,7 @@ class EventRecordRepository(
             .where(*filters)
             .cte("sessions")
         )
-        # One row per day a session touches: overlapping sessions share a day, so pairs come from a hash join on it
-        # rather than from comparing every two sessions. Only the pairing is per day; each pair counts once.
+        # Pairs come from a hash join on shared days instead of comparing every two sessions.
         days = select(
             sessions.c.id,
             func.generate_series(
@@ -1156,11 +1151,17 @@ class EventRecordRepository(
 
         # Attach per-session breakdown (individual sleep/nap records) for each summary,
         # keyed by the same (date, provider, source, device_model) grouping identity.
-        sessions_by_key, main_sleeps_by_key = self._get_sleep_sessions(db_session, user_id, start_date, end_date)
-        # Only this page's nights are read from the aggregate table, not every night in the range.
+        # Only the page's nights, not the one read to tell whether there is more.
+        nights = [row.sleep_date for row in results[:limit]]
+        sessions_by_key, main_sleeps_by_key = (
+            self._get_sleep_sessions(db_session, user_id, min(nights), max(nights)) if nights else ({}, {})
+        )
+        # Aggregates and stage timelines only for the page's main sleeps: one source per night, no naps.
         page_keys = {(s["sleep_date"], s["provider"], s["source"], s["device_model"]) for s in summaries}
-        physiology = self._sleep_physiology(
-            db_session, {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        page_sleeps = {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        physiology = self._sleep_physiology(db_session, page_sleeps)
+        stages = self._sleep_stages(
+            db_session, [record_id for sleeps in page_sleeps.values() for record_id, _ in sleeps]
         )
         for summary in summaries:
             key = (
@@ -1169,7 +1170,10 @@ class EventRecordRepository(
                 summary["source"],
                 summary["device_model"],
             )
-            summary["sessions"] = sessions_by_key.get(key, [])
+            summary["sessions"] = [
+                {**session, "sleep_stages": stages.get(session["record_id"])}
+                for session in sessions_by_key.get(key, [])
+            ]
             summary.update(physiology.get(key, dict.fromkeys(_SLEEP_PHYSIOLOGY)))
 
         return summaries
@@ -1178,16 +1182,17 @@ class EventRecordRepository(
         self,
         db_session: DbSession,
         user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
+        first_night: date,
+        last_night: date,
     ) -> tuple[dict[tuple, list[dict]], dict[tuple, list[tuple[UUID, int]]]]:
         """Get individual sleep/nap sessions keyed by (sleep_date, provider, source, device_model),
         and per key the main sleeps' record ids with their durations.
 
-        Mirrors the date filter and grouping identity of ``get_sleep_summaries`` but returns one
-        entry per underlying EventRecord instead of collapsing them. Per-session duration prefers
-        net sleep time (SleepDetails.sleep_total_duration_minutes) and falls back to wall-clock
-        duration, matching the aggregate duration logic. Sessions are sorted by start time.
+        Covers the nights first_night to last_night, inclusive. Mirrors the grouping identity of
+        ``get_sleep_summaries`` but returns one entry per underlying EventRecord instead of collapsing
+        them. Per-session duration prefers net sleep time (SleepDetails.sleep_total_duration_minutes)
+        and falls back to wall-clock duration, matching the aggregate duration logic. Sessions are
+        sorted by start time.
         """
         local_sleep_date = cast(
             EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
@@ -1221,9 +1226,8 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 EventRecord.category == EventCategory.SLEEP,
-                EventRecord.end_datetime >= start_date - timedelta(days=1),
-                local_sleep_date >= cast(start_date, Date),
-                local_sleep_date < cast(end_date, Date),
+                EventRecord.end_datetime >= utc_midnight(first_night) - timedelta(days=1),
+                local_sleep_date.between(first_night, last_night),
             )
             .order_by(local_sleep_date.asc(), EventRecord.start_datetime.asc())
             .all()
@@ -1237,6 +1241,7 @@ class EventRecordRepository(
                 main_sleeps_by_key.setdefault(key, []).append((row.record_id, int(row.duration_seconds or 0)))
             sessions_by_key.setdefault(key, []).append(
                 {
+                    "record_id": row.record_id,
                     "start_time": row.start_time,
                     "end_time": row.end_time,
                     "zone_offset": row.zone_offset,
@@ -1245,6 +1250,16 @@ class EventRecordRepository(
                 }
             )
         return sessions_by_key, main_sleeps_by_key
+
+    @staticmethod
+    def _sleep_stages(db_session: DbSession, record_ids: list[UUID]) -> dict[UUID, list[dict] | None]:
+        """The stage timelines of these sleep records, by record id."""
+        if not record_ids:
+            return {}
+        rows = db_session.query(SleepDetails.record_id, SleepDetails.sleep_stages).filter(
+            SleepDetails.record_id.in_(record_ids)
+        )
+        return {record_id: stages for record_id, stages in rows}
 
     @staticmethod
     def sleep_values_by_day(
@@ -1432,6 +1447,7 @@ class EventRecordRepository(
         threshold_minutes: int,
         source: str | None = None,
         provider: str | None = None,
+        source_app_id: str | None = None,
     ) -> EventRecord | None:
         """Return the most-recent sleep session adjacent to [start_time, end_time].
 
@@ -1444,6 +1460,8 @@ class EventRecordRepository(
         DataSource has the same provider, preventing cross-provider merges
         (e.g. Oura sessions being merged with Garmin sessions).
         When *source* is provided an additional filter on DataSource.source is applied.
+        When *source_app_id* is provided only the same writer app matches, Apple's own
+        sources counting as one, like the open sessions in Redis.
         """
         threshold = timedelta(minutes=threshold_minutes)
         filters = [
@@ -1457,6 +1475,12 @@ class EventRecordRepository(
             filters.append(DataSource.provider == provider)
         if source is not None:
             filters.append(DataSource.source == source)
+        if source_app_id is not None:
+            filters.append(
+                DataSource.source_app_id.startswith(APPLE_SOURCE_APP_PREFIX)
+                if is_apple_own_source(source_app_id)
+                else DataSource.source_app_id == source_app_id
+            )
         return (
             db_session.query(self.model)
             .join(DataSource, self.model.data_source_id == DataSource.id)
