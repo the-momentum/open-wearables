@@ -325,6 +325,7 @@
             "group": "Mobile SDK",
             "pages": [
               "POST /api/v1/sdk/users/{user_id}/sync",
+              "GET /api/v1/sdk/users/{user_id}/sync/status",
               "POST /api/v1/users/{user_id}/token",
               "POST /api/v1/users/{user_id}/invitation-code",
               "POST /api/v1/invitation-code/redeem"

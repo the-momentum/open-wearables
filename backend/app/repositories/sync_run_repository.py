@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import NamedTuple
 from uuid import UUID, uuid4
 
 from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select, update
@@ -27,6 +28,15 @@ def _overlaps(
     if range_start is not None:
         conditions.append(end_column > range_start)
     return conditions
+
+
+class HistoricalTypeRow(NamedTuple):
+    run_id: UUID
+    run_started_at: datetime
+    data_type: str | None
+    status: SyncStatus | None
+    covered_start: datetime | None
+    covered_end: datetime | None
 
 
 class SyncRunRepository:
@@ -198,6 +208,29 @@ class SyncRunRepository:
             SyncRun.user_id == user_id, SyncRun.provider == provider, SyncRun.source == source
         )
         return db_session.execute(stmt).scalar()
+
+    def historical_data_type_statuses(
+        self, db_session: DbSession, user_id: UUID, provider: str, source: SyncSource
+    ) -> list[HistoricalTypeRow]:
+        """Every type row of this provider's historical runs, raw; a run with no rows yet comes back once with Nones."""
+        stmt = (
+            select(
+                SyncRun.id,
+                SyncRun.started_at,
+                SyncRunDataType.data_type,
+                SyncRunDataType.status,
+                SyncRunDataType.covered_start,
+                SyncRunDataType.covered_end,
+            )
+            .outerjoin(SyncRunDataType, SyncRunDataType.run_id == SyncRun.id)
+            .where(
+                SyncRun.user_id == user_id,
+                SyncRun.provider == provider,
+                SyncRun.source == source,
+                SyncRun.scope == SyncScope.HISTORICAL,
+            )
+        )
+        return [HistoricalTypeRow(*row) for row in db_session.execute(stmt).all()]
 
     def list_for_user(
         self,

@@ -21,7 +21,7 @@ class AppError(Exception):
     status_code: ClassVar[int] = status.HTTP_500_INTERNAL_SERVER_ERROR
     headers: ClassVar[dict[str, str] | None] = None
 
-    def __init__(self, detail: str) -> None:
+    def __init__(self, detail: str | dict[str, object]) -> None:
         self.detail = detail
         super().__init__(detail)
 
@@ -81,6 +81,27 @@ class UnsupportedProviderError(InvalidInputError):
 class InvalidCursorError(InvalidInputError):
     def __init__(self, cursor: str):
         super().__init__(f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'.")
+
+
+class ReconcileWindowTooLargeError(InvalidInputError):
+    """A source_selection=reconcile page would merge more days on the fly than the server allows."""
+
+    code = "reconcile_too_many_days"
+
+    def __init__(self, days: int, max_days: int, queued: bool):
+        self.days, self.max_days, self.queued = days, max_days, queued
+        # Structured, so a client can lower its page size by the numbers rather than parse a sentence.
+        super().__init__(
+            {
+                "code": self.code,
+                "message": "source_selection=reconcile would merge more days on the fly than allowed for one "
+                "page; lower `limit` or narrow the range.",
+                "days": days,
+                "max_days": max_days,
+                # Queued to be stored by the rollup; not a promise of when, as its budget decides.
+                "queued": queued,
+            }
+        )
 
 
 class DatetimeParseError(InvalidInputError, ValueError):

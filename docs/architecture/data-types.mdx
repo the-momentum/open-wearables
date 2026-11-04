@@ -345,6 +345,10 @@ VO2 max and a provider's daily totals exist only at `1day` and coarser, where `r
 and hour buckets return nothing for them. Values stored before this release reach `1day` through a
 backfill that runs after the upgrade, and stay in `raw` until it has.
 
+With `source_selection=reconcile`, a movement series' day that several devices recorded (steps, distance,
+active energy, ...) is merged into one value, each moment counted once from the best-ranked device; see
+[Reconciled days](/developer-portal/settings/data-lifecycle#reconciled-days) for how, with an example.
+
 ---
 
 ## Example: Fetching Multiple Types

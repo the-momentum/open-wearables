@@ -40,6 +40,16 @@ def roll_up_queued_days() -> dict:
     return {"rolled_up_days": rolled_up}
 
 
+@shared_task(name=CeleryTask.DROP_RECONCILED_DAYS, soft_time_limit=120, time_limit=150)
+def drop_reconciled_days() -> dict:
+    """Delete the stored merged days a priority change left in the old order, in batches; reads merge them anew."""
+    with SessionLocal() as db:
+        dropped, done = archival_service.drop_reconciled_days(db)
+    if not done:
+        drop_reconciled_days.apply_async(countdown=1)
+    return {"dropped_rows": dropped}
+
+
 @shared_task(
     name=CeleryTask.RUN_DAILY_ARCHIVAL,
     bind=True,
