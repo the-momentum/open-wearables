@@ -9,24 +9,20 @@ from app.models import DataSource, EventRecord
 from app.repositories.sleep_finality_repository import sleep_finality_repository
 from app.schemas.enums import ProviderName
 
-# A source that sent data from this long after a session's end synced after the session was over, not at its end.
-# On one instance's Oura data (51 nights, 2026-11) 30 minutes let 2 of 42 partial nights through and passed a full
-# night a median 70 minutes after waking.
+# Data from this long after the end was synced after waking; a partial night (Oura) ends at the sync time.
 DATA_AFTER_END = timedelta(minutes=30)
-# Garmin's *_TENTATIVE nights end at a real awakening, so data after them proves nothing, and a user with several
-# devices never gets *_FINAL.
+# *_TENTATIVE nights end at a real awakening, and users with several devices never get *_FINAL.
 GARMIN_TENTATIVE_FINAL_AFTER = timedelta(hours=12)
-# Whoop extended SCORED nights up to 4.5 hours after their end (6 of 294 nights, 2026-11).
+# Whoop extends a SCORED night up to a few hours after its end.
 WHOOP_SCORED_FINAL_AFTER = timedelta(hours=6)
-# Google Health: processed=false means the sleep is detected but its stages are still processing; a night whose
-# processing never finishes doesn't stay non-final.
+# processed=false: stages still processing; a night whose processing never finishes turns final anyway.
 GOOGLE_PROCESSING_FINAL_AFTER = timedelta(hours=24)
 
 
 def finality_from_state(provider: str, provider_state: str | None, end: datetime, now: datetime) -> bool | None:
-    """Whether a session is final from its provider and state alone; None when the source's data decides."""
+    """Whether a session is final from its provider and state alone; None when the provider's data decides."""
     if provider in SDK_PROVIDERS:
-        return True  # the SDK writes a session only once it is over
+        return True  # the SDK path writes a session once its end gap or upload quiet has passed
     if provider == ProviderName.GARMIN:
         if provider_state and not provider_state.endswith("_TENTATIVE"):
             return True
@@ -43,7 +39,7 @@ def finality_from_state(provider: str, provider_state: str | None, end: datetime
 
 
 def final_record_ids(db_session: DbSession, sessions: list[tuple[EventRecord, DataSource]], now: datetime) -> set[UUID]:
-    """The ids of the final sessions: by provider and state, else by the source's data after the session's end."""
+    """The ids of the final sessions: by provider and state, else by the provider's data after the session's end."""
     final: set[UUID] = set()
     by_data: list[tuple[UUID, UUID, datetime]] = []
     for record, data_source in sessions:

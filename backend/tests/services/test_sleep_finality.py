@@ -1,4 +1,4 @@
-"""Whether a sleep session is final from its provider and state alone."""
+"""Whether a sleep session is final: from its provider and state, else from the provider's data after it."""
 
 from datetime import datetime, timedelta, timezone
 
