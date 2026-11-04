@@ -134,12 +134,12 @@ class TestPolarOAuth:
         # Assert
         assert response.status_code in [200, 302, 307, 422]
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
+    @patch("app.services.providers.base_strategy.celery_app")
     @patch("httpx.post")
     def test_polar_callback_success(
         self,
         mock_httpx_post: MagicMock,
-        mock_sync_task: MagicMock,
+        mock_celery: MagicMock,
         client: TestClient,
         db: Session,
     ) -> None:

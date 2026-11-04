@@ -557,7 +557,7 @@ class TestUserConnectionServiceDeregisterFromProvider:
         assert connection.status == ConnectionStatus.ACTIVE
 
 
-class TestHistoricalStartOnConnect:
+class TestReconnectGapStart:
     """On reconnect only the gap since the last sync is backfilled."""
 
     def _hold_data(self, user_id: UUID, provider: str, db: Session) -> None:
@@ -580,35 +580,16 @@ class TestHistoricalStartOnConnect:
         self._hold_data(user.id, "oura", db)
         last = datetime.now(timezone.utc) - timedelta(days=5)
 
-        with patch("app.services.user_connection_service.settings.pull_sync_lookback", timedelta(days=1)):
-            start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
-
-        assert start == last - timedelta(days=1)
-
-    def test_gap_longer_than_window_is_clamped(self, db: Session) -> None:
-        user = UserFactory()
-        self._hold_data(user.id, "oura", db)
-        last = datetime.now(timezone.utc) - timedelta(days=200)
-
-        before = datetime.now(timezone.utc)
-        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
-
-        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)
+        assert user_connection_service.reconnect_gap_start(db, user.id, "oura", last) == last
 
     def test_no_held_data_uses_full_window(self, db: Session) -> None:
         user = UserFactory()
         self._hold_data(user.id, "whoop", db)
         last = datetime.now(timezone.utc) - timedelta(days=5)
 
-        before = datetime.now(timezone.utc)
-        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
-
-        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)
+        assert user_connection_service.reconnect_gap_start(db, user.id, "oura", last) is None
 
     def test_first_connect_uses_full_window(self, db: Session) -> None:
         user = UserFactory()
 
-        before = datetime.now(timezone.utc)
-        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", None, days=90)
-
-        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)
+        assert user_connection_service.reconnect_gap_start(db, user.id, "oura", None) is None

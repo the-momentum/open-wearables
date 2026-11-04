@@ -84,15 +84,18 @@ class GarminStrategy(BaseProviderStrategy):
             health_scores=HEALTH_SCORES,
         )
 
-    def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
+    def start_historical_sync(self, user_id: UUID, days: int, since: datetime | None = None) -> HistoricalSyncResult:
         """Trigger Garmin's webhook-based 30-day backfill.
 
         The ``days`` parameter is ignored - Garmin limits historical access
-        to 30 days before the user's consent date.
+        to 30 days before the user's consent date. ``since`` limits the
+        backfill to the gap since the last sync on a reconnect.
         """
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=MAX_BACKFILL_DAYS)
-        task = start_garmin_full_backfill.delay(str(user_id))
+        if since is not None:
+            start_date = max(since, start_date)
+        task = start_garmin_full_backfill.delay(str(user_id), since.isoformat() if since else None)
         return HistoricalSyncResult(
             task_id=task.id,
             method="webhook_backfill",
