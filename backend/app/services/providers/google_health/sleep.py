@@ -176,7 +176,7 @@ class GoogleHealthApiSleep:
 
     @staticmethod
     def _processing_state(metadata: dict[str, Any]) -> str | None:
-        """Whether Google finished processing the session's sleep and stages (`metadata.processed`), as a token."""
+        """`metadata.processed` as a state: processed, or processing while Google still computes the stages."""
         processed = metadata.get("processed")
         if processed is None:
             return None

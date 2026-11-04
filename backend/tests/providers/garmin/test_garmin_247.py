@@ -351,7 +351,7 @@ class TestGarmin247Data:
         assert result is not None
         assert result[1].provider_state == "ENHANCED_TENTATIVE"
 
-    def test_a_nap_keeps_its_sleep_summarys_validation(self, garmin_247: Garmin247Data) -> None:
+    def test_a_nap_keeps_its_sleep_summary_validation(self, garmin_247: Garmin247Data) -> None:
         nap = {"napStartTimeInSeconds": 1705320000, "napDurationInSeconds": 1800, "napOffsetInSeconds": 3600}
 
         result = garmin_247._build_nap_record(nap, uuid4(), "sleep_123", "ENHANCED_FINAL")
