@@ -68,7 +68,11 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     # Racket Sports - sport="TENNIS" or "OTHER"
     ("TENNIS", None, WorkoutType.TENNIS),
     ("OTHER", "RACKET_SPORTS_TENNIS", WorkoutType.TENNIS),
+    ("OTHER", "TENNIS", WorkoutType.TENNIS),
     ("OTHER", "RACKET_SPORTS_BADMINTON", WorkoutType.BADMINTON),
+    ("OTHER", "BADMINTON", WorkoutType.BADMINTON),
+    ("OTHER", "PICKLEBALL", WorkoutType.PICKLEBALL),
+    ("OTHER", "RACKET_SPORTS_PICKLEBALL", WorkoutType.PICKLEBALL),
     ("OTHER", "RACKET_SPORTS_SQUASH", WorkoutType.SQUASH),
     ("OTHER", "RACKET_SPORTS_TABLE_TENNIS", WorkoutType.TABLE_TENNIS),
     ("OTHER", "RACKET_SPORTS_PADEL", WorkoutType.PADEL),
@@ -76,6 +80,7 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     ("OTHER", "FITNESS_YOGA", WorkoutType.YOGA),
     ("OTHER", "FITNESS_PILATES", WorkoutType.PILATES),
     ("OTHER", "FITNESS_STRETCHING", WorkoutType.STRETCHING),
+    ("OTHER", "STRENGTH_TRAINING", WorkoutType.STRENGTH_TRAINING),
     # Combat Sports - sport="OTHER"
     ("OTHER", "COMBAT_SPORTS_BOXING", WorkoutType.BOXING),
     ("OTHER", "COMBAT_SPORTS_MARTIAL_ARTS", WorkoutType.MARTIAL_ARTS),
@@ -83,6 +88,7 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     # Outdoor Activities - sport="OTHER"
     ("OTHER", "OUTDOOR_CLIMBING", WorkoutType.ROCK_CLIMBING),
     ("OTHER", "INDOOR_CLIMBING", WorkoutType.INDOOR_CLIMBING),
+    ("OTHER", "VERTICALSPORTS_WALLCLIMBING", WorkoutType.INDOOR_CLIMBING),
     ("OTHER", "ORIENTEERING", WorkoutType.ORIENTEERING),
     # Other Sports - sport="OTHER"
     ("OTHER", "GOLF", WorkoutType.GOLF),

@@ -36,6 +36,8 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | SpO2 | Yes (requires Polar Elixir device) |
 | Wrist ECG | Yes (requires Polar Elixir device) |
 
+Workout normalization uses Polar's `detailed_sport_info` when available, preserving specific categories such as pickleball, tennis, badminton, indoor climbing, and strength training. A generic category is used only when Polar provides no recognized sport detail.
+
 ### Data delivery
 
 | Method | Description |
