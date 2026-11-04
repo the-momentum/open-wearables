@@ -293,7 +293,9 @@ class DataPointSeriesRepository(
         return self.try_commit(db_session, creation)
 
     @handle_exceptions
-    def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
+    def bulk_create(
+        self, db_session: DbSession, creators: list[TimeSeriesSampleCreate], keep_greater: bool = False
+    ) -> WriteCounts:
         """Bulk create data point samples.
 
         Optimized for performance:
@@ -321,7 +323,7 @@ class DataPointSeriesRepository(
             [c for c in creators if c.period is None and c.session is None], identity_to_source_id
         )
         counts = (
-            self._insert_data_points(db_session, sample_rows, _spans_by_source_and_type(sample_rows))
+            self._insert_data_points(db_session, sample_rows, _spans_by_source_and_type(sample_rows), keep_greater)
             if sample_rows
             else WriteCounts(0, 0)
         )
@@ -471,12 +473,15 @@ class DataPointSeriesRepository(
         db_session: DbSession,
         rows: list["DataPointSeriesRepository._StagingRow"],
         spans: dict[tuple[UUID, int], "_StagedSpan"],
+        keep_greater: bool = False,
     ) -> WriteCounts:
         """Batch insert data points via COPY into a staging table + one merge statement.
 
         Returns the split of rows actually written (inserted vs updated). The split is
-        derived from ``RETURNING (xmax = 0)`` on the merge statement.
+        derived from ``RETURNING (xmax = 0)`` on the merge statement. With keep_greater,
+        a stored row is only replaced by a value at least as large.
         """
+        keep_greater_sql = "excluded.value >= series_sample.value" if keep_greater else "TRUE"
 
         raw_conn: PGConnection | None = db_session.connection().connection.driver_connection
         assert raw_conn is not None, "no DBAPI connection on an active Session"
@@ -513,11 +518,13 @@ class DataPointSeriesRepository(
                             zone_offset = excluded.zone_offset,
                             window_seconds = excluded.window_seconds,
                             is_daily_total = excluded.is_daily_total
-                        WHERE series_sample.value IS DISTINCT FROM excluded.value
+                        WHERE ({keep_greater_sql}) AND (
+                           series_sample.value IS DISTINCT FROM excluded.value
                            OR series_sample.external_id IS DISTINCT FROM excluded.external_id
                            OR series_sample.zone_offset IS DISTINCT FROM excluded.zone_offset
                            OR series_sample.window_seconds IS DISTINCT FROM excluded.window_seconds
                            OR series_sample.is_daily_total IS DISTINCT FROM excluded.is_daily_total
+                        )
                         RETURNING (xmax = 0) AS was_insert, series_type_definition_id
                     )
                     SELECT series_type_definition_id, count(*) FILTER (WHERE was_insert) AS inserted

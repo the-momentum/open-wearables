@@ -468,6 +468,19 @@ class TestGarmin247Data:
         assert [sample["value"] for sample in normalized["steps"]] == [450]
         assert [sample["value"] for sample in normalized["energy"]] == [19]
 
+    def test_normalize_epochs_sums_a_slot_split_across_pushes(
+        self, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+    ) -> None:
+        """A later push with another activity type of the slot adds to the earlier one instead of replacing it."""
+        user_id = uuid4()
+        walking, sedentary = mixed_slot_epochs
+
+        garmin_247.normalize_epochs([walking], user_id)
+        normalized = garmin_247.normalize_epochs([sedentary], user_id)
+
+        assert [sample["value"] for sample in normalized["steps"]] == [420]
+        assert [sample["value"] for sample in normalized["energy"]] == [18]
+
     def test_normalize_epochs_takes_the_slot_window_from_the_latest_epoch(
         self, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
     ) -> None:

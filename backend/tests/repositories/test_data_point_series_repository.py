@@ -795,6 +795,34 @@ class TestDataPointSeriesRepository:
         stored = db.query(SeriesSample.value).filter(SeriesSample.recorded_at == ts).scalar()
         assert stored == 2000
 
+    def test_bulk_create_keep_greater_ignores_a_lower_value(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """With keep_greater a lower value leaves the row alone, a higher one still replaces it."""
+        user = UserFactory()
+        ts = datetime(2099, 1, 3, tzinfo=timezone.utc)
+
+        def sample(value: int) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                recorded_at=ts,
+                value=value,
+                series_type=SeriesType.steps,
+                data_source_id=None,
+            )
+
+        def stored() -> Decimal | None:
+            return db.query(SeriesSample.value).filter(SeriesSample.recorded_at == ts).scalar()
+
+        series_repo.bulk_create(db, [sample(654)], keep_greater=True)
+        series_repo.bulk_create(db, [sample(0)], keep_greater=True)
+        assert stored() == 654
+
+        series_repo.bulk_create(db, [sample(700)], keep_greater=True)
+        assert stored() == 700
+
     def test_bulk_create_null_fields_round_trip_through_copy(
         self, db: Session, series_repo: DataPointSeriesRepository
     ) -> None:
