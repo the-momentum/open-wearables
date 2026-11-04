@@ -55,7 +55,7 @@ class UserInvitationCodeService:
 
     def redeem(self, db_session: DbSession, code: str) -> InvitationCodeRedeemResponse:
         """Redeem an invitation code and return SDK tokens."""
-        invitation_code = self.crud.get_valid_by_code(db_session, code.upper())
+        invitation_code = self.crud.claim_valid_code(db_session, code.upper())
 
         if not invitation_code:
             raise HTTPException(
@@ -63,8 +63,8 @@ class UserInvitationCodeService:
                 detail="Invalid or expired invitation code",
             )
 
-        self.crud.mark_redeemed(db_session, invitation_code)
-
+        # Storing the new refresh token commits the claim with it, so a failure before that
+        # leaves the code usable
         access_token, refresh_token = refresh_token_service.issue_sdk_tokens(
             db_session,
             user_id=invitation_code.user_id,

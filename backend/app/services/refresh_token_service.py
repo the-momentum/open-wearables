@@ -156,7 +156,7 @@ class RefreshTokenService:
         Raises:
             HTTPException: If the refresh token is invalid or revoked
         """
-        token = self.repo.get_valid_token(db_session, refresh_token_str)
+        token = self.repo.claim_valid_token(db_session, refresh_token_str)
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -164,10 +164,8 @@ class RefreshTokenService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Revoke the old refresh token (rotation)
-        self.repo.revoke_token(db_session, token)
-
-        # Generate new access token and refresh token based on token type
+        # Storing the new refresh token commits the old one's revocation with it, so a failure
+        # before that leaves the old token usable
         if token.token_type == TokenType.SDK:
             access_token, new_refresh_token = self.issue_sdk_tokens(
                 db_session,
@@ -210,14 +208,14 @@ class RefreshTokenService:
         Raises:
             HTTPException: If the refresh token is not found
         """
-        token = self.repo.get_valid_token(db_session, refresh_token_str)
+        token = self.repo.claim_valid_token(db_session, refresh_token_str)
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Refresh token not found",
             )
 
-        self.repo.revoke_token(db_session, token)
+        db_session.commit()
         self.logger.debug(f"Revoked refresh token {refresh_token_str[:10]}...")
         return True
 
