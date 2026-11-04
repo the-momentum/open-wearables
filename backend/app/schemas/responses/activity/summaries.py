@@ -222,17 +222,11 @@ class RecoverySummary(BaseModel):
     sleep_efficiency_percent: float | None = None
     resting_heart_rate_bpm: int | None = None
     avg_hrv_sdnn_ms: float | None = Field(
-        None,
-        description=(
-            "Average HRV (SDNN). Currently always null: every record this endpoint returns "
-            "today comes from WHOOP - a recovery-score record is required for a row to be "
-            "returned, and only WHOOP produces one - and WHOOP reports HRV as RMSSD, which is "
-            "exposed in avg_hrv_rmssd_ms. Once recovery metrics are computed from stored "
-            "timeseries (and returned for all providers, not just WHOOP), this will carry SDNN "
-            "for providers that report it (e.g. Apple Health)."
-        ),
+        None, description="Average HRV (SDNN), for providers that report it (e.g. Apple Health)"
     )
-    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (RMSSD)")
+    avg_hrv_rmssd_ms: float | None = Field(
+        None, description="Average HRV (RMSSD), for providers that report it (e.g. WHOOP, Garmin, Oura)"
+    )
     avg_spo2_percent: float | None = None
     recovery_score: int | None = Field(
         None,

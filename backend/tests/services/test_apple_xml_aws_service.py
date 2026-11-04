@@ -4,7 +4,6 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 from pydantic import SecretStr
 
 from app.config import settings
@@ -15,6 +14,7 @@ from app.services.providers.apple.apple_xml.aws_service import (
     get_s3_client,
     require_bucket_name,
 )
+from app.utils.exceptions import AppError
 
 
 def test_build_object_key_is_unique_for_same_user_and_filename() -> None:
@@ -56,7 +56,7 @@ def test_require_bucket_name_returns_configured_bucket(monkeypatch: pytest.Monke
 def test_require_bucket_name_rejects_missing_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "aws_bucket_name", None)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AppError) as exc:
         require_bucket_name()
 
     assert exc.value.status_code == 503

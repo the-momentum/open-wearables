@@ -40,7 +40,6 @@ Usage (inside Docker), with --dry-run to preview without changes:
 
 import argparse
 from datetime import datetime, timezone
-from logging import getLogger
 from typing import Any
 
 from sqlalchemy import select
@@ -50,9 +49,9 @@ from app.database import engine
 from app.models import DataSource, EventRecord, SleepDetails
 from app.schemas.enums import ProviderName
 from app.services.data_migration_service import data_migration_service
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 BATCH_SIZE = 200
 MINUTE_FIELDS = (
@@ -122,9 +121,7 @@ def dedupe_polar_sleep(db: Session, *, dry_run: bool, batch_size: int = BATCH_SI
             except (KeyError, TypeError, ValueError) as exc:
                 counts["sessions_skipped"] += 1
                 print(f"Skipped unreadable Polar sleep {record.id}")
-                log_and_capture_error(
-                    exc, logger, "Skipped unreadable Polar sleep", extra={"event_record_id": str(record.id)}
-                )
+                logger.error("Skipped unreadable Polar sleep", exc_info=exc, event_record_id=str(record.id))
                 continue
             counts["sessions_repaired"] += bool(fields)
             counts["external_ids_set"] += external_id is not None

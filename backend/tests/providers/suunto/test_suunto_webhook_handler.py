@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from psycopg.errors import NotNullViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -384,6 +385,21 @@ class TestProcessWorkoutPayloadShapes:
         handler.suunto_workouts.get_workout_detail.assert_not_called()
         handler.suunto_workouts.process_push_activity.assert_not_called()
 
+    def test_a_constraint_violation_other_than_a_duplicate_is_not_swallowed(
+        self,
+        handler: SuuntoWebhookHandler,
+        webhook_payload: dict,
+        live_response: dict,
+    ) -> None:
+        """A NULL in a NOT NULL column is our bug, not a workout we already have."""
+        handler.suunto_workouts.get_workout_detail.return_value = live_response
+        handler.suunto_workouts.process_push_activity.side_effect = IntegrityError(
+            statement="INSERT INTO event_record ...", params={}, orig=NotNullViolation("null value in column")
+        )
+
+        with pytest.raises(IntegrityError):
+            handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
+
     def test_duplicate_workout_returns_ignored_status(
         self,
         handler: SuuntoWebhookHandler,
@@ -396,7 +412,7 @@ class TestProcessWorkoutPayloadShapes:
         handler.suunto_workouts.process_push_activity.side_effect = IntegrityError(
             statement="INSERT INTO event_record ...",
             params={},
-            orig=Exception("duplicate key value violates unique constraint ix_event_record_source_time"),
+            orig=UniqueViolation("duplicate key value violates unique constraint ix_event_record_source_time"),
         )
 
         result = handler._process_workout(db, uuid4(), webhook_payload, TRACE_ID)

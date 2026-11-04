@@ -16,9 +16,9 @@ from app.config import settings
 from app.services.endpoint_usage import caller_type, endpoint_usage, route_key
 from app.utils.config_utils import AccessLogLevel
 from app.utils.sdk_request_metadata import sdk_request_metadata
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger("app.access")
+logger = get_logger("app.access")
 
 # Query keys whose value authenticates a request and must never reach the logs.
 # Providers that sign inbound webhooks use a header instead; these three carry the
@@ -138,7 +138,7 @@ def add_access_log_middleware(app: FastAPI) -> None:
             attributes["traceback"] = formatted_traceback
         # a logging failure must never break request handling
         with contextlib.suppress(Exception):
-            log_structured(logger, "error" if status >= 400 else "info", "http_request", **attributes)
+            logger.log(logging.ERROR if status >= 400 else logging.INFO, "http_request", **attributes)
 
     @app.middleware("http")
     async def access_log(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:

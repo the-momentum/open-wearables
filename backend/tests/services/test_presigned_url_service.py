@@ -1,15 +1,14 @@
 """Tests for the Apple XML presigned-POST service, focused on SSE enforcement."""
 
-from logging import getLogger
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
 
 from app.config import settings
 from app.schemas.providers.apple.apple_xml import PresignedURLRequest
 from app.services.providers.apple.apple_xml import presigned_url_service as presign_module
 from app.services.providers.apple.apple_xml.presigned_url_service import PresignedURLService
+from app.utils.exceptions import AppError
 
 _clients: dict[str, MagicMock | None] = {"internal": None, "public": None}
 
@@ -26,7 +25,7 @@ def _service(client: MagicMock) -> PresignedURLService:
     # Same object for the presigning client by default, so single-client assertions hold.
     _clients["internal"] = client
     _clients["public"] = client
-    return PresignedURLService(getLogger(__name__))
+    return PresignedURLService()
 
 
 def _client() -> MagicMock:
@@ -48,7 +47,7 @@ class TestPublicEndpoint:
 
         _clients["internal"] = internal
         _clients["public"] = public
-        service = PresignedURLService(getLogger(__name__))
+        service = PresignedURLService()
 
         service.create_presigned_url("user-1", PresignedURLRequest(filename="export.xml"))
 
@@ -70,7 +69,7 @@ def test_missing_bucket_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "aws_bucket_name", None)
     client = _client()
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AppError) as exc:
         _service(client).create_presigned_url("user-1", PresignedURLRequest(filename="export.xml"))
 
     assert exc.value.status_code == 503

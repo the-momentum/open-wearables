@@ -2,7 +2,6 @@ import contextlib
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from logging import getLogger
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -39,9 +38,9 @@ from app.services.health_score_service import health_score_service
 from app.services.sdk.device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from app.utils.dates import as_utc
 from app.utils.sleep_stages import measured_stages
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 _STAGE_TO_METRIC: dict[str, str] = {
     "awake": "awake_seconds",
@@ -98,12 +97,12 @@ def _parse_sleep_state(user_id: str, state: str | bytes) -> SleepState | None:
             state = state.decode("utf-8")
         return SleepState.model_validate_json(state)
     except Exception as e:
-        logger.error(f"Failed to parse sleep state for user {user_id}: {e}")
+        logger.error("Failed to parse sleep state", exc_info=e, user_id=user_id)
         try:
             raw = json.loads(state)
             return SleepState.model_validate(raw)
         except Exception as fallback_e:
-            logger.error(f"Legacy state migration failed for user {user_id}: {fallback_e}; session will be dropped")
+            logger.error("Legacy state migration failed; session will be dropped", exc_info=fallback_e, user_id=user_id)
             return None
 
 
@@ -328,7 +327,7 @@ def handle_sleep_data(
     try:
         acquired = lock.acquire()
         if not acquired:
-            logger.warning("Could not acquire sleep processing lock for user %s; skipping batch", user_id)
+            logger.warning("Could not acquire sleep processing lock; skipping batch", user_id=user_id)
             return
 
         states = load_sleep_states(user_id)
@@ -647,10 +646,8 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         # keeps the session available for the next periodic finalization attempt.
         delete_sleep_state(user_id, state)
     except Exception as e:
-        log_structured(
-            logger,
-            "error",
-            f"Error saving sleep record {sleep_record.id} for user {user_id}: {e}",
+        logger.error(
+            "Error saving sleep record",
             provider=state.provider or "unknown",
             action="sleep_record_save_error",
             user_id=user_id,
