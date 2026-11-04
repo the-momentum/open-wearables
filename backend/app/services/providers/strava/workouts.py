@@ -21,6 +21,7 @@ from app.schemas.providers.strava import (
     StravaStreamSet,
 )
 from app.services.event_record_service import event_record_service
+from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.strava.coverage import STREAM_KEY_SERIES_TYPE, STREAM_KEYS_PARAM
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.timeseries_service import timeseries_service
@@ -132,6 +133,20 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         """Get detailed activity data from Strava API."""
         # hard-coded value - update with base template changes
         return self._make_api_request(db, user_id, f"/api/v3/activities/{workout_id}")
+
+    def get_athlete_from_api(self, db: DbSession, user_id: UUID, *, revoke_on_failure: bool = True) -> Any:
+        """The authenticated athlete; ReauthRequiredError once the athlete deauthorized the app."""
+        return make_authenticated_request(
+            db=db,
+            user_id=user_id,
+            connection_repo=self.connection_repo,
+            oauth=self.oauth,
+            api_base_url=self.api_base_url,
+            provider_name=self.provider_name,
+            # hard-coded value - update with base template changes
+            endpoint="/api/v3/athlete",
+            revoke_on_failure=revoke_on_failure,
+        )
 
     def _extract_dates_from_iso(self, start_iso: str, elapsed_time: int) -> tuple[datetime, datetime]:
         """Extract start and end dates from ISO string and elapsed time."""
