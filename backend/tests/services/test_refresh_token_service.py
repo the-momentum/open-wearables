@@ -2,6 +2,8 @@
 Unit tests for refresh token service.
 """
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -166,6 +168,36 @@ class TestRefreshToken:
         new_db_token = db.query(RefreshToken).filter(RefreshToken.id == result.refresh_token).first()
         assert new_db_token is not None
         assert new_db_token.revoked_at is None
+
+    @pytest.mark.parametrize("token_type", [TokenType.SDK, TokenType.DEVELOPER])
+    def test_refresh_keeps_old_token_usable_when_issuing_tokens_fails(self, db: Session, token_type: TokenType) -> None:
+        """A refresh that fails to issue the new pair must not burn the old token."""
+        # Arrange
+        if token_type == TokenType.SDK:
+            old_refresh_token = refresh_token_service.create_sdk_refresh_token(
+                db, UserFactory().id, SDKTokenOrigin.ADMIN
+            )
+            failing_step = "create_sdk_refresh_token"
+        else:
+            old_refresh_token = refresh_token_service.create_developer_refresh_token(db, DeveloperFactory().id)
+            failing_step = "create_developer_refresh_token"
+
+        # Act
+        with (
+            patch.object(refresh_token_service, failing_step, side_effect=RuntimeError("db down")),
+            pytest.raises(RuntimeError),
+        ):
+            refresh_token_service.refresh_token(db, old_refresh_token)
+        db.rollback()  # what the request's session dependency does on an error
+
+        # Assert
+        old_row = db.get(RefreshToken, old_refresh_token)
+        assert old_row is not None
+        assert old_row.revoked_at is None
+        result = refresh_token_service.refresh_token(db, old_refresh_token)
+        db.refresh(old_row)
+        assert old_row.revoked_at is not None
+        assert db.get(RefreshToken, result.refresh_token) is not None
 
 
 class TestRevokeToken:

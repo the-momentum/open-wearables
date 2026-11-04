@@ -40,6 +40,7 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
     {
         "sleep_total_duration_minutes",
         "sleep_time_in_bed_minutes",
+        "sleep_efficiency_score",
         "sleep_deep_minutes",
         "sleep_rem_minutes",
         "sleep_light_minutes",

@@ -133,6 +133,8 @@ class TestGarmin247Data:
             "bodyFatInPercent": 18.5,
             "bodyMassIndex": 23.5,
             "muscleMassInGrams": 35000,
+            "boneMassInGrams": 3100,
+            "bodyWaterInPercent": 56.4,
         }
 
     @pytest.fixture
@@ -284,6 +286,18 @@ class TestGarmin247Data:
         expected_end = datetime.fromtimestamp(awake_end_ts, tz=timezone.utc)
         assert actual_end == expected_end
         assert normalized["duration_seconds"] == 9000  # 7200 asleep + 1800 awake
+
+    def test_sleep_score_is_recorded_at_the_wake_up(
+        self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]
+    ) -> None:
+        # A night that starts before midnight UTC belongs to the day the user wakes up
+        sleep = {**sample_sleep, "startTimeOffsetInSeconds": 3600, "overallSleepScore": {"value": 84}}
+
+        _, score = garmin_247.normalize_sleep(sleep, uuid4())
+
+        assert score is not None
+        assert score.recorded_at == datetime(2024, 1, 15, 7, 0, tzinfo=timezone.utc)  # 23:00 UTC + 8 h
+        assert score.zone_offset == "+01:00"
 
     def test_normalize_sleep_missing_stages(self, garmin_247: Garmin247Data) -> None:
         """A manually entered sleep carries no stage fields, so the stages stay unreported."""
@@ -819,10 +833,12 @@ class TestGarmin247Data:
         """Test _build_body_comp_samples returns samples without DB call."""
         user_id = uuid4()
         samples = garmin_247._build_body_comp_samples(user_id, sample_body_comp)
-        assert len(samples) == 4  # weight, body_fat, BMI, skeletal muscle mass
+        assert len(samples) == 6  # weight, body_fat, BMI, skeletal muscle mass, bone mass, body water
 
-        muscle = next(s for s in samples if s.series_type == SeriesType.skeletal_muscle_mass)
-        assert muscle.value == Decimal("35")  # 35000 g -> 35 kg
+        by_type = {s.series_type: s for s in samples}
+        assert by_type[SeriesType.skeletal_muscle_mass].value == Decimal("35")  # 35000 g -> 35 kg
+        assert by_type[SeriesType.bone_mass].value == Decimal("3.1")  # 3100 g -> 3.1 kg
+        assert by_type[SeriesType.body_water_percentage].value == Decimal("56.4")
 
     def test_build_body_comp_samples_missing_timestamp(self, garmin_247: Garmin247Data) -> None:
         """Test _build_body_comp_samples returns empty for missing timestamp."""
@@ -844,10 +860,10 @@ class TestGarmin247Data:
 
         count = garmin_247.process_items_batch(db, user.id, "bodyComps", [sample_body_comp])
 
-        # Should create 4 data points: weight, body_fat, BMI, skeletal muscle mass
+        # Should create 6 data points: weight, body_fat, BMI, skeletal muscle mass, bone mass, body water
         mock_bulk_create.assert_called_once()
-        assert len(mock_bulk_create.call_args[0][1]) == 4
-        assert count == 4
+        assert len(mock_bulk_create.call_args[0][1]) == 6
+        assert count == 6
 
     def test_process_items_batch_body_comp_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test a body composition item without a timestamp writes nothing."""

@@ -1,6 +1,7 @@
 """Unit tests for user invitation code service."""
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.user_invitation_code import UserInvitationCode
+from app.services.refresh_token_service import refresh_token_service
 from app.services.user_invitation_code_service import (
     CODE_ALPHABET,
     CODE_LENGTH,
@@ -210,3 +212,20 @@ class TestRedeem:
 
         # Assert
         assert result.user_id == user.id
+
+    def test_redeem_keeps_code_usable_when_issuing_tokens_fails(self, db: Session) -> None:
+        # Arrange
+        developer = DeveloperFactory()
+        user = UserFactory()
+        generated = user_invitation_code_service.generate(db, user.id, developer.id)
+
+        # Act
+        with (
+            patch.object(refresh_token_service, "create_sdk_refresh_token", side_effect=RuntimeError("db down")),
+            pytest.raises(RuntimeError),
+        ):
+            user_invitation_code_service.redeem(db, generated.code)
+        db.rollback()  # what the request's session dependency does on an error
+
+        # Assert
+        assert user_invitation_code_service.redeem(db, generated.code).user_id == user.id

@@ -62,7 +62,8 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.conversion import seconds_to_minutes
+from app.utils.conversion import seconds_to_minutes, sum_optional
+from app.utils.dates import offset_to_iso
 from app.utils.exceptions import ProviderError
 from app.utils.structured_logging import get_logger
 
@@ -263,6 +264,16 @@ class Polar247Data(Base247DataTemplate):
             light_s = parsed.light_sleep
             deep_s = parsed.deep_sleep
             rem_s = parsed.rem_sleep
+            awake_s = parsed.total_interruption_duration
+            # Sleep Polar couldn't stage (a loose strap, say) is still sleep
+            asleep_s = sum_optional(light_s, deep_s, rem_s, parsed.unrecognized_sleep_stage)
+            # Polar reports no efficiency. Its "actual sleep" share is the night minus its interruptions,
+            # all the time awake between falling asleep and waking up, over the night
+            efficiency_score = (
+                round(Decimal(duration_seconds - awake_s) * 100 / duration_seconds, 2)
+                if awake_s is not None and duration_seconds > 0 and 0 <= awake_s <= duration_seconds
+                else None
+            )
             sleep_stages = self._parse_hypnogram(parsed.hypnogram, start_dt, end_dt) if parsed.hypnogram else None
 
             record = EventRecordCreate(
@@ -281,12 +292,13 @@ class Polar247Data(Base247DataTemplate):
             )
             detail = EventRecordDetailCreate(
                 record_id=sleep_id,
-                sleep_total_duration_minutes=seconds_to_minutes(light_s, deep_s, rem_s),
+                sleep_total_duration_minutes=seconds_to_minutes(asleep_s),
                 sleep_time_in_bed_minutes=duration_seconds // 60 if duration_seconds else None,
+                sleep_efficiency_score=efficiency_score,
                 sleep_deep_minutes=seconds_to_minutes(deep_s),
                 sleep_light_minutes=seconds_to_minutes(light_s),
                 sleep_rem_minutes=seconds_to_minutes(rem_s),
-                sleep_awake_minutes=seconds_to_minutes(parsed.total_interruption_duration),
+                sleep_awake_minutes=seconds_to_minutes(awake_s),
                 sleep_stages=sleep_stages,
             )
 
@@ -303,13 +315,16 @@ class Polar247Data(Base247DataTemplate):
                 components: dict[str, ScoreComponent] = {
                     k: ScoreComponent(value=v) for k, v in raw_components.items() if v is not None
                 }
+                # The wake-up, with the offset Polar's timestamps carry
+                end_offset = end_dt.utcoffset()
                 score = HealthScoreCreate(
                     id=uuid4(),
                     user_id=user_id,
                     provider=ProviderName.POLAR,
                     category=HealthScoreCategory.SLEEP,
                     value=parsed.sleep_score,
-                    recorded_at=start_dt,
+                    recorded_at=end_dt,
+                    zone_offset=offset_to_iso(int(end_offset.total_seconds())) if end_offset is not None else None,
                     components=components or None,
                     event_record_id=sleep_id,
                 )
