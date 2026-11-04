@@ -123,6 +123,7 @@ class LoadDataResult(TypedDict):
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
     types: list[str]  # series types written
+    spans: dict[str, tuple[datetime, datetime]]  # per type the device exports itself: record series, workouts, sleep
     sleep_saved: int
     dropped: list[InvalidRecord]
     unsupported_types: dict[str, int]  # record types with no series mapping, skipped
@@ -594,6 +595,11 @@ class ImportService:
         records_updated = 0
         sleep_saved = 0
         types: set[str] = set()
+        spans: dict[str, tuple[datetime, datetime]] = {}
+
+        def widen(data_type: str, start: datetime, end: datetime) -> None:
+            held = spans.get(data_type)
+            spans[data_type] = (min(held[0], start), max(held[1], end)) if held else (start, end)
 
         # A nutrient record whose correlation isn't in this batch stays a loose sample.
         correlation_records = [r for r in request.data.records if (r.type or "") in MEAL_CORRELATION_TYPES]
@@ -651,6 +657,8 @@ class ImportService:
                     db_session, details_to_insert, detail_type=EventCategory.WORKOUT
                 )
             workouts_saved = len(inserted_ids)
+            for record in workout_records:
+                widen("workouts", record.start_datetime, record.end_datetime)
 
             # Bulk create time series samples
             if time_series_samples:
@@ -668,6 +676,8 @@ class ImportService:
             records_inserted += counts.inserted
             records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
+            for sample in samples:
+                widen(sample.series_type.value, sample.recorded_at, sample.recorded_at)
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()
@@ -676,6 +686,8 @@ class ImportService:
         if request.data.sleep:
             handle_sleep_data(db_session, request, user_id)
             sleep_saved = len(request.data.sleep)
+            for segment in request.data.sleep:
+                widen("sleep", segment.startDate, segment.endDate)
 
         return {
             "workouts_saved": workouts_saved,
@@ -684,6 +696,7 @@ class ImportService:
             "records_inserted": records_inserted,
             "records_updated": records_updated,
             "types": sorted(types),
+            "spans": spans,
             "sleep_saved": sleep_saved,
             "dropped": dropped,
             "unsupported_types": dict(unsupported_types),
@@ -805,6 +818,7 @@ class ImportService:
                 records_inserted=saved_counts["records_inserted"],
                 records_updated=saved_counts["records_updated"],
                 types=saved_counts["types"],
+                spans=saved_counts["spans"],
                 workouts_saved=saved_counts["workouts_saved"],
                 meals_saved=saved_counts["meals_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
