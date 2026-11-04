@@ -9,6 +9,7 @@ from .aws import (
     PresignedURLResponse,
     SNSNotification,
 )
+from .direct import MAX_DIRECT_UPLOAD_SIZE
 from .multipart import (
     DEFAULT_PART_SIZE,
     MAX_PART_SIZE,
@@ -40,6 +41,8 @@ __all__ = [
     "MIN_FILE_SIZE",
     "MAX_FILE_SIZE",
     "DEFAULT_FILE_SIZE",
+    # Direct
+    "MAX_DIRECT_UPLOAD_SIZE",
     # Multipart
     "MultipartCreateRequest",
     "MultipartCreateResponse",

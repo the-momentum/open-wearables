@@ -1,4 +1,5 @@
 import json
+import math
 from json import JSONDecodeError
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, status
@@ -8,6 +9,8 @@ from app.config import settings
 from app.integrations.celery.tasks.process_aws_upload_task import complete_and_process_aws_upload
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas.providers.apple.apple_xml import (
+    MAX_DIRECT_UPLOAD_SIZE,
+    MAX_FILE_SIZE,
     MultipartAbortRequest,
     MultipartAbortResponse,
     MultipartCompleteRequest,
@@ -26,8 +29,32 @@ from app.services.providers.apple.apple_xml.aws_service import require_bucket_na
 from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
 from app.services.providers.apple.apple_xml.presigned_url_service import presigned_url_service
 from app.services.providers.apple.apple_xml.sns_service import sns_service
+from app.utils.problem import problem_doc
+from app.utils.structured_logging import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
+
+_MIB = 1024 * 1024
+_MULTIPART_CREATE_PATH = "POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create"
+
+
+def _direct_upload_limit() -> int:
+    """The direct upload cap, never above the product-wide XML size limit."""
+    return min(MAX_DIRECT_UPLOAD_SIZE, MAX_FILE_SIZE)
+
+
+def _mib(size: int, *, round_up: bool) -> str:
+    """Size in MiB with one decimal, rounded so a file over the limit never reads as equal to it."""
+    tenths = size * 10 / _MIB
+    return f"{(math.ceil(tenths) if round_up else math.floor(tenths)) / 10:g}"
+
+
+def _too_large_detail(file_size: int, limit: int) -> str:
+    return (
+        f"File is {_mib(file_size, round_up=True)} MiB, direct upload accepts up to "
+        f"{_mib(limit, round_up=False)} MiB. Use the multipart upload ({_MULTIPART_CREATE_PATH}) for larger files."
+    )
 
 
 @router.post("/users/{user_id}/import/apple/xml/s3")
@@ -151,17 +178,51 @@ def abort_multipart_upload(
     return MultipartAbortResponse(status="aborted", key=request.key)
 
 
-@router.post("/users/{user_id}/import/apple/xml/direct")
+@router.post(
+    "/users/{user_id}/import/apple/xml/direct",
+    responses={
+        **problem_doc(
+            413,
+            f"File is over {_mib(_direct_upload_limit(), round_up=False)} MiB",
+            _too_large_detail(1024 * _MIB, _direct_upload_limit()),
+        ),
+        **problem_doc(503, "Task queue unavailable", "Unable to queue XML processing"),
+    },
+    description=(
+        f"Import an Apple Health XML file of up to {_mib(_direct_upload_limit(), round_up=False)} MiB "
+        "into the database. "
+        "Larger files must use the S3 multipart upload."
+    ),
+)
 def import_xml_file(
     user_id: str,
     file: UploadFile,
     _api_key: ApiKeyDep,
 ) -> dict[str, str]:
-    """Import XML file into the database."""
+    """Queue a small XML upload for import; the file travels inside the Celery message."""
+    # Starlette's multipart parser always sets the size of the spooled file.
+    file_size = file.size or 0
+    limit = _direct_upload_limit()
+    if file_size > limit:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large_detail(file_size, limit))
+
     file_contents = file.file.read()
     filename = file.filename or "upload.xml"
 
-    task = process_xml_upload.delay(file_contents=file_contents, filename=filename, user_id=user_id)
+    try:
+        task = process_xml_upload.delay(file_contents=file_contents, filename=filename, user_id=user_id)
+    except Exception as e:
+        logger.error(
+            "Failed to queue direct XML upload",
+            exc_info=e,
+            action="xml_direct_upload_queue_failed",
+            user_id=user_id,
+            file_size=file_size,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to queue XML processing",
+        ) from e
 
     return {
         "status": "processing",

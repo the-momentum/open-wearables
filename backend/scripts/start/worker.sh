@@ -8,7 +8,9 @@ uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q de
 io_pid=$!
 
 echo "Starting CPU worker..."
-uv run celery -A app.main:celery_app worker --loglevel=info --pool=prefork --concurrency=2 -Q xml_sync -n cpu@%h &
+# XML imports are long and a direct upload carries the whole file in its message, so each
+# process reserves only the task it runs instead of holding prefetched files in memory.
+uv run celery -A app.main:celery_app worker --loglevel=info --pool=prefork --concurrency=2 --prefetch-multiplier=1 -Q xml_sync -n cpu@%h &
 cpu_pid=$!
 
 # This shell is PID 1 in the container, so a SIGTERM from `docker stop` only reaches
