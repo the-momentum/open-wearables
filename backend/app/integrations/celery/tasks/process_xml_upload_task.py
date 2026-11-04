@@ -20,7 +20,7 @@ from app.schemas.sync_status import (
 )
 from app.services import event_record_service
 from app.services.providers.apple.apple_xml.xml_service import XMLService
-from app.services.sdk.sleep_service import handle_sleep_data
+from app.services.sdk.sleep_service import save_sleep
 from app.services.sync_status_service import (
     emit_sync_completed,
     emit_sync_failed,
@@ -208,6 +208,6 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
             db.commit()
 
         if sync_request and sync_request.data.sleep:
-            handle_sleep_data(db, sync_request, user_id)
+            save_sleep(db, sync_request, user_id)
 
     return xml_service.stats

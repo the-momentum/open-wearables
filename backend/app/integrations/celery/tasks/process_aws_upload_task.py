@@ -17,7 +17,7 @@ from app.services import event_record_service
 from app.services.providers.apple.apple_xml.aws_service import get_s3_client
 from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
 from app.services.providers.apple.apple_xml.xml_service import XMLService
-from app.services.sdk.sleep_service import handle_sleep_data
+from app.services.sdk.sleep_service import save_sleep
 from app.services.sync_status_service import (
     emit_sync_completed,
     emit_sync_failed,
@@ -399,4 +399,4 @@ def _import_xml_data(db: Session, xml_source: str | Path | BinaryIO, user_id: st
             timeseries_service.bulk_create_samples(db, time_series_records)
             db.commit()
         if sync_request and sync_request.data.sleep:
-            handle_sleep_data(db, sync_request, user_id)
+            save_sleep(db, sync_request, user_id)

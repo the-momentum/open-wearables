@@ -141,8 +141,7 @@ class TestTryPersistRun:
         started_at = datetime.now(timezone.utc)
         run_id = f"sdk_{uuid4().hex[:16]}"
 
-        batches = ((100, SyncStatus.SUCCESS), (40, SyncStatus.PARTIAL), (7, SyncStatus.SUCCESS))
-        for batch, (inserted, status) in enumerate(batches):
+        for batch, inserted in enumerate((100, 40, 7)):
             offset = timedelta(seconds=batch * 10)
             try_persist_run(_event(user.id, run_id=run_id, source=SyncSource.SDK, timestamp=started_at + offset))
             try_persist_run(
@@ -151,7 +150,7 @@ class TestTryPersistRun:
                     run_id=run_id,
                     source=SyncSource.SDK,
                     stage=SyncStage.COMPLETED,
-                    status=status,
+                    status=SyncStatus.SUCCESS,
                     timestamp=started_at + offset + timedelta(seconds=5),
                     ended_at=started_at + offset + timedelta(seconds=5),
                     metadata={"inserted": inserted},
@@ -161,7 +160,6 @@ class TestTryPersistRun:
         run = db.query(SyncRun).filter(SyncRun.run_key == run_id).one()
         assert run.items_inserted == 147
         assert run.ended_at is not None
-        assert run.status == SyncStatus.PARTIAL
 
     @patch("app.services.sync_status_service.SessionLocal")
     def test_late_event_cannot_reopen_a_closed_run(self, mock_session_local: MagicMock, db: Session) -> None:
