@@ -1027,7 +1027,7 @@
           "External: Summaries"
         ],
         "summary": "Get Activity Summary",
-        "description": "Returns daily aggregated activity metrics.\n\nAggregates time-series data (steps, energy, heart rate, etc.) by day.",
+        "description": "Returns daily aggregated activity metrics.\n\nEach day reports its highest-priority source; metrics it lacks are filled from lower-priority sources.\n\nAggregates time-series data (steps, energy, heart rate, etc.) by day.",
         "operationId": "get_activity_summary_api_v1_users__user_id__summaries_activity_get",
         "security": [
           {
@@ -1385,7 +1385,7 @@
           "External: Summaries"
         ],
         "summary": "Get Recovery Summary",
-        "description": "Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2).\n\n**Warning - known limitation:** this endpoint currently returns data **only for WHOOP**.\nMetrics are read from stored recovery-score records, which today are produced solely by\nWHOOP, so users connected only to other providers (e.g. Apple Health) receive an empty\nresult even when the underlying resting HR, HRV and SpO2 are available. This is a bug.\n\nThese values will soon be computed from the timeseries we already store in the database\nrather than from what a single provider reports, at which point recovery metrics will be\nreturned for all providers that supply the underlying data.",
+        "description": "Returns daily recovery metrics (resting HR, HRV, SpO2, main sleep, recovery score).\n\nOne row per day from the highest-priority source, for every provider that supplies the\nunderlying data. The recovery score is set only where a recovery-score record exists.",
         "operationId": "get_recovery_summary_api_v1_users__user_id__summaries_recovery_get",
         "security": [
           {
@@ -2033,14 +2033,42 @@
             }
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_range",
+                    "per_period",
+                    "reconcile"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. A week or month whose days different sources won has `source: null`. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page holds only as many periods as the server merges at once; a single period needing more is refused (400). Sources rank by provider, then device type priority. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. A week or month whose days different sources won has `source: null`. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page holds only as many periods as the server merges at once; a single period needing more is refused (400). Sources rank by provider, then device type priority. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Same as source_selection=per_range.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
-            }
+            },
+            "description": "Same as source_selection=per_range.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2277,6 +2305,28 @@
               ],
               "title": "Data Source Id"
             }
+          },
+          {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2544,6 +2594,28 @@
             }
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
+          },
+          {
             "name": "X-Open-Wearables-API-Key",
             "in": "header",
             "required": false,
@@ -2764,16 +2836,40 @@
             "description": "When true, return only naps; when false, only main sleep. Omit to return both."
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "description": "Same as source_selection=per_session.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
             },
-            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+            "description": "Same as source_selection=per_session.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2956,16 +3052,40 @@
             "description": "When true, return only naps; when false, only main sleep. Omit to return both."
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "description": "Same as source_selection=per_session.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
             },
-            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+            "description": "Same as source_selection=per_session.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -15865,7 +15985,7 @@
               }
             ],
             "title": "Avg Hrv Sdnn Ms",
-            "description": "Average HRV (SDNN). Currently always null: every record this endpoint returns today comes from WHOOP - a recovery-score record is required for a row to be returned, and only WHOOP produces one - and WHOOP reports HRV as RMSSD, which is exposed in avg_hrv_rmssd_ms. Once recovery metrics are computed from stored timeseries (and returned for all providers, not just WHOOP), this will carry SDNN for providers that report it (e.g. Apple Health)."
+            "description": "Average HRV (SDNN), for providers that report it (e.g. Apple Health)"
           },
           "avg_hrv_rmssd_ms": {
             "anyOf": [
@@ -15877,7 +15997,7 @@
               }
             ],
             "title": "Avg Hrv Rmssd Ms",
-            "description": "Average HRV (RMSSD)"
+            "description": "Average HRV (RMSSD), for providers that report it (e.g. WHOOP, Garmin, Oura)"
           },
           "avg_spo2_percent": {
             "anyOf": [

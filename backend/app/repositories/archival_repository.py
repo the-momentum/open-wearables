@@ -31,6 +31,10 @@ class ArchivalSettingRepository:
         """Return the current archival settings (singleton row with id=1)."""
         return db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).one()
 
+    def deleted_before(self, db: DbSession) -> date | None:
+        """The day retention has deleted samples before, or None."""
+        return db.query(ArchivalSetting.deleted_before).filter(ArchivalSetting.id == 1).scalar()
+
     def update(
         self, db: DbSession, rollup_enabled: bool, history_rollup_enabled: bool, delete_after_days: int | None
     ) -> ArchivalSetting:
