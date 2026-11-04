@@ -67,6 +67,7 @@ EPOCH_SLOT_SECONDS = 900
 # so it is summed over the slot's types and merged across pushes.
 EPOCH_SUMMED_FIELDS = {"steps": "steps", "energy": "activeKilocalories"}
 EPOCH_STORED_FIELDS = (*EPOCH_SUMMED_FIELDS.values(), "activeTimeInSeconds")
+EPOCH_SUMMED_SERIES = frozenset(EPOCHS_SERIES[key] for key in EPOCH_SUMMED_FIELDS)
 
 
 class Garmin247Data(Base247DataTemplate):
@@ -858,16 +859,23 @@ class Garmin247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_epochs: dict[str, list[dict[str, Any]]],
-    ) -> int:
+    ) -> WriteCounts:
         """Save epoch samples to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
-        samples = self._build_epochs_samples(user_id, normalized_epochs)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples, keep_greater=True)
-        return counts
+        return self._write_epoch_samples(db, self._build_epochs_samples(user_id, normalized_epochs))
+
+    def _write_epoch_samples(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> WriteCounts:
+        """A slot's merged sum only grows, so a staler concurrent push must not lower it; other series are replaced."""
+        summed = [s for s in samples if s.series_type in EPOCH_SUMMED_SERIES]
+        rest = [s for s in samples if s.series_type not in EPOCH_SUMMED_SERIES]
+        count = WriteCounts(0, 0)
+        if summed:
+            count += self.data_point_repo.bulk_create(db, summed, keep_greater=True)
+        if rest:
+            count += self.data_point_repo.bulk_create(db, rest)
+        return count
 
     # -------------------------------------------------------------------------
     # Body Composition - /wellness-api/rest/bodyComps
@@ -2172,8 +2180,7 @@ class Garmin247Data(Base247DataTemplate):
 
         if epoch_items:
             epoch_samples = self._build_epochs_samples(user_id, self.normalize_epochs(epoch_items, user_id))
-            # A slot's merged sum only grows, so a concurrent push with a staler merge must not lower it.
-            count += self.data_point_repo.bulk_create(db, epoch_samples, keep_greater=True)
+            count += self._write_epoch_samples(db, epoch_samples)
 
         # Single bulk insert for SeriesSample
         if all_samples:
