@@ -78,8 +78,9 @@ def run_daily_archival(self: Task) -> dict:
             summary = archival_service.run_daily_archival(db)
             logger.info("Daily archival completed", **summary)
             return summary
-    except Exception as e:
-        logger.error("Daily archival task failed", exc_info=e)
+    except Exception:
+        # Raised on to Celery, whose integration reports it as unhandled; exc_info here would report it handled.
+        logger.error("Daily archival task failed")
         raise
     finally:
         rollup_queue.release_lock(token)
