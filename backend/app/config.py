@@ -116,6 +116,9 @@ class Settings(BaseSettings):
     # Time without uploads to conclude end of Apple Watch sleep session
     sleep_upload_quiet_minutes: int = 15
 
+    # Share of a sleep or workout a better-ranked source's sessions must cover for per-session selection to drop it
+    session_duplicate_overlap: float = Field(default=0.5, gt=0, le=1)
+
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
     sleep_sync_interval_seconds: int = 300  # Default: 5 minutes (300 seconds)

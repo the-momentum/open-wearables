@@ -1,6 +1,5 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
-import contextlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
@@ -17,7 +16,13 @@ from app.repositories.data_point_series_repository import (
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.repositories.series_aggregate_repository import SeriesAggregateRepository, daily_activity
+from app.repositories.repositories import SourceRanking
+from app.repositories.series_aggregate_repository import (
+    ACTIVITY_METRIC_GROUPS,
+    ACTIVITY_METRIC_KEYS,
+    SeriesAggregateRepository,
+    daily_activity,
+)
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
     DeviceType,
@@ -135,12 +140,14 @@ class SummariesService:
         user_id: UUID,
         results: list[dict] | list,
         date_key: str = "activity_date",
+        fill: tuple[tuple[str, ...], ...] = (),
     ) -> list[dict] | list:
         """Filter results to highest priority source per date.
 
         Args:
             results: List of dicts with date, source (provider), device_model
             date_key: Key name for date field (activity_date or sleep_date)
+            fill: Groups of keys the winner lacks entirely, taken whole from the best entry that has any of them
 
         Returns:
             Filtered list with only highest priority entry per date
@@ -148,7 +155,11 @@ class SummariesService:
         if not results:
             return results
 
-        provider_order, device_type_order = self._priority_orders(db_session)
+        ranking = SourceRanking(*self._priority_orders(db_session))
+
+        def sort_key(entry: dict) -> tuple[int, int, str]:
+            provider = entry.get("provider") or entry.get("source")
+            return (*ranking.rank(provider, entry.get("device_type")), entry.get("device_model") or "")
 
         # Group results by date
         by_date: dict[date, list[dict]] = defaultdict(list)
@@ -163,25 +174,14 @@ class SummariesService:
                 filtered.append(entries[0])
                 continue
 
-            # Sort by priority
-            def sort_key(entry: dict) -> tuple[int, int, str]:
-                raw_provider = entry.get("provider") or entry.get("source")
-                try:
-                    provider = ProviderName(raw_provider)
-                except ValueError:
-                    provider = ProviderName.UNKNOWN
-
-                provider_priority = provider_order.get(provider, 99)
-
-                device_model = entry.get("device_model")
-                device_type_priority = 99
-                with contextlib.suppress(ValueError):
-                    device_type_priority = device_type_order.get(DeviceType(entry.get("device_type")), 99)
-
-                return (provider_priority, device_type_priority, device_model or "")
-
             entries_sorted = sorted(entries, key=sort_key)
-            filtered.append(entries_sorted[0])
+            winner = dict(entries_sorted[0]) if fill else entries_sorted[0]
+            for keys in fill:
+                if all(winner.get(key) is None for key in keys):
+                    donor = next((e for e in entries_sorted if any(e.get(key) is not None for key in keys)), None)
+                    if donor is not None:
+                        winner.update({key: donor.get(key) for key in keys})
+            filtered.append(winner)
 
         return filtered
 
@@ -645,7 +645,9 @@ class SummariesService:
         """One row per day in [start, end) from the day aggregates, best source per date."""
         results = daily_activity(db_session, user_id, start, end, days_from_samples(db_session))
         results = self._add_workout_only_days(db_session, user_id, start, end, results)
-        return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+        return self._filter_by_priority(
+            db_session, user_id, results, date_key="activity_date", fill=ACTIVITY_METRIC_GROUPS
+        )
 
     def _add_workout_only_days(
         self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime, results: list
@@ -659,16 +661,7 @@ class SummariesService:
                 "source": wa["source"],
                 "device_model": wa["device_model"],
                 "device_type": wa["device_type"],
-                "steps_sum": None,
-                "active_energy_sum": None,
-                "basal_energy_sum": None,
-                "total_energy_sum": None,
-                "hr_avg": None,
-                "hr_max": None,
-                "hr_min": None,
-                "distance_sum": None,
-                "flights_climbed_sum": None,
-                "active_time_minutes": None,
+                **dict.fromkeys(ACTIVITY_METRIC_KEYS),
             }
             for wa in self.event_record_repo.get_daily_workout_aggregates(db_session, user_id, start, end)
             if wa["workout_date"] not in covered
@@ -798,9 +791,11 @@ class SummariesService:
         if user and user.personal_record:
             birth_date = user.personal_record.birth_date
 
-        # --- SLOW-CHANGING: Get latest values for slow-changing metrics ---
-        slow_changing_values = self.data_point_repo.get_latest_values_for_types(
-            db_session, user_id, now, BODY_SLOW_CHANGING_SERIES
+        ranking = SourceRanking(*self._priority_orders(db_session))
+
+        # --- SLOW-CHANGING: the preferred source's reading on each metric's newest day ---
+        slow_changing_values = self.data_point_repo.get_ranked_latest_values(
+            db_session, user_id, now, BODY_SLOW_CHANGING_SERIES, ranking
         )
 
         weight_data = slow_changing_values.get(SeriesType.weight)
@@ -809,33 +804,32 @@ class SummariesService:
         muscle_mass_data = slow_changing_values.get(SeriesType.lean_body_mass)
         bmi_data = slow_changing_values.get(SeriesType.body_mass_index)
 
-        weight_kg = weight_data[0] if weight_data else None
-        height_cm = height_data[0] if height_data else None
-        body_fat_pct = body_fat_data[0] if body_fat_data else None
-        muscle_mass_kg = muscle_mass_data[0] if muscle_mass_data else None
+        weight_kg = weight_data.value if weight_data else None
+        height_cm = height_data.value if height_data else None
+        body_fat_pct = body_fat_data.value if body_fat_data else None
+        muscle_mass_kg = muscle_mass_data.value if muscle_mass_data else None
 
         # Use stored BMI if available, otherwise calculate from weight and height
-        bmi = bmi_data[0] if bmi_data else self._calculate_bmi(weight_kg, height_cm)
+        bmi = bmi_data.value if bmi_data else self._calculate_bmi(weight_kg, height_cm)
 
         # Calculate age
         age = self._calculate_age(birth_date, now.date()) if birth_date else None
 
-        # Determine source from the most recently recorded slow-changing measurement.
-        # Tuple layout: (value, recorded_at, provider, source, device_model, device_type)
-        latest_measurement = max(
+        # The source named is the best-ranked of those the slow-changing values came from, the newest among equals.
+        named = min(
             (data for data in (weight_data, height_data, body_fat_data, muscle_mass_data, bmi_data) if data),
-            key=lambda data: data[1],
+            key=lambda data: (*ranking.rank(data.provider, data.device_type), -data.recorded_at.timestamp()),
             default=None,
         )
         provider = "unknown"
         source_name = None
         device_id = None
         device_type = None
-        if latest_measurement:
-            provider = latest_measurement[2] or "unknown"
-            source_name = latest_measurement[3]
-            device_id = latest_measurement[4]
-            device_type = latest_measurement[5]
+        if named:
+            provider = named.provider or "unknown"
+            source_name = named.source
+            device_id = named.device_model
+            device_type = named.device_type
 
         body_slow_changing = BodySlowChanging(
             weight_kg=weight_kg,
@@ -857,7 +851,14 @@ class SummariesService:
             db_session, user_id, [get_series_type_id(t) for t in BODY_AVERAGED_SERIES], first_day, last_day
         )
         averages = self.series_aggregate_repo.period_averages(
-            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights, days_from_samples(db_session)
+            db_session,
+            user_id,
+            BODY_AVERAGED_SERIES,
+            first_day,
+            last_day,
+            ranking,
+            nights,
+            days_from_samples(db_session),
         )
 
         resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
@@ -879,30 +880,22 @@ class SummariesService:
         # --- LATEST: Get recent point-in-time readings ---
         latest_window_start = now - timedelta(hours=latest_window_hours)
 
-        body_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.body_temperature, latest_window_start, now
-        )
-        skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
-        )
-        # Whoop and Polar report skin temperature once a night, as a day value.
-        if skin_temp_reading is None and (
-            day_value := self.series_aggregate_repo.latest_day_value(
-                db_session, user_id, SeriesType.skin_temperature, latest_window_start.date()
+        def latest_reading(series_type: SeriesType) -> tuple[float, datetime] | None:
+            return self.data_point_repo.get_latest_reading_within_window(
+                db_session, user_id, series_type, latest_window_start, now, ranking
             )
-        ):
-            skin_temp_reading = (*day_value, "", None)
-        # Get blood pressure readings within the window
-        bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now
-        )
-        bp_diastolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_diastolic, latest_window_start, now
-        )
 
-        # ignore provider and device id
-        body_temp_celsius, body_temp_measured_at, _, _ = body_temp_reading or (None, None, None, None)
-        skin_temp_celsius, skin_temp_measured_at, _, _ = skin_temp_reading or (None, None, None, None)
+        body_temp_reading = latest_reading(SeriesType.body_temperature)
+        # Whoop and Polar report skin temperature once a night, as a day value.
+        skin_temp_reading = latest_reading(SeriesType.skin_temperature) or self.series_aggregate_repo.latest_day_value(
+            db_session, user_id, SeriesType.skin_temperature, latest_window_start.date(), ranking
+        )
+        # Get blood pressure readings within the window
+        bp_systolic_reading = latest_reading(SeriesType.blood_pressure_systolic)
+        bp_diastolic_reading = latest_reading(SeriesType.blood_pressure_diastolic)
+
+        body_temp_celsius, body_temp_measured_at = body_temp_reading or (None, None)
+        skin_temp_celsius, skin_temp_measured_at = skin_temp_reading or (None, None)
 
         # Blood pressure readings are only meaningful as a pair recorded at the same time.
         # Validate that both readings exist and their timestamps match within tolerance.
@@ -912,11 +905,12 @@ class SummariesService:
         bp_measured_at = None
 
         if bp_systolic_reading and bp_diastolic_reading:
-            time_diff = abs((bp_systolic_reading[1] - bp_diastolic_reading[1]).total_seconds())
-            if time_diff <= BP_TIMESTAMP_TOLERANCE_SECONDS:
+            systolic, systolic_at = bp_systolic_reading
+            diastolic, diastolic_at = bp_diastolic_reading
+            if abs((systolic_at - diastolic_at).total_seconds()) <= BP_TIMESTAMP_TOLERANCE_SECONDS:
                 blood_pressure = BloodPressure(
-                    avg_systolic_mmhg=int(round(bp_systolic_reading[0])),
-                    avg_diastolic_mmhg=int(round(bp_diastolic_reading[0])),
+                    avg_systolic_mmhg=int(round(systolic)),
+                    avg_diastolic_mmhg=int(round(diastolic)),
                     # For single point-in-time reading, no min/max/count needed
                     max_systolic_mmhg=None,
                     max_diastolic_mmhg=None,
@@ -924,7 +918,7 @@ class SummariesService:
                     min_diastolic_mmhg=None,
                     reading_count=1,
                 )
-                bp_measured_at = max(bp_systolic_reading[1], bp_diastolic_reading[1])
+                bp_measured_at = max(systolic_at, diastolic_at)
 
         # Check if we have any data at all
         has_slow_changing = any([weight_kg, height_cm, body_fat_pct, muscle_mass_kg])

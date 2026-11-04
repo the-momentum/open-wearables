@@ -17,6 +17,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    and_,
     asc,
     case,
     cast,
@@ -56,6 +57,7 @@ from app.repositories.data_type_coverage_repository import data_type_coverage_re
 from app.repositories.local_day import OFFSET_REACH
 from app.repositories.repositories import (
     CrudRepository,
+    SourceRanking,
     source_filter_conditions,
     timeline_key_column,
     utc_bucket_start,
@@ -209,8 +211,6 @@ class WriteCounts(int):
         return f"WriteCounts(inserted={self.inserted}, updated={self.updated})"
 
 
-# Sources whose provider or device type is not ranked sort last, in id order.
-_UNRANKED = 1_000_000
 SERIES_TYPE_IDS: tuple[int, ...] = tuple(get_series_type_id(t) for t in SeriesType)
 _AGGREGATE_FUNCS = {
     AggregationMethod.AVG: func.avg,
@@ -228,6 +228,7 @@ _TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
 
 # Rows per avg HR query; 5 bind parameters each keeps a query far below PostgreSQL's 65535
 _MAX_WINDOW_ROWS = 2000
+_TIE_COUNT_CAP = 10_000
 
 
 class WorkoutWindow(NamedTuple):
@@ -238,6 +239,17 @@ class WorkoutWindow(NamedTuple):
     start_time: datetime
     end_time: datetime
     fallback_source_ids: tuple[UUID, ...] = ()
+
+
+class LatestValue(NamedTuple):
+    """A series' latest reading and the source it came from."""
+
+    value: float
+    recorded_at: datetime
+    provider: str | None
+    source: str | None
+    device_model: str | None
+    device_type: str | None
 
 
 class AggregatedSample(NamedTuple):
@@ -753,8 +765,7 @@ class DataPointSeriesRepository(
         params: TimeSeriesQueryParams,
         types: list[SeriesType],
         user_id: UUID,
-        provider_order: dict,
-        device_type_order: dict,
+        ranking: SourceRanking,
     ) -> dict[int, UUID]:
         """Best-ranked data source per series type, among those holding data in the window.
 
@@ -763,7 +774,7 @@ class DataPointSeriesRepository(
         winner is resolved per series type, so a watch with heart rate but no GPS keeps the
         heart rate and yields only the GPS series to the next source.
         """
-        ranked = self._ranked_sources(db_session, params, user_id, provider_order, device_type_order)
+        ranked = self._ranked_sources(db_session, params, user_id, ranking)
         type_ids = [get_series_type_id(t) for t in types] if types else SERIES_TYPE_IDS
         if not ranked or not type_ids:
             return {}
@@ -812,11 +823,31 @@ class DataPointSeriesRepository(
             select(candidates.c.type_id, candidates.c.source_id).select_from(candidates.join(probe, true()))
         ).all()
 
-        rank_of = {source.id: position for position, source in enumerate(ranked)}
-        winners: dict[int, UUID] = {}
+        rank_of = {s.id: ranking.rank(s.provider, s.device_type) for s in ranked}
+        by_type: dict[int, list[UUID]] = {}
         for type_id, source_id in populated:
-            if type_id not in winners or rank_of[source_id] < rank_of[winners[type_id]]:
-                winners[type_id] = source_id
+            by_type.setdefault(type_id, []).append(source_id)
+        winners: dict[int, UUID] = {}
+        for type_id, source_ids in by_type.items():
+            best = min(rank_of[source_id] for source_id in source_ids)
+            tied = [source_id for source_id in source_ids if rank_of[source_id] == best]
+            if len(tied) == 1:
+                winners[type_id] = tied[0]
+                continue
+            # A tie goes to the source holding the most here (capped), so one stray entry never hides a real device.
+            tied_sources = values(column("source_id", PGUUID(as_uuid=True)), name="tied").data([(s,) for s in tied])
+            held = (
+                select(literal_column("1").label("one"))
+                .where(source == tied_sources.c.source_id, series == type_id, *available)
+                .limit(_TIE_COUNT_CAP)
+                .lateral("held")
+            )
+            counts = db_session.execute(
+                select(tied_sources.c.source_id, func.count())
+                .select_from(tied_sources.join(held, true()))
+                .group_by(tied_sources.c.source_id)
+            ).all()
+            winners[type_id] = min(counts, key=lambda row: (-row[1], str(row[0])))[0]
         return winners
 
     def _ranked_sources(
@@ -824,8 +855,7 @@ class DataPointSeriesRepository(
         db_session: DbSession,
         params: TimeSeriesQueryParams,
         user_id: UUID,
-        provider_order: dict,
-        device_type_order: dict,
+        ranking: SourceRanking,
     ) -> list[DataSource]:
         """The caller's sources, best first. Honours the source filters, so priority picks a
         winner from what the request actually asked for rather than from everything owned."""
@@ -833,14 +863,7 @@ class DataPointSeriesRepository(
             DataSource.user_id == user_id,
             *source_filter_conditions(params, DataSource.id),
         )
-        return sorted(
-            query.all(),
-            key=lambda s: (
-                provider_order.get(s.provider, _UNRANKED),
-                device_type_order.get(s.device_type, _UNRANKED),
-                s.id,
-            ),
-        )
+        return sorted(query.all(), key=lambda s: (*ranking.rank(s.provider, s.device_type), s.id))
 
     def _first_sample_at_or_after(
         self,
@@ -1364,7 +1387,7 @@ class DataPointSeriesRepository(
         user_id: UUID,
         before_date: datetime,
         series_types: list[SeriesType],
-    ) -> dict[SeriesType, tuple[float, datetime, str | None, str | None, str | None, str | None]]:
+    ) -> dict[SeriesType, LatestValue]:
         """Get the most recent value for each series type before a given date.
 
         Used for slow-changing measurements like weight, height, body fat %.
@@ -1373,8 +1396,7 @@ class DataPointSeriesRepository(
             before_date: Only consider measurements recorded before this datetime
 
         Returns:
-            Dict mapping SeriesType to tuple of
-            (value, recorded_at, provider, source, device_model, device_type)
+            Dict mapping SeriesType to its LatestValue
         """
         if not series_types:
             raise ValueError("series_types cannot be empty")
@@ -1435,14 +1457,86 @@ class DataPointSeriesRepository(
         )
 
         # Build result dict
-        latest_values: dict[SeriesType, tuple[float, datetime, str | None, str | None, str | None, str | None]] = {}
+        latest_values: dict[SeriesType, LatestValue] = {}
         for type_id, value, recorded_at, provider, source, device_model, device_type in results:
             try:
                 series_type = get_series_type_from_id(type_id)
-                latest_values[series_type] = (float(value), recorded_at, provider, source, device_model, device_type)
+                latest_values[series_type] = LatestValue(
+                    float(value), recorded_at, provider, source, device_model, device_type
+                )
             except KeyError:
                 pass
 
+        return latest_values
+
+    def get_ranked_latest_values(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        before_date: datetime,
+        series_types: list[SeriesType],
+        ranking: SourceRanking,
+    ) -> dict[SeriesType, LatestValue]:
+        """Per series, the best-ranked source's last reading on the local day of the newest before ``before_date``."""
+        type_ids = [get_series_type_id(t) for t in series_types]
+        newest = (
+            db_session.query(
+                self.model.series_type_definition_id.label("type_id"),
+                func.max(self.model.recorded_at).label("at"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.recorded_at < before_date,
+                self.model.series_type_definition_id.in_(type_ids),
+            )
+            .group_by(self.model.series_type_definition_id)
+            .subquery()
+        )
+        # Two days back reaches every reading that can share the newest one's local day, whatever the offsets.
+        rows = (
+            db_session.query(
+                self.model.series_type_definition_id,
+                self.model.value,
+                self.model.recorded_at,
+                self.model.zone_offset,
+                DataSource.provider,
+                DataSource.source,
+                DataSource.device_model,
+                DataSource.device_type,
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .join(
+                newest,
+                and_(
+                    self.model.series_type_definition_id == newest.c.type_id,
+                    self.model.recorded_at <= newest.c.at,
+                    self.model.recorded_at > newest.c.at - timedelta(days=2),
+                ),
+            )
+            .filter(DataSource.user_id == user_id)
+            .all()
+        )
+
+        by_type: dict[int, list] = {}
+        for row in rows:
+            by_type.setdefault(row.series_type_definition_id, []).append(row)
+        latest_values: dict[SeriesType, LatestValue] = {}
+        for type_id, readings in by_type.items():
+            newest_reading = max(readings, key=lambda r: r.recorded_at)
+            day = local_date(newest_reading.recorded_at, newest_reading.zone_offset)
+            best = min(
+                (r for r in readings if local_date(r.recorded_at, r.zone_offset) == day),
+                key=lambda r: (*ranking.rank(r.provider, r.device_type), -r.recorded_at.timestamp()),
+            )
+            latest_values[get_series_type_from_id(type_id)] = LatestValue(
+                float(best.value),
+                best.recorded_at,
+                best.provider,
+                best.source,
+                best.device_model,
+                best.device_type,
+            )
         return latest_values
 
     def get_aggregates_for_period(
@@ -1508,8 +1602,9 @@ class DataPointSeriesRepository(
         series_type: SeriesType,
         window_start: datetime,
         window_end: datetime,
-    ) -> tuple[float, datetime, str | None, str | None] | None:
-        """Get the most recent reading for a series type within a time window.
+        ranking: SourceRanking,
+    ) -> tuple[float, datetime] | None:
+        """Get the best-ranked source's most recent reading for a series type within a time window.
 
         Used for point-in-time metrics like body temperature that are only
         relevant if recently measured. Returns None if no reading exists
@@ -1519,44 +1614,27 @@ class DataPointSeriesRepository(
             series_type: The type of measurement to retrieve
             window_start: Start of the valid time window
             window_end: End of the valid time window (typically now)
-
-        Returns:
-            Tuple of (value, recorded_at, provider_name, device_id) or None if no recent reading
         """
         type_id = get_series_type_id(series_type)
+        provider_rank, device_rank, _ = ranking.order_terms()
 
         result = (
-            db_session.query(
-                self.model.value,
-                self.model.recorded_at,
-                DataSource.source,
-                DataSource.device_model,
-            )
+            db_session.query(self.model.value, self.model.recorded_at)
             .join(DataSource, self.model.data_source_id == DataSource.id)
-            .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
-            .outerjoin(
-                DeviceTypePriority,
-                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
-            )
             .filter(
                 DataSource.user_id == user_id,
                 self.model.series_type_definition_id == type_id,
                 self.model.recorded_at >= window_start,
                 self.model.recorded_at <= window_end,
             )
-            .order_by(
-                self.model.recorded_at.desc(),
-                ProviderPriority.priority.asc().nulls_last(),
-                DeviceTypePriority.priority.asc().nulls_last(),
-            )
+            # The window is a few hours, so the preferred source's reading is recent enough to beat a newer one.
+            .order_by(provider_rank, device_rank, self.model.recorded_at.desc())
             .first()
         )
 
         if result is None:
             return None
-
-        value, recorded_at, provider_name, device_id = result
-        return (float(value), recorded_at, provider_name, device_id)
+        return float(result.value), result.recorded_at
 
     def query_series(
         self,
