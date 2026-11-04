@@ -36,7 +36,7 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | SpO2 | Yes (requires Polar Elixir device) |
 | Wrist ECG | Yes (requires Polar Elixir device) |
 
-Workout normalization uses Polar's `detailed_sport_info` when available. Sessions that previously fell back to `generic` may now be returned as `tennis`, `badminton`, `pickleball`, `strength_training`, or `indoor_climbing` when Polar provides a matching sport detail. A generic category remains the fallback for unrecognized details.
+Workout normalization first matches Polar's `detailed_sport_info`, then falls back to the sport-level mapping when one exists (for example, an unrecognized `RUNNING` detail remains `running`). An unrecognized sport maps to `other`; `generic` is returned only when `sport="OTHER"` has no recognized detail mapping. Sessions previously classified as generic may now be returned as `tennis`, `badminton`, `pickleball`, `strength_training`, or `indoor_climbing` when Polar provides a matching detail.
 
 <Note>
 This changes the normalized workout type for some existing Polar activities on subsequent syncs. Integrations that validate workout types against a closed enum, or have logic that depends on these activities being `generic`, should accept the specific values listed above.
