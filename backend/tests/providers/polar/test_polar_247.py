@@ -14,12 +14,39 @@ from app.schemas.model_crud.activities import CalendarPeriod
 from app.schemas.providers.polar import PolarWebhookEventType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
+from app.utils.exceptions import ProviderError
 from tests.factories import UserFactory
 
 
 @pytest.fixture
 def data_247() -> Polar247Data:
     return PolarStrategy().data_247
+
+
+class TestPolar247ApiRequest:
+    @pytest.mark.parametrize(
+        "upstream_status",
+        [
+            404,  # no data for the date, or a feature the device lacks
+            204,  # no content: an empty body where JSON is expected
+        ],
+    )
+    def test_no_data_is_none(self, data_247: Polar247Data, upstream_status: int) -> None:
+        with patch(
+            "app.services.providers.polar.data_247.make_authenticated_request",
+            side_effect=ProviderError("polar", upstream_status=upstream_status),
+        ):
+            assert data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep") is None
+
+    def test_other_failures_propagate(self, data_247: Polar247Data) -> None:
+        with (
+            patch(
+                "app.services.providers.polar.data_247.make_authenticated_request",
+                side_effect=ProviderError("polar", upstream_status=500),
+            ),
+            pytest.raises(ProviderError),
+        ):
+            data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep")
 
 
 # ---------------------------------------------------------------------------

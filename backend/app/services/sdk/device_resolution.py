@@ -1,6 +1,6 @@
 """Device resolution utilities for mobile SDK data (HealthKit, Health Connect, Samsung Health)."""
 
-from app.constants.devices_map import is_apple_own_source, map_reported_device_type
+from app.constants.devices_map import is_apple_own_source, is_host_model, map_reported_device_type
 from app.schemas.enums import DeviceType
 from app.schemas.providers.mobile_sdk import OSVersion, SourceInfo
 
@@ -15,17 +15,24 @@ def _get_source_app_id(source: SourceInfo) -> str | None:
     return source.app_id or source.bundle_identifier
 
 
-def _get_device_model(source: SourceInfo | None) -> str | None:
+def _get_device_model(source: SourceInfo | None, provider: str | None) -> str | None:
     if not source:
         return None
+    app_id = _get_source_app_id(source)
     # Apple's own sources tag some Watch samples with the paired iPhone's model; hardware is the producer
-    if source.device_hardware_version and is_apple_own_source(_get_source_app_id(source)):
+    if source.device_hardware_version and is_apple_own_source(app_id):
         return source.device_hardware_version
-    if source.device_model:
-        return source.device_model
-    if source.product_type:
-        return source.product_type
-    return None
+    return None if _reports_relaying_host(source, provider) else _reported_model(source)
+
+
+def _reported_model(source: SourceInfo) -> str | None:
+    return source.device_model or source.product_type or None
+
+
+def _reports_relaying_host(source: SourceInfo, provider: str | None) -> bool:
+    """iOS SDKs before the fix for third-party writes report the relaying iPhone as the writer's model,
+    and its type (phone/watch) as the device type."""
+    return is_host_model(provider, _get_source_app_id(source), _reported_model(source))
 
 
 def _get_original_source_name(source: SourceInfo | None) -> str | None:
@@ -44,7 +51,7 @@ def _get_original_source_name(source: SourceInfo | None) -> str | None:
     return _get_source_app_id(source)
 
 
-def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | None, str | None]:
+def extract_device_info(source: SourceInfo | None, provider: str | None) -> tuple[str | None, str | None, str | None]:
     """Extract device information from SourceInfo.
 
     Returns:
@@ -53,7 +60,7 @@ def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | No
     if not source:
         return None, None, None
 
-    device_model = _get_device_model(source)
+    device_model = _get_device_model(source, provider)
     software_version = _format_os_version(source.operating_system_version)
     original_source_name = _get_original_source_name(source)  # e.g. "Apple Watch (Jan)" or "Zepp Life"
 
@@ -71,6 +78,8 @@ def extract_device_ids(source: SourceInfo | None) -> tuple[str | None, str | Non
     return source.device_id, _get_source_app_id(source), source.device_manufacturer
 
 
-def extract_device_type(source: SourceInfo | None) -> DeviceType | None:
+def extract_device_type(source: SourceInfo | None, provider: str | None) -> DeviceType | None:
     """Device type reported by the SDK, or None when absent or unknown."""
-    return map_reported_device_type(source.device_type) if source else None
+    if not source or _reports_relaying_host(source, provider):
+        return None
+    return map_reported_device_type(source.device_type)

@@ -4,13 +4,10 @@ The Garmin Health API backfill endpoints allow requesting historical data
 without pull tokens. Data is sent asynchronously to configured webhooks.
 """
 
-import logging
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
-
-from fastapi import HTTPException
 
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
@@ -23,7 +20,20 @@ from app.services.providers.garmin.backfill_config import (
     REQUEST_DELAY_SECONDS,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ProviderConnectionError, ProviderError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
+
+
+def backfill_failure(exc: ProviderConnectionError | ProviderError) -> tuple[int | None, str]:
+    """Garmin's status and message behind a failed backfill request, which the chain's stop
+    and rate-limit decisions read. A connection that can't be used stops it like Garmin's 401;
+    the message keeps Garmin's answer (e.g. "before min start time"), unlike ``detail``."""
+    if isinstance(exc, ProviderConnectionError):
+        return 401, str(exc.detail)
+    message = f"{exc.detail}: {exc.upstream_body}" if exc.upstream_body else str(exc.detail)
+    return exc.upstream_status, message
 
 
 class GarminBackfillService:
@@ -55,7 +65,6 @@ class GarminBackfillService:
         self.api_base_url = api_base_url
         self.oauth = oauth
         self.connection_repo = UserConnectionRepository()
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _make_api_request(
         self,
@@ -127,9 +136,7 @@ class GarminBackfillService:
             # Use 30 days for first sync (per user limit), otherwise 1 day
             days = BACKFILL_CHUNK_DAYS if is_first_sync else DEFAULT_BACKFILL_DAYS
             start_time = end_time - timedelta(days=days)
-            log_structured(
-                self.logger,
-                "info",
+            logger.info(
                 "Backfill timeframe calculated",
                 provider="garmin",
                 trace_id=trace_id,
@@ -163,9 +170,7 @@ class GarminBackfillService:
             }
 
             try:
-                log_structured(
-                    self.logger,
-                    "info",
+                logger.info(
                     "Sending backfill API request",
                     provider="garmin",
                     trace_id=trace_id,
@@ -177,9 +182,7 @@ class GarminBackfillService:
                 # Backfill endpoints return 202 Accepted on success
                 self._make_api_request(db, user_id, endpoint, params)
                 results["triggered"].append(data_type)
-                log_structured(
-                    self.logger,
-                    "info",
+                logger.info(
                     "Backfill API request accepted",
                     provider="garmin",
                     trace_id=trace_id,
@@ -187,13 +190,12 @@ class GarminBackfillService:
                     user_id=str(user_id),
                 )
 
-            except HTTPException as e:
+            except (ProviderConnectionError, ProviderError) as e:
+                status_code, error = backfill_failure(e)
                 # 409 = duplicate backfill already processed for this timeframe.
                 # Garmin won't send another webhook, so caller should skip (not wait).
-                if e.status_code == 409:
-                    log_structured(
-                        self.logger,
-                        "info",
+                if status_code == 409:
+                    logger.info(
                         "Backfill already requested (409 duplicate)",
                         provider="garmin",
                         trace_id=trace_id,
@@ -202,24 +204,20 @@ class GarminBackfillService:
                     )
                     results["duplicate"].append(data_type)
                 else:
-                    log_structured(
-                        self.logger,
-                        "error",
+                    logger.error(
                         "Backfill API request failed",
                         provider="garmin",
                         trace_id=trace_id,
                         data_type=data_type,
-                        status_code=e.status_code,
-                        error=str(e.detail),
+                        status_code=status_code,
+                        error=error,
                         user_id=str(user_id),
                     )
-                    results["failed"][data_type] = str(e.detail)
-                    results["failed_status_codes"][data_type] = e.status_code
+                    results["failed"][data_type] = error
+                    results["failed_status_codes"][data_type] = status_code
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     "Backfill request error",
                     provider="garmin",
                     trace_id=trace_id,

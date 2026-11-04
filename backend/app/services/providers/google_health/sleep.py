@@ -5,7 +5,6 @@ Fetches Sleep sessions via the dataPoints ``list`` operation and stores them as
 sessions). Composed into GoogleHealth247Data.load_and_save_all.
 """
 
-import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -51,7 +50,6 @@ class GoogleHealthApiSleep:
         self.connection_repo = connection_repo
         self.provider_name = "google_health"
         self.api_base_url = api_base_url
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
         """Fetch sleep sessions ending in the window and merge-save each.
@@ -128,6 +126,7 @@ class GoogleHealthApiSleep:
         record = EventRecordCreate(
             id=record_id,
             category=EventCategory.SLEEP,
+            type="sleep_session",
             provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
