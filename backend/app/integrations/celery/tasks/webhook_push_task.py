@@ -11,7 +11,6 @@ from typing import Any
 from uuid import UUID
 
 from celery import Task, shared_task
-from fastapi import HTTPException
 from psycopg.errors import ForeignKeyViolation
 
 from app.constants.celery_tasks import CeleryTask
@@ -25,17 +24,19 @@ from app.utils.exceptions import (
     INTEGRITY_ERRORS,
     REAUTH_REQUIRED,
     AppError,
+    ProviderError,
     ReauthRequiredError,
     describe_integrity_error,
     integrity_violation,
+    is_provider_state_error,
     is_unique_violation,
 )
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
-# Upstream 4xx where retrying can't recover the object. 401 (token refresh) and
-# 429 (rate limit) are excluded — those still benefit from a retry.
+# Upstream 4xx where retrying can't recover the object. 429 (rate limit) is excluded,
+# it benefits from a retry; a 401 never gets here, it is a ProviderConnectionError.
 _NONRETRIABLE_UPSTREAM_STATUSES = frozenset({400, 403, 404, 410, 422})
 
 # Providers whose webhook deliveries are surfaced in the sync log via this task.
@@ -226,40 +227,57 @@ def process_webhook_push(
             provider=provider_name,
             trace_id=request_trace_id,
             provider_user_id=provider_user_id,
-            error=str(exc.detail),
+            error=exc.reason,
         )
         result = {"status": "error", "error": REAUTH_REQUIRED, "user_id": str(exc.user_id)}
         _emit_webhook_sync_status(provider_name, result)
         return result
-    except HTTPException as exc:
+    except ProviderError as exc:
         # Non-retriable upstream 4xx (deleted/unqueryable object): ack so the task
-        # drops instead of retrying forever. 5xx and 401/429 fall through to retry.
-        if exc.status_code in _NONRETRIABLE_UPSTREAM_STATUSES:
+        # drops instead of retrying forever. 5xx, 429 and no response fall through to retry.
+        # A rejected token is a ProviderConnectionError, dropped below like any client error.
+        if exc.upstream_status in _NONRETRIABLE_UPSTREAM_STATUSES:
+            # A request the provider rejected (400, 422) is most likely our bug: alert on it.
             logger.warning(
                 "Webhook push task skipped — upstream non-retriable response",
+                exc_info=exc if exc.request_rejected else None,
+                alert=exc.request_rejected,
                 provider=provider_name,
                 trace_id=request_trace_id,
                 provider_user_id=provider_user_id,
-                upstream_status=exc.status_code,
-                error=str(exc.detail),
+                upstream_status=exc.upstream_status,
+                error=exc.detail,
             )
             return {
                 "status": "skipped",
                 "reason": "upstream_non_retriable",
-                "upstream_status": exc.status_code,
+                "upstream_status": exc.upstream_status,
             }
-        logger.error(
-            "Webhook push task failed, scheduling retry",
-            provider=provider_name,
-            trace_id=request_trace_id,
-            provider_user_id=provider_user_id,
-            upstream_status=exc.status_code,
-            error=str(exc.detail),
-            attempt=self.request.retries,
-            max_retries=self.max_retries,
-        )
         if self.request.retries >= self.max_retries:
+            # The payload is lost now. CeleryIntegration reports the error re-raised below, but
+            # drops a provider's answer about the user's state (a throttle), so alert on that here.
+            logger.warning(
+                "Webhook push task failed upstream, giving up",
+                exc_info=exc,
+                alert=is_provider_state_error(exc),
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                upstream_status=exc.upstream_status,
+                attempt=self.request.retries,
+            )
             _emit_final_failure(provider_name, handler, provider_user_id, exc)
+        else:
+            logger.warning(
+                "Webhook push task failed, scheduling retry",
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                upstream_status=exc.upstream_status,
+                error=exc.detail,
+                attempt=self.request.retries,
+                max_retries=self.max_retries,
+            )
         raise self.retry(exc=exc)
     except Exception as exc:
         if _is_client_error(exc):

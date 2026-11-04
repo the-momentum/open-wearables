@@ -60,11 +60,16 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ## Provider Errors
 
-### User Not Connected
+<Note>
+  A `401` always means a problem with **your** credentials (API key or JWT). Problems with the
+  user's connection to a provider use the statuses below, so you can tell them apart.
+</Note>
+
+### User Not Connected (404)
 
 ```json
 {
-  "detail": "User not connected to garmin"
+  "detail": "User is not connected to Garmin."
 }
 ```
 
@@ -75,28 +80,44 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 ```
 
-### Token Expired
+### Reconnection Required (409)
 
 ```json
 {
-  "detail": "Token expired and no refresh token available for garmin"
+  "detail": "Garmin authorization expired or was revoked; the user must reconnect."
 }
 ```
 
-Or:
-
-```json
-{
-  "detail": "Garmin authorization expired. Please re-authorize."
-}
-```
-
-**Cause:** The OAuth token for this provider has expired and cannot be refreshed.
+**Cause:** The user's OAuth grant is gone: the token expired and cannot be refreshed, or the provider rejected it (for example, the user revoked access in the provider's app).
 
 **Solution:** User needs to reconnect via OAuth:
 ```bash
 GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 ```
+
+### No Provider API Token (400)
+
+```json
+{
+  "detail": "No Apple API access token for this user."
+}
+```
+
+**Cause:** The connection has no API token to call the provider with, e.g. an SDK-based provider whose data is pushed from the device.
+
+**Solution:** Use the SDK sync or import endpoints for this provider.
+
+### Provider Unavailable (502 / 503)
+
+```json
+{
+  "detail": "Garmin API error (status 500)"
+}
+```
+
+**Cause:** The provider's API failed or did not respond (`502`), or kept rate-limiting the request after retries (`503`). The `detail` names the provider's status; its own response is not included.
+
+**Solution:** For a provider `5xx`, no response, or a `503`, retry later; the user's connection is still valid. A `502` naming a provider `4xx` (such as `status 400`) means the provider refused the request, and retrying it unchanged fails the same way.
 
 ### Provider Doesn't Support OAuth
 

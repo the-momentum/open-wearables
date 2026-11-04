@@ -11,7 +11,6 @@ from uuid import uuid4
 
 import pytest
 from botocore.exceptions import ClientError
-from fastapi import HTTPException, status
 from psycopg.errors import ForeignKeyViolation, NotNullViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -23,7 +22,7 @@ from app.integrations.celery.tasks.process_aws_upload_task import (
     process_aws_upload,
 )
 from app.schemas.providers.apple.apple_xml import CompletedPart
-from app.utils.exceptions import AppError, NotFoundError
+from app.utils.exceptions import AppError, InvalidInputError, NotFoundError, ServiceUnavailableError
 from tests.factories import UserFactory
 
 
@@ -340,8 +339,8 @@ class TestProcessUploadTask:
         """A duplicate delivery finds the upload already completed (404) but the object
         present, so it must still process instead of failing on the consumed upload id."""
         key = "user-123/raw/export.xml"
-        mock_multipart_service.complete_upload.side_effect = HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Failed to complete multipart upload: NoSuchUpload"
+        mock_multipart_service.complete_upload.side_effect = NotFoundError(
+            "Failed to complete multipart upload: NoSuchUpload"
         )
         mock_s3 = MagicMock()
         mock_s3.head_object.return_value = {}  # object exists -> completion already happened
@@ -372,14 +371,14 @@ class TestProcessUploadTask:
     ) -> None:
         """A genuine 404 (no finalized object) must not be swallowed, and must not process."""
         key = "user-123/raw/export.xml"
-        mock_multipart_service.complete_upload.side_effect = HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Failed to complete multipart upload: NoSuchUpload"
+        mock_multipart_service.complete_upload.side_effect = NotFoundError(
+            "Failed to complete multipart upload: NoSuchUpload"
         )
         mock_s3 = MagicMock()
         mock_s3.head_object.side_effect = ClientError({"Error": {"Code": "404"}}, "HeadObject")
         mock_get_s3_client.return_value = mock_s3
 
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(NotFoundError):
             complete_and_process_aws_upload(
                 bucket_name="test-bucket",
                 object_key=key,
@@ -388,7 +387,6 @@ class TestProcessUploadTask:
                 user_id="user-123",
             )
 
-        assert exc.value.status_code == status.HTTP_404_NOT_FOUND
         mock_process.assert_not_called()
 
 
@@ -567,8 +565,8 @@ class TestImportXmlData:
     ("exc", "retryable"),
     [
         (RuntimeError("temporary database failure"), True),
-        (HTTPException(status_code=503), True),
-        (HTTPException(status_code=404), False),
+        (ServiceUnavailableError("Object storage unavailable"), True),
+        (InvalidInputError("Completed parts do not match"), False),
         (AppError("broken invariant"), True),
         (NotFoundError("User not found."), False),
         (IntegrityError("stmt", {}, UniqueViolation("duplicate key")), False),

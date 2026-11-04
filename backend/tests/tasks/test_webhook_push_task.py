@@ -21,7 +21,15 @@ from sqlalchemy.exc import IntegrityError
 import app.integrations.celery.tasks.webhook_push_task as task
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.sync_status import SyncStatus
-from app.utils.exceptions import AppError, NotFoundError, ReauthRequiredError
+from app.utils.exceptions import (
+    AppError,
+    NotFoundError,
+    ProviderAuthRejectedError,
+    ProviderError,
+    ProviderNotConnectedError,
+    ProviderRateLimitError,
+    ReauthRequiredError,
+)
 
 
 @pytest.fixture
@@ -142,11 +150,81 @@ def test_own_client_errors_are_dropped_not_retried(exc: Exception) -> None:
         AppError("broken invariant"),
         RuntimeError("database down"),
         IntegrityError("INSERT ...", {"heart_rate": 187}, UniqueViolation("two pushes raced")),
+        ProviderAuthRejectedError("oura"),
     ],
 )
 def test_server_errors_are_retried(exc: Exception) -> None:
     with pytest.raises(Retry):
         _run_with_failing_handler(exc)
+
+
+@pytest.mark.parametrize("upstream_status", [400, 403, 404, 410, 422])
+def test_upstream_client_errors_are_dropped_not_retried(upstream_status: int) -> None:
+    """A deleted or unqueryable object at the provider fails the same way on every attempt."""
+    result = _run_with_failing_handler(ProviderError("oura", upstream_status=upstream_status))
+
+    assert result == {"status": "skipped", "reason": "upstream_non_retriable", "upstream_status": upstream_status}
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ProviderError("oura", upstream_status=500),
+        ProviderError("oura"),  # no response: timeout, connection reset
+        ProviderRateLimitError("oura", upstream_status=429),
+    ],
+)
+def test_upstream_outages_are_retried(exc: ProviderError) -> None:
+    with pytest.raises(Retry):
+        _run_with_failing_handler(exc)
+
+
+@pytest.mark.parametrize(("upstream_status", "alerted"), [(400, True), (422, True), (404, False), (410, False)])
+def test_only_a_request_the_provider_refused_alerts_when_skipped(upstream_status: int, alerted: bool) -> None:
+    """A 400 or 422 is most likely our bug; a deleted object at the provider is not."""
+    with patch.object(task, "logger") as logger:
+        _run_with_failing_handler(ProviderError("oura", upstream_status=upstream_status))
+
+    assert logger.warning.call_args.kwargs["alert"] is alerted
+
+
+@pytest.mark.parametrize(
+    ("exc", "alerted"),
+    [(ProviderError("oura", upstream_status=503), False), (ProviderRateLimitError("oura", upstream_status=429), True)],
+)
+def test_last_failed_attempt_reports_that_the_payload_is_lost(exc: ProviderError, alerted: bool) -> None:
+    """CeleryIntegration reports the error the last attempt re-raises, except a throttle,
+    which before_send drops: the line alerts only on that, so nothing is reported twice."""
+    task.process_webhook_push.push_request(retries=task.process_webhook_push.max_retries)
+    try:
+        with patch.object(task, "logger") as logger, pytest.raises(Retry):
+            _run_with_failing_handler(exc)
+    finally:
+        task.process_webhook_push.pop_request()
+
+    assert logger.warning.call_args.args[0] == "Webhook push task failed upstream, giving up"
+    assert logger.warning.call_args.kwargs["alert"] is alerted
+
+
+def test_earlier_failed_attempts_do_not_alert() -> None:
+    with patch.object(task, "logger") as logger, pytest.raises(Retry):
+        _run_with_failing_handler(ProviderError("oura", upstream_status=503))
+
+    assert logger.warning.call_args.args[0] == "Webhook push task failed, scheduling retry"
+    assert "alert" not in logger.warning.call_args.kwargs
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ProviderNotConnectedError("oura"),
+    ],
+)
+def test_unusable_connection_is_dropped_not_retried(exc: Exception) -> None:
+    """No retry gets past a revoked grant or a missing connection: only the user can fix it."""
+    result = _run_with_failing_handler(exc)
+
+    assert result == {"status": "skipped", "reason": "non_retriable", "error_type": type(exc).__name__}
 
 
 @pytest.mark.parametrize(

@@ -54,7 +54,7 @@ from app.services.providers.withings.handlers.rpc_client import (
 )
 from app.services.providers.withings.handlers.timezone import local_day_start, zone_offset_at
 from app.services.timeseries_service import timeseries_service
-from app.utils.structured_logging import get_logger, is_client_error
+from app.utils.structured_logging import get_logger, is_expected_error
 
 logger = get_logger(__name__)
 
@@ -529,7 +529,7 @@ class Withings247Data(Base247DataTemplate):
                 logger.warning(
                     "Skipping unparseable Withings sleep row",
                     exc_info=e,
-                    alert=not is_client_error(e),
+                    alert=not is_expected_error(e),
                     provider="withings",
                     user_id=str(user_id),
                 )
@@ -576,8 +576,9 @@ class Withings247Data(Base247DataTemplate):
                 )
             except Exception as e:
                 # HRV is paid-pack and a free plan may refuse the fields; the stages must survive
-                # that. A throttle or lost grant would fail without them too, so only 502 retries.
-                if data_fields and isinstance(e, WithingsAPIError) and e.status_code == 502:
+                # that. A throttle or lost grant would fail without them too, so only a plain
+                # envelope error retries.
+                if data_fields and isinstance(e, WithingsAPIError):
                     logger.warning(
                         "Withings sleep series failed with the HRV fields; retrying without them",
                         provider="withings",
@@ -589,7 +590,7 @@ class Withings247Data(Base247DataTemplate):
                 logger.warning(
                     "Withings sleep series fetch failed",
                     exc_info=e,
-                    alert=not is_client_error(e),
+                    alert=not is_expected_error(e),
                     provider="withings",
                     user_id=str(user_id),
                 )

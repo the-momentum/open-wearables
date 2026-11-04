@@ -27,7 +27,7 @@ import sentry_sdk
 from fastapi import HTTPException
 
 from app.utils.context import trace_id_var
-from app.utils.exceptions import AppError
+from app.utils.exceptions import AppError, is_provider_state_error
 from app.utils.logging_setup import (
     APP_LOGGER,
     BASE_FIELDS,
@@ -82,14 +82,20 @@ def _exception(exc_info: Any) -> BaseException | None:
 
 
 def is_client_error(exc: BaseException | None) -> bool:
-    """4xx HTTPExceptions and AppErrors are explicit, handled client errors (e.g. a provider
-    rejecting a token refresh): logged as warnings, kept out of Sentry.
+    """4xx HTTPExceptions and AppErrors are explicit, handled client errors (e.g. a user whose
+    provider grant was revoked): logged as warnings, kept out of Sentry.
 
     ``alert=True`` reports them anyway; a warning that should alert on everything else
-    passes ``alert=not is_client_error(e)``."""
+    passes ``alert=not is_expected_error(e)``."""
     if isinstance(exc, AppError):
         return exc.is_client_error
     return isinstance(exc, HTTPException) and 400 <= exc.status_code < 500
+
+
+def is_expected_error(exc: BaseException | None) -> bool:
+    """A client error, or a provider's answer about a user's state (``is_provider_state_error``):
+    logged as warnings, kept out of Sentry."""
+    return is_client_error(exc) or is_provider_state_error(exc)
 
 
 def _report(level: int, msg: str, exc: BaseException | None, context: dict[str, Any]) -> None:
@@ -120,12 +126,12 @@ class StructuredLogger:
 
     - ``exc_info``: an exception (or True inside ``except``) - adds ``error_type`` and
       ``traceback`` to the line. At ``error`` and above it is also reported to Sentry, whatever
-      LOG_LEVEL; at ``warning`` it is not. 4xx ``HTTPException``\\s and ``AppError``\\s are
-      logged as warnings.
+      LOG_LEVEL; at ``warning`` it is not. 4xx ``HTTPException``\\s and ``AppError``\\s and a
+      provider's answers about a user's state are logged as warnings (``is_expected_error``).
     - ``provider``: provider name, printed right after the message.
     - ``alert``: always report the line to Sentry - without an exception, below ``error``,
-      and also when LOG_LEVEL filters it out of the logs. ``alert=not is_client_error(e)``
-      keeps client errors out.
+      and also when LOG_LEVEL filters it out of the logs. ``alert=not is_expected_error(e)``
+      keeps those out.
     - any other keyword: an attribute of the line (queryable via @name:value in log
       explorers). Keep values JSON-serializable and free of health data and PII.
     """
@@ -175,7 +181,7 @@ class StructuredLogger:
         exc = _exception(exc_info)
         if _strict:
             _check_attributes(attributes, exc)
-        if level > logging.WARNING and is_client_error(exc):
+        if level > logging.WARNING and is_expected_error(exc):
             level = logging.WARNING
         enabled = self.logger.isEnabledFor(level)
         # Reporting does not follow LOG_LEVEL: quieter logs must not silence Sentry.

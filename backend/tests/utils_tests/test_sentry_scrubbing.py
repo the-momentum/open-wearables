@@ -23,12 +23,14 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.integrations import sentry as sentry_integration
+from app.main import app_error_handler
 from app.services import raw_payload_storage
 from app.services.providers.sensorbio import data_247 as sensorbio_data_247
+from app.services.providers.sync_247_result import Sync247Run
 from app.utils.config_utils import LogLevel
-from app.utils.exceptions import NotFoundError
+from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError, ProviderRateLimitError
 from app.utils.logging_setup import configure_app_logger
-from app.utils.structured_logging import get_logger, is_client_error
+from app.utils.structured_logging import get_logger, is_expected_error
 
 # A library logger: its ERROR records keep becoming Sentry events, like before.
 logger = logging.getLogger("library.test_sentry_scrubbing")
@@ -259,12 +261,18 @@ def test_alert_below_error_without_an_exception_keeps_its_level(captured: list[d
 
 @pytest.mark.parametrize(
     ("exc", "reported"),
-    [(HTTPException(status_code=404), False), (HTTPException(status_code=500), True), (ValueError("boom"), True)],
+    [
+        (HTTPException(status_code=404), False),
+        (ProviderError("garmin", upstream_status=404), False),
+        (HTTPException(status_code=500), True),
+        (ProviderError("garmin", upstream_status=503), True),
+        (ValueError("boom"), True),
+    ],
 )
-def test_alert_can_leave_out_client_errors(captured: list[dict[str, Any]], exc: Exception, reported: bool) -> None:
+def test_alert_can_leave_out_expected_errors(captured: list[dict[str, Any]], exc: Exception, reported: bool) -> None:
     exc = _raised(exc)
     with patch.object(app_logger.logger, "log", wraps=app_logger.logger.log) as log:
-        app_logger.warning("Fetch failed", exc_info=exc, alert=not is_client_error(exc))
+        app_logger.warning("Fetch failed", exc_info=exc, alert=not is_expected_error(exc))
     sentry_sdk.flush()
 
     assert log.call_args.args[0] == logging.WARNING
@@ -272,7 +280,13 @@ def test_alert_can_leave_out_client_errors(captured: list[dict[str, Any]], exc: 
 
 
 @pytest.mark.parametrize(
-    ("make_exc", "events"), [(lambda: HTTPException(status_code=401), 0), (lambda: RuntimeError("boom"), 3)]
+    ("make_exc", "events"),
+    [
+        (lambda: HTTPException(status_code=401), 0),
+        (lambda: ProviderError("sensorbio", upstream_status=404), 0),
+        (lambda: ProviderError("sensorbio", upstream_status=503), 3),
+        (lambda: RuntimeError("boom"), 3),
+    ],
 )
 def test_sensorbio_daily_details_do_not_alert_on_client_errors(
     captured: list[dict[str, Any]], make_exc: Any, events: int
@@ -434,3 +448,71 @@ def test_failed_s3_upload_adds_no_breadcrumb(captured: list[dict[str, Any]]) -> 
 
     crumbs = captured[0].get("breadcrumbs", {}).get("values", [])
     assert not [c for c in crumbs if c.get("category") == "raw_payload" and c["data"]["provider"] == "oura"]
+
+
+def _app_raising(error: Exception) -> TestClient:
+    """An app with the real AppError handler, whose only route raises ``error``."""
+    app = FastAPI()
+    app.add_exception_handler(AppError, app_error_handler)
+
+    @app.get("/provider-data")
+    async def provider_data() -> None:
+        raise error
+
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_provider_outage_is_answered_and_reported_grouped(captured: list[dict[str, Any]]) -> None:
+    """Not our bug, but it breaks syncs: one issue per provider and status, not per user."""
+    response = _app_raising(ProviderError("garmin", upstream_status=500)).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 502
+    assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "500"]]
+
+
+def test_providers_answer_about_a_user_is_answered_but_not_reported(captured: list[dict[str, Any]]) -> None:
+    """The SDK reports every handled 5xx; data the provider doesn't have for a user is nothing to fix."""
+    response = _app_raising(ProviderError("garmin", upstream_status=404)).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 502
+    assert captured == []
+
+
+def test_missing_setting_is_answered_and_reported(captured: list[dict[str, Any]]) -> None:
+    response = _app_raising(ConfigurationError("S3 bucket not configured")).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "S3 bucket not configured"}
+    assert [event["exception"]["values"][-1]["type"] for event in captured] == ["ConfigurationError"]
+
+
+def test_providers_answer_about_a_user_is_a_warning_unless_alerted(captured: list[dict[str, Any]]) -> None:
+    error = _raised(ProviderError("garmin", upstream_status=404))
+    app_logger.error("Garmin fetch failed", exc_info=error)
+    app_logger.warning("Garmin fetch keeps failing", exc_info=error, alert=True)
+    sentry_sdk.flush()
+
+    assert [event["contexts"]["log"]["message"] for event in captured] == ["Garmin fetch keeps failing"]
+
+
+def test_request_the_provider_refused_is_reported_grouped(captured: list[dict[str, Any]]) -> None:
+    """Likely our bug (a provider changed its API): one issue per provider and status, not per user."""
+    response = _app_raising(ProviderError("garmin", upstream_status=400)).get("/provider-data")
+    sentry_sdk.flush()
+
+    assert response.status_code == 502
+    assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "400"]]
+
+
+def test_captured_sync_step_reports_failures_not_a_users_state(captured: list[dict[str, Any]]) -> None:
+    """A lost grant or missing data would report every hour per user; an outage is worth hearing about."""
+    run = Sync247Run("withings", MagicMock(), uuid4())
+    run.fail("sleep", _raised(ProviderError("withings", upstream_status=404)), capture=True)
+    run.fail("weight", _raised(ProviderRateLimitError("withings", "throttled (status=601)")), capture=True)
+    run.fail("activity", _raised(ProviderError("withings", upstream_status=503)), capture=True)
+    sentry_sdk.flush()
+
+    assert [event["contexts"]["log"]["data_type"] for event in captured] == ["activity"]

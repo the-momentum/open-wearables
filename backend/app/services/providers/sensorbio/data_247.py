@@ -40,7 +40,7 @@ from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import energy_difference, seconds_to_minutes
 from app.utils.dates import as_utc
-from app.utils.structured_logging import get_logger, is_client_error
+from app.utils.structured_logging import get_logger, is_expected_error
 
 logger = get_logger(__name__)
 
@@ -668,7 +668,7 @@ class SensorBio247Data(Base247DataTemplate):
                 logger.warning(
                     "Failed to fetch Sensor Bio daily details",
                     exc_info=e,
-                    alert=not is_client_error(e),
+                    alert=not is_expected_error(e),
                     provider="sensorbio",
                     endpoint=endpoint,
                     date=current_date.isoformat(),

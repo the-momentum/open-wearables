@@ -37,11 +37,12 @@ import hmac
 from abc import ABC, abstractmethod
 from typing import Any
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories import UserConnectionRepository
+from app.utils.exceptions import WebhookVerificationError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -64,7 +65,8 @@ class BaseWebhookHandler(ABC):
     Optional overrides
     ------------------
     * ``handle_challenge`` – GET-based subscription verification (Strava
-      ``hub.challenge``, Oura ``verification_token``).  Defaults to 501.
+      ``hub.challenge``, Oura ``verification_token``).  Without an override the
+      unified router answers 501.
     * ``handle`` – the full pipeline orchestrator; override only when the
       standard *verify → parse → dispatch* sequence is insufficient.
     """
@@ -130,7 +132,7 @@ class BaseWebhookHandler(ABC):
             and is passed as-is to ``dispatch()``.
 
         Raises:
-            ``HTTPException(400)`` on malformed JSON or schema validation errors.
+            ``InvalidInputError`` on malformed JSON or schema validation errors.
         """
 
     @abstractmethod
@@ -209,8 +211,8 @@ class BaseWebhookHandler(ABC):
             Result ``dict`` from ``dispatch()``.
 
         Raises:
-            ``HTTPException(401)`` if ``verify_signature`` returns ``False``.
-            ``HTTPException(400)`` if ``parse_payload`` raises a validation error.
+            ``WebhookVerificationError`` (401) if ``verify_signature`` returns ``False``.
+            ``InvalidInputError`` (400) if ``parse_payload`` raises a validation error.
         """
         if not self.verify_signature(request, body):
             logger.warning(
@@ -219,7 +221,7 @@ class BaseWebhookHandler(ABC):
                 path=request.url.path,
                 client_host=request.client.host if request.client else None,
             )
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+            raise WebhookVerificationError("Invalid webhook signature")
 
         payload = self.parse_payload(body)
         return self.dispatch(db, payload)

@@ -33,7 +33,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request
+from fastapi import Request
 from pydantic import ValidationError
 
 from app.config import settings
@@ -45,6 +45,7 @@ from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.workouts import OuraWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import InvalidInputError, WebhookVerificationError
 from app.utils.structured_logging import LogContext, get_logger
 
 logger = get_logger(__name__)
@@ -118,7 +119,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
         try:
             return json.loads(body)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Store the raw payload and enqueue async processing. Returns immediately."""
@@ -163,7 +164,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
         challenge = request.query_params.get("challenge", "")
 
         if not verification_token or not self._verify_token(expected, verification_token):
-            raise HTTPException(status_code=401, detail="Invalid verification token")
+            raise WebhookVerificationError("Invalid verification token")
 
         return {"challenge": challenge}
 

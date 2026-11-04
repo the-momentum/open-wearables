@@ -12,15 +12,20 @@ from sqlalchemy.exc import DataError, IntegrityError, StatementError
 from app.utils.exceptions import (
     AppError,
     AuthenticationError,
+    ConfigurationError,
     ConflictError,
     DatetimeParseError,
     InvalidCursorError,
     InvalidInputError,
     NotFoundError,
     PermissionDeniedError,
+    ProviderError,
+    ProviderNotConnectedError,
     ResourceNotFoundError,
+    ServiceUnavailableError,
     UnsupportedProviderError,
     app_error_from_integrity_error,
+    is_provider_state_error,
     public_error_text,
 )
 
@@ -137,6 +142,45 @@ class TestAppErrorFromIntegrityError:
         exc = IntegrityError("stmt", {}, NotNullViolation("null value in column"))
 
         assert app_error_from_integrity_error(exc) is None
+
+
+class TestProviderErrors:
+    def test_label_spells_out_multi_word_providers(self) -> None:
+        assert ProviderNotConnectedError("google_health").detail == "User is not connected to Google Health."
+        assert ProviderError("garmin", upstream_status=500).detail == "Garmin API error (status 500)"
+
+    @pytest.mark.parametrize("upstream_status", [400, 405, 415, 422])
+    def test_a_refused_request_is_reported(self, upstream_status: int) -> None:
+        """The provider refused what we sent: most likely our bug, e.g. after an API change."""
+        error = ProviderError("garmin", upstream_status=upstream_status)
+
+        assert error.request_rejected
+        assert not is_provider_state_error(error)
+
+    @pytest.mark.parametrize("upstream_status", [None, 500, 502, 503])
+    def test_an_outage_is_reported(self, upstream_status: int | None) -> None:
+        """A provider that is down breaks syncs for all its users: Sentry is where we hear it first."""
+        error = ProviderError("garmin", upstream_status=upstream_status)
+
+        assert not error.request_rejected
+        assert not is_provider_state_error(error)
+
+    @pytest.mark.parametrize("upstream_status", [401, 403, 404, 409, 410, 412, 429])
+    def test_an_answer_about_a_users_state_is_not(self, upstream_status: int) -> None:
+        error = ProviderError("garmin", upstream_status=upstream_status)
+
+        assert not error.request_rejected
+        assert is_provider_state_error(error)
+
+    def test_the_caller_can_mark_a_refusal_the_status_does_not_show(self) -> None:
+        """e.g. Withings reports a bad request in the body of an HTTP 200, or a 404 from an
+        endpoint with no per-user resource."""
+        assert not is_provider_state_error(ProviderError("withings", request_rejected=True))
+        assert not is_provider_state_error(ProviderError("withings", upstream_status=404, request_rejected=True))
+
+    def test_storage_failures_are_reported(self) -> None:
+        assert not is_provider_state_error(ServiceUnavailableError("Failed to complete upload: SlowDown"))
+        assert not is_provider_state_error(ConfigurationError("S3 bucket not configured"))
 
 
 class TestPublicErrorText:

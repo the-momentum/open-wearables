@@ -1,7 +1,7 @@
 from typing import ClassVar
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import status
 from psycopg import Error as PsycopgError
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
@@ -19,6 +19,8 @@ class AppError(Exception):
     """
 
     status_code: ClassVar[int] = status.HTTP_500_INTERNAL_SERVER_ERROR
+    # Stable across releases: sync history and webhooks report it, clients branch on it.
+    code: ClassVar[str] = "INTERNAL_ERROR"
     headers: ClassVar[dict[str, str] | None] = None
 
     def __init__(self, detail: str | dict[str, object]) -> None:
@@ -30,38 +32,38 @@ class AppError(Exception):
         return 400 <= self.status_code < 500
 
 
-# Error code a dead grant is reported under, in sync logs and per-notification results
-REAUTH_REQUIRED = "reauth_required"
-
-
-class ReauthRequiredError(HTTPException):
-    """The stored grant can no longer produce an access token; the user has to reconnect."""
-
-    def __init__(self, provider: str, user_id: UUID, detail: str):
-        self.provider = provider
-        self.user_id = user_id
-        super().__init__(status_code=401, detail=detail)
-
-
 class InvalidInputError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
+    code = "BAD_REQUEST"
 
 
 class AuthenticationError(AppError):
     status_code = status.HTTP_401_UNAUTHORIZED
+    code = "UNAUTHORIZED"
     headers = {"WWW-Authenticate": "Bearer"}
+
+
+class WebhookVerificationError(AuthenticationError):
+    """A provider callback failed verification (signature, token): no bearer scheme to advertise."""
+
+    code = "WEBHOOK_VERIFICATION_FAILED"
+
+    headers = None
 
 
 class PermissionDeniedError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
+    code = "FORBIDDEN"
 
 
 class NotFoundError(AppError):
     status_code = status.HTTP_404_NOT_FOUND
+    code = "NOT_FOUND"
 
 
 class ConflictError(AppError):
     status_code = status.HTTP_409_CONFLICT
+    code = "CONFLICT"
 
 
 class ResourceNotFoundError(NotFoundError):
@@ -74,11 +76,15 @@ class ResourceNotFoundError(NotFoundError):
 
 
 class UnsupportedProviderError(InvalidInputError):
+    code = "UNSUPPORTED_PROVIDER"
+
     def __init__(self, provider: str, operation: str = "this operation"):
         super().__init__(f"Provider '{provider}' does not support {operation}.")
 
 
 class InvalidCursorError(InvalidInputError):
+    code = "INVALID_CURSOR"
+
     def __init__(self, cursor: str):
         super().__init__(f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'.")
 
@@ -86,14 +92,14 @@ class InvalidCursorError(InvalidInputError):
 class ReconcileWindowTooLargeError(InvalidInputError):
     """A source_selection=reconcile page would merge more days on the fly than the server allows."""
 
-    code = "reconcile_too_many_days"
+    code = "RECONCILE_TOO_MANY_DAYS"
 
     def __init__(self, days: int, max_days: int, queued: bool):
         self.days, self.max_days, self.queued = days, max_days, queued
         # Structured, so a client can lower its page size by the numbers rather than parse a sentence.
         super().__init__(
             {
-                "code": self.code,
+                "code": "reconcile_too_many_days",
                 "message": "source_selection=reconcile would merge more days on the fly than allowed for one "
                 "page; lower `limit` or narrow the range.",
                 "days": days,
@@ -105,8 +111,166 @@ class ReconcileWindowTooLargeError(InvalidInputError):
 
 
 class DatetimeParseError(InvalidInputError, ValueError):
+    code = "INVALID_DATETIME"
+
     def __init__(self, value: str):
         super().__init__(f"Invalid datetime format: '{value}'. Expected ISO 8601 format or Unix timestamp.")
+
+
+class UpstreamError(AppError):
+    """A service we call failed: a provider API, object storage.
+
+    Not a bug in our code, so unlike other 5xx errors the client gets this status and
+    ``detail`` instead of a bare 500. Still reported to Sentry: an outage breaks syncs, and
+    Sentry is where we hear about it first. Only a provider's answer about a user's state
+    stays out (``is_provider_state_error``).
+    """
+
+    status_code = status.HTTP_502_BAD_GATEWAY
+    code = "BAD_GATEWAY"
+
+
+class ServiceUnavailableError(UpstreamError):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "SERVICE_UNAVAILABLE"
+
+
+class ConfigurationError(AppError):
+    """A setting the request needs is missing or rejected (storage bucket, credentials).
+
+    The deployment's to fix, not the client's: the client gets 503 with the detail, but
+    unlike an UpstreamError the failure is ours, not the called service's.
+    """
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "CONFIGURATION_ERROR"
+
+
+def provider_label(provider: str) -> str:
+    return provider.replace("_", " ").title()
+
+
+# Provider 4xx answers that describe a user's or a resource's state (a revoked grant, a scope not
+# granted, data that isn't there, a duplicate, a throttle): only the user or time can change them.
+# Any other 4xx means the provider rejected the request itself, which is most likely our bug.
+_STATE_STATUSES = frozenset({401, 403, 404, 409, 410, 412, 429})
+
+
+class ProviderError(UpstreamError):
+    """A provider API call failed.
+
+    ``upstream_status`` is the provider's HTTP status, None when no response came back.
+    ``upstream_body`` is what the provider answered: for logs and for callers that branch
+    on it, never for ``detail``, which the client sees.
+    ``request_rejected``: the provider refused the request itself (a 400, a 422), most likely
+    because we built it wrong, so unlike a 4xx about the user's state it is reported to Sentry.
+    Derived from ``upstream_status`` unless the caller knows better, e.g. from a status in the body.
+    """
+
+    code = "PROVIDER_ERROR"
+
+    def __init__(
+        self,
+        provider: str,
+        detail: str | None = None,
+        *,
+        upstream_status: int | None = None,
+        upstream_body: str | None = None,
+        request_rejected: bool | None = None,
+    ) -> None:
+        self.provider = provider
+        self.upstream_status = upstream_status
+        self.upstream_body = upstream_body
+        if request_rejected is None:
+            request_rejected = (
+                upstream_status is not None and 400 <= upstream_status < 500 and upstream_status not in _STATE_STATUSES
+            )
+        self.request_rejected = request_rejected
+        if detail is None:
+            label = provider_label(provider)
+            detail = (
+                f"{label} API error (status {upstream_status})"
+                if upstream_status is not None
+                else f"{label} API request failed"
+            )
+        super().__init__(detail)
+
+
+class ProviderRateLimitError(ProviderError):
+    """The provider kept throttling us after the client's own backoff."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "PROVIDER_RATE_LIMITED"
+
+
+class ProviderAuthRejectedError(ProviderError):
+    """The provider rejected a token we just refreshed (or can't refresh): often a data type the user did not
+    consent to. Not proof the grant is dead, so the connection stays; ``api_client`` revokes it, raising
+    ``ReauthRequiredError``, only after a day of nothing but rejections."""
+
+    code = "PROVIDER_AUTH_REJECTED"
+
+    def __init__(self, provider: str, detail: str | None = None, *, upstream_body: str | None = None) -> None:
+        super().__init__(provider, detail, upstream_status=401, upstream_body=upstream_body)
+
+
+def is_provider_state_error(exc: BaseException | None) -> bool:
+    """A provider's answer about a user's or a resource's state (data that isn't there, a
+    throttle we couldn't wait out): nothing we can fix, logged as a warning, kept out of Sentry.
+
+    Every other upstream failure is reported: an outage (a 5xx, no response) breaks syncs for
+    every user of the provider, and a request it rejected (``ProviderError.request_rejected``)
+    most likely means it changed its API. Sentry groups both per provider and status.
+    """
+    if isinstance(exc, ProviderRateLimitError):
+        # Withings throttles in the body of an HTTP 200: the type says it, not the status.
+        return True
+    return isinstance(exc, ProviderError) and not exc.request_rejected and exc.upstream_status in _STATE_STATUSES
+
+
+class ProviderConnectionError(AppError):
+    """The user's connection to the provider can't be used: no request to the provider
+    succeeds, and no retry helps, until the user connects again."""
+
+    def __init__(self, provider: str, detail: str) -> None:
+        self.provider = provider
+        super().__init__(detail)
+
+
+class ProviderNotConnectedError(ProviderConnectionError, NotFoundError):
+    code = "PROVIDER_NOT_CONNECTED"
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(provider, f"User is not connected to {provider_label(provider)}.")
+
+
+class ProviderTokenUnavailableError(ProviderConnectionError, InvalidInputError):
+    """The connection has no API token, e.g. an SDK-based provider."""
+
+    code = "PROVIDER_TOKEN_UNAVAILABLE"
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(provider, f"No {provider_label(provider)} API access token for this user.")
+
+
+class ReauthRequiredError(ProviderConnectionError, ConflictError):
+    """The grant is dead and the connection revoked: nothing fetches until the user reconnects.
+
+    ``reason`` says why, for logs; the client gets the generic ``detail``.
+    """
+
+    code = "REAUTH_REQUIRED"
+
+    def __init__(self, provider: str, user_id: UUID, reason: str) -> None:
+        self.user_id = user_id
+        self.reason = reason
+        super().__init__(
+            provider, f"{provider_label(provider)} authorization expired or was revoked; the user must reconnect."
+        )
+
+
+# Error code a dead grant is reported under, in sync logs and per-notification results
+REAUTH_REQUIRED = ReauthRequiredError.code.lower()
 
 
 def integrity_violation(exc: IntegrityError | PsycopgIntegrityError) -> BaseException | None:
@@ -150,3 +314,14 @@ def app_error_from_integrity_error(exc: IntegrityError | PsycopgIntegrityError) 
         # seeded rows no endpoint deletes - so this is a reference to a missing row
         return InvalidInputError("Referenced resource does not exist.")
     return None
+
+
+def provider_error_from_response(
+    provider: str, upstream_status: int | None, upstream_body: str | None = None
+) -> ProviderError:
+    """The error for a failed provider response: a throttle we couldn't wait out is a 503, anything else a 502."""
+    if upstream_status == 401:
+        return ProviderAuthRejectedError(provider, upstream_body=upstream_body)
+    if upstream_status == 429:
+        return ProviderRateLimitError(provider, upstream_status=upstream_status, upstream_body=upstream_body)
+    return ProviderError(provider, upstream_status=upstream_status, upstream_body=upstream_body)

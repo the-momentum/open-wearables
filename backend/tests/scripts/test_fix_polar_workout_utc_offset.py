@@ -9,13 +9,13 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import EventRecord
 from app.schemas.auth import ConnectionStatus
 from app.schemas.enums.provider import ProviderName
+from app.utils.exceptions import ProviderError, provider_error_from_response
 from tests.factories import DataSourceFactory, EventRecordFactory, UserConnectionFactory, UserFactory
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "data_migrations" / "fix_polar_workout_utc_offset.py"
@@ -198,7 +198,9 @@ class TestFailures:
         # Arrange
         refused, refused_source = _stale_workout(db, "GONE")
         fetched, _ = _stale_workout(db, "EX1")
-        api = _workouts_api({"EX1": _polar_json()}, {refused_source.user_id: HTTPException(status_code=status_code)})
+        api = _workouts_api(
+            {"EX1": _polar_json()}, {refused_source.user_id: provider_error_from_response("polar", status_code)}
+        )
 
         # Act
         counts = fix(db, api, dry_run=False)
@@ -213,10 +215,10 @@ class TestFailures:
         """Skipping a row the next sync CAN fetch would leave it to be duplicated."""
         # Arrange
         _, source = _stale_workout(db, "FLAKY")
-        api = _workouts_api({}, {source.user_id: HTTPException(status_code=502)})
+        api = _workouts_api({}, {source.user_id: ProviderError("polar", upstream_status=502)})
 
         # Act / Assert
-        with pytest.raises(HTTPException):
+        with pytest.raises(ProviderError):
             fix(db, api, dry_run=False)
 
     def test_a_user_without_an_active_connection_moves_by_the_stored_offset_without_a_call(self, db: Session) -> None:
@@ -266,7 +268,7 @@ class TestPolarCalls:
         # Arrange: the first user's workout comes first in the run, the second user's call fails
         first, first_source = _stale_workout(db, "EX1", start=_STALE_START + timedelta(days=1))
         _, second_source = _stale_workout(db, "EX2")
-        api = _workouts_api({}, {second_source.user_id: HTTPException(status_code=502)})
+        api = _workouts_api({}, {second_source.user_id: ProviderError("polar", upstream_status=502)})
         listed = api.get_workouts_from_api.side_effect
 
         def refreshing(db_session: Session, user_id: UUID, **kwargs: Any) -> list[dict]:
@@ -276,7 +278,7 @@ class TestPolarCalls:
         api.get_workouts_from_api.side_effect = refreshing
 
         # Act
-        with pytest.raises(HTTPException):
+        with pytest.raises(ProviderError):
             fix(db, api, dry_run=False)
 
         # Assert
