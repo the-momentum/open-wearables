@@ -12,7 +12,9 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+from app.schemas.enums import DeviceType
 from app.schemas.providers.mobile_sdk import SleepState
+from app.services.sdk.sleep_service import active_users_key
 
 
 class TestFinalizeStaleSleepsTask:
@@ -44,7 +46,7 @@ class TestFinalizeStaleSleepsTask:
         mock_redis.smembers.assert_called_once()
 
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
     def test_finalize_stale_sleeps_with_stale_session(
@@ -86,7 +88,7 @@ class TestFinalizeStaleSleepsTask:
             rem_seconds=1200,
             stages=[],
         )
-        mock_load_state.return_value = mock_sleep_state
+        mock_load_state.return_value = {"apple:Apple Watch": mock_sleep_state}
 
         # Act
         finalize_stale_sleeps()
@@ -96,7 +98,7 @@ class TestFinalizeStaleSleepsTask:
         mock_finish_sleep.assert_called_once_with(db, user_id, mock_sleep_state)
 
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
     def test_finalize_stale_sleeps_skips_recent_session(
@@ -138,7 +140,7 @@ class TestFinalizeStaleSleepsTask:
             rem_seconds=0,
             stages=[],
         )
-        mock_load_state.return_value = mock_sleep_state
+        mock_load_state.return_value = {"apple:Apple Watch": mock_sleep_state}
 
         # Act
         finalize_stale_sleeps()
@@ -147,7 +149,53 @@ class TestFinalizeStaleSleepsTask:
         mock_load_state.assert_called_once_with(user_id)
         mock_finish_sleep.assert_not_called()  # Should not finalize recent sessions
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
+    def test_finalize_stale_sleeps_closes_a_quiet_apple_watch_session(
+        self,
+        mock_session_local: MagicMock,
+        mock_redis_client_func: MagicMock,
+        mock_load_state: MagicMock,
+        mock_finish_sleep: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        """An Apple Watch night closes once its uploads go quiet; another app's session waits for the end gap."""
+        user_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        woke_up = now - timedelta(minutes=40)
+
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_redis = MagicMock()
+        mock_redis.smembers.return_value = [user_id]
+        mock_redis_client_func.return_value = mock_redis
+        mock_sleep_state = SleepState(
+            uuid=str(uuid4()),
+            source_name="Apple Watch",
+            device_model="Watch7,1",
+            device_type=DeviceType.WATCH,
+            source_app_id="com.apple.health.FA11388E",
+            provider="apple",
+            start_time=woke_up - timedelta(hours=7),
+            end_time=woke_up,
+            last_start_timestamp=woke_up - timedelta(minutes=10),
+            last_end_timestamp=woke_up,
+            last_received_at=now - timedelta(minutes=20),
+            has_apple_watch_sleep=True,
+        )
+        oura_state = mock_sleep_state.model_copy(
+            update={"source_name": "Oura", "source_app_id": "com.ouraring.oura", "has_apple_watch_sleep": False}
+        )
+        mock_load_state.return_value = {"apple:apple": mock_sleep_state, "apple:com.ouraring.oura": oura_state}
+
+        finalize_stale_sleeps()
+
+        mock_finish_sleep.assert_called_once_with(db, user_id, mock_sleep_state)
+
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
     def test_finalize_stale_sleeps_handles_missing_state(
@@ -169,7 +217,7 @@ class TestFinalizeStaleSleepsTask:
         mock_redis.smembers.return_value = [user_id]
         mock_redis_client_func.return_value = mock_redis
 
-        mock_load_state.return_value = None  # State not found
+        mock_load_state.return_value = {}  # State not found
 
         # Act
         result = finalize_stale_sleeps()
@@ -177,9 +225,10 @@ class TestFinalizeStaleSleepsTask:
         # Assert
         assert result is None
         mock_load_state.assert_called_once_with(user_id)
+        mock_redis.srem.assert_called_once_with(active_users_key(), user_id)
 
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
     def test_finalize_stale_sleeps_handles_multiple_users(
@@ -224,9 +273,6 @@ class TestFinalizeStaleSleepsTask:
             stages=[],
         )
 
-        # User 2: No state (should skip)
-        state_2 = None
-
         # User 3: Stale session (should finalize)
         state_3 = SleepState(
             uuid=str(uuid4()),
@@ -245,7 +291,8 @@ class TestFinalizeStaleSleepsTask:
             stages=[],
         )
 
-        mock_load_state.side_effect = [state_1, state_2, state_3]
+        # User 2: No state (should skip)
+        mock_load_state.side_effect = [{"apple:Apple Watch": state_1}, {}, {"apple:iPhone": state_3}]
 
         # Act
         finalize_stale_sleeps()
@@ -259,7 +306,7 @@ class TestFinalizeStaleSleepsTask:
 
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.log_and_capture_error")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
     def test_finalize_stale_sleeps_handles_finish_error(
@@ -320,7 +367,7 @@ class TestFinalizeStaleSleepsTask:
             stages=[],
         )
 
-        mock_load_state.side_effect = [state_1, state_2]
+        mock_load_state.side_effect = [{"apple:Apple Watch": state_1}, {"apple:iPhone": state_2}]
 
         # User 1 finalization fails
         mock_finish_sleep.side_effect = [Exception("Database error"), None]
@@ -335,7 +382,7 @@ class TestFinalizeStaleSleepsTask:
         # Verify user 2 was still processed despite user 1 error
         mock_finish_sleep.assert_any_call(db, user_id_2, state_2)
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
     def test_finalize_stale_sleeps_handles_malformed_state(
@@ -357,8 +404,8 @@ class TestFinalizeStaleSleepsTask:
         mock_redis.smembers.return_value = [user_id]
         mock_redis_client_func.return_value = mock_redis
 
-        # Simulate load_sleep_state returning None (as it does when state is malformed/unparseable)
-        mock_load_state.return_value = None
+        # Simulate load_sleep_states dropping a state it cannot parse
+        mock_load_state.return_value = {}
 
         # Act - should not crash
         result = finalize_stale_sleeps()
