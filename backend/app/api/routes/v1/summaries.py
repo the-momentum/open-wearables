@@ -35,6 +35,8 @@ def get_activity_summary(
 ) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics.
 
+    Each day reports its highest-priority source; metrics it lacks are filled from lower-priority sources.
+
     Aggregates time-series data (steps, energy, heart rate, etc.) by day.
     """
     start_datetime = parse_query_datetime(start_date)
