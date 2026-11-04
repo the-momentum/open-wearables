@@ -331,8 +331,9 @@ class Settings(BaseSettings):
     reconcile_enabled: bool = False
     # How far back from today the rollup stores merged days; older days are merged when a read asks for them.
     reconcile_stored_days: int = Field(default=30, ge=0)
-    # The most days one page of a reconcile read merges on the fly; a page needing more is refused (400).
-    reconcile_on_the_fly_max_days: int = Field(default=30, ge=1, le=90)
+    # The most days one page of a reconcile read merges on the fly; pages are shortened to it, and only a period
+    # needing more on its own is refused (400). 31 fits a month.
+    reconcile_on_the_fly_max_days: int = Field(default=31, ge=1, le=90)
     # Seconds a rollup run spends merging, after and on top of its own budget; kept under the task's soft limit.
     reconcile_seconds_per_run: int = Field(default=30, ge=0, le=50)
     # Seconds past each edge of a better-ranked device's sample that still count as covered by it, so two apps

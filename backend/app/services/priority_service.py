@@ -1,6 +1,9 @@
 from logging import Logger, getLogger
 from uuid import UUID
 
+from celery import current_app as celery_app
+
+from app.constants.celery_tasks import CeleryTask
 from app.constants.devices_map import resolve_device_name
 from app.database import DbSession
 from app.models import DataSource, ProviderPriority
@@ -57,6 +60,7 @@ class PriorityService:
     ) -> ProviderPriorityResponse:
         result = self.priority_repo.upsert(db_session, provider, priority)
         db_session.commit()
+        _drop_reconciled_days()
         return self._to_provider_response(result)
 
     @handle_exceptions
@@ -68,6 +72,7 @@ class PriorityService:
         priorities_tuples = [(p.provider, p.priority) for p in update.priorities]
         results = self.priority_repo.bulk_update(db_session, priorities_tuples)
         db_session.commit()
+        _drop_reconciled_days()
         return ProviderPriorityListResponse(items=[self._to_provider_response(p) for p in results])
 
     @handle_exceptions
@@ -113,6 +118,7 @@ class PriorityService:
     ) -> DeviceTypePriorityResponse:
         result = self.device_type_priority_repo.upsert(db_session, device_type, priority)
         db_session.commit()
+        _drop_reconciled_days()
         return DeviceTypePriorityResponse.model_validate(result)
 
     @handle_exceptions
@@ -124,6 +130,7 @@ class PriorityService:
         priorities_tuples = [(p.device_type, p.priority) for p in update.priorities]
         results = self.device_type_priority_repo.bulk_update(db_session, priorities_tuples)
         db_session.commit()
+        _drop_reconciled_days()
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in results])
 
     def _build_display_name(self, ds: DataSource, device_name: str | None) -> str:
@@ -140,3 +147,12 @@ class PriorityService:
 
 
 priority_service = PriorityService(log=getLogger(__name__))
+
+
+def _drop_reconciled_days() -> None:
+    """Merged days stored in the old order are dropped in the background, so reads merge them in the new one."""
+    try:
+        celery_app.send_task(CeleryTask.DROP_RECONCILED_DAYS, retry=False)
+    except Exception:
+        # Reads keep the stale merge until the next priority change; nothing else depends on this.
+        getLogger(__name__).warning("Could not queue dropping merged days after a priority change", exc_info=True)

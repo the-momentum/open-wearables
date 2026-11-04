@@ -14,8 +14,7 @@ from app.config import settings
 from app.database import DbSession
 from app.integrations import rollup_queue
 from app.models import DataSource, SeriesAggregate, SeriesSample
-from app.models.archival_setting import ArchivalSetting
-from app.repositories import DataPointSeriesRepository
+from app.repositories import ArchivalSettingRepository, DataPointSeriesRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
 from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import SampleDay, SeriesAggregateRepository
@@ -475,6 +474,9 @@ class TimeSeriesService(
         # data here; with all of them asked for, a page of `limit` periods could be hundreds of thousands of rows.
         days_per_period = {PeriodKind.DAY: 1, PeriodKind.WEEK: 7, PeriodKind.MONTH: 31}[kind]
         limit = max(1, min(params.limit or 50, _PERIOD_ROWS_PER_PAGE // (2 * max(len(edges), 1) * days_per_period)))
+        if reconcile:
+            # A shorter page rather than a refused one: the merge budget is per page.
+            limit = max(1, min(limit, settings.reconcile_on_the_fly_max_days // days_per_period))
         edge = edge_day(first_day, last_day, backward, edges.values() if edges else None)
         if edge is None:
             return _page(data=[], params=params, has_more=False, next_cursor=None, previous_cursor=None)
@@ -493,7 +495,11 @@ class TimeSeriesService(
         sources = self.crud._sources_by_id(db_session, {row.data_source_id for row, _ in device_rows})
         rows: Sequence[tuple[_DayRow, date]] = device_rows
         if reconcile and ranking is not None:
-            rows = self._reconciled_days(db_session, user_id, types, device_rows, sources, ranking, from_samples)
+            # The period read past the page only tells whether another page follows: it is not merged.
+            held = sorted({_period_of(day, kind) for _, day in device_rows})
+            shown_periods = set(held[-limit:] if backward else held[:limit])
+            shown = {day for _, day in device_rows if _period_of(day, kind) in shown_periods}
+            rows = self._reconciled_days(db_session, user_id, types, device_rows, sources, ranking, from_samples, shown)
         elif ranking is not None:
             rows = _best_per_day(device_rows, sources, ranking)
 
@@ -555,14 +561,11 @@ class TimeSeriesService(
         sources: dict[UUID, DataSource],
         ranking: SourceRanking,
         from_samples: bool,
+        shown: set[date] | None = None,
     ) -> Sequence[tuple[_DayRow, date]]:
-        """The devices' day rows of a page, with each RECONCILED_SERIES day two of them hold replaced by its merged
-        value: the stored one, else merged now. Every other day keeps its best-ranked source's row.
-
-        Merging on the fly costs far more than reading a stored row, so a page may merge at most
-        RECONCILE_ON_THE_FLY_MAX_DAYS days and is refused beyond. With reconcile on and the rollup caught up, the
-        days merged here are queued, so the rollup stores them and the next read takes the stored rows.
-        """
+        """The devices' day rows of a page, with each RECONCILED_SERIES day of ``shown`` two of them hold replaced by
+        its merged value: the stored one, else merged now (at most RECONCILE_ON_THE_FLY_MAX_DAYS days, queued to be
+        stored with reconcile on). A day whose best-ranked source holds no samples keeps that source's row."""
         if not rows:
             return rows
         merged_series = RECONCILED_SERIES & set(types) if types else RECONCILED_SERIES
@@ -582,15 +585,28 @@ class TimeSeriesService(
         for row, day in rows:
             sources_of[(row.series_type_definition_id, day)].add(row.data_source_id)
         # Retention has deleted these days' samples: nothing is left to merge, the best source's day stands.
-        frozen_before = db_session.query(ArchivalSetting.deleted_before).filter(ArchivalSetting.id == 1).scalar()
-        needed = {
-            key
+        frozen_before = ArchivalSettingRepository().deleted_before(db_session)
+        candidates = {
+            key: source_ids
             for key, source_ids in sources_of.items()
             if key[0] in merged_type_ids
             and key not in stored
             and len(source_ids) > 1
+            and (shown is None or key[1] in shown)
             and (frozen_before is None or key[1] >= frozen_before)
         }
+        if candidates:
+            ids = sorted({source_id for source_ids in candidates.values() for source_id in source_ids}, key=str)
+            days_asked = sorted({day for _, day in candidates})
+            with_samples = reconcile_repo.sources_with_samples(db_session, ids, days_asked, sorted(merged_type_ids))
+
+            def best(source_ids: set[UUID]) -> UUID:
+                return min(
+                    source_ids, key=lambda s: (*ranking.rank(sources[s].provider, sources[s].device_type), str(s))
+                )
+
+            candidates = {key: ids for key, ids in candidates.items() if best(ids) in with_samples}
+        needed = set(candidates)
         days = sorted({day for _, day in needed})
         queued = bool(days) and settings.reconcile_enabled and not from_samples
         if queued:
@@ -604,7 +620,8 @@ class TimeSeriesService(
             raise ReconcileWindowTooLargeError(len(days), settings.reconcile_on_the_fly_max_days, queued)
 
         merged: dict[tuple[int, date], _MergedDayRow] = {}
-        for day in reconcile_repo.merge(db_session, user_id, days, ranking) if days else ():
+        merging = reconcile_repo.merge(db_session, user_id, days, ranking, sorted(merged_type_ids)) if days else ()
+        for day in merging:
             if (day.type_id, day.day) in needed:
                 merged[(day.type_id, day.day)] = _MergedDayRow(
                     series_type_definition_id=day.type_id,

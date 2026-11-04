@@ -58,7 +58,7 @@ Self-hosting: `source_selection=reconcile` on `/timeseries` merges a user's step
 | `RECONCILE_ENABLED` | `false` | The rollup stores merged days. Off, reads merge every day themselves. |
 | `RECONCILE_STORED_DAYS` | `30` | Days back from today the rollup stores; older days are stored once a read asks for them. |
 | `RECONCILE_SECONDS_PER_RUN` | `30` | Seconds each rollup run spends merging, after its own 60 and never taken from them; what does not fit waits for the next run. At most 50. |
-| `RECONCILE_ON_THE_FLY_MAX_DAYS` | `30` | Most days one page of a read may merge itself, 1 to 90. A page needing more is refused with `400`; lower `limit` or narrow the range. |
+| `RECONCILE_ON_THE_FLY_MAX_DAYS` | `31` | Most days one page of a read may merge itself, 1 to 90. Pages are shortened to fit; only a single week or month needing more is refused with `400`. |
 | `RECONCILE_EDGE_TOLERANCE_SECONDS` | `60` | Seconds past each edge of a better-ranked device's sample that still count as covered by it, 0 to 300. See below. |
 
 A stored merged day reads as fast as any day row; merging on the fly takes in the order of a second per month of a user's days. Retention ends merging: once a day's samples are deleted, only a merged day stored before stays.
@@ -96,7 +96,11 @@ A merged day names no device: its `source` is `null` and its `computed_by` is `o
 
 The proportional split assumes a sample's value is spread evenly over its window, which no device guarantees. Only samples a better device covers in part are affected, so the error stays small with the minute-long samples watches and Health Connect usually record, and grows with long windows, such as a phone's 30-minute step count.
 
-A page that would merge more days on the fly than `RECONCILE_ON_THE_FLY_MAX_DAYS` is refused, with the numbers to size the next request by:
+A day whose best-ranked source holds only its own day value there (Oura, Whoop and other providers that send steps as a daily total) is not merged: it returns that source's value, as `per_period` does.
+
+Changing provider or device type priorities drops the stored merged days from the retention cutoff on, in the background; reads merge them again in the new order. Days before the cutoff keep their merge, since their samples are gone.
+
+A page holds as many periods as fit in `RECONCILE_ON_THE_FLY_MAX_DAYS` merged days, so it may be shorter than `limit`. Only a single period needing more (a month with the setting below 31) is refused, with the numbers to size the next request by:
 
 ```json
 {

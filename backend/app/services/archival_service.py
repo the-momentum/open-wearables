@@ -51,6 +51,9 @@ ROLLUP_DAYS_PER_COMMIT = 31
 ROLLUP_SECONDS_PER_RUN = 60
 # (user, day) pairs a reconcile run takes off its queue at a time.
 RECONCILE_BATCH_SIZE = 200
+# Stored merged rows a priority change deletes per commit, and the seconds one task run spends on it.
+RECONCILE_DROP_BATCH = 5000
+RECONCILE_DROP_SECONDS = 90
 # Local days a retention batch rolls up and deletes per commit: three days of 1 Hz data is a quarter million rows.
 DELETE_DAYS_PER_BATCH = 3
 # Data sources looked up at once by retention.
@@ -198,7 +201,7 @@ class ArchivalService:
         if reconcile and settings.reconcile_enabled:
             # Its own budget after the rollup's, not what the rollup left: neither can starve the other.
             merged = self._reconcile_queued_days(db, frozen_before, settings.reconcile_seconds_per_run)
-            log_structured(self.logger, "info", f"Reconcile: {merged} user days", reconciled_days=merged)
+            log_structured(self.logger, "info", "Reconcile: user days merged", reconciled_days=merged)
         return rolled_up
 
     def _roll_up_batch(
@@ -277,6 +280,21 @@ class ArchivalService:
             sources_by_user[user_id].append(source_id)
         return sources_by_user
 
+    def drop_reconciled_days(
+        self, db: DbSession, budget_seconds: float = RECONCILE_DROP_SECONDS, batch: int = RECONCILE_DROP_BATCH
+    ) -> tuple[int, bool]:
+        """Delete stored merged rows from the retention cutoff on, a batch per commit; returns (rows, all gone).
+        Rows before the cutoff stay: their samples are gone, so they could not be merged again."""
+        since = self.settings_repo.deleted_before(db)
+        started, dropped = time.monotonic(), 0
+        while time.monotonic() - started < budget_seconds:
+            deleted = self.reconcile_repo.delete_reconciled_rows(db, since, batch)
+            db.commit()
+            dropped += deleted
+            if deleted < batch:
+                return dropped, True
+        return dropped, False
+
     def _reconcile_queued_days(self, db: DbSession, frozen_before: date | None, budget_seconds: float) -> int:
         """Merge and store the queued (user, day) pairs, newest days first, a month of a user's days per commit,
         within ``budget_seconds``; what is left stays queued for the next run. Returns the user days merged.
@@ -289,10 +307,11 @@ class ArchivalService:
         def out_of_time() -> bool:
             return time.monotonic() - started >= budget_seconds
 
-        merged, ranking = 0, None
+        # Before the first pop: a failing priorities query must not lose pairs already taken off the queue.
+        ranking = priority_service.get_source_ranking(db)
+        merged = 0
         failed: list[tuple[UUID, date]] = []
         while not out_of_time() and (batch := rollup_queue.pop_reconcile_days(RECONCILE_BATCH_SIZE)):
-            ranking = ranking or priority_service.get_source_ranking(db)
             days_by_user: dict[UUID, set[date]] = defaultdict(set)
             for user_id, day in batch:
                 # Retention has emptied these days: they cannot be merged again, so their rows stay as they are.
