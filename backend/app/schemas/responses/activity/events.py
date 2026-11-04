@@ -143,13 +143,9 @@ class SleepSession(BaseModel):
     sleep_stage_intervals: list[SleepStage] | None = None
     is_nap: bool = False
     is_final: bool = Field(
-        description=(
-            "Whether this is the session's final data, so no more of it is expected. Sessions from the mobile SDK "
-            "(Apple, Samsung, Health Connect) always are. Garmin: once its validation is final, else 12 hours after "
-            "the end. Whoop: 6 hours after the end once scored, never while the score is pending. Google Health: once "
-            "Google has processed it, else 24 hours after the end. Other providers: once the provider has sent data "
-            "from 30 minutes after the end."
-        )
+        ...,
+        description="Whether no more data is expected for this session; until then the provider may still extend it",
+        example=True,
     )
 
 
