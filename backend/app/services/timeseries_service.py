@@ -603,7 +603,10 @@ class TimeSeriesService(
         reconcile_repo = SeriesReconcileRepository()
         first_day, last_day = min(day for _, day in rows), max(day for _, day in rows)
         reconciled = reconcile_repo.reconciled_source(db_session, user_id)
-        stale_days = set().union(*stale.values()) if stale else set()
+        sources_of: dict[tuple[int, date], set[UUID]] = defaultdict(set)
+        for row, day in rows:
+            sources_of[(row.series_type_definition_id, day)].add(row.data_source_id)
+        # A stored merge is out of date only when a source of that series and day has newer samples queued.
         stored = {
             key: row
             for key, row in (
@@ -611,12 +614,8 @@ class TimeSeriesService(
                 if reconciled
                 else {}
             ).items()
-            if key[1] not in stale_days
+            if not any(key[1] in stale.get(source_id, ()) for source_id in sources_of.get(key, ()))
         }
-
-        sources_of: dict[tuple[int, date], set[UUID]] = defaultdict(set)
-        for row, day in rows:
-            sources_of[(row.series_type_definition_id, day)].add(row.data_source_id)
         # Retention has deleted these days' samples: nothing is left to merge, the best source's day stands.
         frozen_before = ArchivalSettingRepository().deleted_before(db_session)
         candidates = {
