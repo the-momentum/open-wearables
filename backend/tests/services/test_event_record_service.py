@@ -1210,7 +1210,7 @@ class TestCreateOrMergeSleep:
         assert mock_sleep.call_args.kwargs["device_type"] == "ring"
 
     def test_a_re_sent_session_replaces_its_provider_state(self, db: Session) -> None:
-        """Garmin sends a night ENHANCED_TENTATIVE, then again ENHANCED_FINAL; the stored state follows."""
+        """Whoop sends a night PENDING_SCORE, then again SCORED; the stored state follows."""
         data_source = DataSourceFactory()
         start, end = self._dt(1, 0), self._dt(7, 0)
         first = self._record(data_source, start, end).model_copy(update={"external_id": "night-1"})
@@ -1218,7 +1218,7 @@ class TestCreateOrMergeSleep:
             db,
             data_source.user_id,
             first,
-            self._detail(first.id).model_copy(update={"provider_state": "ENHANCED_TENTATIVE"}),
+            self._detail(first.id).model_copy(update={"provider_state": "PENDING_SCORE"}),
             self.THRESHOLD,
         )
         again = self._record(data_source, start, end).model_copy(update={"external_id": "night-1"})
@@ -1227,15 +1227,15 @@ class TestCreateOrMergeSleep:
             db,
             data_source.user_id,
             again,
-            self._detail(again.id).model_copy(update={"provider_state": "ENHANCED_FINAL"}),
+            self._detail(again.id).model_copy(update={"provider_state": "SCORED"}),
             self.THRESHOLD,
         )
 
         db.refresh(result)
-        assert result.sleep_detail.provider_state == "ENHANCED_FINAL"
+        assert result.sleep_detail.provider_state == "SCORED"
 
     def test_a_merged_session_takes_the_state_of_the_part_that_arrived_last(self, db: Session) -> None:
-        """A Garmin fragment and its full night have their own summaryIds and are merged into one record."""
+        """A part of a night and the full night with their own ids are merged into one record."""
         data_source = DataSourceFactory()
         fragment = self._record(data_source, self._dt(1, 0), self._dt(3, 0)).model_copy(
             update={"external_id": "part-1"}
@@ -1244,7 +1244,7 @@ class TestCreateOrMergeSleep:
             db,
             data_source.user_id,
             fragment,
-            self._detail(fragment.id).model_copy(update={"provider_state": "AUTO_TENTATIVE"}),
+            self._detail(fragment.id).model_copy(update={"provider_state": "PENDING_SCORE"}),
             self.THRESHOLD,
         )
         night = self._record(data_source, self._dt(1, 0), self._dt(7, 0)).model_copy(update={"external_id": "night-1"})
@@ -1253,12 +1253,29 @@ class TestCreateOrMergeSleep:
             db,
             data_source.user_id,
             night,
-            self._detail(night.id).model_copy(update={"provider_state": "ENHANCED_FINAL"}),
+            self._detail(night.id).model_copy(update={"provider_state": "SCORED"}),
             self.THRESHOLD,
         )
 
         db.refresh(result)
-        assert result.sleep_detail.provider_state == "ENHANCED_FINAL"
+        assert result.sleep_detail.provider_state == "SCORED"
+
+    def _sleep_coverage_end_after_sending(self, db: Session, data_source: DataSource, end: datetime) -> datetime:
+        night = self._record(data_source, self._dt(0), end).model_copy(update={"external_id": "night-1"})
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        coverage = data_type_coverage_repository.get(db, data_source.user_id, "oura", "sleep", DataTypeKind.EVENT)
+        assert coverage is not None
+        return coverage.coverage_end
+
+    def test_a_re_sent_session_moves_its_providers_sleep_coverage(self, db: Session) -> None:
+        """A night corrected from 08:00 to 07:00, then extended to 09:00: the sleep coverage follows it."""
+        data_source = DataSourceFactory(provider=ProviderName.OURA, source="oura")
+
+        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(8)) == self._dt(8)
+        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(7)) == self._dt(7)
+        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(9)) == self._dt(9)
 
 
 class TestRecomputeSleepScores:
