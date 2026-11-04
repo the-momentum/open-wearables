@@ -20,6 +20,7 @@ from app.repositories.repositories import (
     timeline_key_column,
     utc_bucket_start,
 )
+from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
 from app.schemas.enums import (
     ComputedBy,
     PeriodKind,
@@ -225,7 +226,9 @@ class SeriesAggregateRepository:
             return list(source_by_type.items())
         sources = (
             db_session.query(DataSource.id)
-            .filter(DataSource.user_id == user_id, *source_filter_conditions(params, DataSource.id))
+            .filter(
+                DataSource.user_id == user_id, NOT_RECONCILED_SOURCE, *source_filter_conditions(params, DataSource.id)
+            )
             .all()
         )
         type_ids = [get_series_type_id(t) for t in types] if types else _ALL_TYPE_IDS
@@ -366,6 +369,7 @@ class SeriesAggregateRepository:
             .join(DataSource, SeriesAggregate.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
+                NOT_RECONCILED_SOURCE,
                 SeriesAggregate.period_kind == PeriodKind.DAY,
                 # The bounds keep the index in play; the local day decides.
                 SeriesAggregate.period_start >= utc_midnight(first_day) - OFFSET_REACH,

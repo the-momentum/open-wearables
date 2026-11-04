@@ -11,3 +11,6 @@ class SourceSelection(StrEnum):
     PER_PERIOD = "per_period"
     # Event records (sleep, workouts) only: a session is dropped where a better-ranked source's sessions cover it.
     PER_SESSION = "per_session"
+    # Day, week and month reads only: steps, distance, active energy and other movement series merged across sources
+    # per day, each moment counted once from the best-ranked source recording it; other series as per_period.
+    RECONCILE = "reconcile"

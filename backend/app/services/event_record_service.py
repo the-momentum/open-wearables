@@ -19,7 +19,6 @@ from app.models import (
     HealthScore,
     MealDetails,
     MenstrualCycleDetails,
-    ProviderPriority,
     SeriesSample,
     SleepDetails,
     WorkoutDetails,
@@ -31,13 +30,10 @@ from app.repositories import (
     EventRecordDetailRepository,
     EventRecordRepository,
     HealthScoreRepository,
-    ProviderPriorityRepository,
 )
 from app.repositories.data_point_series_repository import WorkoutWindow
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
-from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.event_record_repository import local_days
-from app.repositories.repositories import SourceRanking
 from app.schemas.enums import EventCategory, HealthScoreCategory, SeriesType, SourceSelection, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -78,6 +74,7 @@ from app.services.outgoing_webhooks.events import (
     on_sleep_created,
     on_workout_created,
 )
+from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
@@ -135,8 +132,6 @@ class EventRecordService(
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(SeriesSample)
         self.health_score_repo = HealthScoreRepository(HealthScore)
-        self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
-        self.device_type_priority_repo = DeviceTypePriorityRepository()
 
     def _resolve_avg_hr(
         self,
@@ -1035,12 +1030,10 @@ class EventRecordService(
         # By value: a caller passing the plain string "per_session" takes this path too.
         if source_selection != SourceSelection.PER_SESSION:
             return None
-        ranking = SourceRanking(
-            self.provider_priority_repo.get_priority_order(db_session),
-            self.device_type_priority_repo.get_priority_order(db_session),
-        )
         params = params.model_copy(update={"category": category})
-        return self.crud.winning_session_record_ids(db_session, str(user_id), params, ranking)
+        return self.crud.winning_session_record_ids(
+            db_session, str(user_id), params, priority_service.get_source_ranking(db_session)
+        )
 
     @handle_exceptions
     def get_sleep_totals(

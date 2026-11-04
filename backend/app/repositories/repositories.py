@@ -90,15 +90,6 @@ class SourceRanking:
         return provider_rank, device_rank, func.coalesce(DataSource.device_model, "")
 
 
-def source_priority_order(
-    provider_order: Mapping[ProviderName, int],
-    device_type_order: Mapping[DeviceType, int],
-    provider_column: InstrumentedAttribute[str] | ColumnElement[str] = DataSource.provider,
-) -> tuple[ColumnElement, ColumnElement, ColumnElement]:
-    """:meth:`SourceRanking.order_terms` for callers holding the two priority orders."""
-    return SourceRanking(provider_order, device_type_order).order_terms(provider_column)
-
-
 def timeline_key_column(group_by: TimelineGroupBy) -> InstrumentedAttribute[str]:
     """Column a data point timeline series is keyed by.
 

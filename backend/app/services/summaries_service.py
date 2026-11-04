@@ -7,16 +7,14 @@ from uuid import UUID
 
 from app.algorithms.sleep import awakenings, significant_awakenings
 from app.database import DbSession
-from app.models import EventRecord, HealthScore, ProviderPriority, SeriesSample, User
-from app.repositories import EventRecordRepository, ProviderPriorityRepository
+from app.models import EventRecord, HealthScore, SeriesSample, User
+from app.repositories import EventRecordRepository
 from app.repositories.data_point_series_repository import (
     ActiveMinutesResult,
     DataPointSeriesRepository,
     IntensityMinutesResult,
 )
-from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import (
     ACTIVITY_METRIC_GROUPS,
     ACTIVITY_METRIC_KEYS,
@@ -25,8 +23,6 @@ from app.repositories.series_aggregate_repository import (
 )
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
-    DeviceType,
-    ProviderName,
     SeriesType,
     get_series_type_id,
 )
@@ -53,6 +49,7 @@ from app.schemas.utils import (
     TimeseriesMetadata,
 )
 from app.services.aggregate_backfill_service import days_from_samples
+from app.services.priority_service import priority_service
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
@@ -127,13 +124,6 @@ class SummariesService:
         self.user_repo = UserRepository(User)
         self.health_score_repo = HealthScoreRepository(HealthScore)
 
-    @staticmethod
-    def _priority_orders(db_session: DbSession) -> tuple[dict[ProviderName, int], dict[DeviceType, int]]:
-        return (
-            ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session),
-            DeviceTypePriorityRepository().get_priority_order(db_session),
-        )
-
     def _filter_by_priority(
         self,
         db_session: DbSession,
@@ -155,7 +145,7 @@ class SummariesService:
         if not results:
             return results
 
-        ranking = SourceRanking(*self._priority_orders(db_session))
+        ranking = priority_service.get_source_ranking(db_session)
 
         def sort_key(entry: dict) -> tuple[int, int, str]:
             provider = entry.get("provider") or entry.get("source")
@@ -231,7 +221,7 @@ class SummariesService:
         self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
 
         results = self.event_record_repo.get_sleep_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session)
+            db_session, user_id, start_date, end_date, cursor, limit, priority_service.get_source_ranking(db_session)
         )
 
         # Check if there's more data
@@ -365,7 +355,7 @@ class SummariesService:
         resting_heart_rate, hrv_rmssd_milli, spo2_percentage.
         """
         results = self.health_score_repo.get_recovery_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session)
+            db_session, user_id, start_date, end_date, cursor, limit, priority_service.get_source_ranking(db_session)
         )
 
         has_more = len(results) > limit
@@ -791,7 +781,7 @@ class SummariesService:
         if user and user.personal_record:
             birth_date = user.personal_record.birth_date
 
-        ranking = SourceRanking(*self._priority_orders(db_session))
+        ranking = priority_service.get_source_ranking(db_session)
 
         # --- SLOW-CHANGING: the preferred source's reading on each metric's newest day ---
         slow_changing_values = self.data_point_repo.get_ranked_latest_values(

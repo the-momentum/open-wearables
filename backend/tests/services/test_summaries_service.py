@@ -15,7 +15,9 @@ from app.models import DataSource, EventRecordAggregate, ProviderPriority
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, EventRecordRepository, ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
+from app.repositories.repositories import SourceRanking
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
+from app.services.priority_service import priority_service
 from app.services.summaries_service import SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
@@ -685,7 +687,7 @@ class TestGetRecoverySummaries:
             "spo2_percentage": 98.4,
         }
         monkeypatch.setattr(service.health_score_repo, "get_recovery_summaries", lambda *_: [row])
-        monkeypatch.setattr(service, "_priority_orders", lambda *_: ({}, {}))
+        monkeypatch.setattr(priority_service, "get_source_ranking", lambda _db: SourceRanking({}, {}))
 
         result = service.get_recovery_summaries(
             db_session=None,
