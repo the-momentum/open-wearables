@@ -192,6 +192,33 @@ class TestDirectXMLUpload:
             "for larger files."
         )
 
+    def test_413_message_skips_multipart_for_file_over_product_limit(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
+            patch(f"{_ROUTE}.MAX_FILE_SIZE", 3 * _MIB),
+            patch(f"{_ROUTE}.process_xml_upload"),
+        ):
+            response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == "File is 4 MiB, XML import accepts up to 3 MiB."
+
+    def test_413_message_skips_multipart_when_product_limit_is_below_direct_limit(
+        self, client: TestClient, db: Session
+    ) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_ROUTE}.MAX_FILE_SIZE", 3 * _MIB),
+            patch(f"{_ROUTE}.process_xml_upload"),
+        ):
+            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == "File is 3.1 MiB, XML import accepts up to 3 MiB."
+
     def test_413_message_does_not_round_a_file_just_over_the_limit_down_to_it(
         self, client: TestClient, db: Session
     ) -> None:

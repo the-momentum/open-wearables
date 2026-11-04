@@ -9,7 +9,8 @@ so the hard ceiling is about 288 MiB.
 
 Memory is the tighter bound: publishing the task holds several copies of the file in
 the API process (about 6.6x the file at peak), and every message the worker reserves
-stays in its memory (the xml_sync worker prefetches one per process). Larger files go
+stays in its memory (the xml_sync worker disables prefetch, so it holds only the messages
+it runs). Larger files go
 through the S3 multipart flow, which never puts the file in the broker.
 
 The endpoint applies the smaller of this and the product-wide ``MAX_FILE_SIZE``.

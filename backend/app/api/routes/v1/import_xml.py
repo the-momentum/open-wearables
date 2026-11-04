@@ -51,9 +51,13 @@ def _mib(size: int, *, round_up: bool) -> str:
 
 
 def _too_large_detail(file_size: int, limit: int) -> str:
+    size = _mib(file_size, round_up=True)
+    # Multipart rejects files over the product-wide limit too, so only point there when it would accept the file.
+    if file_size > MAX_FILE_SIZE:
+        return f"File is {size} MiB, XML import accepts up to {_mib(MAX_FILE_SIZE, round_up=False)} MiB."
     return (
-        f"File is {_mib(file_size, round_up=True)} MiB, direct upload accepts up to "
-        f"{_mib(limit, round_up=False)} MiB. Use the multipart upload ({_MULTIPART_CREATE_PATH}) for larger files."
+        f"File is {size} MiB, direct upload accepts up to {_mib(limit, round_up=False)} MiB. "
+        f"Use the multipart upload ({_MULTIPART_CREATE_PATH}) for larger files."
     )
 
 
