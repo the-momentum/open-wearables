@@ -50,6 +50,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import is_unique_violation
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -314,8 +315,10 @@ class StravaWebhookHandler(BaseWebhookHandler):
                 "user_id": str(user_id),
             }
 
-        except IntegrityError:
+        except IntegrityError as exc:
             db.rollback()
+            if not is_unique_violation(exc):
+                raise
             logger.info(
                 "Strava activity already exists, skipping",
                 provider="strava",

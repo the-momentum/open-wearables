@@ -19,6 +19,7 @@ from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.sync_status_service import emit_sync_completed, new_run_id
 from app.utils.context import sync_run_context
+from app.utils.exceptions import is_unique_violation
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -109,8 +110,10 @@ def process_activity_notification(
                     activities=[activity],
                     user_id=internal_user_id,
                 )
-        except IntegrityError:
+        except IntegrityError as exc:
             db.rollback()
+            if not is_unique_violation(exc):
+                raise
             logger.info(
                 "Activity already exists, skipping",
                 provider="garmin",

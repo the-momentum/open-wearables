@@ -32,6 +32,7 @@ from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import is_unique_violation
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -232,8 +233,10 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
                 if self.suunto_workouts.process_push_activity(db, user_id, raw) is not None:
                     saved += 1
             return {"status": "saved", "workout_key": str(workout_key), "saved_count": saved}
-        except IntegrityError:
+        except IntegrityError as exc:
             db.rollback()
+            if not is_unique_violation(exc):
+                raise
             logger.info(
                 "Suunto workout already exists, skipping",
                 provider="suunto",
