@@ -96,6 +96,7 @@ _DAYS_BEFORE = text(f"""
 """)
 
 _SOURCES = text("SELECT id FROM data_source WHERE id > :after ORDER BY id LIMIT :limit")
+_SOURCES_REACHED = text("SELECT count(*) FILTER (WHERE id <= :reached), count(*) FROM data_source")
 
 _SESSION_CATEGORIES = [EventCategory.SLEEP.value, EventCategory.WORKOUT.value]
 # A sum is kept only where the series is summed: a day's heart rates added up mean nothing.
@@ -134,6 +135,11 @@ class SeriesRollupRepository:
     def sources(self, db_session: DbSession, after: UUID, limit: int) -> list[UUID]:
         """Data sources in id order, ``limit`` at a time after ``after``."""
         return list(db_session.execute(_SOURCES, {"after": after, "limit": limit}).scalars())
+
+    def sources_reached(self, db_session: DbSession, reached: UUID | None) -> tuple[int, int]:
+        """How many data sources a pass in id order has finished by ``reached``, and how many there are."""
+        done, total = db_session.execute(_SOURCES_REACHED, {"reached": reached}).one()
+        return done, total
 
     def days_before(self, db_session: DbSession, source_id: UUID, cutoff: date) -> list[date]:
         """Local days before ``cutoff`` on which the source still has samples."""

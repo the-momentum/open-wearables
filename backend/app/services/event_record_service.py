@@ -295,10 +295,18 @@ class EventRecordService(
         threshold_minutes: int,
         source: str | None = None,
         provider: str | None = None,
+        source_app_id: str | None = None,
     ) -> EventRecord | None:
         """Find an existing sleep session adjacent to [start_time, end_time]."""
         return self.crud.find_adjacent_sleep_record(
-            db_session, user_id, start_time, end_time, threshold_minutes, source=source, provider=provider
+            db_session,
+            user_id,
+            start_time,
+            end_time,
+            threshold_minutes,
+            source=source,
+            provider=provider,
+            source_app_id=source_app_id,
         )
 
     def upsert_meals(

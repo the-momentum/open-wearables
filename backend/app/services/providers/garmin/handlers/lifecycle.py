@@ -13,7 +13,7 @@ from app.models import UserConnection
 from app.repositories import UserConnectionRepository
 from app.schemas.auth import ConnectionStatus
 from app.services.outgoing_webhooks.events import on_connection_revoked
-from app.services.providers.api_client import get_valid_token
+from app.services.providers.api_client import get_valid_token, invalidate_cached_token
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.utils.structured_logging import log_structured
 
@@ -35,6 +35,9 @@ def _current_grant_is_active(
     if not connection.access_token:
         return False
     try:
+        # A token cached earlier in this session may have been refreshed since by another worker,
+        # and Garmin rejecting it would revoke an active grant.
+        invalidate_cached_token(db, connection.user_id, "garmin")
         # The caller revokes with reason "deregistration"; a failed refresh must not revoke
         # first with "refresh_failed".
         access_token = get_valid_token(
