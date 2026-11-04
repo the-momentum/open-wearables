@@ -12,7 +12,12 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException
 from redis import Redis
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
+    HTTP_429_TOO_MANY_REQUESTS,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+)
 
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
@@ -195,7 +200,11 @@ class BaseOAuthTemplate(ABC):
                     user_id,
                     f"Refresh token rejected for {self.provider_name}; reconnection required",
                 )
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=f"Failed to refresh token: {e.response.text}")
+            # Keep transient provider failures retriable: webhook tasks drop deliveries on a 400.
+            status_code = e.response.status_code
+            if status_code != HTTP_429_TOO_MANY_REQUESTS and status_code < HTTP_500_INTERNAL_SERVER_ERROR:
+                status_code = HTTP_400_BAD_REQUEST
+            raise HTTPException(status_code=status_code, detail=f"Failed to refresh token: {e.response.text}")
         except Exception as e:
             log_structured(
                 logger,

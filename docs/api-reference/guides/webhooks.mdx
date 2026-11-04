@@ -275,7 +275,7 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 | `user_disconnected` | The connection was disconnected via the API. |
 | `sdk_sign_out` | The user signed out of the mobile app; the SDK reported it with its own token. |
 | `refresh_failed` | The OAuth refresh token was rejected by the provider. |
-| `deregistration` | The user deregistered on the provider side (Garmin). |
+| `deregistration` | The user deregistered on the provider side (Garmin) or deauthorized the app (Strava). A Strava request that hits the dead grant before the deauthorization event is processed revokes the connection with `refresh_failed` instead. |
 
 ```json
 {
