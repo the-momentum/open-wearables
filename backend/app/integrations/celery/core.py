@@ -184,7 +184,8 @@ def create_celery() -> Celery:
         enable_utc=True,
         task_default_queue=CeleryQueue.DEFAULT,
         task_default_exchange="default",
-        result_expires=3 * 24 * 3600,
+        # Nothing reads task results, and they share the broker's Redis
+        result_expires=3600,
         control_queue_ttl=300,
         control_queue_expires=300,
         task_queues={queue: {} for queue in CeleryQueue},

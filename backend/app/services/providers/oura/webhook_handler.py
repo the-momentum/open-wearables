@@ -247,9 +247,21 @@ class OuraWebhookHandler(BaseWebhookHandler):
             object_id=notification.object_id,
         )
 
-        self.connection_repo.update_last_synced_at(db, connection)
+        if not notification.object_id:
+            log_structured(
+                logger,
+                "warning",
+                "Oura webhook missing object_id; skipping fetch",
+                provider="oura",
+                trace_id=trace_id,
+                user_id=str(user_id),
+                provider_user_id=notification.user_id,
+                data_type=notification.data_type,
+                event_type=notification.event_type,
+            )
+            return {"status": "ignored", "reason": "missing_object_id", "user_id": str(user_id)}
 
-        count = self._dispatch_data_type(db, notification, user_id, trace_id)
+        count = self._dispatch_data_type(db, notification.object_id, notification, user_id, trace_id)
 
         if count is None:
             log_structured(
@@ -267,6 +279,9 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 "reason": f"unhandled_data_type: {notification.data_type}",
                 "user_id": str(user_id),
             }
+
+        # Only reached after a completed fetch: fetch errors propagate out of the dispatch.
+        self.connection_repo.update_last_synced_at(db, connection)
 
         log_structured(
             logger,
@@ -298,26 +313,12 @@ class OuraWebhookHandler(BaseWebhookHandler):
     def _dispatch_data_type(
         self,
         db: DbSession,
+        object_id: str,
         notification: OuraWebhookNotification,
         user_id: UUID,
         trace_id: str,
     ) -> int | None:
         data_type = notification.data_type
-        object_id = notification.object_id
-
-        if not object_id:
-            log_structured(
-                logger,
-                "warning",
-                "Oura webhook missing object_id; skipping fetch",
-                provider="oura",
-                trace_id=trace_id,
-                user_id=str(user_id),
-                provider_user_id=notification.user_id,
-                data_type=data_type,
-                event_type=notification.event_type,
-            )
-            return 0
 
         if data_type == "workout":
             return self.workouts.save_by_id(db, user_id, object_id, trace_id=trace_id)

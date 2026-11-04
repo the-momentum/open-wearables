@@ -38,7 +38,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.conversion import energy_difference
+from app.utils.conversion import energy_difference, seconds_to_minutes
 from app.utils.dates import as_utc
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -227,7 +227,7 @@ class SensorBio247Data(Base247DataTemplate):
         score = parsed.score
         start_dt = self._from_epoch_seconds(parsed.start_timestamp)
         end_dt = self._from_epoch_seconds(parsed.end_timestamp)
-        duration_seconds = int((parsed.total_sleep_mins or 0) * 60)
+        duration_seconds = int((end_dt - start_dt).total_seconds()) if start_dt and end_dt else 0
 
         return {
             "id": uuid4(),
@@ -241,10 +241,10 @@ class SensorBio247Data(Base247DataTemplate):
             "is_nap": False,
             "stage_timestamps": self._extract_sleep_stages(raw_sleep, user_id, start_dt, end_dt),
             "stages": {
-                "deep_seconds": int((parsed.deep_sleep_mins or 0) * 60),
-                "light_seconds": int((parsed.light_sleep_mins or 0) * 60),
-                "rem_seconds": int((parsed.rem_sleep_mins or 0) * 60),
-                "awake_seconds": int((parsed.awake_time_mins or 0) * 60),
+                "deep_seconds": int(parsed.deep_sleep_mins * 60) if parsed.deep_sleep_mins is not None else None,
+                "light_seconds": int(parsed.light_sleep_mins * 60) if parsed.light_sleep_mins is not None else None,
+                "rem_seconds": int(parsed.rem_sleep_mins * 60) if parsed.rem_sleep_mins is not None else None,
+                "awake_seconds": int(parsed.awake_time_mins * 60) if parsed.awake_time_mins is not None else None,
             },
             "average_heart_rate": (biometrics.bpm if biometrics else None) or parsed.avg_heart_rate,
             "average_hrv": biometrics.hrv if biometrics else None,
@@ -260,11 +260,11 @@ class SensorBio247Data(Base247DataTemplate):
         sleep_id = normalized_sleep["id"]
         start_dt = normalized_sleep.get("start_time")
         end_dt = normalized_sleep.get("end_time")
-        if not start_dt or not end_dt:
+        if not start_dt or not end_dt or end_dt <= start_dt:
             log_structured(
                 self.logger,
                 "warning",
-                "Skipping sleep record: missing start/end time",
+                "Skipping sleep record: missing or degenerate start/end window",
                 provider="sensorbio",
                 task="save_sleep_data",
                 sleep_id=str(sleep_id),
@@ -288,20 +288,20 @@ class SensorBio247Data(Base247DataTemplate):
         )
 
         stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=total_sleep_seconds // 60,
+            sleep_total_duration_minutes=seconds_to_minutes(deep_seconds, light_seconds, rem_seconds),
             sleep_time_in_bed_minutes=(normalized_sleep.get("duration_seconds") or 0) // 60,
             sleep_efficiency_score=Decimal(str(normalized_sleep["efficiency_percent"]))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             sleep_stages=normalized_sleep.get("stage_timestamps"),
             is_nap=normalized_sleep.get("is_nap", False),
         )

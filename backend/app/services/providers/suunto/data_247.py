@@ -36,6 +36,7 @@ from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
+from app.utils.conversion import as_int, seconds_to_minutes, sum_optional
 from app.utils.dates import align_tz_awareness, offset_of, parse_iso_datetime
 from app.utils.structured_logging import log_structured
 
@@ -193,12 +194,15 @@ class Suunto247Data(Base247DataTemplate):
             end_dt = parse_iso_datetime(bedtime_end)
             if end_dt:
                 bedtime_start = (end_dt - timedelta(seconds=duration_seconds)).isoformat()
-        deep_sleep = int(entry_data.get("DeepSleepDuration", 0))
-        light_sleep = int(entry_data.get("LightSleepDuration", 0))
-        rem_sleep = int(entry_data.get("REMSleepDuration", 0))
-        awake_duration = int(entry_data.get("WakeAfterSleepOnsetDuration", 0)) + int(
-            entry_data.get("WakeBeforeOffBedDuration", 0)
+        deep_sleep = as_int(entry_data.get("DeepSleepDuration"))
+        light_sleep = as_int(entry_data.get("LightSleepDuration"))
+        rem_sleep = as_int(entry_data.get("REMSleepDuration"))
+        awake_duration = sum_optional(
+            as_int(entry_data.get("WakeAfterSleepOnsetDuration")), as_int(entry_data.get("WakeBeforeOffBedDuration"))
         )
+        # Sessions Suunto didn't score (most naps) report 0 for every stage
+        if deep_sleep == light_sleep == rem_sleep == 0:
+            deep_sleep = light_sleep = rem_sleep = awake_duration = None
         # SpO2 — Suunto returns 0-1 range, convert to percent
         max_spo2 = entry_data.get("MaxSpo2")
         if max_spo2 is not None:
@@ -257,6 +261,10 @@ class Suunto247Data(Base247DataTemplate):
             )
             return False
 
+        # The in-bed window, as for every provider. Suunto's own Duration is its sleep time
+        # (with awake time in the Gomore algorithm) and only fills in a missing edge.
+        window_seconds = int((end_dt - start_dt).total_seconds())
+
         # EventRecord
         record = EventRecordCreate(
             id=sleep_id,
@@ -264,7 +272,7 @@ class Suunto247Data(Base247DataTemplate):
             type="sleep_session",
             source_name="Suunto",
             device_model=None,
-            duration_seconds=normalized_sleep.get("duration_seconds"),
+            duration_seconds=window_seconds,
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=str(normalized_sleep["suunto_sleep_id"]) if normalized_sleep.get("suunto_sleep_id") else None,
@@ -274,22 +282,22 @@ class Suunto247Data(Base247DataTemplate):
 
         # SleepDetails
         stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
-        time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
+        time_in_bed_minutes = window_seconds // 60
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=total_sleep_seconds // 60,
+            sleep_total_duration_minutes=seconds_to_minutes(deep_seconds, light_seconds, rem_seconds),
             sleep_time_in_bed_minutes=time_in_bed_minutes,
             sleep_efficiency_score=Decimal(str(normalized_sleep["efficiency_percent"]))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
         )
 
