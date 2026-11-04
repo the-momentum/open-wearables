@@ -29,6 +29,7 @@ from app.integrations.celery.core import setup_celery_logging
 from app.main import api
 from app.utils.config_utils import LogFormat, LogLevel
 from app.utils.context import trace_id_var
+from app.utils.exceptions import AppError, NotFoundError
 from app.utils.logging_setup import AppHandler, JsonFormatter, TextFormatter, configure_app_logger, configure_logging
 from app.utils.structured_logging import get_logger, strict_attributes
 
@@ -302,9 +303,11 @@ class TestExceptions:
     def test_client_errors_are_warnings(self, capsys: pytest.CaptureFixture[str]) -> None:
         logger.error("Token refresh rejected", exc_info=_raised(HTTPException(status_code=401)))
         logger.error("Provider failed", exc_info=_raised(HTTPException(status_code=502)))
+        logger.error("User missing", exc_info=_raised(NotFoundError("User not found.")))
+        logger.error("Invariant broken", exc_info=_raised(AppError("boom")))
 
         levels = [json.loads(line)["level"] for line in capsys.readouterr().out.splitlines()]
-        assert levels == ["warning", "error"]
+        assert levels == ["warning", "error", "warning", "error"]
 
     def test_text_format_prints_the_traceback_below_the_line(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch.object(settings, "log_format", LogFormat.TEXT):

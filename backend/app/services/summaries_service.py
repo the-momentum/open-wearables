@@ -51,7 +51,6 @@ from app.schemas.utils import (
 )
 from app.services.aggregate_backfill_service import days_from_samples
 from app.services.priority_service import priority_service
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
     encode_activity_cursor,
@@ -230,7 +229,6 @@ class SummariesService:
             "vigorous_max": int(max_hr * HR_ZONE_VIGOROUS[1]),
         }
 
-    @handle_exceptions
     def get_sleep_summaries(
         self,
         db_session: DbSession,
@@ -367,7 +365,6 @@ class SummariesService:
             ),
         )
 
-    @handle_exceptions
     def get_recovery_summaries(
         self,
         db_session: DbSession,
@@ -435,7 +432,6 @@ class SummariesService:
             ),
         )
 
-    @handle_exceptions
     def get_activity_summaries(
         self,
         db_session: DbSession,
@@ -837,7 +833,6 @@ class SummariesService:
         bmi = weight_kg / (height_m * height_m)
         return round(bmi, 1)
 
-    @handle_exceptions
     def get_body_summary(
         self,
         db_session: DbSession,

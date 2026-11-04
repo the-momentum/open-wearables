@@ -38,7 +38,6 @@ from app.schemas.utils import (
 )
 from app.services.aggregate_backfill_service import aggregate_backfill_service
 from app.services.priority_service import priority_service
-from app.utils.exceptions import handle_exceptions
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -72,12 +71,10 @@ class ArchivalService:
 
     # ── Settings CRUD ─────────────────────────────────────────────
 
-    @handle_exceptions
     def get_settings(self, db: DbSession) -> ArchivalSettingWithEstimate:
         """Return current archival configuration together with table-size estimates."""
         return self._settings_with_estimate(db, self.settings_repo.get(db))
 
-    @handle_exceptions
     def update_settings(self, db: DbSession, update: ArchivalSettingUpdate) -> ArchivalSettingWithEstimate:
         """Persist new archival settings and return updated estimates; switching the history's rollup on starts
         the backfill that runs it, not waiting for the next restart or beat."""

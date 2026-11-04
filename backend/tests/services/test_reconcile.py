@@ -5,7 +5,6 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
@@ -33,6 +32,7 @@ from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.services.archival_service import archival_service
 from app.services.priority_service import priority_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.exceptions import ReconcileWindowTooLargeError
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
@@ -177,10 +177,9 @@ class TestReconcileReads:
             _walk(watch, phone, day)
         monkeypatch.setattr(settings, "reconcile_on_the_fly_max_days", 1)
 
-        with pytest.raises(HTTPException) as refused:
+        with pytest.raises(ReconcileWindowTooLargeError) as refused:
             _read(db, watch, DAY, DAY + timedelta(days=1), Resolution.ONE_WEEK)
 
-        assert refused.value.status_code == 400
         assert refused.value.detail | {"message": None} == {
             "code": "reconcile_too_many_days",
             "message": None,
@@ -235,7 +234,7 @@ class TestReconcileReads:
         self._rolled_up_with_reconcile_on(db, devices, monkeypatch)
         monkeypatch.setattr(settings, "reconcile_on_the_fly_max_days", 1)
 
-        with pytest.raises(HTTPException) as refused:
+        with pytest.raises(ReconcileWindowTooLargeError) as refused:
             _read(db, watch, DAY, DAY + timedelta(days=1), Resolution.ONE_WEEK)
 
         assert refused.value.detail["queued"] is False
@@ -513,6 +512,35 @@ class TestReconcileRoute:
 
         assert response.status_code == 400
         assert detail in response.text
+
+    def test_a_period_over_the_budget_answers_with_the_numbers(
+        self, client: TestClient, api_v1_prefix: str, db: Session, devices: tuple, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        watch, phone = devices
+        for day in (DAY, DAY + timedelta(days=1)):
+            _walk(watch, phone, day)
+        monkeypatch.setattr(settings, "reconcile_on_the_fly_max_days", 1)
+
+        response = client.get(
+            f"{api_v1_prefix}/users/{watch.user_id}/timeseries",
+            headers={"X-Open-Wearables-API-Key": ApiKeyFactory().plain_key},
+            params={
+                "start_time": "2024-03-02T00:00:00Z",
+                "end_time": "2024-03-04T00:00:00Z",
+                "types": "steps",
+                "resolution": "1week",
+                "source_selection": "reconcile",
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] | {"message": None} == {
+            "code": "reconcile_too_many_days",
+            "message": None,
+            "days": 2,
+            "max_days": 1,
+            "queued": False,
+        }
 
 
 def test_reconcile_is_off_by_default() -> None:

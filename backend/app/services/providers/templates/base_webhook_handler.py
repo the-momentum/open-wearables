@@ -231,9 +231,8 @@ class BaseWebhookHandler(ABC):
         to verify webhook subscriptions (Strava ``hub.challenge``, Oura
         ``verification_token``).
 
-        Default implementation raises ``501 Not Implemented`` so that the
-        unified router fails loudly for providers that have not wired up
-        challenge handling yet.
+        Default implementation raises ``NotImplementedError``, which the
+        unified router answers with ``501 Not Implemented``.
 
         Args:
             request: The incoming GET request (query params carry challenge data).
@@ -242,11 +241,10 @@ class BaseWebhookHandler(ABC):
             Provider-specific challenge response dict.
 
         Raises:
-            ``HTTPException(501)`` by default.
+            ``NotImplementedError`` by default.
         """
-        raise HTTPException(
-            status_code=501,
-            detail=f"Provider '{self.provider_name}' does not support webhook subscription verification via GET.",
+        raise NotImplementedError(
+            f"Provider '{self.provider_name}' does not support webhook subscription verification via GET."
         )
 
     # ------------------------------------------------------------------

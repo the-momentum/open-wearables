@@ -7,7 +7,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.integrations import rollup_queue
@@ -18,6 +17,7 @@ from app.repositories import AggregateRepository, EventRecordRepository, Provide
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
 from app.services.summaries_service import SummariesService
+from app.utils.exceptions import InvalidCursorError
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -170,7 +170,7 @@ class TestGetSleepSummaries:
         assert (totals.days, totals.steps) == (1, 1000)
 
     def test_a_bad_cursor_is_the_clients_error(self, db: Session, service: SummariesService) -> None:
-        with pytest.raises(HTTPException) as raised:
+        with pytest.raises(InvalidCursorError) as raised:
             service.get_sleep_summaries(
                 db, uuid4(), _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-07T00:00:00+00:00"), cursor="?", limit=10
             )

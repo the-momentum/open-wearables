@@ -12,7 +12,6 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
-from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
@@ -20,6 +19,7 @@ from app.models.data_source import DataSource
 from app.models.event_record import EventRecord
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.scores.sleep_service import SleepScoreService
+from app.utils.exceptions import NotFoundError
 from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
 
 _log = logging.getLogger(__name__)
@@ -367,7 +367,7 @@ class TestGetSleepScoreForUser:
         )
         db.flush()
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             service.get_sleep_score_for_user(db, user.id, sleep_date)
         assert exc_info.value.status_code == 404
 
@@ -376,7 +376,7 @@ class TestGetSleepScoreForUser:
         user = UserFactory()
         db.flush()
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             service.get_sleep_score_for_user(db, user.id, date(2026, 3, 10))
         assert exc_info.value.status_code == 404
 

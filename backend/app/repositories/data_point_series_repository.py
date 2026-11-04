@@ -90,7 +90,6 @@ from app.schemas.responses.activity import (
 )
 from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import as_utc, local_date
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
 from app.utils.structured_logging import get_logger
 
@@ -274,7 +273,6 @@ class DataPointSeriesRepository(
         self.series_aggregate_repo = AggregateRepository(SeriesAggregate)
         self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
 
-    @handle_exceptions
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> SeriesSample:
         """Create a data point sample, or return existing if duplicate.
 
@@ -304,7 +302,6 @@ class DataPointSeriesRepository(
         mark_dirty_days(db_session, [(data_source.id, local_date(creator.recorded_at, creator.zone_offset))])
         return self.try_commit(db_session, creation)
 
-    @handle_exceptions
     def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
         """Bulk create data point samples.
 

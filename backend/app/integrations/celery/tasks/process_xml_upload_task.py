@@ -31,6 +31,7 @@ from app.services.sync_status_service import (
 )
 from app.services.timeseries_service import timeseries_service
 from app.utils.context import sync_run_context
+from app.utils.exceptions import public_error_text
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -152,7 +153,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                     run.source,
                     scope=run.scope,
                     run_id=run.run_id,
-                    error=str(e),
+                    error=public_error_text(e),
                     message=f"Apple Health XML import failed: {filename}",
                     metadata={"filename": filename},
                 )

@@ -21,7 +21,7 @@ from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordQueryParams, HealthScoreCreate, ScoreComponent
 from app.schemas.model_crud.activities.sleep import SleepStage
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.exceptions import ResourceNotFoundError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -112,7 +112,6 @@ class SleepScoreService:
             awakening_durations=awakening_durations,
         )
 
-    @handle_exceptions
     def get_sleep_score_for_user(
         self,
         db_session: DbSession,

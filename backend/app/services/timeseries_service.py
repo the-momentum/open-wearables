@@ -52,7 +52,7 @@ from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.priority_service import priority_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
-from app.utils.exceptions import ReconcileWindowTooLargeError, handle_exceptions
+from app.utils.exceptions import ReconcileWindowTooLargeError
 from app.utils.pagination import decode_date_cursor, encode_bucket_cursor, encode_cursor, encode_date_cursor
 from app.utils.structured_logging import get_logger
 
@@ -673,7 +673,6 @@ class TimeSeriesService(
         ]
         return sorted(result, key=lambda pair: pair[1])
 
-    @handle_exceptions
     def get_timeseries(
         self,
         db_session: DbSession,

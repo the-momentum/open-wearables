@@ -78,7 +78,6 @@ from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
 from app.utils.conversion import as_dict_list, as_float, as_int, as_model, minutes_to_seconds, sum_optional
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 from app.utils.sleep_stages import measured_stages
 from app.utils.structured_logging import get_logger
@@ -835,7 +834,6 @@ class EventRecordService(
             for record, data_source, detail in dispatches:
                 self._emit_event_record_webhook(record, data_source, detail, sync)
 
-    @handle_exceptions
     def _get_records_with_filters(
         self,
         db_session: DbSession,
@@ -853,7 +851,6 @@ class EventRecordService(
 
         return records, total_count
 
-    @handle_exceptions
     def get_records_response(
         self,
         db_session: DbSession,
@@ -864,7 +861,6 @@ class EventRecordService(
 
         return [self._build_response(record, data_source) for record, data_source in records]
 
-    @handle_exceptions
     def get_workout_types(self, db_session: DbSession, user_id: UUID) -> list[str]:
         """Workout types this user actually has, so a client can filter on real options only."""
         return self.crud.get_distinct_workout_types(db_session, user_id)
@@ -882,7 +878,6 @@ class EventRecordService(
             device_id=data_source.device_id,
         )
 
-    @handle_exceptions
     def get_workout_totals(
         self,
         db_session: DbSession,
@@ -901,7 +896,6 @@ class EventRecordService(
             distance_meters=float(distance) if distance is not None else None,
         )
 
-    @handle_exceptions
     def get_workouts(
         self,
         db_session: DbSession,
@@ -1035,7 +1029,6 @@ class EventRecordService(
             db_session, str(user_id), params, priority_service.get_source_ranking(db_session)
         )
 
-    @handle_exceptions
     def get_sleep_totals(
         self,
         db_session: DbSession,
@@ -1055,7 +1048,6 @@ class EventRecordService(
             avg_efficiency_percent=float(efficiency) if efficiency is not None else None,
         )
 
-    @handle_exceptions
     def get_sleep_sessions(
         self,
         db_session: DbSession,
@@ -1154,7 +1146,6 @@ class EventRecordService(
             ),
         )
 
-    @handle_exceptions
     def get_menstrual_cycles(
         self,
         db_session: DbSession,
@@ -1234,7 +1225,6 @@ class EventRecordService(
             ),
         )
 
-    @handle_exceptions
     def get_meals(
         self,
         db_session: DbSession,

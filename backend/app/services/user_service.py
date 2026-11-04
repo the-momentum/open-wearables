@@ -26,7 +26,7 @@ from app.services.providers.garmin.backfill_state import force_release_backfill_
 from app.services.services import AppService
 from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
-from app.utils.exceptions import ResourceAlreadyExistsError, ResourceNotFoundError, handle_exceptions
+from app.utils.exceptions import ConflictError, ResourceNotFoundError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -48,14 +48,21 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """Get count of users created within a date range."""
         return self.crud.get_count_in_range(db_session, start_date, end_date)
 
-    @handle_exceptions
     def create(self, db_session: DbSession, creator: UserCreate, *, is_seed: bool = False) -> User:
         """Create a user with server-generated id and created_at."""
         if self.crud.get_by_email(db_session, creator.email):
-            raise ResourceAlreadyExistsError("User with this email already exists.")
+            raise ConflictError("User with this email already exists.")
+        self._ensure_external_user_id_free(db_session, creator.external_user_id)
         creation_data = creator.model_dump()
         internal_creator = UserCreateInternal(**creation_data, is_seed=is_seed)
         return super().create(db_session, internal_creator)
+
+    def _ensure_external_user_id_free(
+        self, db_session: DbSession, external_user_id: str | None, current: User | None = None
+    ) -> None:
+        """A specific 409 up front; the unique constraint still backs it up when two requests race."""
+        if (other := self.crud.get_by_external_user_id(db_session, external_user_id)) and other is not current:
+            raise ConflictError("User with this external_user_id already exists.")
 
     def update(
         self,
@@ -69,6 +76,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         if not user:
             return None
 
+        self._ensure_external_user_id_free(db_session, updater.external_user_id, current=user)
         update_data = updater.model_dump(exclude_unset=True)
         internal_updater = UserUpdateInternal(**update_data)
         return self.crud.update(db_session, user, internal_updater)
@@ -135,7 +143,6 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 error=str(e),
             )
 
-    @handle_exceptions
     def get_detail(
         self,
         db_session: DbSession,
@@ -157,7 +164,6 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             detail.connections = [UserConnectionSummary.model_validate(c) for c in connections or []]
         return detail
 
-    @handle_exceptions
     def get_users_paginated(
         self,
         db_session: DbSession,
