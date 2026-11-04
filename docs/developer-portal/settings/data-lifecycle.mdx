@@ -104,13 +104,13 @@ A page holds as many periods as fit in `RECONCILE_ON_THE_FLY_MAX_DAYS` merged da
 
 ```json
 {
-  "detail": {
-    "code": "reconcile_too_many_days",
-    "message": "source_selection=reconcile would merge more days on the fly than allowed for one page; lower `limit` or narrow the range.",
-    "days": 45,
-    "max_days": 30,
-    "queued": true
-  }
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "source_selection=reconcile would merge more days on the fly than allowed for one page; lower `limit` or narrow the range.",
+  "code": "RECONCILE_TOO_MANY_DAYS",
+  "days": 45,
+  "max_days": 31,
+  "queued": true
 }
 ```
 

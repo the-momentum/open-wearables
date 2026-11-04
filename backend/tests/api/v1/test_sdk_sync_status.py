@@ -285,7 +285,7 @@ class TestSDKSyncStateAccess:
             params={"provider": "garmin"},
             headers={"X-Open-Wearables-API-Key": ApiKeyFactory().plain_key},
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_token_for_another_user_is_forbidden(self, client: TestClient, db: Session) -> None:
         user = UserFactory()

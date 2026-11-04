@@ -1,7 +1,9 @@
-from typing import ClassVar
+from collections.abc import Iterable
+from typing import Any, ClassVar
 from uuid import UUID
 
 from fastapi import status
+from fastapi.exceptions import RequestValidationError
 from psycopg import Error as PsycopgError
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
@@ -11,11 +13,39 @@ from sqlalchemy.exc import IntegrityError, StatementError
 INTEGRITY_ERRORS = (IntegrityError, PsycopgIntegrityError)
 
 
+# The code of an error that has none of its own: its status' name. Spelled out, not HTTPStatus.name, which
+# Python renamed for 413 and 422 in 3.13: codes are part of the API contract.
+STATUS_CODE_NAMES: dict[int, str] = {
+    400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    405: "METHOD_NOT_ALLOWED",
+    409: "CONFLICT",
+    413: "CONTENT_TOO_LARGE",
+    415: "UNSUPPORTED_MEDIA_TYPE",
+    422: "UNPROCESSABLE_CONTENT",
+    429: "TOO_MANY_REQUESTS",
+    500: "INTERNAL_ERROR",
+    501: "NOT_IMPLEMENTED",
+    502: "BAD_GATEWAY",
+    503: "SERVICE_UNAVAILABLE",
+    504: "GATEWAY_TIMEOUT",
+}
+
+
+def status_code_name(status_code: int) -> str:
+    return STATUS_CODE_NAMES.get(status_code, f"HTTP_{status_code}")
+
+
 class AppError(Exception):
     """Base of the domain errors raised by services and repositories.
 
     Raise a subclass instead of ``HTTPException``: the global handler in ``app.main`` turns
-    ``status_code`` and ``detail`` into the response, and Celery tasks can catch it by type.
+    ``status_code``, ``code`` and ``detail`` into the response, and Celery tasks can catch it by type.
+    ``code`` is part of the API contract: a status' base class has the status' name, the one
+    an ``HTTPException`` with that status gets, and a subclass a code of its own only where
+    a client can act on the difference.
     """
 
     status_code: ClassVar[int] = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -23,9 +53,17 @@ class AppError(Exception):
     code: ClassVar[str] = "INTERNAL_ERROR"
     headers: ClassVar[dict[str, str] | None] = None
 
-    def __init__(self, detail: str | dict[str, object]) -> None:
+    def __init__(self, detail: str, extensions: dict[str, Any] | None = None) -> None:
         self.detail = detail
+        # Extra members of the problem body (RFC 9457 extensions), for what a client acts on by value
+        self.extensions = extensions or {}
         super().__init__(detail)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # A class that sets a status and no code of its own gets the status' name, never its parent's code
+        if "status_code" in cls.__dict__ and "code" not in cls.__dict__:
+            cls.code = status_code_name(cls.status_code)
 
     @property
     def is_client_error(self) -> bool:
@@ -34,12 +72,10 @@ class AppError(Exception):
 
 class InvalidInputError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
-    code = "BAD_REQUEST"
 
 
 class AuthenticationError(AppError):
     status_code = status.HTTP_401_UNAUTHORIZED
-    code = "UNAUTHORIZED"
     headers = {"WWW-Authenticate": "Bearer"}
 
 
@@ -47,23 +83,19 @@ class WebhookVerificationError(AuthenticationError):
     """A provider callback failed verification (signature, token): no bearer scheme to advertise."""
 
     code = "WEBHOOK_VERIFICATION_FAILED"
-
     headers = None
 
 
 class PermissionDeniedError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
-    code = "FORBIDDEN"
 
 
 class NotFoundError(AppError):
     status_code = status.HTTP_404_NOT_FOUND
-    code = "NOT_FOUND"
 
 
 class ConflictError(AppError):
     status_code = status.HTTP_409_CONFLICT
-    code = "CONFLICT"
 
 
 class ResourceNotFoundError(NotFoundError):
@@ -96,17 +128,12 @@ class ReconcileWindowTooLargeError(InvalidInputError):
 
     def __init__(self, days: int, max_days: int, queued: bool):
         self.days, self.max_days, self.queued = days, max_days, queued
-        # Structured, so a client can lower its page size by the numbers rather than parse a sentence.
+        # The numbers as members, so a client sizes its next page by them rather than by parsing a sentence;
+        # queued: the rollup will store these days, not a promise of when, as its budget decides.
         super().__init__(
-            {
-                "code": "reconcile_too_many_days",
-                "message": "source_selection=reconcile would merge more days on the fly than allowed for one "
-                "page; lower `limit` or narrow the range.",
-                "days": days,
-                "max_days": max_days,
-                # Queued to be stored by the rollup; not a promise of when, as its budget decides.
-                "queued": queued,
-            }
+            "source_selection=reconcile would merge more days on the fly than allowed for one page; "
+            "lower `limit` or narrow the range.",
+            {"days": days, "max_days": max_days, "queued": queued},
         )
 
 
@@ -127,12 +154,10 @@ class UpstreamError(AppError):
     """
 
     status_code = status.HTTP_502_BAD_GATEWAY
-    code = "BAD_GATEWAY"
 
 
 class ServiceUnavailableError(UpstreamError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    code = "SERVICE_UNAVAILABLE"
 
 
 class ConfigurationError(AppError):
@@ -144,6 +169,15 @@ class ConfigurationError(AppError):
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "CONFIGURATION_ERROR"
+
+
+def unknown_provider(value: str, loc: tuple[str, ...], allowed: Iterable[str]) -> RequestValidationError:
+    """An unknown provider slug, answered like a ``ProviderName`` parameter FastAPI validated: a 422
+    ``VALIDATION_ERROR`` pointing at ``loc``, so a typo gets one code whatever the route."""
+    expected = ", ".join(f"'{slug}'" for slug in sorted(allowed))
+    return RequestValidationError(
+        [{"loc": loc, "msg": f"Input should be one of {expected}", "type": "enum", "input": value}]
+    )
 
 
 def provider_label(provider: str) -> str:
@@ -251,6 +285,29 @@ class ProviderTokenUnavailableError(ProviderConnectionError, InvalidInputError):
 
     def __init__(self, provider: str) -> None:
         super().__init__(provider, f"No {provider_label(provider)} API access token for this user.")
+
+
+class InvitationExpiredError(InvalidInputError):
+    code = "INVITATION_EXPIRED"
+
+    def __init__(self) -> None:
+        super().__init__("Invitation has expired")
+
+
+class InvitationAlreadyAcceptedError(InvalidInputError):
+    code = "INVITATION_ALREADY_ACCEPTED"
+
+    def __init__(self) -> None:
+        super().__init__("Invitation is accepted")
+
+
+class InvitationWithdrawnError(InvalidInputError):
+    """Revoked, or its email never got through: the link is dead, but no one used it."""
+
+    code = "INVITATION_WITHDRAWN"
+
+    def __init__(self, invitation_status: str) -> None:
+        super().__init__(f"Invitation is {invitation_status}")
 
 
 class ReauthRequiredError(ProviderConnectionError, ConflictError):

@@ -14,13 +14,15 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	return { token: url.searchParams.get('token') ?? '' };
 };
 
-/** Matched on the API's own `detail` strings: its 400s carry no code. */
+const DEAD_LINKS: Record<string, string> = {
+	INVITATION_EXPIRED: 'This invitation has expired',
+	INVITATION_ALREADY_ACCEPTED: 'This invitation has already been used',
+	INVITATION_WITHDRAWN: 'This invitation was withdrawn'
+};
+
 function deadLink(error: ApiError): string | null {
 	if (error.status === 404) return 'This invitation link is not valid';
-	if (error.message === 'Invitation has expired') return 'This invitation has expired';
-	if (error.message === 'Invitation is accepted') return 'This invitation has already been used';
-	if (error.message.startsWith('Invitation is ')) return 'This invitation was withdrawn';
-	return null;
+	return (error.code && DEAD_LINKS[error.code]) || null;
 }
 
 export const actions: Actions = {

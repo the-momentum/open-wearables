@@ -11,7 +11,6 @@ from itertools import batched
 from uuid import UUID
 
 from celery.exceptions import SoftTimeLimitExceeded
-from fastapi import HTTPException
 
 from app.config import settings
 from app.database import DbSession
@@ -38,6 +37,7 @@ from app.schemas.utils import (
 )
 from app.services.aggregate_backfill_service import aggregate_backfill_service
 from app.services.priority_service import priority_service
+from app.utils.exceptions import InvalidInputError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -83,9 +83,8 @@ class ArchivalService:
 
         new = update.applied_to(ArchivalSettingRead.model_validate(self.settings_repo.get(db)))
         if new.history_rollup_enabled and not new.rollup_enabled:
-            raise HTTPException(
-                status_code=422,
-                detail="history_rollup_enabled needs rollup_enabled: the days after it would not be rolled up",
+            raise InvalidInputError(
+                "history_rollup_enabled needs rollup_enabled: the days after it would not be rolled up"
             )
         setting = self.settings_repo.update(db, new.rollup_enabled, new.history_rollup_enabled, new.delete_after_days)
         if setting.history_rollup_enabled and not aggregate_backfill_service.is_done(db):

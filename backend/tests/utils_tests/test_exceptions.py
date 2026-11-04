@@ -2,6 +2,8 @@
 Tests for the domain exceptions and the IntegrityError translation.
 """
 
+import re
+from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -10,6 +12,7 @@ from psycopg.errors import ForeignKeyViolation, NotNullViolation, UniqueViolatio
 from sqlalchemy.exc import DataError, IntegrityError, StatementError
 
 from app.utils.exceptions import (
+    STATUS_CODE_NAMES,
     AppError,
     AuthenticationError,
     ConfigurationError,
@@ -24,10 +27,12 @@ from app.utils.exceptions import (
     ResourceNotFoundError,
     ServiceUnavailableError,
     UnsupportedProviderError,
+    UpstreamError,
     app_error_from_integrity_error,
     is_provider_state_error,
     public_error_text,
 )
+from app.utils.problem import status_code_name
 
 
 class TestResourceNotFoundError:
@@ -93,6 +98,23 @@ class TestStatusCodes:
     def test_datetime_parse_error_is_still_a_value_error(self) -> None:
         # pydantic validators turn a ValueError into a validation error
         assert isinstance(DatetimeParseError("yesterday"), ValueError)
+
+    @pytest.mark.parametrize(
+        "error_type",
+        [
+            AppError,
+            InvalidInputError,
+            AuthenticationError,
+            PermissionDeniedError,
+            NotFoundError,
+            ConflictError,
+            UpstreamError,
+            ServiceUnavailableError,
+        ],
+    )
+    def test_a_status_base_class_has_the_code_of_its_status(self, error_type: type[AppError]) -> None:
+        """So a client sees the same code for a route's HTTPException and a service's error."""
+        assert error_type.code == status_code_name(error_type.status_code)
 
     def test_details(self) -> None:
         assert InvalidCursorError("abc").detail == "Invalid cursor format: 'abc'. Expected 'timestamp|id'."
@@ -198,3 +220,28 @@ class TestPublicErrorText:
 
     def test_other_errors_keep_their_message(self) -> None:
         assert public_error_text(ValueError("bad payload")) == "bad payload"
+
+
+def _app_errors(cls: type[AppError] = AppError) -> list[type[AppError]]:
+    return [cls, *(sub for direct in cls.__subclasses__() for sub in _app_errors(direct))]
+
+
+class TestErrorCodes:
+    """Codes are part of the API contract: one source, every specific one documented."""
+
+    def test_a_class_with_a_status_and_no_code_gets_the_status_name(self) -> None:
+        class GoneError(AppError):
+            status_code = 410
+
+        assert GoneError.code == "HTTP_410"
+        assert NotFoundError.code == "NOT_FOUND"
+
+    def test_every_specific_code_is_in_the_docs_table(self) -> None:
+        table = (Path(__file__).parents[3] / "docs/api-reference/guides/error-handling.mdx").read_text()
+        documented = set(re.findall(r"^\| `([A-Z_]+)` \|", table, re.M))
+        # HTTP_<status>: a class defined in a test; WEBHOOK_VERIFICATION_FAILED goes to providers, not clients
+        codes = {cls.code for cls in _app_errors() if not cls.code.startswith("HTTP_")}
+        specific = codes - set(STATUS_CODE_NAMES.values()) - {"WEBHOOK_VERIFICATION_FAILED"}
+
+        assert specific - documented == set()
+        assert documented - specific - {"VALIDATION_ERROR", "INTERNAL_ERROR"} == set()

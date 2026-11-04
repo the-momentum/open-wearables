@@ -41,10 +41,10 @@ curl -H "X-Open-Wearables-API-Key: YOUR_API_KEY" \
 | `422` | Validation error (invalid parameter value) |
 | `500` | Internal server error |
 
-**Error response shape**
+**Error response shape** ([Problem Details](/api-reference/guides/error-handling))
 
 ```json
-{ "detail": "User not found" }
+{ "title": "Not Found", "status": 404, "detail": "User not found", "code": "NOT_FOUND" }
 ```
 
 <Note>
@@ -144,12 +144,12 @@ data: {"event_id":"evt_01HZ...","run_id":"pull_garmin_user42_1730000000","provid
 
 ```json
 HTTP/1.1 401 Unauthorized
-{ "detail": "Invalid authentication credentials" }
+{ "title": "Unauthorized", "status": 401, "detail": "Invalid or missing API key", "code": "UNAUTHORIZED" }
 ```
 
 ```json
 HTTP/1.1 404 Not Found
-{ "detail": "User not found" }
+{ "title": "Not Found", "status": 404, "detail": "User not found", "code": "NOT_FOUND" }
 ```
 
 ### Example: Node.js

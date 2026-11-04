@@ -119,7 +119,7 @@ class TestPutPersonalRecord:
 
         assert response.status_code == 404
 
-    def test_future_birth_date_returns_400(
+    def test_future_birth_date_returns_422(
         self, client: TestClient, user: User, api_key_header: dict[str, str], api_v1_prefix: str
     ) -> None:
         # Two days ahead, so the test cannot fail when it runs across midnight UTC.
@@ -131,10 +131,10 @@ class TestPutPersonalRecord:
             headers=api_key_header,
         )
 
-        assert response.status_code == 400
-        assert response.json() == {"detail": "birth_date cannot be in the future"}
+        assert response.status_code == 422
+        assert response.json()["detail"] == "body.birth_date: birth_date cannot be in the future"
 
-    def test_unknown_gender_returns_400(
+    def test_unknown_gender_returns_422(
         self, client: TestClient, user: User, api_key_header: dict[str, str], api_v1_prefix: str
     ) -> None:
         response = client.put(
@@ -143,9 +143,9 @@ class TestPutPersonalRecord:
             headers=api_key_header,
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 422
 
-    def test_unknown_sex_returns_400(
+    def test_unknown_sex_returns_422(
         self, client: TestClient, user: User, api_key_header: dict[str, str], api_v1_prefix: str
     ) -> None:
         response = client.put(
@@ -154,7 +154,7 @@ class TestPutPersonalRecord:
             headers=api_key_header,
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_requires_api_key(self, client: TestClient, user: User, api_v1_prefix: str) -> None:
         response = client.put(record_url(api_v1_prefix, user.id), json={"birth_date": "1990-05-01"})

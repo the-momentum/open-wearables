@@ -15,7 +15,14 @@ from app.schemas.model_crud.user_management import (
     InvitationStatus,
 )
 from app.services.developer_service import developer_service
-from app.utils.exceptions import ConflictError, InvalidInputError, NotFoundError
+from app.utils.exceptions import (
+    ConflictError,
+    InvalidInputError,
+    InvitationAlreadyAcceptedError,
+    InvitationExpiredError,
+    InvitationWithdrawnError,
+    NotFoundError,
+)
 from app.utils.security import get_password_hash
 from app.utils.structured_logging import get_logger
 
@@ -107,12 +114,16 @@ class InvitationService:
         if not invitation:
             raise NotFoundError("Invitation not found")
 
+        if invitation.status == InvitationStatus.ACCEPTED:
+            raise InvitationAlreadyAcceptedError()
+        if invitation.status == InvitationStatus.EXPIRED:
+            raise InvitationExpiredError()
         if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT):
-            raise InvalidInputError(f"Invitation is {invitation.status}")
+            raise InvitationWithdrawnError(invitation.status)
 
         if invitation.expires_at < datetime.now(timezone.utc):
             self.crud.update_status(db_session, invitation, InvitationStatus.EXPIRED)
-            raise InvalidInputError("Invitation has expired")
+            raise InvitationExpiredError()
 
         # Build developer model for atomic creation
         developer = Developer(
