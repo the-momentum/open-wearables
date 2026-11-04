@@ -19444,6 +19444,7 @@
           "skeletal_muscle_mass",
           "bone_mass",
           "body_water_mass",
+          "body_water_percentage",
           "vo2_max",
           "six_minute_walk_test_distance",
           "cardiovascular_age",
@@ -19811,6 +19812,12 @@
             "type": "boolean",
             "title": "Is Nap",
             "default": false
+          },
+          "is_final": {
+            "type": "boolean",
+            "title": "Is Final",
+            "description": "Whether no more data is expected for this session; until then the provider may still extend it",
+            "example": true
           }
         },
         "type": "object",
@@ -19819,7 +19826,8 @@
           "start_time",
           "end_time",
           "source",
-          "duration_seconds"
+          "duration_seconds",
+          "is_final"
         ],
         "title": "SleepSession"
       },

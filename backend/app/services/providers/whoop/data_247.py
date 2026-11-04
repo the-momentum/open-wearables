@@ -207,7 +207,8 @@ class Whoop247Data(Base247DataTemplate):
         if normalized.get("score_state") != "SCORED":
             return None
         performance = normalized.get("sleep_performance_percentage")
-        timestamp = normalized.get("timestamp")
+        # The wake-up, so the score belongs to the day the user wakes up
+        timestamp = normalized.get("end_time")
         if performance is None or timestamp is None:
             return None
         if isinstance(timestamp, str):
@@ -231,6 +232,7 @@ class Whoop247Data(Base247DataTemplate):
             category=HealthScoreCategory.SLEEP,
             value=performance,
             recorded_at=timestamp,
+            zone_offset=normalized.get("zone_offset"),
             components=components or None,
         )
 
@@ -246,7 +248,7 @@ class Whoop247Data(Base247DataTemplate):
         end_time = raw_sleep.get("end")
         nap = raw_sleep.get("nap", False)
         cycle_id = raw_sleep.get("cycle_id")
-        zone_offset = raw_sleep.get("zone_offset")
+        zone_offset = raw_sleep.get("timezone_offset")
 
         # Extract score data (may be None if not scored yet)
         score = raw_sleep.get("score", {}) or {}
@@ -290,7 +292,6 @@ class Whoop247Data(Base247DataTemplate):
             "id": internal_id,
             "user_id": user_id,
             "provider": self.provider_name,
-            "timestamp": start_time or end_time,
             "start_time": start_time,
             "end_time": end_time,
             "zone_offset": zone_offset,
@@ -387,6 +388,7 @@ class Whoop247Data(Base247DataTemplate):
             sleep_rem_minutes=seconds_to_minutes(rem_seconds),
             sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
+            provider_state=normalized_sleep.get("score_state"),
         )
 
         try:
@@ -436,7 +438,8 @@ class Whoop247Data(Base247DataTemplate):
             normalized, health_score = self.normalize_sleep(raw, user_id)
             self.save_sleep_data(db, user_id, normalized)
             if health_score:
-                health_score_service.create(db, health_score)
+                health_score_service.bulk_create(db, [health_score])
+                db.commit()
             return 1, closed_at
         except Exception as e:
             logger.warning(

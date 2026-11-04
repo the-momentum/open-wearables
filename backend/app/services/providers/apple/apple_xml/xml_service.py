@@ -8,7 +8,7 @@ from xml.etree import ElementTree as ET
 from app.config import settings
 from app.constants.series_types.sdk import SleepPhase, get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
-from app.schemas.enums import EventCategory, SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, SeriesType, daily_total_flag, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -26,6 +26,7 @@ from app.schemas.providers.mobile_sdk import (
 )
 from app.utils.dates import window_seconds
 from app.utils.structured_logging import get_logger
+from app.utils.units import EnergyUnit, UnitConverter
 
 logger = get_logger(__name__)
 
@@ -212,6 +213,21 @@ class XMLService:
             self.stats.records.skip(f"missing_startDate:{metric_type}")
             return None
 
+        # Apple exports values in the user's display unit (km, lb, mmol/L, degF...); one in a unit that
+        # can't be converted to the series unit is skipped rather than stored in the wrong unit.
+        raw_unit = document.get("unit")
+        if raw_unit is not None:
+            converted = UnitConverter.to_series_unit(series_type, value, raw_unit)
+            if converted is None:
+                self.stats.records.skip(f"unconvertible_unit:{series_type.value}:{raw_unit}")
+                return None
+            value = converted
+
+        # HealthKit's "%" is a 0-1 fraction while percent series hold 0-100. Kept here
+        # rather than as a "%" unit alias, since Health Connect reports "%" as 0-100.
+        if raw_unit == "%" and get_series_type_unit(series_type) == "percent":
+            value *= 100
+
         device_info = self._extract_device_info(document.get("device", ""))
 
         sample = TimeSeriesSampleCreate(
@@ -313,6 +329,16 @@ class XMLService:
 
         # Summed across the energy statistics, and left unset when the export reports none
         energy = self._decimal_from_stat(statistic.get("sum")) if "energyburned" in lowered else None
+        raw_unit = statistic.get("unit")
+        if energy is not None and raw_unit is not None:
+            energy = UnitConverter.convert_raw(energy, raw_unit, EnergyUnit.kcal)
+            if energy is None:
+                logger.warning(
+                    "Workout energy in an unconvertible unit left out",
+                    provider="apple_xml",
+                    task="process_xml_upload",
+                    unit=raw_unit,
+                )
         if energy is not None:
             current = metrics["energy_burned"]
             metrics["energy_burned"] = energy if current is None else current + energy
