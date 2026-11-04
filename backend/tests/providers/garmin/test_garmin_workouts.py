@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from psycopg.errors import ForeignKeyViolation, NotNullViolation
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
@@ -15,6 +17,7 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import EntrySource, SeriesType, WorkoutType
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
+from app.services.providers.garmin.handlers.activities import process_activity_notification
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
@@ -292,3 +295,40 @@ class TestGarminWorkouts:
 
             assert result == {"detail": "data"}
             mock_detail.assert_called_once_with(db, user.id, "workout_123")
+
+
+class TestActivityNotificationLinkedProfiles:
+    NOTIFICATION = {
+        "userId": "garmin_user_123",
+        "activityId": "12345678901",
+        "summaryId": "summary_123",
+        "activityType": "RUNNING",
+        "startTimeInSeconds": 1705309200,
+        "durationInSeconds": 3600,
+    }
+
+    def test_a_profile_deleted_meanwhile_does_not_stop_the_others(self) -> None:
+        """The deleted user's insert violates its foreign key; the linked profile still gets the activity."""
+        deleted, linked = MagicMock(user_id=uuid4()), MagicMock(user_id=uuid4())
+        connection_repo = MagicMock()
+        connection_repo.get_all_by_provider_user_id.return_value = [deleted, linked]
+        garmin_workouts = MagicMock()
+        garmin_workouts.process_push_activities.side_effect = [
+            IntegrityError("INSERT ...", {}, ForeignKeyViolation("user is gone")),
+            [uuid4()],
+        ]
+
+        results = process_activity_notification(
+            MagicMock(), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1"
+        )
+
+        assert [r["status"] for r in results] == ["skipped", "saved"]
+
+    def test_another_constraint_violation_is_raised(self) -> None:
+        connection_repo = MagicMock()
+        connection_repo.get_all_by_provider_user_id.return_value = [MagicMock(user_id=uuid4())]
+        garmin_workouts = MagicMock()
+        garmin_workouts.process_push_activities.side_effect = IntegrityError("INSERT ...", {}, NotNullViolation("x"))
+
+        with pytest.raises(IntegrityError):
+            process_activity_notification(MagicMock(), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1")

@@ -4,8 +4,9 @@
 import logging
 
 from app.services.outgoing_webhooks import svix as svix_service
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("app.scripts.seed_webhook_event_types")
 
 
 def seed_webhook_event_types() -> None:

@@ -142,6 +142,20 @@ def _saved_detail(data_247: Whoop247Data, raw: dict[str, Any]) -> EventRecordDet
     return mock_event.create_or_merge_sleep.call_args[0][3]
 
 
+class TestWhoopSleepScore:
+    def test_sleep_score_is_recorded_at_the_wake_up(self, data_247: Whoop247Data) -> None:
+        # A night that starts before midnight UTC belongs to the day the user wakes up
+        raw = _raw_sleep(timezone_offset="+01:00")
+        raw["score"]["sleep_performance_percentage"] = 84
+
+        normalized, score = data_247.normalize_sleep(raw, uuid4())
+
+        assert normalized["zone_offset"] == "+01:00"
+        assert score is not None
+        assert score.recorded_at == datetime(2024, 1, 15, 7, 0, tzinfo=timezone.utc)
+        assert score.zone_offset == "+01:00"
+
+
 class TestWhoopSleepStages:
     def test_scored_sleep_saves_stage_minutes(self, data_247: Whoop247Data) -> None:
         detail = _saved_detail(data_247, _raw_sleep())
@@ -152,6 +166,17 @@ class TestWhoopSleepStages:
         assert detail.sleep_awake_minutes == 30
         assert detail.sleep_total_duration_minutes == 450
         assert detail.sleep_time_in_bed_minutes == 480
+
+
+class TestWhoopSleepState:
+    def test_a_scored_sleep_keeps_its_score_state(self, data_247: Whoop247Data) -> None:
+        assert _saved_detail(data_247, _raw_sleep()).provider_state == "SCORED"
+
+    def test_a_pending_sleep_keeps_its_score_state(self, data_247: Whoop247Data) -> None:
+        raw = _raw_sleep(score_state="PENDING_SCORE")
+        del raw["score"]
+
+        assert _saved_detail(data_247, raw).provider_state == "PENDING_SCORE"
 
     def test_scored_nap_keeps_reported_zero_stages(self, data_247: Whoop247Data) -> None:
         raw = _raw_sleep(nap=True)

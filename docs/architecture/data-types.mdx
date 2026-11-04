@@ -305,6 +305,14 @@ stored before this behavior was introduced may still show `0` for stages the pro
 report. In the daily sleep summary
 (`/summaries/sleep`), `stages` itself is `null` when no stage is reported.
 
+Some providers send a night before it's over and extend it later, so a sleep session's
+`is_final` says whether more of it is still expected. Sessions from the mobile SDK are final at
+once. A Garmin night is final once Garmin's validation is final, else 12 hours after it ends; a
+Whoop night 6 hours after it ends once scored, never while its score is pending; a Google Health
+night once Google has processed it, else 24 hours after it ends. For other providers a night is
+final once the provider has sent data from 30 minutes after its end. Read a night with
+`is_final: false` again later.
+
 ---
 
 ## Events, Summaries and Health Scores
@@ -344,6 +352,10 @@ A provider's day value is not a point in an intraday series: resting heart rate,
 VO2 max and a provider's daily totals exist only at `1day` and coarser, where `raw` and the minute
 and hour buckets return nothing for them. Values stored before this release reach `1day` through a
 backfill that runs after the upgrade, and stay in `raw` until it has.
+
+With `source_selection=reconcile`, a movement series' day that several devices recorded (steps, distance,
+active energy, ...) is merged into one value, each moment counted once from the best-ranked device; see
+[Reconciled days](/developer-portal/settings/data-lifecycle#reconciled-days) for how, with an example.
 
 ---
 
