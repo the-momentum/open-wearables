@@ -13,7 +13,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.auth import AuthenticationMethod
 from app.schemas.model_crud.credentials import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
 from app.services.providers.garmin.oauth import GarminOAuth
-from app.utils.exceptions import InvalidInputError, ProviderError, ProviderReauthorizationRequiredError
+from app.utils.exceptions import InvalidInputError, ProviderError, ReauthRequiredError
 from tests.factories import UserConnectionFactory, UserFactory
 
 
@@ -389,7 +389,7 @@ class TestOAuthTokenErrors:
 
         with (
             patch.object(garmin_oauth, "revoke_connection") as mock_revoke,
-            pytest.raises(ProviderReauthorizationRequiredError),
+            pytest.raises(ReauthRequiredError),
         ):
             garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "dead-refresh-token")
 

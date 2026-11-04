@@ -17877,7 +17877,7 @@
               }
             ],
             "title": "Error Code",
-            "description": "The provider's HTTP status (http_404) or the error type (ProviderReauthorizationRequiredError) of the first failure"
+            "description": "The provider's HTTP status (http_404) or the error's code (reauth_required) of the first failure"
           }
         },
         "type": "object",

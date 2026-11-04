@@ -28,7 +28,7 @@ from app.services import raw_payload_storage
 from app.services.providers.sensorbio import data_247 as sensorbio_data_247
 from app.services.providers.sync_247_result import Sync247Run
 from app.utils.config_utils import LogLevel
-from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError
+from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError, ProviderRateLimitError
 from app.utils.logging_setup import configure_app_logger
 from app.utils.structured_logging import get_logger, is_expected_error
 
@@ -507,11 +507,12 @@ def test_request_the_provider_refused_is_reported_grouped(captured: list[dict[st
     assert [event["fingerprint"] for event in captured] == [["{{ default }}", "garmin", "400"]]
 
 
-def test_captured_sync_step_reports_a_users_state(captured: list[dict[str, Any]]) -> None:
-    """capture=True is an explicit ask to see the failure in Sentry, whatever it is."""
+def test_captured_sync_step_reports_failures_not_a_users_state(captured: list[dict[str, Any]]) -> None:
+    """A lost grant or missing data would report every hour per user; an outage is worth hearing about."""
     run = Sync247Run("withings", MagicMock(), uuid4())
     run.fail("sleep", _raised(ProviderError("withings", upstream_status=404)), capture=True)
-    run.fail("activity", _raised(ProviderError("withings", upstream_status=404)))
+    run.fail("weight", _raised(ProviderRateLimitError("withings", "throttled (status=601)")), capture=True)
+    run.fail("activity", _raised(ProviderError("withings", upstream_status=503)), capture=True)
     sentry_sdk.flush()
 
-    assert [event["contexts"]["log"]["data_type"] for event in captured] == ["sleep"]
+    assert [event["contexts"]["log"]["data_type"] for event in captured] == ["activity"]

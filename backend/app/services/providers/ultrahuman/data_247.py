@@ -124,7 +124,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             )
             raise
         except ProviderError as e:
-            if e.upstream_status == 403:
+            if e.upstream_status in (401, 403):
                 logger.error(
                     "Authorization failed while fetching daily metrics",
                     provider="ultrahuman",

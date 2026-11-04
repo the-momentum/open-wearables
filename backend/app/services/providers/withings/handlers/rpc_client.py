@@ -19,7 +19,7 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.providers.withings import WithingsMeasure
 from app.services.providers.api_client import MAX_RETRIES, RETRY_BASE_DELAY, make_authenticated_request
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.exceptions import ProviderError, ProviderRateLimitError, ProviderReauthorizationRequiredError
+from app.utils.exceptions import ProviderAuthRejectedError, ProviderError, ProviderRateLimitError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -55,7 +55,7 @@ class WithingsPaginationError(ProviderError):
 
 def withings_api_error(
     withings_status: int | None, action: str
-) -> WithingsAPIError | ProviderRateLimitError | ProviderReauthorizationRequiredError:
+) -> WithingsAPIError | ProviderRateLimitError | ProviderAuthRejectedError:
     """The error for a failed envelope: Withings reports a throttle and a rejected token in
     ``status`` on HTTP 200, so they map here rather than in ``api_client``."""
     if withings_status == _RATE_LIMIT_STATUS:
@@ -63,7 +63,7 @@ def withings_api_error(
             "withings", f"Withings API rate limit (status={withings_status}) for action={action}"
         )
     if withings_status in _AUTHENTICATION_STATUSES:
-        return ProviderReauthorizationRequiredError("withings")
+        return ProviderAuthRejectedError("withings", f"Withings rejected the token (status={withings_status})")
     return WithingsAPIError(withings_status, action)
 
 

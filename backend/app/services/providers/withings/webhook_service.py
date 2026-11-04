@@ -29,7 +29,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.handlers.rpc_client import withings_request
-from app.utils.exceptions import ProviderReauthorizationRequiredError
+from app.utils.exceptions import ProviderAuthRejectedError, ReauthRequiredError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -198,7 +198,7 @@ class WithingsWebhookService(BaseWebhookService):
         desired_applis = set(SUBSCRIBED_APPLIS) if mode == LiveSyncMode.WEBHOOK else set()
         try:
             existing = self._list_subscriptions(db, user_id)
-        except ProviderReauthorizationRequiredError:
+        except (ReauthRequiredError, ProviderAuthRejectedError):
             # An invalid grant is terminal until the user reconnects.
             logger.info(
                 "Withings notify sync skipped: refresh token invalid",

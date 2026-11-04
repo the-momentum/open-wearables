@@ -24,10 +24,10 @@ from app.schemas.sync_status import SyncStatus
 from app.utils.exceptions import (
     AppError,
     NotFoundError,
+    ProviderAuthRejectedError,
     ProviderError,
     ProviderNotConnectedError,
     ProviderRateLimitError,
-    ProviderReauthorizationRequiredError,
     ReauthRequiredError,
 )
 
@@ -150,6 +150,7 @@ def test_own_client_errors_are_dropped_not_retried(exc: Exception) -> None:
         AppError("broken invariant"),
         RuntimeError("database down"),
         IntegrityError("INSERT ...", {"heart_rate": 187}, UniqueViolation("two pushes raced")),
+        ProviderAuthRejectedError("oura"),
     ],
 )
 def test_server_errors_are_retried(exc: Exception) -> None:
@@ -216,7 +217,6 @@ def test_earlier_failed_attempts_do_not_alert() -> None:
 @pytest.mark.parametrize(
     "exc",
     [
-        ProviderReauthorizationRequiredError("oura"),
         ProviderNotConnectedError("oura"),
     ],
 )

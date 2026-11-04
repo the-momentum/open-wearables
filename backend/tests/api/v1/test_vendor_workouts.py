@@ -8,6 +8,7 @@ Tests the following endpoints:
 
 from typing import Generator
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,11 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
 from app.utils.exceptions import (
+    ProviderAuthRejectedError,
     ProviderError,
     ProviderNotConnectedError,
     ProviderRateLimitError,
-    ProviderReauthorizationRequiredError,
     ProviderTokenUnavailableError,
+    ReauthRequiredError,
 )
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
@@ -113,10 +115,11 @@ class TestVendorWorkoutsEndpoints:
         ("error", "status", "detail"),
         [
             (
-                ProviderReauthorizationRequiredError("garmin"),
+                ReauthRequiredError("garmin", uuid4(), "revoked"),
                 409,
                 "Garmin authorization expired or was revoked; the user must reconnect.",
             ),
+            (ProviderAuthRejectedError("garmin"), 502, "Garmin API error (status 401)"),
             (ProviderTokenUnavailableError("garmin"), 400, "No Garmin API access token for this user."),
             (
                 ProviderError("garmin", upstream_status=500, upstream_body="upstream stack trace"),
