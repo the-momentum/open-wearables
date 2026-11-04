@@ -35,9 +35,9 @@ SessionSourceSelectionQuery = Annotated[
     Literal[SourceSelection.ALL, SourceSelection.PER_SESSION] | None,
     Query(
         description="`all` returns every source's sessions. `per_session` drops a session when the sessions of one "
-        "source ranked higher by provider, then device type priority, cover at least half of it "
-        "(`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide "
-        "each other. Defaults to `all`."
+        "source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of "
+        "it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. "
+        "Source filters narrow which sessions compete. Defaults to `all`."
     ),
 ]
 FilterByPriorityQuery = Annotated[bool, Query(deprecated=True, description="Same as source_selection=per_session.")]

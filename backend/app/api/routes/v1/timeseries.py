@@ -35,8 +35,8 @@ def get_timeseries(
         Query(
             description="`all` returns every source. `per_range` keeps one source per series type for the whole "
             "range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, "
-            "per bucket below a day; not available for raw reads. Sources rank by provider, then device type "
-            "priority. Defaults to `all`."
+            "per bucket below a day; not available for raw reads. A week or month whose days different sources won "
+            "has `source: null`. Sources rank by provider, then device type priority. Defaults to `all`."
         ),
     ] = None,
     filter_by_priority: Annotated[bool, Query(deprecated=True, description="Same as source_selection=per_range.")] = (
