@@ -4,7 +4,6 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
-from logging import getLogger
 from typing import Any, cast
 from uuid import UUID
 
@@ -14,7 +13,7 @@ from app.constants.celery_tasks import CeleryTask
 from app.database import DbSession
 from app.integrations import redis_lock
 from app.integrations.redis_client import get_redis_client
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
 # A sorted set scored by the day, so a run takes the newest days first: after a provider sends years of
 # history, the days clients look at are rolled up before the rest.
@@ -50,7 +49,7 @@ if #taken > 0 then redis.call('SADD', KEYS[2], unpack(taken)) end
 return taken
 """
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # A day is finished for its source only once no write queued it again meanwhile: a write landing while the run
@@ -107,7 +106,7 @@ def mark_dirty_days(db_session: DbSession, days: Iterable[tuple[UUID, date]]) ->
             pipe.execute()
         except Exception as exc:
             # The day stays rolled up as it was; the next write to it, or the backfill, queues it again.
-            log_and_capture_error(exc, logger, "Failed to queue days for the rollup", extra={"days": len(members)})
+            logger.error("Failed to queue days for the rollup", exc_info=exc, days=len(members))
 
 
 def pop_dirty_days(count: int) -> list[tuple[UUID, date]]:

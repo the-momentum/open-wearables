@@ -5,10 +5,10 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import ProviderError
 from tests.factories import DataSourceFactory, EventRecordFactory, UserConnectionFactory, UserFactory
 
 ATHLETE_ID = 424242
@@ -47,7 +47,7 @@ def test_delete_keeps_last_synced_at(db: Session, handler: Any) -> None:
     before = connection.last_synced_at
 
     with patch.object(
-        handler.workouts, "get_workout_detail_from_api", side_effect=HTTPException(status_code=404)
+        handler.workouts, "get_workout_detail_from_api", side_effect=ProviderError("strava", upstream_status=404)
     ) as api:
         result = handler.process_payload(db, _payload("delete"), "trace-1")
     db.refresh(connection)

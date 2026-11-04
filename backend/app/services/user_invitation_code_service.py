@@ -1,9 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID, uuid4
-
-from fastapi import HTTPException, status
 
 from app.config import settings
 from app.database import DbSession
@@ -17,15 +14,15 @@ from app.schemas.model_crud.credentials import (
 )
 from app.services.refresh_token_service import refresh_token_service
 from app.services.user_service import user_service
+from app.utils.exceptions import NotFoundError
 
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 8
 
 
 class UserInvitationCodeService:
-    def __init__(self, log: Logger) -> None:
+    def __init__(self) -> None:
         self.crud = UserInvitationCodeRepository(UserInvitationCode)
-        self.logger = log
 
     def _generate_code(self) -> str:
         """Generate an 8-character alphanumeric code from unambiguous charset."""
@@ -55,16 +52,13 @@ class UserInvitationCodeService:
 
     def redeem(self, db_session: DbSession, code: str) -> InvitationCodeRedeemResponse:
         """Redeem an invitation code and return SDK tokens."""
-        invitation_code = self.crud.get_valid_by_code(db_session, code.upper())
+        invitation_code = self.crud.claim_valid_code(db_session, code.upper())
 
         if not invitation_code:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invalid or expired invitation code",
-            )
+            raise NotFoundError("Invalid or expired invitation code")
 
-        self.crud.mark_redeemed(db_session, invitation_code)
-
+        # Storing the new refresh token commits the claim with it, so a failure before that
+        # leaves the code usable
         access_token, refresh_token = refresh_token_service.issue_sdk_tokens(
             db_session,
             user_id=invitation_code.user_id,
@@ -81,4 +75,4 @@ class UserInvitationCodeService:
         )
 
 
-user_invitation_code_service = UserInvitationCodeService(log=getLogger(__name__))
+user_invitation_code_service = UserInvitationCodeService()

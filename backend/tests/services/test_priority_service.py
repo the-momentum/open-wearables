@@ -10,8 +10,6 @@ Tests cover:
 - Bulk updating device type priorities
 """
 
-from logging import getLogger
-
 import pytest
 from sqlalchemy.orm import Session
 
@@ -29,7 +27,7 @@ from tests.factories import DataSourceFactory, UserFactory
 @pytest.fixture
 def priority_service() -> PriorityService:
     """Create PriorityService instance."""
-    return PriorityService(log=getLogger(__name__))
+    return PriorityService()
 
 
 class TestPriorityServiceGetProviderPriorities:

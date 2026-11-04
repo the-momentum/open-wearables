@@ -5,7 +5,6 @@ Tests the full import flow for Apple HealthKit data via SDK.
 """
 
 import json
-import logging
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -14,6 +13,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.constants.celery_tasks import CeleryTask
 from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
@@ -55,7 +55,7 @@ class TestAppleSDKImport:
     @pytest.fixture
     def import_service(self) -> ImportService:
         """Create HealthKit import service instance."""
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @pytest.fixture
     def sample_sdk_payload(self) -> dict[str, Any]:
@@ -174,6 +174,29 @@ class TestAppleSDKImport:
         assert details.distance == Decimal("2165.35")
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
+
+    def test_sleep_a_busy_lock_keeps_out_is_saved_by_a_retrying_task(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+        mock_sleep_redis: MagicMock,
+    ) -> None:
+        """Another batch of the user holds the sleep lock: the rest is saved now, the sleep goes to a task."""
+        mock_sleep_redis.lock.return_value.acquire.return_value = False
+
+        with patch("app.services.sdk.sleep_service.celery_app") as celery:
+            result = import_service.load_data(db, sample_sdk_payload, str(UserFactory().id))
+
+        assert (result["workouts_saved"], result["sleep_saved"], result["dropped"]) == (1, 0, [])
+        task, (request_json, _) = celery.send_task.call_args.args[0], celery.send_task.call_args.kwargs["args"]
+        assert task == CeleryTask.SAVE_SDK_SLEEP
+        deferred = SDKSyncRequest.model_validate_json(request_json)
+        assert (len(deferred.data.sleep), deferred.data.records, deferred.data.workouts) == (
+            len(sample_sdk_payload["data"]["sleep"]),
+            [],
+            [],
+        )
 
     def test_spans_cover_only_types_the_device_exports_itself(
         self,
@@ -576,7 +599,7 @@ class TestAppleSDKImportEdgeCases:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     def test_import_workout_with_zero_duration(
         self,
@@ -735,7 +758,7 @@ class TestSDKWorkoutStatisticMapping:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _ios_cycling_payload(values: list[dict[str, Any]]) -> dict[str, Any]:
@@ -909,7 +932,7 @@ class TestSDKImportUnitConversion:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _record(metric_type: str, value: float, unit: str | None = "") -> dict[str, Any]:
@@ -1143,7 +1166,7 @@ class TestSDKImportPercentageScale:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _record(metric_type: str, value: float) -> dict[str, Any]:
@@ -1241,7 +1264,7 @@ class TestSDKImportNutrition:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _build_record(metric_type: str, value: float, unit: str) -> dict[str, Any]:
@@ -1326,7 +1349,7 @@ class TestSDKImportMealCorrelation:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _correlation_record(correlation_id: str, end_date: str = "2026-09-18T12:00:00Z") -> dict[str, Any]:
@@ -1563,7 +1586,7 @@ class TestSDKImportAndroidFoodCorrelation:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     def test_real_health_connect_payload_saves_meal_and_nutrients(
         self, db: Session, import_service: ImportService
@@ -1677,7 +1700,7 @@ class TestSDKWorkoutRouteAndSamples:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @pytest.fixture(autouse=True)
     def ingest_workout_samples(self) -> Any:
@@ -1869,7 +1892,7 @@ class TestSDKWorkoutRouteAndSamples:
         assert len(self._series(db, user.id)[SeriesType.heart_rate]) == 1
 
     def test_unknown_sample_type_and_missing_timestamp_are_skipped(
-        self, db: Session, import_service: ImportService, caplog: pytest.LogCaptureFixture
+        self, db: Session, import_service: ImportService
     ) -> None:
         user = UserFactory()
         payload = self._samsung_payload()
@@ -1881,13 +1904,13 @@ class TestSDKWorkoutRouteAndSamples:
             {"timestamp": "2026-02-24T06:02:00Z", "type": "heartRate", "value": 121.0, "unit": "bpm"},
         ]
 
-        with caplog.at_level(logging.DEBUG, logger="test"):
+        with patch("app.services.sdk.import_service.logger") as logger:
             result = import_service.load_data(db, payload, str(user.id))
 
         assert result["workouts_saved"] == 1
         assert result["dropped"] == []
         assert {st: len(rows) for st, rows in self._series(db, user.id).items()} == {SeriesType.heart_rate: 1}
-        assert "Skipped workout samples with unsupported types or units" in caplog.text
+        assert logger.debug.call_args.args == ("Skipped workout samples with unsupported types or units",)
 
     def test_sample_with_unexpected_unit_is_skipped(self, db: Session, import_service: ImportService) -> None:
         """A km/h speed would land in the m/s series at the wrong scale, so it's not stored."""

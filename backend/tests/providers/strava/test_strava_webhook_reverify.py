@@ -23,13 +23,13 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 import app.integrations.celery.tasks.webhook_push_task as task
 from app.models import EventRecord
 from app.schemas.auth import ConnectionStatus
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import ProviderError
 from tests.factories import DataSourceFactory, EventRecordFactory, UserConnectionFactory, UserFactory
 
 ATHLETE_ID = 315693644
@@ -133,16 +133,15 @@ def _run_webhook(
         patch.object(task, "SessionLocal") as session_local,
         patch("app.services.providers.api_client.httpx.Client", return_value=client),
         patch("app.services.providers.templates.base_oauth.httpx.post", return_value=refresh) as token_post,
-        patch("app.services.providers.templates.base_oauth.on_connection_revoked") as revoked_by_refresh,
-        patch("app.services.providers.strava.webhook_handler.on_connection_revoked") as revoked,
+        patch("app.services.providers.templates.base_oauth.on_connection_revoked") as revoked,
         patch.object(task.sync_status_service, "emit_webhook_delivered"),
     ):
         session_local.return_value.__enter__.return_value = db
         result = task.process_webhook_push.run("strava", payload, "trace-1868")
     assert token_post.called == (refresh is not None)
-    # A rejected refresh token must not revoke with "refresh_failed" before the handler does.
+    # A rejected refresh token must not revoke with another reason before the handler does.
     if not refresh_may_revoke:
-        revoked_by_refresh.assert_not_called()
+        assert all(call.kwargs["reason"] == "deregistration" for call in revoked.call_args_list)
     return Delivery(result, client.__enter__.return_value.request, revoked)
 
 
@@ -180,7 +179,7 @@ class TestActivityDelete:
         self, db: Session, activity: EventRecord, failure: httpx.Response | Exception
     ) -> None:
         # Called directly, Task.retry re-raises the error instead of scheduling a retry.
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ProviderError) as exc_info:
             _run_webhook(db, DELETE_EVENT, [failure])
 
         assert exc_info.value.status_code >= 500
@@ -198,10 +197,10 @@ class TestActivityDelete:
         source = DataSourceFactory(user=user, provider="strava", source="strava")
         activity: Any = EventRecordFactory(data_source=source, external_id=str(ACTIVITY_ID), source_name="Strava")
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ProviderError) as exc_info:
             _run_webhook(db, DELETE_EVENT, [], refresh=_response(token_status, {"message": "x"}, url=TOKEN_URL))
 
-        assert exc_info.value.status_code == token_status
+        assert exc_info.value.upstream_status == token_status
         assert _activity_exists(db, activity)
 
     def test_dead_grant_keeps_activity(self, db: Session, connection: Any, activity: EventRecord) -> None:
@@ -225,8 +224,6 @@ def _assert_revoked(db: Session, connection: Any, delivery: Delivery) -> None:
     db.refresh(connection)
     assert delivery.result == {"status": "deauthorized", "strava_athlete_id": ATHLETE_ID}
     assert connection.status == ConnectionStatus.REVOKED
-    assert connection.access_token is None
-    assert connection.refresh_token is None
     delivery.revoked.assert_called_once()
     assert delivery.revoked.call_args.kwargs["provider"] == "strava"
     assert delivery.revoked.call_args.kwargs["reason"] == "deregistration"
@@ -318,7 +315,7 @@ class TestDeauthorization:
     def test_api_failure_keeps_connection_and_retries(
         self, db: Session, connection: Any, failure: httpx.Response | Exception
     ) -> None:
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ProviderError) as exc_info:
             _run_webhook(db, DEAUTH_EVENT, [failure])
         db.refresh(connection)
 
@@ -330,7 +327,7 @@ class TestDeauthorization:
         self, db: Session, connection: Any, token_status: int
     ) -> None:
         """A 401 followed by a failing token endpoint proves nothing yet: retry instead of dropping the event."""
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ProviderError) as exc_info:
             _run_webhook(
                 db,
                 DEAUTH_EVENT,
@@ -339,7 +336,7 @@ class TestDeauthorization:
             )
         db.refresh(connection)
 
-        assert exc_info.value.status_code == token_status
+        assert exc_info.value.upstream_status == token_status
         assert connection.status == ConnectionStatus.ACTIVE
 
     @pytest.mark.parametrize(

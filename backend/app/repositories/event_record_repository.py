@@ -59,7 +59,6 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import local_date
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
 
@@ -282,7 +281,6 @@ class EventRecordRepository(
         db_session.commit()
         return len(deleted)
 
-    @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         data_source_id, provider, creation = self._build_creation(db_session, creator)
         try:
@@ -351,7 +349,6 @@ class EventRecordRepository(
             )
         return values_list
 
-    @handle_exceptions
     def bulk_create(
         self,
         db_session: DbSession,
@@ -419,7 +416,6 @@ class EventRecordRepository(
             ),
         )
 
-    @handle_exceptions
     def bulk_upsert_meals(
         self,
         db_session: DbSession,
@@ -1488,7 +1484,6 @@ class EventRecordRepository(
             )
         return aggregates
 
-    @handle_exceptions
     def find_adjacent_sleep_record(
         self,
         db_session: DbSession,
@@ -1538,7 +1533,7 @@ class EventRecordRepository(
             .options(selectinload(self.model.sleep_detail))
             .filter(*filters)
             .order_by(self.model.start_datetime.desc())
-            .with_for_update()
+            .with_for_update(of=self.model)
             .first()
         )
 

@@ -76,8 +76,8 @@ describe('policy', () => {
 		expect(growthOf({ rollup: false, retain: 365 })).toBe('bounded');
 	});
 
-	// The PUT rejects these with a 422 whose detail is a list, which the
-	// reader would see as nothing - so the form says it first.
+	// The PUT rejects these with a 422 in pydantic's words ("Input should be
+	// greater than or equal to 1") - so the form says it first, in its own.
 	it('refuses what the API would', () => {
 		expect(invalid({ rollup: true, history: false, retain: 0 })).toMatch(/1 to 7300/);
 		expect(invalid({ rollup: true, history: false, retain: 1.5 })).toMatch(/whole number/);

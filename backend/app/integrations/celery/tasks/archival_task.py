@@ -7,8 +7,6 @@ Runs once per day (via beat schedule) to:
 Both are configured by the admin via archival_settings.
 """
 
-from logging import getLogger
-
 from celery import Task, shared_task
 
 from app.config import settings
@@ -16,9 +14,9 @@ from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.integrations import rollup_queue
 from app.services.archival_service import archival_service
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(name=CeleryTask.ROLL_UP_QUEUED_DAYS, soft_time_limit=120, time_limit=150)
@@ -78,11 +76,11 @@ def run_daily_archival(self: Task) -> dict:
     try:
         with SessionLocal() as db:
             summary = archival_service.run_daily_archival(db)
-            log_structured(logger, "info", "Daily archival completed", **summary)
+            logger.info("Daily archival completed", **summary)
             return summary
     except Exception:
-        # Raised on to Celery, whose integration reports it to Sentry.
-        log_structured(logger, "error", "Daily archival task failed")
+        # Raised on to Celery, whose integration reports it as unhandled; exc_info here would report it handled.
+        logger.error("Daily archival task failed")
         raise
     finally:
         rollup_queue.release_lock(token)

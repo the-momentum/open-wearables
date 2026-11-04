@@ -1,6 +1,7 @@
 """Tests for Polar247Data normalization."""
 
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -14,12 +15,39 @@ from app.schemas.model_crud.activities import CalendarPeriod
 from app.schemas.providers.polar import PolarWebhookEventType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
+from app.utils.exceptions import ProviderError
 from tests.factories import UserFactory
 
 
 @pytest.fixture
 def data_247() -> Polar247Data:
     return PolarStrategy().data_247
+
+
+class TestPolar247ApiRequest:
+    @pytest.mark.parametrize(
+        "upstream_status",
+        [
+            404,  # no data for the date, or a feature the device lacks
+            204,  # no content: an empty body where JSON is expected
+        ],
+    )
+    def test_no_data_is_none(self, data_247: Polar247Data, upstream_status: int) -> None:
+        with patch(
+            "app.services.providers.polar.data_247.make_authenticated_request",
+            side_effect=ProviderError("polar", upstream_status=upstream_status),
+        ):
+            assert data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep") is None
+
+    def test_other_failures_propagate(self, data_247: Polar247Data) -> None:
+        with (
+            patch(
+                "app.services.providers.polar.data_247.make_authenticated_request",
+                side_effect=ProviderError("polar", upstream_status=500),
+            ),
+            pytest.raises(ProviderError),
+        ):
+            data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep")
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +138,54 @@ class TestPolar247SleepNormalization:
         # total = (light + deep + rem) / 60
         assert detail.sleep_total_duration_minutes == (14400 + 5400 + 7200) // 60
 
+    def test_unrecognized_sleep_counts_as_sleep(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        sample_sleep["unrecognized_sleep_stage"] = 600
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_total_duration_minutes == (14400 + 5400 + 7200 + 600) // 60
+
+    def test_sleep_efficiency_is_the_night_without_its_interruptions(
+        self, data_247: Polar247Data, sample_sleep: dict
+    ) -> None:
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        # 30 min of interruptions in an 8 h night
+        assert detail.sleep_efficiency_score == Decimal("93.75")
+
+    def test_sleep_efficiency_does_not_need_stages(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        for field in ("light_sleep", "deep_sleep", "rem_sleep"):
+            sample_sleep.pop(field)
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score == Decimal("93.75")
+
+    def test_sleep_efficiency_is_kept_to_two_decimals(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        sample_sleep["total_interruption_duration"] = 1000
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score == Decimal("96.53")
+        assert str(detail.sleep_efficiency_score) == "96.53"
+
+    def test_no_sleep_efficiency_without_interruptions(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        sample_sleep.pop("total_interruption_duration")
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score is None
+
+    @pytest.mark.parametrize("awake", [9 * 3600, -60])
+    def test_no_sleep_efficiency_when_the_interruptions_dont_fit_the_night(
+        self, data_247: Polar247Data, sample_sleep: dict, awake: int
+    ) -> None:
+        sample_sleep["total_interruption_duration"] = awake
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score is None
+
     def test_sleep_score(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         user_id = uuid4()
         _, _, score, _ = data_247.normalize_sleep([sample_sleep], user_id)[0]
@@ -120,6 +196,14 @@ class TestPolar247SleepNormalization:
         assert score.provider.value == "polar"
         assert "sleep_time" in score.components
         assert "actual_sleep" in score.components
+
+    def test_sleep_score_is_recorded_at_the_wake_up(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        # The night started on the 14th and belongs to the 15th, the day the user wakes up
+        _, _, score, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert score is not None
+        assert score.recorded_at == datetime(2024, 1, 15, 5, 0, tzinfo=timezone.utc)  # 07:00 at +02:00
+        assert score.zone_offset == "+02:00"
 
     def test_no_score_when_missing(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         sample_sleep.pop("sleep_score")

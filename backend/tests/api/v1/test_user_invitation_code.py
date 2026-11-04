@@ -168,11 +168,11 @@ class TestRedeemInvitationCode:
         response = client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": "ABC"})
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_redeem_validation_rejects_lowercase(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         # Act
         response = client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": "abcdefgh"})
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422

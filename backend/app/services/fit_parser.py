@@ -1,7 +1,6 @@
 """Generic ANT+ FIT file parser — provider-agnostic (Garmin, Polar, Suunto, etc.)."""
 
 import io
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -14,8 +13,9 @@ import fitdecode
 from app.schemas.enums.series_types import SeriesType
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.zones import HRZone, HRZones, PowerZone, PowerZones
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Field map — ANT+ FIT Protocol standard field names → SeriesType
@@ -131,10 +131,10 @@ def parse_fit_file(
 
     result.developer_fields_found = sorted(dev_fields_seen)
     logger.debug(
-        "FIT parsed: %d samples, %d segments, dev_fields=%s",
-        len(result.samples),
-        len(result.segments),
-        result.developer_fields_found or "none",
+        "FIT parsed",
+        sample_count=len(result.samples),
+        segment_count=len(result.segments),
+        developer_fields=result.developer_fields_found,
     )
     return result
 

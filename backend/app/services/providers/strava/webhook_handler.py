@@ -6,25 +6,9 @@ GET /activities/{id}.
 
 Authenticity
 ------------
-  Strava signs every event, but the signature cannot be checked:
-    Header   : X-Strava-Signature: t=<unix_ts>,v1=<hex_digest>
-    Message  : {t}.{raw_request_body}, where t equals the event's event_time
-    Algorithm: HMAC-SHA256(signing_secret, message)
-  Strava does not expose the signing secret. It is not the client secret, and
-  neither the API settings page nor the push_subscriptions API returns it. So
-  ``v1`` is not verified, and ``t`` is only checked against
-  settings.strava_webhook_signature_tolerance_seconds (default 300). That
-  rejects replays of stale events, but anyone can send a fresh ``t``, so it
-  says nothing about who sent the event.
-
-  Events are therefore unauthenticated. Before acting on a destructive event,
-  the handler confirms it in the Strava API with the athlete's own token:
-    activity delete : GET /activities/{id} must return 404. A delete for an
-                      activity we do not store is ignored without an API call.
-    deauthorization : GET /athlete must show a dead grant: Strava rejects the
-                      access token (401, or it has expired) and the refresh
-                      token too. Only then is the connection revoked, with
-                      reason "deregistration".
+  X-Strava-Signature can't be verified (Strava doesn't expose its signing key), so only its
+  timestamp is checked, against replays. A delete or a deauthorization is confirmed in the
+  Strava API with the athlete's token before anything is removed.
 
 Challenge verification
 -----------------------
@@ -40,20 +24,19 @@ Delivery model
 
 Supported event types
 ---------------------
-  activity create / update / delete, and athlete deauthorization, which Strava
-  sends as an athlete update with updates == {"authorized": "false"}
+  activity create / update / delete, and athlete deauthorization (an athlete update
+  with updates == {"authorized": "false"})
 
 See: https://developers.strava.com/docs/webhooks/
 """
 
 import json
-import logging
 import time
 from typing import Any
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request, status
+from fastapi import Request
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -64,15 +47,19 @@ from app.repositories import UserConnectionRepository
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.schemas.providers.strava import StravaWebhookEvent
 from app.services.event_record_service import event_record_service
-from app.services.outgoing_webhooks.events import on_connection_revoked
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.exceptions import ReauthRequiredError
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import (
+    InvalidInputError,
+    PermissionDeniedError,
+    ProviderError,
+    ReauthRequiredError,
+    is_unique_violation,
+)
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StravaWebhookHandler(BaseWebhookHandler):
@@ -90,12 +77,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
-        """Check that X-Strava-Signature is present and its timestamp is recent.
-
-        The ``v1`` HMAC is not verified, because Strava does not expose the key it
-        signs with. This rejects stale replays only and does not authenticate the
-        sender, see the module docstring.
-        """
+        """Check the X-Strava-Signature timestamp only; its HMAC can't be verified (see the module docstring)."""
         header = request.headers.get("X-Strava-Signature", "")
         if not header:
             return False
@@ -107,9 +89,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
             return False
 
         if abs(time.time() - timestamp) > settings.strava_webhook_signature_tolerance_seconds:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Strava webhook timestamp outside tolerance window",
                 provider="strava",
                 action="webhook_signature_expired",
@@ -123,18 +103,16 @@ class StravaWebhookHandler(BaseWebhookHandler):
             data = json.loads(body)
             return StravaWebhookEvent(**data)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
         except (ValidationError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid payload: {exc}") from exc
+            raise InvalidInputError(f"Invalid payload: {exc}") from exc
 
     def dispatch(self, db: DbSession, payload: StravaWebhookEvent) -> dict[str, Any]:
         """Store raw payload and enqueue async processing. Returns 200 immediately."""
         trace_id = str(uuid4())[:8]
         raw = payload.model_dump()
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Received Strava webhook event",
             provider="strava",
             trace_id=trace_id,
@@ -149,9 +127,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
         task = celery_app.send_task(
             CeleryTask.PROCESS_WEBHOOK_PUSH, args=["strava", raw, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Enqueued Strava webhook processing task",
             provider="strava",
             trace_id=trace_id,
@@ -167,24 +143,20 @@ class StravaWebhookHandler(BaseWebhookHandler):
         hub_verify_token = request.query_params.get("hub.verify_token", "")
 
         if hub_mode != "subscribe":
-            raise HTTPException(status_code=400, detail="Invalid hub.mode")
+            raise InvalidInputError("Invalid hub.mode")
 
         expected_token = (
             settings.strava_webhook_verify_token.get_secret_value() if settings.strava_webhook_verify_token else None
         )
         if not expected_token or not hub_verify_token or not self._verify_token(expected_token, hub_verify_token):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Invalid Strava webhook verify token",
                 provider="strava",
                 action="webhook_challenge_failed",
             )
-            raise HTTPException(status_code=403, detail="Invalid verify token")
+            raise PermissionDeniedError("Invalid verify token")
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Strava webhook subscription verified",
             provider="strava",
             action="webhook_challenge_accepted",
@@ -195,12 +167,9 @@ class StravaWebhookHandler(BaseWebhookHandler):
         return ["activity_create", "activity_update", "activity_delete", "athlete_update"]
 
     def _handle_activity_delete(self, db: DbSession, user_id: UUID, activity_id: int, trace_id: str) -> dict[str, Any]:
-        # Nothing to delete: skip the API call, which forged events would otherwise spend
-        # from the app-wide Strava rate limit.
+        # Nothing to delete: a forged event must not spend the app-wide Strava rate limit
         if not event_record_service.crud.get_by_external_ids(db, user_id, [str(activity_id)], provider="strava"):
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Strava activity not stored, ignoring delete event",
                 provider="strava",
                 trace_id=trace_id,
@@ -210,17 +179,13 @@ class StravaWebhookHandler(BaseWebhookHandler):
             )
             return {"status": "ignored", "reason": "activity_not_stored", "activity_id": activity_id}
 
-        # The event is unauthenticated: delete only once Strava no longer has the activity.
-        # Other API errors propagate, so the task retries or drops the delivery.
         try:
             self.workouts.get_workout_detail_from_api(db, user_id, str(activity_id))
-        except HTTPException as exc:
-            if exc.status_code != status.HTTP_404_NOT_FOUND:
+        except ProviderError as exc:
+            if exc.upstream_status != 404:
                 raise
         else:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Strava still has the activity, ignoring delete event",
                 provider="strava",
                 trace_id=trace_id,
@@ -231,9 +196,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "activity_still_exists", "activity_id": activity_id}
 
         deleted = event_record_service.crud.delete_by_external_id(db, user_id, str(activity_id), provider="strava")
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Strava activity deleted",
             provider="strava",
             trace_id=trace_id,
@@ -256,9 +219,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
     def _handle_athlete_deauthorize(self, db: DbSession, owner_id: int, trace_id: str) -> dict[str, Any]:
         connection = self.connection_repo.get_by_provider_user_id(db, "strava", str(owner_id))
         if not connection:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "No connection found for deauthorizing Strava athlete",
                 provider="strava",
                 trace_id=trace_id,
@@ -267,41 +228,15 @@ class StravaWebhookHandler(BaseWebhookHandler):
             )
             return {"status": "user_not_found", "strava_athlete_id": owner_id}
 
-        user_id: UUID = connection.user_id
-        # The event is unauthenticated: once the athlete deauthorized the app, Strava rejects
-        # both the access token and the refresh token, and the API client raises
-        # ReauthRequiredError. It does not revoke the connection itself, so the revocation
-        # carries the deauthorization reason instead of "refresh_failed". Other API errors
-        # propagate, so the task retries or drops the delivery.
+        user_id = connection.user_id
+        # Strava rejects both tokens of a deauthorized grant; we revoke, so the reason is "deregistration"
         try:
             self.workouts.get_athlete_from_api(db, user_id, revoke_on_failure=False)
         except ReauthRequiredError:
-            if self.connection_repo.disconnect(db, user_id, "strava"):
-                db.refresh(connection)
-                on_connection_revoked(
-                    user_id=user_id,
-                    provider="strava",
-                    connection_id=connection.id,
-                    reason="deregistration",
-                    revoked_at=connection.updated_at.isoformat(),
-                )
-                log_structured(
-                    logger,
-                    "info",
-                    "Revoked connection via Strava deauthorization webhook",
-                    provider="strava",
-                    trace_id=trace_id,
-                    action="connection_revoked",
-                    reason="deregistration",
-                    strava_athlete_id=owner_id,
-                    user_id=str(user_id),
-                    connection_id=str(connection.id),
-                )
+            self.workouts.oauth.revoke_connection(db, user_id, reason="deregistration")
             return {"status": "deauthorized", "strava_athlete_id": owner_id}
 
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Strava still authorizes the athlete, ignoring deauthorization event",
             provider="strava",
             trace_id=trace_id,
@@ -319,15 +254,12 @@ class StravaWebhookHandler(BaseWebhookHandler):
         try:
             event = StravaWebhookEvent(**payload)
         except (ValidationError, TypeError) as exc:
-            log_and_capture_error(
-                exc,
-                logger,
+            logger.error(
                 "Invalid Strava webhook payload",
-                extra={
-                    "provider": "strava",
-                    "trace_id": trace_id,
-                    "action": "webhook_invalid_payload",
-                },
+                exc_info=exc,
+                provider="strava",
+                trace_id=trace_id,
+                action="webhook_invalid_payload",
             )
             return {"status": "error", "error": f"Invalid payload: {exc}"}
 
@@ -340,9 +272,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
             return self._handle_athlete_deauthorize(db, owner_id, trace_id)
 
         if object_type != "activity":
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Ignoring non-activity Strava event",
                 provider="strava",
                 trace_id=trace_id,
@@ -352,9 +282,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
 
         connection = self.connection_repo.get_by_provider_user_id(db, "strava", str(owner_id))
         if not connection:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "No connection found for Strava athlete",
                 provider="strava",
                 trace_id=trace_id,
@@ -386,9 +314,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
         if aspect_type not in ("create", "update"):
             return {"status": "ignored", "reason": f"aspect_type:{aspect_type}", "user_id": str(user_id)}
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Processing Strava webhook activity",
             provider="strava",
             trace_id=trace_id,
@@ -401,9 +327,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
         try:
             activity_data = self.workouts.get_workout_detail_from_api(db, user_id, str(object_id))
             if not activity_data:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "No data returned for Strava activity",
                     provider="strava",
                     trace_id=trace_id,
@@ -421,9 +345,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
             activity = StravaActivityJSON(**activity_data)
             created_ids = self.workouts.process_push_activity(db=db, activity=activity, user_id=user_id)
 
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Strava activity saved",
                 provider="strava",
                 trace_id=trace_id,
@@ -439,11 +361,11 @@ class StravaWebhookHandler(BaseWebhookHandler):
                 "user_id": str(user_id),
             }
 
-        except IntegrityError:
+        except IntegrityError as exc:
             db.rollback()
-            log_structured(
-                logger,
-                "info",
+            if not is_unique_violation(exc):
+                raise
+            logger.info(
                 "Strava activity already exists, skipping",
                 provider="strava",
                 trace_id=trace_id,
@@ -459,33 +381,27 @@ class StravaWebhookHandler(BaseWebhookHandler):
             }
 
         except ValidationError as exc:
-            log_and_capture_error(
-                exc,
-                logger,
+            logger.error(
                 "Failed to parse Strava activity",
-                extra={
-                    "provider": "strava",
-                    "trace_id": trace_id,
-                    "action": "webhook_validation_error",
-                    "activity_id": object_id,
-                    "user_id": str(user_id),
-                    "error": str(exc),
-                },
+                exc_info=exc,
+                provider="strava",
+                trace_id=trace_id,
+                action="webhook_validation_error",
+                activity_id=object_id,
+                user_id=str(user_id),
+                error=str(exc),
             )
             return {"status": "error", "error": f"validation_error: {exc}", "user_id": str(user_id)}
 
         except Exception as exc:
-            log_and_capture_error(
-                exc,
-                logger,
+            logger.error(
                 "Error processing Strava activity",
-                extra={
-                    "provider": "strava",
-                    "trace_id": trace_id,
-                    "action": "webhook_processing_error",
-                    "activity_id": object_id,
-                    "user_id": str(user_id),
-                    "error": str(exc),
-                },
+                exc_info=exc,
+                provider="strava",
+                trace_id=trace_id,
+                action="webhook_processing_error",
+                activity_id=object_id,
+                user_id=str(user_id),
+                error=str(exc),
             )
             raise

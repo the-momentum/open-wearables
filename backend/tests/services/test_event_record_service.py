@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
 from app.repositories import AggregateRepository, data_point_series_repository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     ComputedBy,
     HealthScoreCategory,
@@ -37,12 +39,14 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.responses.activity import Meal, NutrientValue
+from app.schemas.sync_status import DataTypeKind
 from app.services.event_record_service import event_record_service
 from app.services.priority_service import priority_service
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
     EventRecordFactory,
+    HealthScoreFactory,
     SleepDetailsFactory,
     UserFactory,
 )
@@ -904,6 +908,31 @@ class TestCreateOrMergeSleep:
 
         assert {day for _, day in pop_dirty_days(100)} == {self._dt(22, 0).date(), self._dt(6, 0, day=22).date()}
 
+    def test_a_shortened_night_drops_the_providers_score_at_its_former_end(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user, provider=ProviderName.WHOOP.value, source="whoop")
+        EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            external_id="night-1",
+            start_datetime=self._dt(22, 0),
+            end_datetime=self._dt(8, 0, day=22),
+        )
+        HealthScoreFactory(
+            user_id=user.id,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.SLEEP,
+            recorded_at=self._dt(8, 0, day=22),
+        )
+        record = self._record(data_source, self._dt(22, 0), self._dt(7, 0, day=22)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        event_record_service.create_or_merge_sleep(db, user.id, record, self._detail(record.id), self.THRESHOLD)
+
+        assert not db.query(HealthScore).filter(HealthScore.provider == ProviderName.WHOOP).all()
+
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""
         user = UserFactory()
@@ -1214,6 +1243,77 @@ class TestCreateOrMergeSleep:
         mock_sleep.assert_called_once()
         assert mock_sleep.call_args.kwargs["device_type"] == "ring"
 
+    def test_a_re_sent_session_replaces_its_provider_state(self, db: Session) -> None:
+        """Whoop sends a night PENDING_SCORE, then again SCORED; the stored state follows."""
+        data_source = DataSourceFactory()
+        start, end = self._dt(1, 0), self._dt(7, 0)
+        first = self._record(data_source, start, end).model_copy(update={"external_id": "night-1"})
+        event_record_service.create_or_merge_sleep(
+            db,
+            data_source.user_id,
+            first,
+            self._detail(first.id).model_copy(update={"provider_state": "PENDING_SCORE"}),
+            self.THRESHOLD,
+        )
+        again = self._record(data_source, start, end).model_copy(update={"external_id": "night-1"})
+
+        result = event_record_service.create_or_merge_sleep(
+            db,
+            data_source.user_id,
+            again,
+            self._detail(again.id).model_copy(update={"provider_state": "SCORED"}),
+            self.THRESHOLD,
+        )
+
+        db.refresh(result)
+        assert result.sleep_detail.provider_state == "SCORED"
+
+    def test_a_merged_session_takes_the_state_of_the_part_that_arrived_last(self, db: Session) -> None:
+        """A part of a night and the full night with their own ids are merged into one record."""
+        data_source = DataSourceFactory()
+        fragment = self._record(data_source, self._dt(1, 0), self._dt(3, 0)).model_copy(
+            update={"external_id": "part-1"}
+        )
+        event_record_service.create_or_merge_sleep(
+            db,
+            data_source.user_id,
+            fragment,
+            self._detail(fragment.id).model_copy(update={"provider_state": "PENDING_SCORE"}),
+            self.THRESHOLD,
+        )
+        night = self._record(data_source, self._dt(1, 0), self._dt(7, 0)).model_copy(update={"external_id": "night-1"})
+
+        result = event_record_service.create_or_merge_sleep(
+            db,
+            data_source.user_id,
+            night,
+            self._detail(night.id).model_copy(update={"provider_state": "SCORED"}),
+            self.THRESHOLD,
+        )
+
+        db.refresh(result)
+        assert result.sleep_detail.provider_state == "SCORED"
+
+    def _sleep_coverage_end_after_sending(self, db: Session, data_source: DataSource, end: datetime) -> datetime:
+        night = self._record(data_source, self._dt(0), end).model_copy(update={"external_id": "night-1"})
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        coverage = data_type_coverage_repository.get(
+            db, data_source.user_id, data_source.provider, "sleep", DataTypeKind.EVENT
+        )
+        assert coverage is not None
+        return coverage.coverage_end
+
+    def test_a_re_sent_session_widens_its_providers_sleep_coverage(self, db: Session) -> None:
+        """A night extended to 09:00 widens the coverage; corrected to 07:00 it does not narrow it, as that recount
+        takes the global coverage lock (the provider did sync at 08:00 all the same)."""
+        data_source = DataSourceFactory(provider=ProviderName.OURA, source="oura")
+
+        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(8)) == self._dt(8)
+        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(7)) == self._dt(8)
+        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(9)) == self._dt(9)
+
 
 class TestRecomputeSleepScores:
     """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
@@ -1290,6 +1390,66 @@ class TestRecomputeSleepScores:
 
 class TestGetSleepSessions:
     """Test get_sleep_sessions response fields."""
+
+    def _is_final(self, db: Session, user_id: UUID, record_id: UUID) -> bool:
+        # Fresh params per call: get_sleep_sessions sets their category
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        )
+        sessions = event_record_service.get_sleep_sessions(db, user_id, params).data
+        return next(s for s in sessions if s.id == record_id).is_final
+
+    @staticmethod
+    def _oura_heart_rate_until(db: Session, user_id: UUID, until: datetime) -> None:
+        data_type_coverage_repository.record(
+            db, [CoverageSpan(user_id, "oura", "heart_rate", DataTypeKind.SERIES, until - timedelta(days=1), until)]
+        )
+
+    def test_a_session_is_final_once_its_provider_sent_data_after_it(self, db: Session) -> None:
+        user = UserFactory()
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        end = datetime(2026, 10, 31, 7, 0, tzinfo=timezone.utc)
+        night = EventRecordFactory(
+            mapping=ring, category="sleep", type_="sleep", start_datetime=end - timedelta(hours=8), end_datetime=end
+        )
+        SleepDetailsFactory(event_record=night)
+        self._oura_heart_rate_until(db, user.id, end + timedelta(minutes=29))
+
+        assert self._is_final(db, user.id, night.id) is False
+
+        self._oura_heart_rate_until(db, user.id, end + timedelta(minutes=30))
+
+        assert self._is_final(db, user.id, night.id) is True
+
+    def test_a_session_from_the_sdk_is_final_at_once(self, db: Session) -> None:
+        user = UserFactory()
+        night = EventRecordFactory(
+            mapping=DataSourceFactory(user=user, provider=ProviderName.APPLE), category="sleep", type_="sleep"
+        )
+        SleepDetailsFactory(event_record=night)
+
+        assert self._is_final(db, user.id, night.id) is True
+
+    def test_a_tentative_garmin_session_waits_while_a_final_one_does_not(self, db: Session) -> None:
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        end = datetime.now(timezone.utc) - timedelta(hours=1)
+        tentative, final = (
+            EventRecordFactory(
+                mapping=watch,
+                category="sleep",
+                type_="sleep",
+                start_datetime=end - timedelta(hours=8, days=days),
+                end_datetime=end - timedelta(days=days),
+            )
+            for days in (0, 1)
+        )
+        SleepDetailsFactory(event_record=tentative, provider_state="AUTO_TENTATIVE")
+        SleepDetailsFactory(event_record=final, provider_state="ENHANCED_FINAL")
+
+        assert self._is_final(db, user.id, tentative.id) is False
+        assert self._is_final(db, user.id, final.id) is True
 
     def test_returns_sleep_duration_and_time_in_bed_when_details_present(self, db: Session) -> None:
         """sleep_duration_seconds should come from sleep_total_duration_minutes; duration_seconds stays time-in-bed."""
