@@ -1,6 +1,7 @@
 """Shared value/timestamp helpers for the Google Health API handlers."""
 
-from datetime import date, datetime, timezone
+from collections.abc import Iterator
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -8,11 +9,14 @@ from pydantic import ValidationError
 
 from app.constants.devices_map import map_reported_device_type
 from app.schemas.enums import DeviceType
-from app.schemas.providers.google import DataPointsPage
+from app.schemas.providers.google import DataPointsPage, LevelSum, TimeShape
 from app.utils.conversion import to_decimal
 from app.utils.dates import offset_to_iso, to_rfc3339
 
 GOOGLE_HEALTH_API_SOURCE = "google_health_api"
+
+# Google truncates pageSize to 25 for the session data types; larger values are ignored.
+SESSION_PAGE_SIZE = 25
 
 
 def parse_page(response: Any, endpoint: str) -> DataPointsPage:
@@ -25,6 +29,54 @@ def parse_page(response: Any, endpoint: str) -> DataPointsPage:
         return DataPointsPage.model_validate(response)
     except ValidationError as e:
         raise RuntimeError(f"Malformed {endpoint} response: {type(response).__name__}") from e
+
+
+def next_page_token(page: DataPointsPage, seen: set[str], endpoint: str) -> str | None:
+    """Token for the next page, or None when the fetch is exhausted.
+
+    Raises on a repeated token rather than looping forever (#1518).
+    """
+    token = page.next_page_token
+    if not token:
+        return None
+    if token in seen:
+        raise RuntimeError(f"{endpoint} returned a repeated page token")
+    seen.add(token)
+    return token
+
+
+def chunk_range(start: datetime, end: datetime, max_days: int) -> Iterator[tuple[datetime, datetime]]:
+    """Split [start, end) into consecutive windows no longer than max_days."""
+    window = timedelta(days=max_days)
+    cursor = start
+    while cursor < end:
+        nxt = min(cursor + window, end)
+        yield cursor, nxt
+        cursor = nxt
+
+
+def time_filter(
+    data_type: str, shape: TimeShape, start_time: datetime, end_time: datetime, session_interval: bool = False
+) -> str:
+    """AIP-160 filter bounding the fetch to [start_time, end_time) for the type's time shape."""
+    field = data_type.replace("-", "_")
+    match shape:
+        case TimeShape.INTERVAL if session_interval:
+            # SessionTimeInterval types (excl. sleep/ECG) filter on civil start time, not physical.
+            member = f"{field}.interval.civil_start_time"
+            low = (start_time.date() - timedelta(days=1)).isoformat()
+            high = (end_time.date() + timedelta(days=1)).isoformat()
+        case TimeShape.DATE:
+            # A daily total is published once its day closes.
+            member = f"{field}.date"
+            low = (start_time.date() - timedelta(days=1)).isoformat()
+            high = (end_time.date() + timedelta(days=1)).isoformat()
+        case TimeShape.INTERVAL | TimeShape.SAMPLE:
+            suffix = "interval.start_time" if shape is TimeShape.INTERVAL else "sample_time.physical_time"
+            member = f"{field}.{suffix}"
+            window = physical_interval(start_time, end_time)
+            low, high = window["startTime"], window["endTime"]
+    return f'{member} >= "{low}" AND {member} < "{high}"'
 
 
 def physical_interval(start: datetime, end: datetime) -> dict[str, str]:
@@ -61,12 +113,36 @@ def read_number(
     return number * scale if number is not None else None
 
 
+def read_level_sum(
+    obj: dict[str, Any],
+    field: str,
+    level_sum: LevelSum,
+    scale: Decimal = Decimal(1),
+) -> Decimal | None:
+    """Add up the ``obj[field]`` entries whose level is one of ``level_sum.levels``.
+
+    None when the list is missing; 0 when it lists only other levels, since the day was
+    still measured.
+    """
+    entries = obj.get(field)
+    if not isinstance(entries, list):
+        return None
+    total = Decimal(0)
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        level = entry.get(level_sum.level_key)
+        if isinstance(level, str) and level in level_sum.levels:
+            total += to_decimal(entry.get(level_sum.value_field)) or Decimal(0)
+    return total * scale
+
+
 def extract_source(data_source: Any) -> tuple[str, str | None]:
     """Derive (source_name, device_model) from a list data point's dataSource.
 
     device shapes vary: {displayName} (Fitbit), {manufacturer, formFactor} (Health
     Connect), or empty/absent. device_model falls back displayName -> manufacturer
-    formFactor -> platform; source_name is the platform.
+    formFactor; the platform is not a device, so it is only the source_name.
     """
     if not isinstance(data_source, dict):
         return "Google Health", None
@@ -76,7 +152,6 @@ def extract_source(data_source: Any) -> tuple[str, str | None]:
     device_model = (
         device.get("displayName")
         or " ".join(p for p in (device.get("manufacturer"), form_factor.lower() if form_factor else None) if p)
-        or platform
         or None
     )
     return platform or "Google Health", device_model

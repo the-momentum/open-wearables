@@ -1,6 +1,6 @@
 <script lang="ts">
 	import logo from '$lib/assets/logo.svg?raw';
-	import { avatarTone } from '$lib/users/avatar';
+	import { AVATAR_TONE } from '$lib/users/avatar';
 	import { cn } from '$lib/utils/cn';
 
 	let {
@@ -27,7 +27,7 @@
 	class={cn(
 		'grid shrink-0 place-items-center rounded-lg font-medium',
 		SIZE[size],
-		own ? 'bg-inverted p-1 text-inverted-foreground [&>svg]:size-full' : avatarTone(provider)
+		own ? 'bg-inverted p-1 text-inverted-foreground [&>svg]:size-full' : AVATAR_TONE
 	)}
 >
 	{#if own}

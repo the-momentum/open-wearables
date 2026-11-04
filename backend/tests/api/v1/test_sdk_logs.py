@@ -118,6 +118,21 @@ class TestSDKLogsHappyPath:
         mock_store.assert_called_once()
         assert mock_store.call_args.kwargs["provider"] == "unknown"
 
+    @patch("app.api.routes.v1.sdk_logs.emit_sync_started")
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_provider_alias_opens_the_run_under_the_canonical_slug(
+        self, mock_store: MagicMock, mock_started: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        api_key = ApiKeyFactory()
+        response = client.post(
+            _url(),
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
+            json={**_payload(SYNC_START_EVENT), "provider": "google", "syncSessionId": "s1"},
+        )
+        assert response.status_code == 202
+        assert mock_started.call_args.args[1] == "health_connect"
+        assert mock_store.call_args.kwargs["provider"] == "health_connect"
+
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_time_range_without_start_date_accepted(
         self, mock_store: MagicMock, client: TestClient, db: Session
@@ -153,6 +168,39 @@ class TestSDKLogsHappyPath:
             json=_payload(event),
         )
         assert response.status_code == 202
+
+    @patch("app.api.routes.v1.sdk_logs.log_structured")
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_attribution_headers_are_logged(
+        self, mock_store: MagicMock, mock_log: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        api_key = ApiKeyFactory()
+        response = client.post(
+            _url(),
+            headers={
+                "X-Open-Wearables-API-Key": api_key.plain_key,
+                "X-Open-Wearables-SDK-Version": "1.3.0",
+                "X-Open-Wearables-SDK-Platform": "ios",
+                "X-Request-Id": "req-1",
+            },
+            json=_payload(DEVICE_STATE_EVENT),
+        )
+        assert response.status_code == 202
+        attributes = mock_log.call_args.kwargs
+        assert attributes["sdk_version"] == "1.3.0"
+        assert attributes["sdk_platform"] == "ios"
+        assert attributes["request_id"] == "req-1"
+
+    @patch("app.api.routes.v1.sdk_logs.log_structured")
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_body_version_logged_without_headers(
+        self, mock_store: MagicMock, mock_log: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        api_key = ApiKeyFactory()
+        client.post(_url(), headers={"X-Open-Wearables-API-Key": api_key.plain_key}, json=_payload(DEVICE_STATE_EVENT))
+        attributes = mock_log.call_args.kwargs
+        assert attributes["sdk_version"] == "1.2.0"
+        assert "sdk_platform" not in attributes
 
 
 class TestSDKLogsEventFields:

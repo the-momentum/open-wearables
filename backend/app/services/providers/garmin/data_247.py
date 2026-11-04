@@ -9,16 +9,17 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, EventRecordDetail
+from app.models import EventRecord, EventRecordDetail, SeriesSample
 from app.repositories import (
     DataSourceRepository,
     EventRecordDetailRepository,
     EventRecordRepository,
     UserConnectionRepository,
 )
-from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
+from app.repositories.data_point_series_repository import DataPointSeriesRepository, WriteCounts
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
@@ -31,11 +32,19 @@ from app.services.event_record_service import event_record_service
 from app.services.fit_parser import parse_fit_file
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import download_binary_content, make_authenticated_request
-from app.services.providers.garmin.coverage import ACTIVITY_SAMPLE_SERIES, DAILIES_SERIES, EPOCHS_SERIES
+from app.services.providers.garmin.coverage import (
+    ACTIVITY_SAMPLE_SERIES,
+    DAILIES_SERIES,
+    EPOCHS_SERIES,
+    WORKOUT_ENERGY_SERIES,
+)
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_fit_file
+from app.utils.conversion import seconds_to_minutes, sum_optional, to_decimal
 from app.utils.dates import offset_to_iso
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 # Series types to skip when parsing FIT files — already present from activityDetails.
@@ -72,7 +81,7 @@ class Garmin247Data(Base247DataTemplate):
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         self.data_source_repo = DataSourceRepository()
         self.connection_repo = UserConnectionRepository()
-        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_repo = DataPointSeriesRepository(SeriesSample)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # -------------------------------------------------------------------------
@@ -86,6 +95,14 @@ class Garmin247Data(Base247DataTemplate):
     def _from_epoch_seconds(self, ts: int) -> datetime:
         """Convert UTC Unix timestamp (seconds) to datetime."""
         return datetime.fromtimestamp(ts, tz=timezone.utc)
+
+    @staticmethod
+    def _from_calendar_date(calendar_date: str) -> datetime | None:
+        """Noon UTC of Garmin's calendar date, so the value stays on that day in any timezone."""
+        try:
+            return datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
+        except ValueError:
+            return None
 
     def _make_api_request(
         self,
@@ -251,10 +268,11 @@ class Garmin247Data(Base247DataTemplate):
         zone_offset = offset_to_iso(raw_sleep.get("startTimeOffsetInSeconds"))
 
         # Sleep stages (in seconds)
-        deep_seconds = raw_sleep.get("deepSleepDurationInSeconds") or 0
-        light_seconds = raw_sleep.get("lightSleepDurationInSeconds") or 0
-        rem_seconds = raw_sleep.get("remSleepInSeconds") or 0
-        awake_seconds = raw_sleep.get("awakeDurationInSeconds") or 0
+        # Absent when not measured (e.g. validation=MANUAL)
+        deep_seconds = raw_sleep.get("deepSleepDurationInSeconds")
+        light_seconds = raw_sleep.get("lightSleepDurationInSeconds")
+        rem_seconds = raw_sleep.get("remSleepInSeconds")
+        awake_seconds = raw_sleep.get("awakeDurationInSeconds")
 
         sleep_stages: list[SleepStage] | None = None
         if sleep_map := raw_sleep.get("sleepLevelsMap"):
@@ -319,7 +337,7 @@ class Garmin247Data(Base247DataTemplate):
         nap_id = uuid4()
         record = EventRecordCreate(
             id=nap_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Garmin",
             device_model=None,
@@ -368,7 +386,7 @@ class Garmin247Data(Base247DataTemplate):
 
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Garmin",
             device_model=None,
@@ -382,19 +400,26 @@ class Garmin247Data(Base247DataTemplate):
         )
 
         stages = normalized_sleep.get("stages", {})
-        asleep_seconds = stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
+        asleep_seconds = sum_optional(deep_seconds, light_seconds, rem_seconds)
         time_in_bed_seconds = normalized_sleep.get("duration_seconds") or 0
-        efficiency_score = Decimal(str(asleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
+        efficiency_score = (
+            Decimal(str(asleep_seconds / time_in_bed_seconds * 100))
+            if asleep_seconds is not None and time_in_bed_seconds > 0
+            else None
+        )
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=asleep_seconds // 60,
+            sleep_total_duration_minutes=seconds_to_minutes(asleep_seconds),
             sleep_time_in_bed_minutes=time_in_bed_seconds // 60,
             sleep_efficiency_score=efficiency_score,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
             sleep_stages=normalized_sleep.get("stage_timestamps"),
         )
@@ -451,9 +476,8 @@ class Garmin247Data(Base247DataTemplate):
         if start_ts:
             recorded_at = self._from_epoch_seconds(start_ts)
         elif calendar_date:
-            try:
-                recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
-            except ValueError:
+            recorded_at = self._from_calendar_date(calendar_date)
+            if recorded_at is None:
                 return scores
         else:
             return scores
@@ -483,7 +507,6 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
     ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:
         """Normalize Garmin daily summary to internal schema."""
-        active_seconds = raw_daily.get("activeTimeInSeconds")
         normalized = {
             "user_id": user_id,
             "calendar_date": raw_daily.get("calendarDate"),
@@ -501,9 +524,11 @@ class Garmin247Data(Base247DataTemplate):
             "avg_stress": raw_daily.get("averageStressLevel"),
             "max_stress": raw_daily.get("maxStressLevel"),
             "stress_qualifier": raw_daily.get("stressQualifier"),
-            "moderate_intensity_minutes": (raw_daily.get("moderateIntensityDurationInSeconds") or 0) // 60,
-            "vigorous_intensity_minutes": (raw_daily.get("vigorousIntensityDurationInSeconds") or 0) // 60,
-            "active_time": active_seconds // 60 if active_seconds is not None else None,
+            "exercise_time": seconds_to_minutes(
+                raw_daily.get("moderateIntensityDurationInSeconds"),
+                raw_daily.get("vigorousIntensityDurationInSeconds"),
+            ),
+            "active_time": seconds_to_minutes(raw_daily.get("activeTimeInSeconds")),
             "heart_rate_samples": raw_daily.get("timeOffsetHeartRateSamples"),
             "garmin_summary_id": raw_daily.get("summaryId"),
         }
@@ -525,14 +550,19 @@ class Garmin247Data(Base247DataTemplate):
         if start_ts:
             recorded_at = self._from_epoch_seconds(start_ts)
         elif calendar_date:
-            try:
-                recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
-            except ValueError:
+            recorded_at = self._from_calendar_date(calendar_date)
+            if recorded_at is None:
                 return samples
         else:
             return samples
 
         zone_offset = normalized_daily.get("zone_offset")
+        period = (
+            # durationInSeconds is less than a day after a mid-day sync, so the day is always a whole one
+            CalendarPeriod.local_day(recorded_at, zone_offset=zone_offset)
+            if start_ts
+            else CalendarPeriod.of_date(recorded_at.date(), zone_offset)
+        )
 
         for field, series_type in DAILIES_SERIES:
             value = normalized_daily.get(field)
@@ -548,6 +578,7 @@ class Garmin247Data(Base247DataTemplate):
                         series_type=series_type,
                         external_id=normalized_daily.get("garmin_summary_id"),
                         is_daily_total=daily_total_flag(series_type, is_daily=True),
+                        period=period,
                     )
                 )
 
@@ -562,18 +593,18 @@ class Garmin247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_daily: tuple[dict[str, Any], list[HealthScoreCreate]],
-    ) -> int:
-        """Save daily data to DataPointSeries and health scores.
+    ) -> WriteCounts:
+        """Save daily data to SeriesSample and health scores.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         daily_data, health_scores = normalized_daily
         samples = self._build_dailies_samples(user_id, daily_data)
-        counts: int = 0
+        counts = WriteCounts(0, 0)
         if samples:
             counts = self.data_point_repo.bulk_create(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            counts += health_score_service.bulk_create(db, health_scores)
             db.commit()
         return counts
 
@@ -650,68 +681,87 @@ class Garmin247Data(Base247DataTemplate):
             Dict with keys like 'heart_rate', 'steps', etc.
         """
         heart_rate_samples: list[dict[str, Any]] = []
-        step_samples: list[dict[str, Any]] = []
-        energy_samples: list[dict[str, Any]] = []
+        # Garmin sends one epoch per activity type in a slot, so steps and active calories are summed over them.
+        slots: dict[int, dict[str, Any]] = {}
 
+        skipped: list[tuple[Any, Exception]] = []
         for epoch in raw_epochs:
-            start_ts = epoch.get("startTimeInSeconds", 0)
-            if not start_ts:
-                continue
-
-            recorded_at = self._from_epoch_seconds(start_ts)
-            zone_offset = offset_to_iso(epoch.get("startTimeOffsetInSeconds"))
-
-            # Garmin epoch summaryId is "{devicePrefix}-{hex(startTimeInSeconds)}-{activityTypeCode}".
-            # Strip only the activityType suffix → "{devicePrefix}-{hex(start)}", a stable
-            # per-slot id shared by every activity in the slot, so intraday rows carry a real,
-            # deterministic external_id. Require >=2 dashes before stripping so a malformed
-            # 2-part id can't collapse to the bare device prefix (which would collide across slots).
-            summary_id = epoch.get("summaryId")
-            slot_external_id = (
-                summary_id.rpartition("-")[0] if summary_id and summary_id.count("-") >= 2 else summary_id
+            try:
+                self._collect_epoch(epoch, slots, heart_rate_samples)
+            except Exception as e:
+                skipped.append((epoch.get("summaryId") if isinstance(epoch, dict) else None, e))
+        if skipped:
+            log_and_capture_error(
+                skipped[0][1],
+                self.logger,
+                "Skipped malformed Garmin epochs",
+                extra={
+                    "provider": "garmin",
+                    "user_id": str(user_id),
+                    "skipped": len(skipped),
+                    "summary_ids": [summary_id for summary_id, _ in skipped[:5]],
+                },
             )
 
-            # Heart rate
-            mean_hr = epoch.get("meanHeartRateInBeatsPerMinute")
-            if mean_hr:
-                heart_rate_samples.append(
-                    {
-                        "timestamp": recorded_at.isoformat(),
-                        "value": mean_hr,
-                        "zone_offset": zone_offset,
-                        "external_id": slot_external_id,
-                    }
-                )
-
-            # Steps
-            steps = epoch.get("steps")
-            if steps is not None:
-                step_samples.append(
-                    {
-                        "timestamp": recorded_at.isoformat(),
-                        "value": steps,
-                        "zone_offset": zone_offset,
-                        "external_id": slot_external_id,
-                    }
-                )
-
-            # Active calories
-            calories = epoch.get("activeKilocalories")
-            if calories is not None:
-                energy_samples.append(
-                    {
-                        "timestamp": recorded_at.isoformat(),
-                        "value": calories,
-                        "zone_offset": zone_offset,
-                        "external_id": slot_external_id,
-                    }
-                )
+        step_samples: list[dict[str, Any]] = []
+        energy_samples: list[dict[str, Any]] = []
+        for slot in slots.values():
+            slot_epochs = slot.pop("epochs").values()
+            for samples, field in ((step_samples, "steps"), (energy_samples, "activeKilocalories")):
+                values = [value for e in slot_epochs if (value := to_decimal(e.get(field))) is not None]
+                if values:
+                    samples.append({**slot, "value": sum(values)})
 
         return {
             "heart_rate": heart_rate_samples,
             "steps": step_samples,
             "energy": energy_samples,
         }
+
+    def _collect_epoch(
+        self,
+        epoch: dict[str, Any],
+        slots: dict[int, dict[str, Any]],
+        heart_rate_samples: list[dict[str, Any]],
+    ) -> None:
+        """Add one epoch to its slot, and its heart rate if any. Raises on a malformed epoch."""
+        start_ts = epoch.get("startTimeInSeconds", 0)
+        if not start_ts:
+            return
+
+        recorded_at = self._from_epoch_seconds(start_ts)
+        zone_offset = offset_to_iso(epoch.get("startTimeOffsetInSeconds"))
+
+        # Garmin epoch summaryId is "{devicePrefix}-{hex(startTimeInSeconds)}-{activityTypeCode}".
+        # Strip only the activityType suffix → "{devicePrefix}-{hex(start)}", a stable
+        # per-slot id shared by every activity in the slot, so intraday rows carry a real,
+        # deterministic external_id. Require >=2 dashes before stripping so a malformed
+        # 2-part id can't collapse to the bare device prefix (which would collide across slots).
+        summary_id = epoch.get("summaryId")
+        slot_external_id = summary_id.rpartition("-")[0] if summary_id and summary_id.count("-") >= 2 else summary_id
+        window_seconds = epoch.get("durationInSeconds") or None
+
+        slot = slots.setdefault(start_ts, {"epochs": {}})
+        slot.update(
+            timestamp=recorded_at.isoformat(),
+            zone_offset=zone_offset,
+            external_id=slot_external_id,
+            window_seconds=window_seconds,
+        )
+        slot["epochs"][epoch.get("activityType")] = epoch
+
+        # Heart rate
+        mean_hr = epoch.get("meanHeartRateInBeatsPerMinute")
+        if mean_hr:
+            heart_rate_samples.append(
+                {
+                    "timestamp": recorded_at.isoformat(),
+                    "value": mean_hr,
+                    "zone_offset": zone_offset,
+                    "external_id": slot_external_id,
+                    "window_seconds": window_seconds,
+                }
+            )
 
     def _build_epochs_samples(
         self,
@@ -744,6 +794,7 @@ class Garmin247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         external_id=sample.get("external_id"),
+                        window_seconds=sample.get("window_seconds"),
                         is_daily_total=daily_total_flag(series_type, is_daily=False),
                     )
                     samples.append(sample_create)
@@ -758,7 +809,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_epochs: dict[str, list[dict[str, Any]]],
     ) -> int:
-        """Save epoch samples to DataPointSeries.
+        """Save epoch samples to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -870,7 +921,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_body_comp: dict[str, Any],
     ) -> int:
-        """Save body composition metrics to DataPointSeries.
+        """Save body composition metrics to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -911,6 +962,7 @@ class Garmin247Data(Base247DataTemplate):
         last_night_avg = raw_hrv.get("lastNightAvg")
         if last_night_avg is not None:
             recorded_at = self._from_epoch_seconds(start_ts)
+            night_of = self._from_calendar_date(calendar_date) if calendar_date else None
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -921,6 +973,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(last_night_avg)),
                     series_type=SeriesType.heart_rate_variability_rmssd,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(night_of.date(), zone_offset) if night_of else None,
                 )
             )
             self.logger.debug(f"Collecting HRV nightly avg={last_night_avg}ms for {calendar_date}")
@@ -954,7 +1007,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_hrv: dict[str, Any],
     ) -> int:
-        """Save HRV (Heart Rate Variability) data to DataPointSeries.
+        """Save HRV (Heart Rate Variability) data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -993,7 +1046,7 @@ class Garmin247Data(Base247DataTemplate):
         record_id = uuid4()
         record = EventRecordCreate(
             id=record_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=activity_type.lower(),
             source_name="Garmin",
             device_model=raw_activity.get("deviceName"),
@@ -1022,6 +1075,7 @@ class Garmin247Data(Base247DataTemplate):
             record_id=record_id,
             distance=Decimal(str(distance)) if distance is not None else None,
             energy_burned=Decimal(str(calories)) if calories is not None else None,
+            energy_series=WORKOUT_ENERGY_SERIES,
             heart_rate_avg=Decimal(str(avg_hr)) if avg_hr is not None else None,
             heart_rate_max=max_hr,
             total_elevation_gain=Decimal(str(elevation_gain)) if elevation_gain is not None else None,
@@ -1036,7 +1090,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_activity_details: dict[str, Any],
     ) -> list[TimeSeriesSampleCreate]:
-        """Build per-second data_point_series rows from activityDetails.samples[].
+        """Build per-second series_sample rows from activityDetails.samples[].
 
         Called only when settings.ingest_workout_samples is True.
         Failures here must never reach the caller — wrap in try/except at call site.
@@ -1086,7 +1140,7 @@ class Garmin247Data(Base247DataTemplate):
         try:
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
-            event_record_service.create_detail(db, detail, detail_type="workout")
+            event_record_service.create_detail(db, detail, detail_type=EventCategory.WORKOUT)
             return 1
         except Exception as e:
             self.logger.debug(f"Activity may already exist: {e}")
@@ -1196,7 +1250,7 @@ class Garmin247Data(Base247DataTemplate):
         if samples:
             counts = self.data_point_repo.bulk_create(db, samples)
         if score := self._normalize_body_battery_health_score(user_id, raw_stress):
-            health_score_service.bulk_create(db, [score])
+            counts += health_score_service.bulk_create(db, [score])
             db.commit()
         return counts
 
@@ -1266,7 +1320,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_respiration: dict[str, Any],
     ) -> int:
-        """Save respiration rate data to DataPointSeries.
+        """Save respiration rate data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1343,7 +1397,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_pulse_ox: dict[str, Any],
     ) -> int:
-        """Save SpO2 (blood oxygen saturation) data to DataPointSeries.
+        """Save SpO2 (blood oxygen saturation) data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1423,7 +1477,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_bp: dict[str, Any],
     ) -> int:
-        """Save blood pressure data to DataPointSeries.
+        """Save blood pressure data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1450,9 +1504,8 @@ class Garmin247Data(Base247DataTemplate):
         if not calendar_date:
             return samples
 
-        try:
-            recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
-        except ValueError:
+        recorded_at = self._from_calendar_date(calendar_date)
+        if recorded_at is None:
             return samples
 
         # VO2 max
@@ -1467,6 +1520,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(vo2_max)),
                     series_type=SeriesType.vo2_max,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(recorded_at.date()),
                 )
             )
 
@@ -1482,6 +1536,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(fitness_age)),
                     series_type=SeriesType.garmin_fitness_age,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(recorded_at.date()),
                 )
             )
 
@@ -1493,7 +1548,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_metrics: dict[str, Any],
     ) -> int:
-        """Save user metrics (VO2max, fitness age) to DataPointSeries.
+        """Save user metrics (VO2max, fitness age) to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1514,27 +1569,30 @@ class Garmin247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         """Build time series samples from skin temperature data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
-        start_ts = raw_skin_temp.get("startTimeInSeconds", 0)
+        calendar_date = raw_skin_temp.get("calendarDate")
         summary_id = raw_skin_temp.get("summaryId")
 
-        if not start_ts:
+        if not calendar_date:
             return samples
 
-        recorded_at = self._from_epoch_seconds(start_ts)
-        zone_offset = offset_to_iso(raw_skin_temp.get("startTimeOffsetInSeconds"))
+        # The measurement window often starts before midnight while Garmin calls the night by the morning.
+        recorded_at = self._from_calendar_date(calendar_date)
+        if recorded_at is None:
+            return samples
 
-        skin_temp = raw_skin_temp.get("skinTemperature")
-        if skin_temp is not None:
+        # Garmin reports the night as a deviation from the user's baseline, not a reading.
+        deviation = raw_skin_temp.get("avgDeviationCelsius")
+        if deviation is not None:
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
-                    zone_offset=zone_offset,
-                    value=Decimal(str(skin_temp)),
-                    series_type=SeriesType.skin_temperature,
+                    value=Decimal(str(deviation)),
+                    series_type=SeriesType.skin_temperature_deviation,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(recorded_at.date()),
                 )
             )
 
@@ -1546,7 +1604,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_skin_temp: dict[str, Any],
     ) -> int:
-        """Save skin temperature data to DataPointSeries.
+        """Save skin temperature data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1678,7 +1736,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_snapshot: dict[str, Any],
     ) -> int:
-        """Save health snapshot data to DataPointSeries.
+        """Save health snapshot data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1713,7 +1771,7 @@ class Garmin247Data(Base247DataTemplate):
 
         return EventRecordCreate(
             id=uuid4(),
-            category="activity",
+            category=EventCategory.ACTIVITY,
             type=f"moveiq_{activity_type.lower()}",
             source_name="Garmin Move IQ",
             device_model=None,
@@ -1771,7 +1829,7 @@ class Garmin247Data(Base247DataTemplate):
 
         record = EventRecordCreate(
             id=uuid4(),
-            category="menstrual_cycle",
+            category=EventCategory.MENSTRUAL_CYCLE,
             type=phase_type,
             source_name="Garmin",
             duration_seconds=cycle_length * 24 * 3600 if cycle_length else None,
@@ -1848,7 +1906,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         summary_type: str,
         items: list[dict[str, Any]],
-    ) -> int:
+    ) -> WriteCounts:
         """Process a batch of webhook items with minimal DB round-trips.
 
         Accumulates all samples/records across all items, then performs
@@ -1861,7 +1919,8 @@ class Garmin247Data(Base247DataTemplate):
             items: List of raw items from webhook payload
 
         Returns:
-            Number of data points saved
+            Rows written across samples, event records and health scores, split
+            into new vs updated.
         """
         all_samples: list[TimeSeriesSampleCreate] = []
         all_records: list[EventRecordCreate] = []
@@ -1869,18 +1928,20 @@ class Garmin247Data(Base247DataTemplate):
         all_sleep_details: list[EventRecordDetailCreate] = []
         all_mct_details: list[MenstrualCycleDetailCreate] = []
         all_health_scores: list[HealthScoreCreate] = []
+        body_battery_peaks: list[HealthScoreCreate] = []
+        epoch_items: list[dict[str, Any]] = []
 
         for item in items:
             try:
-                # DataPointSeries types - accumulate samples
+                # SeriesSample types - accumulate samples
                 match summary_type:
                     case "dailies":
                         normalized, health_scores = self.normalize_dailies(item, user_id)
                         all_samples.extend(self._build_dailies_samples(user_id, normalized))
                         all_health_scores.extend(health_scores)
                     case "epochs":
-                        normalized = self.normalize_epochs([item], user_id)
-                        all_samples.extend(self._build_epochs_samples(user_id, normalized))
+                        # Normalized together after the loop, so a slot's activity types are summed.
+                        epoch_items.append(item)
                     case "bodyComps":
                         all_samples.extend(self._build_body_comp_samples(user_id, item))
                     case "hrv":
@@ -1888,7 +1949,7 @@ class Garmin247Data(Base247DataTemplate):
                     case "stressDetails":
                         all_samples.extend(self._build_stress_samples(user_id, item))
                         if score := self._normalize_body_battery_health_score(user_id, item):
-                            all_health_scores.append(score)
+                            body_battery_peaks.append(score)
                     case "allDayRespiration":
                         all_samples.extend(self._build_respiration_samples(user_id, item))
                     case "pulseox":
@@ -2057,9 +2118,12 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
 
-        count = 0
+        if epoch_items:
+            all_samples.extend(self._build_epochs_samples(user_id, self.normalize_epochs(epoch_items, user_id)))
 
-        # Single bulk insert for DataPointSeries
+        count = WriteCounts(0, 0)
+
+        # Single bulk insert for SeriesSample
         if all_samples:
             count += self.data_point_repo.bulk_create(db, all_samples)
 
@@ -2073,22 +2137,26 @@ class Garmin247Data(Base247DataTemplate):
             # Bulk create sleep details for actually inserted records
             sleep_details = [d for d in all_sleep_details if d.record_id in inserted_set]
             if sleep_details:
-                event_record_service.bulk_create_details(db, sleep_details, detail_type="sleep")
+                event_record_service.bulk_create_details(db, sleep_details, detail_type=EventCategory.SLEEP)
 
             # Bulk create workout details for actually inserted records
             workout_details = [d for d in all_workout_details if d.record_id in inserted_set]
             if workout_details:
-                event_record_service.bulk_create_details(db, workout_details, detail_type="workout")
+                event_record_service.bulk_create_details(db, workout_details, detail_type=EventCategory.WORKOUT)
 
             # Bulk create MCT details for actually inserted records
             mct_details = [d for d in all_mct_details if d.record_id in inserted_set]
             if mct_details:
-                event_record_service.bulk_create_details(db, mct_details, detail_type="menstrual_cycle")  # ty:ignore[invalid-argument-type]
+                event_record_service.bulk_create_details(db, mct_details, detail_type=EventCategory.MENSTRUAL_CYCLE)  # ty:ignore[invalid-argument-type]
 
-            count += len(inserted_ids)
+            count += WriteCounts(len(inserted_ids), 0)
 
         if all_health_scores:
-            health_score_service.bulk_create(db, all_health_scores)
+            count += health_score_service.bulk_create(db, all_health_scores)
+            db.commit()
+        if body_battery_peaks:
+            # A day may already hold a lower peak from an earlier push
+            count += health_score_service.bulk_create_keeping_highest(db, body_battery_peaks)
             db.commit()
 
         return count
@@ -2165,7 +2233,7 @@ class Garmin247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, Any]:
+    ) -> Sync247Result:
         """No-op: Garmin 247 data arrives via webhooks.
 
         REST/summary endpoints are not used. Historical data is fetched
@@ -2179,11 +2247,7 @@ class Garmin247Data(Base247DataTemplate):
             is_first_sync: Unused (kept for interface compatibility)
 
         Returns:
-            Dict indicating data arrives via webhooks
+            An empty result: data arrives by push
         """
         self.logger.info(f"Garmin 247 data for user {user_id} arrives via webhooks (no REST fetch)")
-        return {
-            "sync_complete": True,
-            "total_saved": 0,
-            "message": "Garmin data arrives via webhooks. No REST fetch performed.",
-        }
+        return Sync247Result(provider=self.provider_name)

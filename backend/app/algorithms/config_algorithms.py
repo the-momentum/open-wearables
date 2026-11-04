@@ -62,7 +62,6 @@ sleep_config = SleepScoreConfig()
 class ResilienceScoreConfig(BaseModel):
     lookback_days: int = Field(default=7, ge=1)
     min_days_required: int = Field(default=5, ge=2)
-    min_rr_samples: int = Field(default=20, ge=2)
 
     # 0-100 SCORING — linear mapping of HRV-CV (expressed as %)
     # cv_ceiling: upper bound for a perfect 100; anything at or below scores 100

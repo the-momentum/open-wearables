@@ -228,7 +228,7 @@ Things to know when reading the data:
 - **Nullable fields.** Apart from identifiers, dates and `source`, any field can be `null` - providers report different subsets. See the [coverage matrix](/providers/coverage).
 - **`source.provider`** is the provider slug (`garmin`, `apple`, `health_connect`, ...). `source.device` is the raw device model.
 - **Sleep** durations are in minutes and exclude naps, which are reported separately.
-- **Recovery summary** returns data only for WHOOP.
+- **Recovery summary** is built from each day's resting HR, HRV, SpO2 and main sleep, for every provider. `avg_hrv_sdnn_ms` carries SDNN (e.g. Apple Health) and `avg_hrv_rmssd_ms` RMSSD (e.g. WHOOP, Garmin, Oura). `recovery_score` is set only where the source reports one.
 - **Body summary** is a single object, not a paginated list, and is `null` when the user has no body data.
 - **Timeseries** requires `start_time` and `end_time`. `types` is optional and repeated (`?types=heart_rate&types=steps`) - without it, all series types are returned.
 

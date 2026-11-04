@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 from app.algorithms.config_algorithms import sleep_config
 from app.algorithms.scoring_primitives import ScoreBounds, score_sigmoid, time_to_hours_past_noon
+from app.constants.sleep import ASLEEP_STAGES, SleepStageType
+from app.schemas.model_crud.activities.sleep import SleepStage
 
 
 class SleepComponentScore(BaseModel):
@@ -134,6 +136,39 @@ def calculate_bedtime_consistency_score(
     return max(CONSISTENCY_SCORE_BOUNDS.min, int(CONSISTENCY_SCORE_BOUNDS.max - penalty))
 
 
+def awakenings(stages: list[SleepStage]) -> list[float] | None:
+    """Minutes of each awakening between falling asleep and the final wake-up; None without a sleep stage."""
+    # Clipped before the sleep period is found, so a block covered by an earlier one can't bound it
+    clipped: list[SleepStage] = []
+    for stage in sorted(stages, key=lambda stage: stage.start_time):
+        if stage.stage not in ASLEEP_STAGES and stage.stage != SleepStageType.AWAKE:
+            continue
+        start = max(stage.start_time, clipped[-1].end_time) if clipped else stage.start_time
+        if start < stage.end_time:
+            clipped.append(stage.model_copy(update={"start_time": start}))
+    asleep = [i for i, stage in enumerate(clipped) if stage.stage in ASLEEP_STAGES]
+    if not asleep:
+        return None
+    minutes: list[float] = []
+    awake_until: datetime | None = None
+    for stage in clipped[asleep[0] : asleep[-1] + 1]:
+        if stage.stage != SleepStageType.AWAKE:
+            awake_until = None
+            continue
+        duration = (stage.end_time - stage.start_time).total_seconds() / 60
+        if stage.start_time == awake_until:
+            minutes[-1] += duration
+        else:
+            minutes.append(duration)
+        awake_until = stage.end_time
+    return minutes
+
+
+def significant_awakenings(awakening_durations: list[float]) -> int:
+    """How many awakenings last longer than the significant-wake threshold."""
+    return sum(1 for minutes in awakening_durations if minutes > sleep_config.significant_wake_threshold_mins)
+
+
 def calculate_interruptions_score(
     total_awake_minutes: float,
     awakening_durations: list[float],
@@ -152,7 +187,7 @@ def calculate_interruptions_score(
         duration_penalty = penalty_ratio * dur_full
         duration_score = max(INTERRUPTIONS_SCORE_BOUNDS.min, dur_full - duration_penalty)
 
-    n = sum(1 for d in awakening_durations if d > sleep_config.significant_wake_threshold_mins)
+    n = significant_awakenings(awakening_durations)
     freq_score = freq_full * sleep_config.freq_score_fractions[min(n, len(sleep_config.freq_score_fractions) - 1)]
 
     return max(INTERRUPTIONS_SCORE_BOUNDS.min, min(INTERRUPTIONS_SCORE_BOUNDS.max, int(duration_score + freq_score)))

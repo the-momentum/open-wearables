@@ -1,5 +1,11 @@
 import type { Cookies } from '@sveltejs/kit';
-import { refreshTokens, revokeToken, type Developer, type TokenResponse } from './api';
+import {
+	refreshTokens,
+	revokeToken,
+	type Developer,
+	type PasswordChangePrompt,
+	type TokenResponse
+} from './api';
 
 export const SESSION_COOKIE = 'ow_session';
 
@@ -17,6 +23,8 @@ export type Session = {
 	accessTokenExpiresAt: number;
 	/** Captured at sign-in; goes stale if edited elsewhere. */
 	developer: Developer;
+	/** Signed in with the default password; cleared once it changes. */
+	passwordChange?: PasswordChangePrompt;
 };
 
 export function sessionFromTokens(
@@ -29,7 +37,8 @@ export function sessionFromTokens(
 		accessToken: tokens.access_token,
 		refreshToken: tokens.refresh_token,
 		accessTokenExpiresAt: now + ttl * 1000,
-		developer
+		developer,
+		...(tokens.password_change && { passwordChange: tokens.password_change })
 	};
 }
 
@@ -69,6 +78,13 @@ export function createSession(cookies: Cookies, tokens: TokenResponse, developer
 export const readSession = (cookies: Cookies): Session | null =>
 	decodeSession(cookies.get(SESSION_COOKIE));
 
+export function clearPasswordChange(cookies: Cookies): void {
+	const session = readSession(cookies);
+	if (!session) return;
+	delete session.passwordChange;
+	store(cookies, session);
+}
+
 const rotations = new Map<string, Promise<TokenResponse>>();
 
 /**
@@ -100,6 +116,8 @@ export async function validAccessToken(cookies: Cookies, session: Session): Prom
 
 	try {
 		const renewed = sessionFromTokens(await rotate(session.refreshToken), session.developer);
+		// A refresh never sees the password, so the prompt rides along until it is dealt with.
+		if (session.passwordChange) renewed.passwordChange = session.passwordChange;
 		store(cookies, renewed);
 		return renewed.accessToken;
 	} catch {

@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
-import { API, ApiError, apiGet, login, type Developer } from '$lib/server/api';
+import { API, ApiError, apiGet, login, type Developer, type TokenResponse } from '$lib/server/api';
 import { createSession } from '$lib/server/session';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -18,8 +18,9 @@ export const actions: Actions = {
 			return fail(400, { email, message: 'Enter your email and password.' });
 		}
 
+		let tokens: TokenResponse;
 		try {
-			const tokens = await login(email, password);
+			tokens = await login(email, password);
 			const developer = await apiGet<Developer>(API.me, tokens.access_token);
 			createSession(cookies, tokens, developer);
 		} catch (error) {
@@ -27,10 +28,14 @@ export const actions: Actions = {
 			if (error instanceof ApiError && error.status === 401) {
 				return fail(401, { email, message: 'Incorrect email or password.' });
 			}
+			// The default admin password is refused in production; the API says how to replace it.
+			if (error instanceof ApiError && error.status === 403) {
+				return fail(403, { email, message: error.message });
+			}
 			return fail(503, { email, message: 'Could not reach the server. Try again.' });
 		}
 
 		// Outside the try: redirect() throws, and would be caught above.
-		redirect(303, resolve('/dashboard'));
+		redirect(303, resolve(tokens.password_change ? '/change-password' : '/dashboard'));
 	}
 };

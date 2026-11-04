@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from app.config import settings
 from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
+from app.integrations.celery.tasks import start_garmin_full_backfill, sync_vendor_data
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
 from app.schemas.model_crud.data_priority import (
@@ -16,13 +17,12 @@ from app.schemas.model_crud.data_priority import (
     ProviderSettingUpdate,
 )
 from app.services import DeveloperDep, user_connection_service
-from app.services.provider_settings_service import ProviderSettingsService
+from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
 factory = ProviderFactory()
-settings_service = ProviderSettingsService()
 
 
 def resolve_provider(slug: str) -> ProviderName:
@@ -108,7 +108,7 @@ def oauth_callback(
 
     # Stamp last_synced_at=now so the first periodic sync uses the connection
     # timestamp as its live-sync cursor and won't attempt to pull all history.
-    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
+    previous_synced_at = user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
 
     # Grace-period flag: automatically kick off a historical sync so integrators
     # who haven't yet adopted the explicit /sync/historical call still get backfill.
@@ -116,18 +116,18 @@ def oauth_callback(
     if settings.historical_sync_on_connect:
         caps = strategy.capabilities
         if caps.webhook_callback:
-            # this code is going to be removed later, so leave inner imports heres
-            from app.integrations.celery.tasks import start_garmin_full_backfill
-
-            start_garmin_full_backfill.delay(str(oauth_state.user_id))
+            gap_start = user_connection_service.reconnect_gap_start(
+                db, oauth_state.user_id, provider_name.value, previous_synced_at
+            )
+            start_garmin_full_backfill.delay(str(oauth_state.user_id), gap_start.isoformat() if gap_start else None)
         elif caps.rest_pull:
-            from app.integrations.celery.tasks import sync_vendor_data
-
             now = datetime.now(timezone.utc)
-            start_date = (now - timedelta(days=90)).isoformat()
+            start_date = user_connection_service.historical_start_on_connect(
+                db, oauth_state.user_id, provider_name.value, previous_synced_at, days=90
+            )
             sync_vendor_data.delay(
                 user_id=str(oauth_state.user_id),
-                start_date=start_date,
+                start_date=start_date.isoformat(),
                 end_date=now.isoformat(),
                 providers=[provider_name.value],
                 is_historical=True,
@@ -184,7 +184,7 @@ def get_providers(
 
     Returns full provider details including name, icon_url, has_cloud_api, is_enabled.
     """
-    all_providers = settings_service.get_all_providers(db)
+    all_providers = provider_settings_service.get_all_providers(db)
 
     return [p for p in all_providers if (not enabled_only or p.is_enabled) and (not cloud_only or p.has_cloud_api)]
 
@@ -198,7 +198,7 @@ def update_provider_setting(
 ):
     """Update is_enabled and/or live_sync_mode for a single provider."""
     try:
-        return settings_service.update_provider_setting(db, provider, update)
+        return provider_settings_service.update_provider_setting(db, provider, update)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -215,4 +215,4 @@ def bulk_update_providers(
     Accepts a map of provider_id -> is_enabled and updates all providers at once.
     This is the primary endpoint for the admin UI to save checkbox states.
     """
-    return settings_service.bulk_update_providers(db, updates.providers)
+    return provider_settings_service.bulk_update_providers(db, updates.providers)

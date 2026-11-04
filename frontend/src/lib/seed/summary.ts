@@ -38,13 +38,19 @@ export function seriesSummary(series: Draft['series']): string {
 	return series.bloodPressure ? `${types} + blood pressure` : types;
 }
 
+export function mealSummary(meals: Draft['meals']): string {
+	if (!meals.on) return 'Not generated';
+	return `${plural(meals.count, 'meal')} · ${meals.calories[0]}–${meals.calories[1]} kcal`;
+}
+
 /** What a profile makes for one user, in the counts that tell presets apart. */
 export const countsOf = (profile: SeedProfile): string[] =>
 	[
 		profile.generate_workouts && plural(profile.workout_config.count, 'workout'),
 		profile.generate_sleep && plural(profile.sleep_config.count, 'night'),
 		profile.generate_time_series &&
-			plural(profile.time_series_config.enabled_types.length, 'series type')
+			plural(profile.time_series_config.enabled_types.length, 'series type'),
+		profile.generate_meals && plural(profile.meal_config.meal_count, 'meal')
 	].filter((part): part is string => Boolean(part));
 
 /** The same counts for the draft, for the line above the button. */

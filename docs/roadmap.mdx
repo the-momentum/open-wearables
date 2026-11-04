@@ -54,7 +54,7 @@ Custom work stays at the heart of what Momentum does. Many of the teams running 
 
 <CardGroup cols={1}>
   <Card title="Health Scores" icon="chart-line" horizontal>
-    The existing **Sleep** and **Resilience** scores get a refresh and move into this module, joined by two new ones: **Recovery** and **Activity**. All four are built on the same unified data model, so a score works the same whether the data comes from Garmin, Oura, or Apple Health. Every score is science-backed, with the methodology documented and reviewed by our science team. Anna, who leads our science work, writes about the research behind wearable data in [The Science Behind Wearables](https://thesciencebehindwearables.substack.com/) newsletter, worth a subscribe if that side of things interests you.
+    The existing **Sleep** and **Resilience** scores get a refresh and move into this module, which ships as a separate package available as an extension under a different license. They are [removed from Open Wearables on November 6, 2026](/scores/health-scores#deprecation-of-ow-native-scores). The module adds two new ones: **Recovery** and **Activity**. All four are built on the same unified data model, so a score works the same whether the data comes from Garmin, Oura, or Apple Health. Every score is science-backed, with the methodology documented and reviewed by our science team. Anna, who leads our science work, writes about the research behind wearable data in [The Science Behind Wearables](https://thesciencebehindwearables.substack.com/) newsletter, worth a subscribe if that side of things interests you.
   </Card>
   <Card title="AI intelligence layer" icon="brain" horizontal>
     An AI layer on top of the unified data model that turns raw wearable data into insights your product can act on: trend and anomaly detection, personalized summaries, and answers to questions like "how did my sleep change since I started running?" grounded in the user's own data. It will ship as building blocks you can use in your own flows as well as ready-made pieces such as an embeddable chat agent.
@@ -84,19 +84,7 @@ If one of these matters to your product today, tell us on [Discord](https://disc
 
 ## New provider integrations
 
-New providers are the most common request we get, so here is where things stand. The core team's capacity is limited, and with the work above already committed, **we cannot promise new integrations on a timeline**. Open [provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) are tracked and prioritized by demand, but a request being open does not mean it is scheduled.
-
-There are two ways to get an integration built sooner.
-
-### Contribute one
-
-Provider integrations are a great contribution, and the architecture is designed for it. [Adding a new provider](/dev-guides/how-to-add-new-provider) walks through the whole process. That said, before you start, please read the [contribution guidelines](https://github.com/the-momentum/open-wearables/blob/main/CONTRIBUTING.md) and open an issue or ask on Discord to get a go-ahead, so we can agree on the scope and make sure nobody else is already on it.
-
-For this kind of contribution specifically, we ask that you have solid backend development experience. An integration touches OAuth, background sync, webhooks, and the mapping of a provider's data onto the unified data model, and a mistake there corrupts data for every user of that provider. Every pull request is reviewed manually by a core contributor, and review time is our main bottleneck. A partial integration that needs to be rewritten during review costs more than building it in-house, which is why we ask for the go-ahead first and for the change to be tested against a real provider account before it is submitted.
-
-### Prioritize it with us
-
-If you need a specific provider for a commercial product, it is possible to prioritize it as part of the Open Wearables commercial offering, including splitting the development cost between parties that need the same integration. The result is released as part of the core platform. [Get in touch](https://openwearables.io/custom-deployment) if that is an option for you.
+New providers are tracked as [provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) and prioritized by demand, but we cannot promise them on a timeline. See [Adding new providers](/providers/supported#adding-new-providers) for how to contribute one or prioritize it with us.
 
 ## Contributing to the roadmap
 

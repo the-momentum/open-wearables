@@ -1,10 +1,10 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
-from app.schemas.enums import ProviderName, WorkoutType
+from app.schemas.enums import EventCategory, ProviderName, SourceSelection, WorkoutType
 from app.schemas.model_crud.activities import EventRecordQueryParams, SleepInclude, WorkoutInclude
 from app.schemas.responses.activity import (
     Meal,
@@ -31,21 +31,22 @@ IsNapQuery = Annotated[
     bool | None,
     Query(description="When true, return only naps; when false, only main sleep. Omit to return both."),
 ]
-FilterByPriorityQuery = Annotated[
-    bool,
+SessionSourceSelectionQuery = Annotated[
+    Literal[SourceSelection.ALL, SourceSelection.PER_SESSION] | None,
     Query(
-        description="When true, keep only the highest-priority source's sessions per sleep date "
-        "(provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+        description="`all` returns every source's sessions. `per_session` drops a session when the sessions of one "
+        "source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of "
+        "it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. "
+        "Source filters narrow which sessions compete. Defaults to `all`."
     ),
 ]
-WorkoutFilterByPriorityQuery = Annotated[
-    bool,
-    Query(
-        description="When true, drop a workout when a higher-priority source (provider/device priority, "
-        "same ranking as summaries) has a workout overlapping at least 50% of its duration. "
-        "Workouts nothing overlaps are kept. Defaults to false for backwards compatibility."
-    ),
-]
+FilterByPriorityQuery = Annotated[bool, Query(deprecated=True, description="Same as source_selection=per_session.")]
+
+
+def _session_selection(source_selection: SourceSelection | None, filter_by_priority: bool) -> SourceSelection:
+    if source_selection is not None:
+        return source_selection
+    return SourceSelection.PER_SESSION if filter_by_priority else SourceSelection.ALL
 
 
 @router.get("/users/{user_id}/events/workouts")
@@ -64,7 +65,7 @@ def list_workouts(
     source: str | None = None,
     device_model: str | None = None,
     data_source_id: UUID | None = None,
-    filter_by_priority: WorkoutFilterByPriorityQuery = False,
+    source_selection: SessionSourceSelectionQuery = None,
 ) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     params = EventRecordQueryParams(
@@ -80,7 +81,7 @@ def list_workouts(
         data_source_id=data_source_id,
     )
     return event_record_service.get_workouts(
-        db, user_id, params, filter_by_priority=filter_by_priority, include=include
+        db, user_id, params, include=include, source_selection=source_selection or SourceSelection.ALL
     )
 
 
@@ -107,7 +108,7 @@ def get_workout_totals(
     source: str | None = None,
     device_model: str | None = None,
     data_source_id: UUID | None = None,
-    filter_by_priority: WorkoutFilterByPriorityQuery = False,
+    source_selection: SessionSourceSelectionQuery = None,
 ) -> WorkoutTotals:
     """Returns the count, duration, energy and distance of the workouts the same filters would list.
 
@@ -124,7 +125,9 @@ def get_workout_totals(
         device_model=device_model,
         data_source_id=data_source_id,
     )
-    return event_record_service.get_workout_totals(db, user_id, params, filter_by_priority=filter_by_priority)
+    return event_record_service.get_workout_totals(
+        db, user_id, params, source_selection=source_selection or SourceSelection.ALL
+    )
 
 
 @router.get("/users/{user_id}/events/sleep")
@@ -142,6 +145,7 @@ def list_sleep_sessions(
     device_model: str | None = None,
     data_source_id: UUID | None = None,
     is_nap: IsNapQuery = None,
+    source_selection: SessionSourceSelectionQuery = None,
     filter_by_priority: FilterByPriorityQuery = False,
 ) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
@@ -157,7 +161,7 @@ def list_sleep_sessions(
         is_nap=is_nap,
     )
     return event_record_service.get_sleep_sessions(
-        db, user_id, params, filter_by_priority=filter_by_priority, include=include
+        db, user_id, params, source_selection=_session_selection(source_selection, filter_by_priority), include=include
     )
 
 
@@ -173,6 +177,7 @@ def get_sleep_totals(
     device_model: str | None = None,
     data_source_id: UUID | None = None,
     is_nap: IsNapQuery = None,
+    source_selection: SessionSourceSelectionQuery = None,
     filter_by_priority: FilterByPriorityQuery = False,
 ) -> SleepTotals:
     """Returns the count, naps, time asleep, time in bed and mean efficiency of the sessions.
@@ -191,7 +196,9 @@ def get_sleep_totals(
         data_source_id=data_source_id,
         is_nap=is_nap,
     )
-    return event_record_service.get_sleep_totals(db, user_id, params, filter_by_priority=filter_by_priority)
+    return event_record_service.get_sleep_totals(
+        db, user_id, params, source_selection=_session_selection(source_selection, filter_by_priority)
+    )
 
 
 @router.get("/users/{user_id}/events/menstrual-cycles")
@@ -258,7 +265,7 @@ def delete_workout(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a workout session."""
-    if not event_record_service.delete_event_record(db, user_id, workout_id, "workout"):
+    if not event_record_service.delete_event_record(db, user_id, workout_id, EventCategory.WORKOUT):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout not found")
 
 
@@ -270,7 +277,7 @@ def delete_sleep_session(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a sleep session."""
-    if not event_record_service.delete_event_record(db, user_id, sleep_id, "sleep"):
+    if not event_record_service.delete_event_record(db, user_id, sleep_id, EventCategory.SLEEP):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sleep session not found")
 
 
@@ -282,7 +289,7 @@ def delete_menstrual_cycle(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a menstrual cycle record."""
-    if not event_record_service.delete_event_record(db, user_id, cycle_id, "menstrual_cycle"):
+    if not event_record_service.delete_event_record(db, user_id, cycle_id, EventCategory.MENSTRUAL_CYCLE):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menstrual cycle record not found")
 
 
@@ -294,5 +301,5 @@ def delete_meal(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a meal together with its nutrients."""
-    if not event_record_service.delete_event_record(db, user_id, meal_id, "meal"):
+    if not event_record_service.delete_event_record(db, user_id, meal_id, EventCategory.MEAL):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")

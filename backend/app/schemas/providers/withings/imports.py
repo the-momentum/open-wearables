@@ -9,7 +9,9 @@ path instead of being normalized into a wrong value.
 # the type in its own annotation (the value binds before the annotation is read).
 from datetime import date as date_type
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.utils.conversion import seconds_to_minutes
 
 
 class WithingsMeasure(BaseModel):
@@ -53,6 +55,12 @@ class WithingsActivity(BaseModel):
     distance: float | None = Field(default=None, ge=0)
     calories: float | None = Field(default=None, ge=0)  # active kcal
     totalcalories: float | None = Field(default=None, ge=0)  # active + passive kcal
+    active: int | None = Field(default=None, ge=0)  # moderate + intense activity, seconds
+
+    @property
+    def active_minutes(self) -> int | None:
+        """Moderate plus intense activity time in whole minutes."""
+        return seconds_to_minutes(self.active)
 
 
 class WithingsSleepData(BaseModel):
@@ -72,6 +80,24 @@ class WithingsSleepData(BaseModel):
     # Ratio of total sleep time over time in bed.
     sleep_efficiency: float | None = Field(default=None, ge=0, le=1)
     hr_min: int | None = Field(default=None, gt=0)
+
+
+class WithingsIntradayActivity(BaseModel):
+    """One intraday slice from ``getintradayactivity``; the response keys it by its start epoch.
+
+    ``model_id`` names the device that tracked the slice. Withings hardware is numbered up
+    to 102, while 1051 and above are third-party trackers relayed through the account —
+    Apple HealthKit, Android, GoogleFit, Samsung Health, Google Health Connect and Huawei.
+    """
+
+    # ``model_id`` collides with pydantic's protected ``model_`` prefix.
+    model_config = ConfigDict(protected_namespaces=())
+
+    model_id: int | None = None
+    steps: int | None = Field(default=None, ge=0)
+    distance: float | None = Field(default=None, ge=0)
+    calories: float | None = Field(default=None, ge=0)  # active kcal
+    duration: int | None = Field(default=None, ge=0)  # slice width in seconds, as open mHealth shimmer reads it
 
 
 class WithingsSleepSummary(BaseModel):

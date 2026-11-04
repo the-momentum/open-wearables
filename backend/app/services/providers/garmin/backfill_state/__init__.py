@@ -5,7 +5,8 @@ No Celery, no HTTP, no database — consumed by both the Celery task
 orchestrator (garmin_backfill_task) and the webhook handler.
 
 This package is split into:
-- core: key helper, trace IDs, lock, completion, overall status
+- core: key helper, trace IDs, lock
+- summary: completion, overall status
 - type_tracking: per-type status (pending/triggered/success/failed/timed_out)
 - window_state: multi-window backfill state, date ranges, matrix persistence
 - retry_state: retry phase queue and lifecycle
@@ -14,9 +15,7 @@ This package is split into:
 from app.services.providers.garmin.backfill_state.core import (
     _get_key,
     acquire_backfill_lock,
-    complete_backfill,
     force_release_backfill_lock,
-    get_backfill_status,
     get_trace_id,
     release_backfill_lock,
     set_trace_id,
@@ -31,6 +30,7 @@ from app.services.providers.garmin.backfill_state.retry_state import (
     record_timed_out_entry,
     setup_retry_window,
 )
+from app.services.providers.garmin.backfill_state.summary import complete_backfill, get_backfill_status
 from app.services.providers.garmin.backfill_state.type_tracking import (
     get_pending_types,
     get_timed_out_types,
@@ -58,13 +58,14 @@ __all__ = [
     # core
     "_get_key",
     "acquire_backfill_lock",
-    "complete_backfill",
     "force_release_backfill_lock",
-    "get_backfill_status",
     "get_trace_id",
     "release_backfill_lock",
     "set_trace_id",
     "set_type_trace_id",
+    # summary
+    "complete_backfill",
+    "get_backfill_status",
     # type_tracking
     "get_pending_types",
     "get_timed_out_types",

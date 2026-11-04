@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Open Wearables API",
-    "version": "0.9.0"
+    "version": "0.11.0"
   },
   "paths": {
     "/": {
@@ -42,6 +42,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CoverageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meta/extensions": {
+      "get": {
+        "tags": [
+          "External: Meta",
+          "External: Meta"
+        ],
+        "summary": "Installed extensions",
+        "description": "Every installed extension and whether it loaded; ``error`` says why one did not.",
+        "operationId": "list_extensions_api_v1_meta_extensions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -626,6 +682,144 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/personal-record": {
+      "get": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Get Personal Record",
+        "description": "Returns the user's birth date, gender and sex. A field that was never set is null.",
+        "operationId": "get_personal_record_api_v1_users__user_id__personal_record_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalRecordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Put Personal Record",
+        "description": "Sets the user's birth date, gender and sex.\n\nReplaces the whole record: a field left out of the body is set to null. Open Wearables uses\nthe birth date for the user's age, for example in the body summary and for the maximum heart\nrate behind the intensity minutes of the activity summary.",
+        "operationId": "put_personal_record_api_v1_users__user_id__personal_record_put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalRecordUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalRecordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/connections": {
       "get": {
         "tags": [
@@ -1191,7 +1385,7 @@
           "External: Summaries"
         ],
         "summary": "Get Recovery Summary",
-        "description": "Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2).\n\n**Warning - known limitation:** this endpoint currently returns data **only for WHOOP**.\nMetrics are read from stored recovery-score records, which today are produced solely by\nWHOOP, so users connected only to other providers (e.g. Apple Health) receive an empty\nresult even when the underlying resting HR, HRV and SpO2 are available. This is a bug.\n\nThese values will soon be computed from the timeseries we already store in the database\nrather than from what a single provider reports, at which point recovery metrics will be\nreturned for all providers that supply the underlying data.",
+        "description": "Returns daily recovery metrics (resting HR, HRV, SpO2, main sleep, recovery score).\n\nOne row per day from the highest-priority source, for every provider that supplies the\nunderlying data. The recovery score is set only where a recovery-score record exists.",
         "operationId": "get_recovery_summary_api_v1_users__user_id__summaries_recovery_get",
         "security": [
           {
@@ -1839,14 +2033,42 @@
             }
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_range",
+                    "per_period",
+                    "reconcile"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. A week or month whose days different sources won has `source: null`. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page holds only as many periods as the server merges at once; a single period needing more is refused (400). Sources rank by provider, then device type priority. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. A week or month whose days different sources won has `source: null`. `reconcile` (`1day`, `1week` and `1month` only) merges steps, distance, active energy and the other movement series across sources per day, each moment counted once from the best-ranked source recording it, and reads other series as `per_period`; a merged value names no source. A page holds only as many periods as the server merges at once; a single period needing more is refused (400). Sources rank by provider, then device type priority. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Same as source_selection=per_range.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
-            }
+            },
+            "description": "Same as source_selection=per_range.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2083,6 +2305,28 @@
               ],
               "title": "Data Source Id"
             }
+          },
+          {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2350,6 +2594,28 @@
             }
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
+          },
+          {
             "name": "X-Open-Wearables-API-Key",
             "in": "header",
             "required": false,
@@ -2570,16 +2836,40 @@
             "description": "When true, return only naps; when false, only main sleep. Omit to return both."
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "description": "Same as source_selection=per_session.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
             },
-            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+            "description": "Same as source_selection=per_session.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2762,16 +3052,40 @@
             "description": "When true, return only naps; when false, only main sleep. Omit to return both."
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session when the sessions of one source ranked higher by provider, then device type priority, cover at least `SESSION_DUPLICATE_OVERLAP` of it (default 0.5); sessions nothing better covers stay, and equally ranked sources never hide each other. Source filters narrow which sessions compete. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "description": "Same as source_selection=per_session.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
             },
-            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+            "description": "Same as source_selection=per_session.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -3472,7 +3786,7 @@
           "External: Health Scores"
         ],
         "summary": "List Health Scores",
-        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.",
+        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.\n\nOne OW score (provider `internal`) per category and day, from the highest-priority source.\n\nScores computed by Open Wearables (`provider: internal`) are deprecated: no new ones are\ncomputed starting November 6, 2026. Previously computed scores are still returned.",
         "operationId": "list_health_scores_api_v1_users__user_id__health_scores_get",
         "security": [
           {
@@ -4321,21 +4635,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": true
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SyncResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SyncQueuedResponse"
+                    }
+                  ],
                   "title": "Response Sync User Data Api V1 Providers  Provider  Users  User Id  Sync Post"
                 }
               }
@@ -4428,7 +4735,7 @@
           "External: Data Sync"
         ],
         "summary": "Sync Historical Data",
-        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter may be ignored by\nproviders that enforce their own limits.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
+        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter is capped at the\nprovider's ``max_historical_days``.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
         "operationId": "sync_historical_data_api_v1_providers__provider__users__user_id__sync_historical_post",
         "security": [
           {
@@ -4462,13 +4769,13 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 365,
+              "maximum": 3650,
               "minimum": 1,
-              "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days).",
+              "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync.",
               "default": 90,
               "title": "Days"
             },
-            "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days)."
+            "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window scheduled for sync."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -6317,6 +6624,7 @@
                                     "HKQuantityTypeIdentifierRestingHeartRate",
                                     "RESTING_HEART_RATE",
                                     "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                                    "HKQuantityTypeIdentifierHeartRateVariabilityRMSSD",
                                     "HEART_RATE_VARIABILITY",
                                     "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute",
                                     "HKQuantityTypeIdentifierWalkingHeartRateAverage",
@@ -6756,7 +7064,6 @@
                                   "type": "number"
                                 },
                                 {
-                                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                                   "type": "string"
                                 }
                               ],
@@ -7581,6 +7888,12 @@
                                               "averageVerticalOscillation",
                                               "averageGroundContactTime",
                                               "vo2Max",
+                                              "averageCyclingPower",
+                                              "averageCyclingCadence",
+                                              "averageCyclingSpeed",
+                                              "meanPower",
+                                              "maxPower",
+                                              "meanRpm",
                                               "elevationAscended",
                                               "elevationDescended",
                                               "altitudeGain",
@@ -7637,6 +7950,132 @@
                               ],
                               "title": "Values"
                             },
+                            "route": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "description": "One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored.",
+                                    "properties": {
+                                      "timestamp": {
+                                        "anyOf": [
+                                          {
+                                            "format": "date-time",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Timestamp"
+                                      },
+                                      "latitude": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Latitude"
+                                      },
+                                      "longitude": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Longitude"
+                                      },
+                                      "altitudeM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Altitudem"
+                                      }
+                                    },
+                                    "title": "WorkoutRoutePoint",
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Route"
+                            },
+                            "samples": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "description": "One per-sample measurement recorded during a workout (heart rate, speed, cadence, power).",
+                                    "properties": {
+                                      "timestamp": {
+                                        "anyOf": [
+                                          {
+                                            "format": "date-time",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Timestamp"
+                                      },
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "value": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Value"
+                                      },
+                                      "unit": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Unit"
+                                      }
+                                    },
+                                    "title": "WorkoutSample",
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Samples"
+                            },
                             "segments": {
                               "anyOf": [
                                 {
@@ -7666,36 +8105,6 @@
                                 }
                               ],
                               "title": "Laps"
-                            },
-                            "route": {
-                              "anyOf": [
-                                {
-                                  "items": {
-                                    "additionalProperties": true,
-                                    "type": "object"
-                                  },
-                                  "type": "array"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ],
-                              "title": "Route"
-                            },
-                            "samples": {
-                              "anyOf": [
-                                {
-                                  "items": {
-                                    "additionalProperties": true,
-                                    "type": "object"
-                                  },
-                                  "type": "array"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ],
-                              "title": "Samples"
                             },
                             "metadata": {
                               "anyOf": [
@@ -7748,6 +8157,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UploadDataResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sdk/users/{user_id}/sync/status": {
+      "get": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Get Sdk Sync Status",
+        "description": "Where the user's SDK sync for one provider stands, as the server sees it.\n\nThe server is the source of truth for sync progress; the device's own state is only a\ncache. Call this after login, before starting a sync, to restore that state:\n\n- `historicalSyncCompleted: true` - the historical export finished; only live sync is\n  left, continuing from `syncedUntil`.\n- `historicalSyncCompleted: false` - the export has not finished. It runs newest first, so\n  each type in `dataTypes` with `historicalSyncCompleted: false` resumes backwards from its\n  `exportedRange.startDate`. Types not listed have no data on the server yet.\n- `historicalSyncCompleted: null` - no historical export on record: nothing synced yet, or\n  an SDK version that does not send `syncSessionId`, so the server cannot tell. The same\n  applies per type in `dataTypes`.\n- `syncedUntil: null` and empty `dataTypes` - nothing synced yet; start a full export.\n\nA user who has never synced gets that empty state with 200, not 404.",
+        "operationId": "get_sdk_sync_status_api_v1_sdk_users__user_id__sync_status_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "SDK provider slug, e.g. `apple`, `samsung`, `health_connect`.",
+              "title": "Provider"
+            },
+            "description": "SDK provider slug, e.g. `apple`, `samsung`, `health_connect`."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SDKSyncState"
                 }
               }
             }
@@ -9728,7 +10213,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Get data lifecycle settings",
-        "description": "Returns current archival/retention configuration and storage size estimates.",
+        "description": "Returns current rollup/retention configuration and storage size estimates.",
         "operationId": "get_archival_settings_api_v1_settings_archival_get",
         "responses": {
           "200": {
@@ -9753,7 +10238,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure archive_after_days (when live data is aggregated) and delete_after_days (when old data is permanently removed). Set to null to disable.",
+        "description": "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -9799,8 +10284,8 @@
         "tags": [
           "Internal: Data Lifecycle"
         ],
-        "summary": "Trigger archival job manually",
-        "description": "Dispatches the daily archival + retention job via Celery. Returns immediately with the task ID.",
+        "summary": "Trigger the data lifecycle job manually",
+        "description": "Dispatches the daily rollup + retention job via Celery. Returns immediately with the task ID.",
         "operationId": "trigger_archival_api_v1_settings_archival_run_post",
         "responses": {
           "202": {
@@ -11110,7 +11595,7 @@
               }
             ],
             "title": "Total Calories Kcal",
-            "description": "Active + basal energy",
+            "description": "Total energy burned: the provider's reported total when available, otherwise active + basal energy when both are reported; null otherwise",
             "example": 2150.0
           },
           "active_minutes": {
@@ -11411,17 +11896,17 @@
       },
       "ArchivalSettingRead": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live samples are aggregated into daily archive. NULL = archival disabled."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: activity and body summaries count them from the samples, day reads of sources without provider day values get no new days.",
+            "default": true
+          },
+          "history_rollup_enabled": {
+            "type": "boolean",
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too, once, in the background. Hours on a large instance; until it is done the summaries count those days from the samples.",
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [
@@ -11433,28 +11918,38 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before archived data is permanently removed. NULL = kept indefinitely."
+            "description": "Days before samples are deleted, rolled up first when rollup is on. NULL = kept indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingRead",
-        "description": "Response schema for archival settings."
+        "description": "Response schema for data lifecycle settings."
       },
       "ArchivalSettingUpdate": {
         "properties": {
-          "archive_after_days": {
+          "rollup_enabled": {
             "anyOf": [
               {
-                "type": "integer",
-                "maximum": 3650.0,
-                "minimum": 1.0
+                "type": "boolean"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Archive After Days",
-            "description": "Days before live data is archived. NULL to disable archival."
+            "title": "Rollup Enabled",
+            "description": "Roll samples up into daily and per-session aggregates. Left out or null: unchanged."
+          },
+          "history_rollup_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Rollup Enabled",
+            "description": "Roll the days before up too; switched on, it starts in the background. Needs rollup_enabled. Left out or null: unchanged."
           },
           "delete_after_days": {
             "anyOf": [
@@ -11468,12 +11963,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before data is permanently deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely; left out: unchanged."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating archival settings."
+        "description": "Request schema for updating data lifecycle settings: a field left out keeps its saved value."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -11482,12 +11977,16 @@
           },
           "storage": {
             "$ref": "#/components/schemas/StorageEstimate"
+          },
+          "history_rollup": {
+            "$ref": "#/components/schemas/HistoryRollupStatus"
           }
         },
         "type": "object",
         "required": [
           "settings",
-          "storage"
+          "storage",
+          "history_rollup"
         ],
         "title": "ArchivalSettingWithEstimate",
         "description": "Combined archival settings + storage estimates response."
@@ -12004,6 +12503,15 @@
         ],
         "title": "CompletedPart"
       },
+      "ComputedBy": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "open_wearables"
+        ],
+        "title": "ComputedBy",
+        "description": "Who computed an aggregate: the provider, or Open Wearables from stored samples."
+      },
       "ConfigResponse": {
         "properties": {
           "outgoing_webhooks_enabled": {
@@ -12128,6 +12636,28 @@
         ],
         "title": "CoverageResponse"
       },
+      "CoveredRange": {
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Startdate",
+            "description": "Earliest timestamp in the span."
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Enddate",
+            "description": "Latest timestamp in the span."
+          }
+        },
+        "type": "object",
+        "required": [
+          "startDate",
+          "endDate"
+        ],
+        "title": "CoveredRange"
+      },
       "DataGranularity": {
         "type": "string",
         "enum": [
@@ -12147,15 +12677,20 @@
           "archived": {
             "type": "integer",
             "title": "Archived"
+          },
+          "aggregated": {
+            "type": "integer",
+            "title": "Aggregated"
           }
         },
         "type": "object",
         "required": [
           "count",
-          "archived"
+          "archived",
+          "aggregated"
         ],
         "title": "DataPointsInfo",
-        "description": "Data points information.\n\n``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive\ntable. Both are approximate on a cold cache / from planner statistics."
+        "description": "Data points information.\n\n``count`` is the live (hot) ``series_sample`` table; ``aggregated`` the day and session rows the\nsamples are rolled up into; ``archived`` the legacy archive table until it is dropped. All are\napproximate on a cold cache / from planner statistics."
       },
       "DataSourceListResponse": {
         "properties": {
@@ -12259,6 +12794,17 @@
               }
             ],
             "title": "Original Source Name"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
           },
           "display_name": {
             "anyOf": [
@@ -12898,6 +13444,73 @@
         ],
         "title": "EventTypeResponse"
       },
+      "ExtensionInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "default": ""
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
+          },
+          "requires_core": {
+            "type": "string",
+            "title": "Requires Core",
+            "description": "PEP 440 specifier of the core versions it supports.",
+            "default": ""
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why an installed extension is not active."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "active"
+        ],
+        "title": "ExtensionInfo"
+      },
+      "ExtensionsResponse": {
+        "properties": {
+          "core_version": {
+            "type": "string",
+            "title": "Core Version"
+          },
+          "extensions": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionInfo"
+            },
+            "type": "array",
+            "title": "Extensions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "core_version",
+          "extensions"
+        ],
+        "title": "ExtensionsResponse"
+      },
       "HRZone": {
         "properties": {
           "zone": {
@@ -13127,6 +13740,17 @@
             ],
             "title": "Event Record Id",
             "description": "The sleep session or workout this score describes. Null for whole-day scores."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The data source the score was computed from or reported by. Null for scores without one."
           }
         },
         "type": "object",
@@ -13300,6 +13924,65 @@
         ],
         "title": "HistoricalDataTypeSyncEndEvent"
       },
+      "HistoryRollupStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "running",
+              "done"
+            ],
+            "title": "State"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rollup_recent",
+                  "rollup_all"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step",
+            "description": "The pass running"
+          },
+          "sources_done": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Done",
+            "description": "Data sources the running pass has finished"
+          },
+          "sources_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources Total",
+            "description": "Data sources the pass goes through"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "HistoryRollupStatus",
+        "description": "Where the history's rollup is. It goes through every data source twice, the last 30 days first."
+      },
       "IntensityMinutes": {
         "properties": {
           "light": {
@@ -13407,6 +14090,16 @@
               }
             ],
             "title": "Expires In"
+          },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "user_id": {
             "type": "string",
@@ -13680,6 +14373,13 @@
               900
             ]
           },
+          "date_range_months": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Date Range Months",
+            "default": 6
+          },
           "date_from": {
             "anyOf": [
               {
@@ -13691,7 +14391,7 @@
               }
             ],
             "title": "Date From",
-            "description": "Explicit start date. Defaults to a 6-month lookback."
+            "description": "Explicit start date. Overrides date_range_months."
           },
           "date_to": {
             "anyOf": [
@@ -13704,7 +14404,7 @@
               }
             ],
             "title": "Date To",
-            "description": "Explicit end date. Defaults to the last synced date."
+            "description": "Explicit end date. Overrides date_range_months."
           }
         },
         "type": "object",
@@ -14660,6 +15360,130 @@
         ],
         "title": "PasswordChange"
       },
+      "PasswordChangePrompt": {
+        "type": "string",
+        "enum": [
+          "required",
+          "recommended"
+        ],
+        "title": "PasswordChangePrompt",
+        "description": "How the portal should ask a developer who signed in with the default password to change it."
+      },
+      "PersonalRecordResponse": {
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date",
+            "description": "Birth date of the user"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male",
+                  "nonbinary",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender",
+            "description": "Optional self-reported gender"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex",
+            "description": "Biological sex, for norms that differ between women and men"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "PersonalRecordResponse"
+      },
+      "PersonalRecordUpdate": {
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date",
+            "description": "Birth date of the user"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male",
+                  "nonbinary",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender",
+            "description": "Optional self-reported gender"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex",
+            "description": "Biological sex, for norms that differ between women and men"
+          }
+        },
+        "type": "object",
+        "title": "PersonalRecordUpdate",
+        "description": "The whole record: a field left out is stored as null."
+      },
       "PowerZone": {
         "properties": {
           "zone": {
@@ -15013,6 +15837,12 @@
             "title": "Is Enabled",
             "description": "Whether provider is enabled by admin"
           },
+          "credentials_configured": {
+            "type": "boolean",
+            "title": "Credentials Configured",
+            "description": "Whether the OAuth client ID and secret are set. Always true for SDK-only providers.",
+            "default": true
+          },
           "icon_url": {
             "type": "string",
             "title": "Icon Url",
@@ -15155,7 +15985,7 @@
               }
             ],
             "title": "Avg Hrv Sdnn Ms",
-            "description": "Average HRV (SDNN). Currently always null: every record this endpoint returns today comes from WHOOP - a recovery-score record is required for a row to be returned, and only WHOOP produces one - and WHOOP reports HRV as RMSSD, which is exposed in avg_hrv_rmssd_ms. Once recovery metrics are computed from stored timeseries (and returned for all providers, not just WHOOP), this will carry SDNN for providers that report it (e.g. Apple Health)."
+            "description": "Average HRV (SDNN), for providers that report it (e.g. Apple Health)"
           },
           "avg_hrv_rmssd_ms": {
             "anyOf": [
@@ -15167,7 +15997,7 @@
               }
             ],
             "title": "Avg Hrv Rmssd Ms",
-            "description": "Average HRV (RMSSD)"
+            "description": "Average HRV (RMSSD), for providers that report it (e.g. WHOOP, Garmin, Oura)"
           },
           "avg_spo2_percent": {
             "anyOf": [
@@ -15224,10 +16054,73 @@
           "1min",
           "5min",
           "15min",
-          "1hour"
+          "1hour",
+          "1day",
+          "1week",
+          "1month"
         ],
         "title": "Resolution",
-        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched."
+        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched; day, week\nand month read the day aggregates instead of the samples."
+      },
+      "SDKDataTypeSyncState": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Canonical data type: a series type slug (e.g. `heart_rate`) or an event category (`sleep`, `workout`).",
+            "examples": [
+              "heart_rate"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DataTypeKind",
+            "description": "`series` for time series samples, `event` for sleep and workouts."
+          },
+          "historicalSyncCompleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historicalsynccompleted",
+            "description": "Whether a historical export finished this type. When false, resume it backwards from `exportedRange.startDate`. Null when no historical export reported this type, e.g. on SDK versions that do not send `syncSessionId`."
+          },
+          "lastSyncedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Lastsyncedat",
+            "description": "When data of this type was last written on the server. For data held before this was tracked, the time of its newest sample instead."
+          },
+          "coveredRange": {
+            "$ref": "#/components/schemas/CoveredRange",
+            "description": "Oldest and newest data held for this type from any sync. Gaps inside it are not shown, and retention moves its start forward, so it is no resume point."
+          },
+          "exportedRange": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoveredRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the latest historical export has sent of this type so far. The export runs newest first, so an unfinished type resumes backwards from `exportedRange.startDate`. Null when no export recorded a span, e.g. data synced before the server tracked it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "kind",
+          "historicalSyncCompleted",
+          "lastSyncedAt",
+          "coveredRange",
+          "exportedRange"
+        ],
+        "title": "SDKDataTypeSyncState",
+        "description": "What the server holds for one data type from this provider."
       },
       "SDKLogRequest": {
         "properties": {
@@ -15293,6 +16186,62 @@
         ],
         "title": "SDKLogRequest",
         "description": "Top-level request for SDK log events endpoint."
+      },
+      "SDKSyncState": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Canonical SDK provider slug.",
+            "examples": [
+              "apple"
+            ]
+          },
+          "historicalSyncCompleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Historicalsynccompleted",
+            "description": "Whether a historical export for this provider has finished every data type it covered. False when one exists but has not finished. Null when there is no historical export on record: nothing synced yet, or an SDK version that does not send `syncSessionId`."
+          },
+          "syncedUntil": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synceduntil",
+            "description": "Newest data held from this provider, across all types: where live sync continues from. Null when nothing has been synced yet.",
+            "examples": [
+              "2026-11-01T22:15:00Z"
+            ]
+          },
+          "dataTypes": {
+            "items": {
+              "$ref": "#/components/schemas/SDKDataTypeSyncState"
+            },
+            "type": "array",
+            "title": "Datatypes",
+            "description": "Data held per type from this provider. Empty when nothing has been synced yet."
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "historicalSyncCompleted",
+          "syncedUntil"
+        ],
+        "title": "SDKSyncState",
+        "description": "Where the server says a user's SDK sync for one provider stands.\n\nThe server is the source of truth: a device that lost its local state (e.g. after a\nlogout) reads this to know where to resume from."
       },
       "SDKTokenRequest": {
         "properties": {
@@ -15424,6 +16373,7 @@
                   150,
                   900
                 ],
+                "date_range_months": 6,
                 "meal_count": 50
               }
             }
@@ -15620,13 +16570,83 @@
               "calories_range": [
                 150,
                 900
-              ]
+              ],
+              "date_range_months": 6
             }
           }
         },
         "type": "object",
         "title": "SeedProfileConfig",
         "description": "Complete seed data generation configuration."
+      },
+      "SeriesStats": {
+        "properties": {
+          "avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "SeriesStats",
+        "description": "Every statistic held for a period. The sample's value is the one its series is read by."
       },
       "SeriesType": {
         "type": "string",
@@ -15635,7 +16655,7 @@
           "resting_heart_rate",
           "heart_rate_variability_sdnn",
           "heart_rate_recovery_one_minute",
-          "walking_heart_rate_average",
+          "walking_heart_rate",
           "heart_rate_variability_rmssd",
           "oxygen_saturation",
           "blood_glucose",
@@ -15673,8 +16693,8 @@
           "exercise_time",
           "physical_effort",
           "flights_climbed",
-          "average_met",
           "active_time",
+          "total_energy",
           "distance_walking_running",
           "distance_cycling",
           "distance_swimming",
@@ -15699,6 +16719,8 @@
           "cadence",
           "power",
           "speed",
+          "distance",
+          "elevation_gain",
           "workout_effort_score",
           "estimated_workout_effort_score",
           "environmental_audio_exposure",
@@ -15959,7 +16981,9 @@
           },
           "duration_seconds": {
             "type": "integer",
-            "title": "Duration Seconds"
+            "title": "Duration Seconds",
+            "description": "Time from start_time to end_time, awake time included; for a night merged from several sessions, the gaps between them too",
+            "example": 28800
           },
           "sleep_duration_seconds": {
             "anyOf": [
@@ -15970,7 +16994,9 @@
                 "type": "null"
               }
             ],
-            "title": "Sleep Duration Seconds"
+            "title": "Sleep Duration Seconds",
+            "description": "Time asleep, awake time excluded; whole minutes, so a multiple of 60",
+            "example": 25800
           },
           "time_in_bed_seconds": {
             "anyOf": [
@@ -15981,7 +17007,9 @@
                 "type": "null"
               }
             ],
-            "title": "Time In Bed Seconds"
+            "title": "Time In Bed Seconds",
+            "description": "Time in bed, awake time included; whole minutes, so a multiple of 60",
+            "example": 28200
           },
           "efficiency_percent": {
             "anyOf": [
@@ -16068,7 +17096,7 @@
               }
             ],
             "title": "Duration Minutes",
-            "description": "Session duration",
+            "description": "Main sleep: time asleep, awake time excluded; a session with no stored time asleep counts with its start-to-end time. Nap: start-to-end time, awake time included",
             "example": 420
           },
           "is_nap": {
@@ -16293,7 +17321,7 @@
               }
             ],
             "title": "Duration Minutes",
-            "description": "Total sleep duration excluding naps",
+            "description": "Time asleep in the day's main sleep, naps excluded; a session with no stored time asleep counts with its start-to-end time",
             "example": 450
           },
           "total_duration_minutes": {
@@ -16306,7 +17334,7 @@
               }
             ],
             "title": "Total Duration Minutes",
-            "description": "Total of all sleep + nap durations for the day",
+            "description": "duration_minutes plus nap_duration_minutes",
             "example": 480
           },
           "time_in_bed_minutes": {
@@ -16355,7 +17383,9 @@
                 "type": "null"
               }
             ],
-            "title": "Interruptions Count"
+            "title": "Interruptions Count",
+            "description": "Awakenings longer than 5 minutes within the main sleep (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)",
+            "example": 2
           },
           "nap_count": {
             "anyOf": [
@@ -16380,7 +17410,7 @@
               }
             ],
             "title": "Nap Duration Minutes",
-            "description": "Total nap duration",
+            "description": "Start-to-end time of the day's naps, awake time included",
             "example": 30
           },
           "sessions": {
@@ -16555,6 +17585,18 @@
             ],
             "example": "phone"
           },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "example": "R9ZW30ABC12"
+          },
           "device_name": {
             "anyOf": [
               {
@@ -16581,22 +17623,22 @@
           "live_data_bytes": {
             "type": "integer",
             "title": "Live Data Bytes",
-            "description": "Data size of data_point_series table (bytes)"
+            "description": "Data size of series_sample table (bytes)"
           },
           "live_index_bytes": {
             "type": "integer",
             "title": "Live Index Bytes",
-            "description": "Index size of data_point_series table (bytes)"
+            "description": "Index size of series_sample table (bytes)"
           },
-          "archive_data_bytes": {
+          "aggregate_data_bytes": {
             "type": "integer",
-            "title": "Archive Data Bytes",
-            "description": "Data size of archive table (bytes)"
+            "title": "Aggregate Data Bytes",
+            "description": "Data size of the aggregate tables and the legacy archive (bytes)"
           },
-          "archive_index_bytes": {
+          "aggregate_index_bytes": {
             "type": "integer",
-            "title": "Archive Index Bytes",
-            "description": "Index size of archive table (bytes)"
+            "title": "Aggregate Index Bytes",
+            "description": "Index size of the aggregate tables and the legacy archive (bytes)"
           },
           "other_tables_bytes": {
             "type": "integer",
@@ -16613,20 +17655,20 @@
             "title": "Live Row Count",
             "description": "Number of rows in live table"
           },
-          "archive_row_count": {
+          "aggregate_row_count": {
             "type": "integer",
-            "title": "Archive Row Count",
-            "description": "Number of rows in archive table"
+            "title": "Aggregate Row Count",
+            "description": "Number of rows in the aggregate tables and the legacy archive"
           },
           "avg_bytes_per_live_row": {
             "type": "number",
             "title": "Avg Bytes Per Live Row",
             "description": "Average bytes per live row (data+index)"
           },
-          "avg_bytes_per_archive_row": {
+          "avg_bytes_per_aggregate_row": {
             "type": "number",
-            "title": "Avg Bytes Per Archive Row",
-            "description": "Average bytes per archive row (data+index)"
+            "title": "Avg Bytes Per Aggregate Row",
+            "description": "Average bytes per aggregate row (data+index)"
           },
           "live_data_span_days": {
             "type": "integer",
@@ -16648,20 +17690,20 @@
             "title": "Live Index Pretty",
             "description": "Human-readable live index size"
           },
-          "archive_total_pretty": {
+          "aggregate_total_pretty": {
             "type": "string",
-            "title": "Archive Total Pretty",
-            "description": "Human-readable archive total size (data+indexes)"
+            "title": "Aggregate Total Pretty",
+            "description": "Human-readable aggregate total size (data+indexes)"
           },
-          "archive_data_pretty": {
+          "aggregate_data_pretty": {
             "type": "string",
-            "title": "Archive Data Pretty",
-            "description": "Human-readable archive data size"
+            "title": "Aggregate Data Pretty",
+            "description": "Human-readable aggregate data size"
           },
-          "archive_index_pretty": {
+          "aggregate_index_pretty": {
             "type": "string",
-            "title": "Archive Index Pretty",
-            "description": "Human-readable archive index size"
+            "title": "Aggregate Index Pretty",
+            "description": "Human-readable aggregate index size"
           },
           "other_tables_pretty": {
             "type": "string",
@@ -16683,27 +17725,173 @@
         "required": [
           "live_data_bytes",
           "live_index_bytes",
-          "archive_data_bytes",
-          "archive_index_bytes",
+          "aggregate_data_bytes",
+          "aggregate_index_bytes",
           "other_tables_bytes",
           "total_bytes",
           "live_row_count",
-          "archive_row_count",
+          "aggregate_row_count",
           "avg_bytes_per_live_row",
-          "avg_bytes_per_archive_row",
+          "avg_bytes_per_aggregate_row",
           "live_data_span_days",
           "live_total_pretty",
           "live_data_pretty",
           "live_index_pretty",
-          "archive_total_pretty",
-          "archive_data_pretty",
-          "archive_index_pretty",
+          "aggregate_total_pretty",
+          "aggregate_data_pretty",
+          "aggregate_index_pretty",
           "other_tables_pretty",
           "total_pretty",
           "growth_class"
         ],
         "title": "StorageEstimate",
         "description": "Storage sizes across all database tables."
+      },
+      "Sync247Summary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Set when the whole sync failed before any task ran"
+          },
+          "tasks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Sync247TaskSummary"
+            },
+            "type": "object",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "tasks"
+        ],
+        "title": "Sync247Summary",
+        "description": "A 24/7 sync: totals over its provider fetch tasks, and each task."
+      },
+      "Sync247TaskSummary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted",
+            "description": "New rows, when the write path reports the split"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated",
+            "description": "Rows refreshed in place, when the write path reports the split"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported",
+            "description": "Rows written, when only a total is known"
+          },
+          "items_skipped": {
+            "type": "integer",
+            "title": "Items Skipped",
+            "description": "Records deliberately not stored, such as duplicates"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "The fetch stopped early, so the window is incomplete"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "HTTP status (http_401) or error type of the first failure"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "items_skipped",
+          "truncated",
+          "error_code"
+        ],
+        "title": "Sync247TaskSummary",
+        "description": "One provider fetch task of a 24/7 sync. Counters mean what they do in sync.data_type events."
       },
       "SyncDataType": {
         "type": "string",
@@ -16714,6 +17902,81 @@
         ],
         "title": "SyncDataType",
         "description": "Types of data to sync from provider."
+      },
+      "SyncDetails": {
+        "properties": {
+          "workouts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workouts",
+            "description": "Workouts saved, when workouts were synced"
+          },
+          "data_247": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sync247Summary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SyncDetails"
+      },
+      "SyncQueuedResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "async": {
+            "type": "boolean",
+            "title": "Async"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "async",
+          "task_id",
+          "message"
+        ],
+        "title": "SyncQueuedResponse",
+        "description": "A sync queued to run in the background."
+      },
+      "SyncResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "details": {
+            "$ref": "#/components/schemas/SyncDetails"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "details"
+        ],
+        "title": "SyncResponse",
+        "description": "A synchronous sync's outcome."
       },
       "SyncRunDataTypeRecord": {
         "properties": {
@@ -17602,6 +18865,49 @@
               }
             ],
             "title": "Is Daily Total"
+          },
+          "window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Seconds"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "computed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComputedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -17814,6 +19120,16 @@
               }
             ],
             "title": "Expires In"
+          },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -19073,6 +20389,18 @@
               }
             ],
             "title": "Max Watts"
+          },
+          "average_met": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Met",
+            "description": "The workout's average metabolic equivalent (MET), from its physical_effort series."
           },
           "moving_time_seconds": {
             "anyOf": [

@@ -53,6 +53,12 @@ describe('sessionFromTokens', () => {
 			'rt-2'
 		);
 	});
+
+	it('carries the prompt to change a default password, and nothing otherwise', () => {
+		const prompted = sessionFromTokens(tokens({ password_change: 'required' }), DEVELOPER, NOW);
+		expect(prompted.passwordChange).toBe('required');
+		expect(sessionFromTokens(tokens(), DEVELOPER, NOW)).not.toHaveProperty('passwordChange');
+	});
 });
 
 describe('needsRefresh', () => {

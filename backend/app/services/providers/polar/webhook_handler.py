@@ -40,6 +40,7 @@ from celery import current_app as celery_app
 from fastapi import HTTPException, Request, status
 from pydantic import ValidationError
 
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession, SessionLocal
 from app.repositories import UserConnectionRepository
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
@@ -47,6 +48,7 @@ from app.schemas.enums import ProviderName
 from app.schemas.providers.polar import PolarWebhookEvent, PolarWebhookEventType
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import ReauthRequiredError
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -55,8 +57,6 @@ if TYPE_CHECKING:
     from app.services.providers.polar.workouts import PolarWorkouts
 
 logger = logging.getLogger(__name__)
-
-_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 
 class PolarWebhookHandler(BaseWebhookHandler):
@@ -131,7 +131,9 @@ class PolarWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="polar", payload=raw, trace_id=trace_id)
 
-        task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["polar", raw, trace_id], queue="webhook_sync")
+        task = celery_app.send_task(
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["polar", raw, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
+        )
         log_structured(
             logger,
             "info",
@@ -210,8 +212,6 @@ class PolarWebhookHandler(BaseWebhookHandler):
         path = urlparse(event.url).path
         user_id = connection.user_id
 
-        self.connection_repo.update_last_synced_at(db, connection)
-
         log_structured(
             logger,
             "info",
@@ -228,14 +228,18 @@ class PolarWebhookHandler(BaseWebhookHandler):
                 if not self.workouts:
                     return {"status": "error", "error": "workouts service not initialised"}
                 saved = self.workouts.fetch_and_save_exercise(db, user_id, path)
-                db.commit()
+                # Commits the saved data too, so a failure here can't log FAILED over saved data
+                self.connection_repo.update_last_synced_at(db, connection)
                 return {"status": "accepted", "user_id": str(user_id), "saved": {"exercises": saved}}
 
             if not self.data_247:
                 return {"status": "error", "error": "data_247 service not initialised"}
             saved = self.data_247.fetch_and_save_from_webhook(db, user_id, event.event, path)
-            db.commit()
+            self.connection_repo.update_last_synced_at(db, connection)
             return {"status": "accepted", "user_id": str(user_id), "saved": saved}
+        except ReauthRequiredError:
+            db.rollback()
+            raise
         except Exception as exc:
             db.rollback()
             log_and_capture_error(

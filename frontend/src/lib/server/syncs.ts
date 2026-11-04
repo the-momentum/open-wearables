@@ -25,9 +25,9 @@ const PARAM: Record<keyof RunFilters, string> = {
 };
 
 /**
- * Every user's runs from the last 24 hours. The endpoint scans every buffer
- * whatever the limit, so one window is kept briefly and paged through here.
- * Filters go to the backend: it applies them before cutting to the limit.
+ * Every user's runs from the last 24 hours, at most the newest `SYNC_INDEX_LIMIT`.
+ * One window is kept briefly and paged through here. Filters go to the backend:
+ * it applies them before cutting to the limit.
  */
 export async function fetchRunWindow(filters: RunFilters, accessToken: string): Promise<RunWindow> {
 	const hit = recall<RunWindow>(windowKey(filters));

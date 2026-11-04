@@ -17,11 +17,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
 from app.config import settings
+from app.extensions import mount_routers
 from app.integrations.celery import create_celery
 from app.integrations.otel import init_otel, shutdown_otel
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_access_log_middleware, add_cors_middleware, add_endpoint_usage_middleware
 from app.services import raw_payload_storage
+from app.services.api_key_service import API_KEY_REQUIRED
 from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
@@ -75,16 +77,17 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     await asyncio.to_thread(shutdown_otel)
 
 
-# FastAPI >= 0.142 turns on its own OpenTelemetry by default (request traces, metrics,
-# exception logs, OTLP exporters from OTEL_* variables). Keep it off: our OTel setup is explicit.
+# FastAPI >= 0.142 records its own OpenTelemetry request traces, metrics and exception logs by
+# default, and sets up OTLP exporters when FASTAPI_OTEL_AUTO_CONFIGURE=true (>= 0.143; always in
+# 0.142). Keep it off: our OTel setup is explicit.
 api = FastAPI(
     title=settings.api_name,
     version=version("open-wearables"),
     lifespan=_lifespan,
     telemetry={"auto_configure": False, "tracing": False, "metrics": False, "logs": False},
 )
-celery_app = create_celery()
 init_sentry()
+celery_app = create_celery()
 raw_payload_storage.configure(
     settings.raw_payload_storage,
     settings.raw_payload_max_size_bytes,
@@ -156,3 +159,4 @@ async def http_exception_handler_with_body_log(request: Request, exc: StarletteH
 
 
 api.include_router(head_router)
+mount_routers(api, settings.api_v1, API_KEY_REQUIRED)

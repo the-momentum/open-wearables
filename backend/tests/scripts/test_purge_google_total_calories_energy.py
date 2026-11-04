@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, SeriesTypeDefinition
+from app.models import DataPointSeriesArchive, DataSource, SeriesSample, SeriesTypeDefinition
 from app.schemas.enums import SeriesType
 from app.schemas.enums.aggregation_method import AggregationMethod
 from app.schemas.enums.provider import ProviderName
@@ -83,8 +83,8 @@ def _archive_row(db: Session, source: DataSource, *, type_id: int, day: int) -> 
     db.flush()
 
 
-def _live_rows(db: Session, source: DataSource) -> list[DataPointSeries]:
-    return db.query(DataPointSeries).filter(DataPointSeries.data_source_id == source.id).all()
+def _live_rows(db: Session, source: DataSource) -> list[SeriesSample]:
+    return db.query(SeriesSample).filter(SeriesSample.data_source_id == source.id).all()
 
 
 def _archive_count(db: Session, source: DataSource) -> int:

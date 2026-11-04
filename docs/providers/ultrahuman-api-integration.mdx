@@ -27,6 +27,7 @@ Ultrahuman provides access to sleep, recovery, and continuous activity data thro
 | Heart rate (24/7) | Yes |
 | HRV - RMSSD (24/7) | Yes |
 | Skin temperature (24/7) | Yes |
+| Skin temperature deviation | Yes - `temperature_deviation`, the night's deviation from baseline |
 | Steps (24/7) | Yes |
 | VO2 max | Yes |
 | Resting heart rate | Yes - `sleep_rhr`, the ring's overnight average, one value per day |
@@ -158,8 +159,12 @@ ULTRAHUMAN_DEFAULT_SCOPE=ring_data cgm_data profile
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 
-    # Fetch timeseries data (HR, HRV, temperature, steps, VO2 max)
+    # Fetch intraday samples (HR, HRV, temperature, steps)
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch day values (VO2 max, resting HR, exercise time)
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z&resolution=1day" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 

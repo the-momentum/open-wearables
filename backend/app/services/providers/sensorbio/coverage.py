@@ -23,18 +23,20 @@ RECOVERY_SERIES: dict[str, SeriesType] = {
     "spo2_percentage": SeriesType.oxygen_saturation,
 }
 
-# Daily totals from /v1/step/details (handler key → SeriesType).
+# Daily totals (handler key → SeriesType): steps/distance from /v1/step/details,
+# energy (Total − Resting) and basal_energy (Resting) from /v1/calorie/details.
 DAILY_ACTIVITY_SERIES: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "energy": SeriesType.active_energy,
     "distance": SeriesType.distance_walking_running,
+    "basal_energy": SeriesType.basal_energy,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *ACTIVITY_SAMPLE_SERIES.values(),  # /v1/biometrics
         *RECOVERY_SERIES.values(),  # /v1/scores biometric averages
-        *DAILY_ACTIVITY_SERIES.values(),  # /v1/step/details
+        *DAILY_ACTIVITY_SERIES.values(),  # /v1/step/details + /v1/calorie/details
     }
 )
 

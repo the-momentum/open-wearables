@@ -11,12 +11,16 @@ Tests cover:
 - DELETE /api/v1/developers/{developer_id} - delete developer
 """
 
+from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import DEFAULT_ADMIN_PASSWORD, settings
 from app.schemas.model_crud.user_management import DeveloperUpdate
 from app.services import developer_service
+from app.utils.config_utils import EnvironmentType
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -108,6 +112,57 @@ class TestLogin:
 
         # Assert
         assert response.status_code == 401
+
+    def test_login_with_own_password_needs_no_change(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Arrange
+        DeveloperFactory(email="test@example.com", password="test123")
+
+        # Act
+        response = client.post(
+            f"{api_v1_prefix}/auth/login",
+            data={"username": "test@example.com", "password": "test123"},
+        )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["password_change"] is None
+
+    def test_login_with_default_password_recommends_a_change_outside_production(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        # Arrange
+        DeveloperFactory(email="admin@admin.com", password=DEFAULT_ADMIN_PASSWORD)
+
+        # Act
+        with patch.object(settings, "environment", EnvironmentType.LOCAL):
+            response = client.post(
+                f"{api_v1_prefix}/auth/login",
+                data={"username": "admin@admin.com", "password": DEFAULT_ADMIN_PASSWORD},
+            )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["password_change"] == "recommended"
+
+    @pytest.mark.parametrize("email", ["admin@admin.com", "nobody@example.com"])
+    def test_login_with_default_password_is_refused_in_production(
+        self, client: TestClient, db: Session, api_v1_prefix: str, email: str
+    ) -> None:
+        """No session at all, and the same answer whether or not the account exists."""
+        # Arrange
+        DeveloperFactory(email="admin@admin.com", password=DEFAULT_ADMIN_PASSWORD)
+
+        # Act
+        with patch.object(settings, "environment", EnvironmentType.PRODUCTION):
+            response = client.post(
+                f"{api_v1_prefix}/auth/login",
+                data={"username": email, "password": DEFAULT_ADMIN_PASSWORD},
+            )
+
+        # Assert
+        assert response.status_code == 403
+        assert "ADMIN_PASSWORD" in response.json()["detail"]
+        assert "access_token" not in response.json()
 
 
 class TestLogout:
