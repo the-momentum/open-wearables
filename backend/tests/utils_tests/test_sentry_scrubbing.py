@@ -221,16 +221,17 @@ def test_app_errors_do_not_go_through_the_logging_integration(captured: list[dic
     assert capture_event.call_count == 1
 
 
-def test_log_level_filters_reports_of_exceptions_but_not_alerts(
-    captured: list[dict[str, Any]], app_log_level: Any
-) -> None:
+def test_log_level_does_not_silence_reports(captured: list[dict[str, Any]], app_log_level: Any) -> None:
+    """Quieter logs must not hide errors from Sentry."""
     app_log_level(LogLevel.CRITICAL)
-    app_logger.error("Sync failed", exc_info=_raised(ValueError("filtered")))
+    app_logger.error("Sync failed", exc_info=_raised(ValueError("filtered")), provider="garmin")
     app_logger.error("Storage disabled", alert=True)
-    app_logger.warning("Fetch failed", alert=True)
     sentry_sdk.flush()
 
-    assert [event["message"] for event in captured] == ["Storage disabled", "Fetch failed"]
+    exception_event, message_event = captured
+    assert exception_event["exception"]["values"][-1]["type"] == "ValueError"
+    assert exception_event["tags"] | {"logger": None} == {"logger": None, "provider": "garmin"}
+    assert message_event["message"] == "Storage disabled"
 
 
 def test_alert_reports_lines_without_an_exception_or_below_error(captured: list[dict[str, Any]]) -> None:
