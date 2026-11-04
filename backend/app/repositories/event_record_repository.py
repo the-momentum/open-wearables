@@ -726,19 +726,14 @@ class EventRecordRepository(
         query_params: EventRecordQueryParams,
         ranking: SourceRanking,
     ) -> Query:
-        """Ids of the sessions (of ``query_params.category``) no better-ranked source also recorded.
-
-        A session is dropped when the sessions of one source ranked strictly higher by provider, then device type,
-        cover at least ``settings.session_duplicate_overlap`` of it, summed: a night that source split in two still
-        covers a copy recorded whole. Sessions nothing better covers stay, so a nap only the phone caught or a long
-        ride around a watch's short warm-up are kept, and equally ranked sources never hide each other.
-
-        Everything of the category overlapping the requested window competes, whatever the other filters, so a
-        better copy starting just before the window or labelled another type still counts. Returned unexecuted
-        so callers inline it as ``id IN (...)`` and keep pagination in one statement.
-        """
+        """Unexecuted ids of the sessions no better-ranked source of the requested ones covers by the overlap share."""
         provider_rank, device_rank, _ = ranking.order_terms()
-        filters = [DataSource.user_id == UUID(user_id), EventRecord.category == query_params.category]
+        # Not narrowed by type: a better copy labelled another type still counts.
+        filters = [
+            DataSource.user_id == UUID(user_id),
+            EventRecord.category == query_params.category,
+            *source_filter_conditions(query_params, EventRecord.data_source_id),
+        ]
         if query_params.start_datetime:
             filters.append(EventRecord.end_datetime > query_params.start_datetime)
         if query_params.end_datetime:
@@ -756,8 +751,7 @@ class EventRecordRepository(
             .where(*filters)
             .cte("sessions")
         )
-        # One row per day a session touches: overlapping sessions share a day, so pairs come from a hash join on it
-        # rather than from comparing every two sessions. Only the pairing is per day; each pair counts once.
+        # Pairs come from a hash join on shared days instead of comparing every two sessions.
         days = select(
             sessions.c.id,
             func.generate_series(
