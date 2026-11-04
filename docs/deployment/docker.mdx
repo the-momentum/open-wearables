@@ -157,7 +157,7 @@ The defaults in `.env.example` are development values. Override at least these f
 |----------|--------|
 | `ENVIRONMENT` | `production` (required on any server reachable from the internet: other values accept the default admin password) |
 | `DB_PASSWORD` | a strong database password |
-| `SECRET_KEY` | a long random secret, used to sign tokens |
+| `SECRET_KEY` | a random secret of at least 32 characters, used to sign tokens, e.g. the output of `openssl rand -hex 32` (required: the backend does not start while it is empty, shorter, or the old default from `.env.example`) |
 | `ADMIN_PASSWORD` | password for the admin account seeded on first start (required: with `ENVIRONMENT=production` the seed and the login refuse the default; if the account whose email matches `ADMIN_EMAIL` still has the default, its password is changed to this value at startup) |
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |

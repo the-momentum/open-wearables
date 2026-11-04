@@ -20,11 +20,28 @@ from app.utils.config_utils import (
     FernetDecryptorField,
     LogFormat,
     LogLevel,
+    derive_secret,
     parse_duration,
 )
 
 # Public in .env.example and the docs, so an account still using it is open to anyone.
 DEFAULT_ADMIN_PASSWORD = "your-secure-password"
+
+# Secret values that .env.example or the docs have ever shipped. Whoever reads them can forge
+# what the secret protects, so startup refuses them. scripts/init_env.sh replaces the same values.
+PUBLISHED_SECRET_VALUES: dict[str, frozenset[str]] = {
+    "secret_key": frozenset({"secret-key-str"}),
+}
+
+# SECRET_KEY signs every JWT with HS256, so its length is all that stands against brute force.
+MIN_SECRET_KEY_LENGTH = 32
+
+# Earlier defaults of STRAVA_WEBHOOK_VERIFY_TOKEN. They are public, so they count as unset and
+# the token is derived instead. Strava checks it only when a subscription is created, so a new
+# value leaves existing subscriptions working.
+PUBLISHED_STRAVA_WEBHOOK_VERIFY_TOKENS = frozenset(
+    {"open-wearables-strava-verify", "your-strava-webhook-verify-token", "your-secret-verify-token"}
+)
 
 
 class Settings(BaseSettings):
@@ -32,6 +49,8 @@ class Settings(BaseSettings):
         env_file=str(Path(__file__).parent.parent / "config" / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        # A rejected SECRET_KEY must not end up in the startup traceback and the container logs.
+        hide_input_in_errors=True,
         # default env_file solution search .env every time BaseSettings is instantiated
         # dotenv search .env when module is imported, without usecwd it starts from the file it was called
     )
@@ -88,7 +107,9 @@ class Settings(BaseSettings):
     GIT_SHA: str | None = None
 
     # AUTH SETTINGS
-    secret_key: str
+    # Empty by default so a missing SECRET_KEY gets the length check's message, which says how
+    # to generate one, instead of a bare "Field required".
+    secret_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     token_lifetime: int = 3600
@@ -416,8 +437,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def derive_strava_webhook_verify_token(self) -> "Settings":
-        if self.strava_webhook_verify_token is None or self.strava_webhook_verify_token.get_secret_value() == "":
-            self.strava_webhook_verify_token = SecretStr(self.secret_key)
+        # Strava receives this token, so it is derived from SECRET_KEY rather than a copy of it.
+        token = self.strava_webhook_verify_token
+        if token is not None and token.get_secret_value() in PUBLISHED_STRAVA_WEBHOOK_VERIFY_TOKENS:
+            # A subscription created by hand with this value would now fail verification.
+            warnings.warn(
+                "Ignoring STRAVA_WEBHOOK_VERIFY_TOKEN: it is an earlier published default. "
+                "Using a token derived from SECRET_KEY; remove the line or set your own random value.",
+                stacklevel=2,
+            )
+            token = None
+        if token is None or token.get_secret_value() == "":
+            self.strava_webhook_verify_token = SecretStr(derive_secret(self.secret_key, "strava-webhook-verify-token"))
         return self
 
     @model_validator(mode="after")
@@ -434,6 +465,29 @@ class Settings(BaseSettings):
         if self.google_webhook_secret is None or self.google_webhook_secret.get_secret_value() == "":
             self.google_webhook_secret = SecretStr(self.secret_key)
         return self
+
+    @field_validator(*PUBLISHED_SECRET_VALUES, mode="after")
+    @classmethod
+    def reject_published_secret(cls, v: str | SecretStr | None, info: ValidationInfo) -> str | SecretStr | None:
+        field = str(info.field_name)  # always set in a field validator
+        value = v.get_secret_value() if isinstance(v, SecretStr) else v
+        if value in PUBLISHED_SECRET_VALUES[field]:
+            raise ValueError(
+                f"{field.upper()} is set to a value published in .env.example or the docs, "
+                "so anyone can use it. Run `make init` to generate a new one, "
+                "or set your own with `openssl rand -hex 32`."
+            )
+        return v
+
+    @field_validator("secret_key", mode="after")
+    @classmethod
+    def reject_short_secret_key(cls, v: str) -> str:
+        if len(v) < MIN_SECRET_KEY_LENGTH:
+            problem = "is not set" if not v else f"must be at least {MIN_SECRET_KEY_LENGTH} characters"
+            raise ValueError(
+                f"SECRET_KEY {problem}. Run `make init` to generate one, or set it with `openssl rand -hex 32`."
+            )
+        return v
 
     @field_validator("cors_origins", mode="after")
     @classmethod

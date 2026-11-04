@@ -63,8 +63,8 @@ cd backend
 # Create virtual environment and install dependencies
 uv sync
 
-# Copy environment file
-cp config/.env.example config/.env
+# Create the .env files and generate their secrets
+make -C .. init
 
 # Run database migrations
 uv run alembic upgrade head
@@ -81,8 +81,7 @@ cd frontend
 # Install dependencies
 bun install
 
-# Copy environment file (VITE_API_URL)
-cp .env.example .env
+# .env (VITE_API_URL) was created by `make init` in the backend setup above
 
 # Start development server on http://localhost:3000
 bun run dev
@@ -90,10 +89,12 @@ bun run dev
 
 ## Environment Variables
 
-Copy the example environment files and configure as needed:
+`make init` creates the environment files from their examples and generates `SECRET_KEY`. It keeps a `SECRET_KEY` the backend accepts, so it is safe to run again:
 
 - Backend: `backend/config/.env.example` -> `backend/config/.env`
 - Frontend: `frontend/.env.example` -> `frontend/.env`
+
+The backend does not start while `SECRET_KEY` is empty, shorter than 32 characters, or the old default from `.env.example`.
 
 ## Development Patterns
 

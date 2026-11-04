@@ -27,7 +27,8 @@ repos:
         pass_filenames: false
       - id: export-openapi
         name: export openapi spec to docs/openapi.json
-        entry: sh -c 'cd backend && uv run python scripts/export_openapi.py'
+        # The export needs no real SECRET_KEY, so an outdated local .env must not block a commit.
+        entry: sh -c 'cd backend && SECRET_KEY=openapi-export-placeholder-not-a-real-secret uv run python scripts/export_openapi.py'
         language: system
         files: ^backend/app/.*\.py$
         pass_filenames: false

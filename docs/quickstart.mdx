@@ -27,24 +27,23 @@ Get Open Wearables running locally and start integrating wearable device data.
     ```
   </Accordion>
   <Accordion icon="gear" title="Configure environment variables">
-    Create environment files for both backend and frontend:
-    
-    **Backend configuration:**
+    Create environment files for both backend and frontend and generate their secrets:
+
     ```bash
-    cp ./backend/config/.env.example ./backend/config/.env
+    make init
     ```
-    
+
+    This copies `./backend/config/.env.example` and `./frontend/.env.example` to `.env` files and generates `SECRET_KEY`. Running it again keeps a `SECRET_KEY` the backend accepts. Without `make`, copy both files yourself and set `SECRET_KEY` to the output of `openssl rand -hex 32`: the backend does not start while `SECRET_KEY` is empty, shorter than 32 characters, or the old default from `.env.example`.
+
+    **Backend configuration:**
+
     Edit `./backend/config/.env` with your configuration. You'll need to set up:
     - Database credentials
     - Redis/Celery broker settings
     - OAuth credentials for wearable providers (Garmin, Fitbit, etc.)
-    - Secret keys for authentication
     
     **Frontend configuration:**
-    ```bash
-    cp ./frontend/.env.example ./frontend/.env
-    ```
-    
+
     Edit `./frontend/.env` with your frontend configuration:
     - `VITE_API_URL` - Backend API URL (default: `http://localhost:8000`)
     
