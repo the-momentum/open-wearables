@@ -147,6 +147,27 @@ echo 'Running relayed host model cleanup...'
 uv run python scripts/data_migrations/clear_relayed_host_models.py \
     || echo "Warning: relayed host model cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Sets duration and time in bed of stored Sensor Bio sleep sessions to the start-to-end window.
+# Idempotent, no-op without Sensor Bio data.
+echo 'Running Sensor Bio sleep window backfill...'
+uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
+    || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Types Google Health sleep rows saved without 'sleep_session', so a re-fetched night updates
+# its details instead of sending sleep.created again. Idempotent, no-op without Google data.
+echo 'Running Google sleep type backfill...'
+uv run python scripts/data_migrations/backfill_google_sleep_type.py \
+    || echo "Warning: Google sleep type backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Raises each Garmin body battery score to the highest sample of its day; scores kept the peak of
+# the day's first stressDetails push. Runs once per instance (data_migration).
+echo 'Running Garmin body battery peak backfill...'
+uv run python scripts/data_migrations/raise_garmin_body_battery_peaks.py \
+    || echo "Warning: Garmin body battery peak backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
