@@ -140,6 +140,27 @@ class TestIntegrityErrors:
         assert line["error_cause_msg"] == "constraint user_external_user_id_key"
         assert "taken" not in str(line)
 
+    def test_a_unique_violation_reaching_the_handler_alerts(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Services check what a client can collide with first, so this is a race or a missing check."""
+        developer = DeveloperFactory()
+        user = UserFactory(external_user_id="mine")
+        UserFactory(external_user_id="taken")
+
+        def write_a_duplicate(*_args: object, **_kwargs: object) -> None:
+            user.external_user_id = "taken"
+            db.flush()
+
+        with (
+            patch("app.api.routes.v1.users.user_service.delete", side_effect=write_a_duplicate),
+            patch("app.main.logger") as logger,
+        ):
+            client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
+
+        kwargs = logger.warning.call_args.kwargs
+        assert (kwargs["alert"], kwargs["constraint"]) == (True, "user_external_user_id_key")
+
     def test_raw_psycopg_violation_is_mapped_too(self, client: TestClient, api_v1_prefix: str) -> None:
         """Writes on the raw psycopg connection (COPY) raise psycopg's error, not SQLAlchemy's."""
         developer = DeveloperFactory()
