@@ -68,7 +68,7 @@ class TestBackfillPolarSleepEfficiency:
         assert _efficiency(db, night) == Decimal("93.75")
         assert _efficiency(db, other) is None
 
-    def test_leaves_nights_it_cannot_derive_alone(self, db: Session) -> None:
+    def test_leaves_reported_and_underivable_nights_alone(self, db: Session) -> None:
         reported = _night(efficiency=Decimal("88.00"))
         without_stages = _night(asleep_minutes=None)
         more_than_the_window = _night(asleep_minutes=9 * 60)

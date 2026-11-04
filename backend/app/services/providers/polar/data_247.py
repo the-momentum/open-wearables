@@ -265,10 +265,11 @@ class Polar247Data(Base247DataTemplate):
             deep_s = parsed.deep_sleep
             rem_s = parsed.rem_sleep
             asleep_s = sum_optional(light_s, deep_s, rem_s)
-            # Polar reports no efficiency, so it's derived like Garmin's: time asleep over time in bed
+            # Polar reports no efficiency, so it's derived like Garmin's: time asleep over time in bed.
+            # More sleep than the night lasted is no efficiency, and the sleep summary rejects one above 100
             efficiency_score = (
                 Decimal(str(asleep_s / duration_seconds * 100))
-                if asleep_s is not None and duration_seconds > 0
+                if asleep_s is not None and duration_seconds > 0 and asleep_s <= duration_seconds
                 else None
             )
             sleep_stages = self._parse_hypnogram(parsed.hypnogram, start_dt, end_dt) if parsed.hypnogram else None

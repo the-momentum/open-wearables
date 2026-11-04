@@ -34,7 +34,7 @@ export function stageLanes(
 	intervals: StageInterval[],
 	describe: (span: StageInterval, seconds: number) => string
 ): StageLane[] {
-	// A night stored twice holds each interval twice, and the chart keys a span by its start
+	// A night stored twice holds each interval twice; one copy is enough to draw
 	const uniqueIntervals = [
 		...new Map(
 			intervals.map((interval) => [

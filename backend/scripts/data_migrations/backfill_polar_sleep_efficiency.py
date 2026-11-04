@@ -28,22 +28,27 @@ from app.schemas.enums import ProviderName
 from app.services.data_migration_service import data_migration_service
 
 _NIGHTS = """
-    sd.record_id = er.id
-    AND ds.id = er.data_source_id
-    AND ds.provider = :provider
+    ds.provider = :provider
     AND er.category = 'sleep'
     AND sd.sleep_efficiency_score IS NULL
     AND sd.sleep_total_duration_minutes IS NOT NULL
     AND er.duration_seconds > 0
-    -- More sleep than the window is no efficiency, and would overflow the column
+    -- More sleep than the night lasted is no efficiency, and the sleep summary rejects one above 100
     AND sd.sleep_total_duration_minutes * 60 <= er.duration_seconds
 """
-_COUNT = text(f"SELECT count(*) FROM sleep_details sd, event_record er, data_source ds WHERE {_NIGHTS}")
+_COUNT = text(f"""
+    SELECT count(*)
+    FROM sleep_details sd
+    JOIN event_record er ON er.id = sd.record_id
+    JOIN data_source ds ON ds.id = er.data_source_id
+    WHERE {_NIGHTS}
+""")
 _UPDATE = text(f"""
     UPDATE sleep_details sd
-    SET sleep_efficiency_score = round(sd.sleep_total_duration_minutes * 6000.0 / er.duration_seconds, 2)
-    FROM event_record er, data_source ds
-    WHERE {_NIGHTS}
+    SET sleep_efficiency_score = round(sd.sleep_total_duration_minutes * 60 * 100.0 / er.duration_seconds, 2)
+    FROM event_record er
+    JOIN data_source ds ON ds.id = er.data_source_id
+    WHERE sd.record_id = er.id AND {_NIGHTS}
 """)
 
 

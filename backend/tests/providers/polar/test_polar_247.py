@@ -125,6 +125,15 @@ class TestPolar247SleepNormalization:
 
         assert detail.sleep_efficiency_score is None
 
+    def test_no_sleep_efficiency_when_the_stages_outlast_the_night(
+        self, data_247: Polar247Data, sample_sleep: dict
+    ) -> None:
+        sample_sleep["light_sleep"] = 8 * 3600
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score is None
+
     def test_sleep_score(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         user_id = uuid4()
         _, _, score, _ = data_247.normalize_sleep([sample_sleep], user_id)[0]
