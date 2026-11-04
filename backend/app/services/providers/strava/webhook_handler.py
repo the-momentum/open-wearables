@@ -6,15 +6,23 @@ GET /activities/{id}.
 
 Authenticity
 ------------
+  Strava calls ``/api/v1/providers/strava/webhooks/{STRAVA_WEBHOOK_TOKEN}``, the
+  URL registered by StravaWebhookService. The random token in the path is the
+  only credential: only Strava learns it, at subscription time.
+  ``BaseWebhookHandler.authenticate_callback`` checks it on every event and on the
+  subscription handshake, and rejects everything while the token is unset.
+
   X-Strava-Signature can't be verified (Strava doesn't expose its signing key), so only its
   timestamp is checked, against replays. A delete or a deauthorization is confirmed in the
-  Strava API with the athlete's token before anything is removed.
+  Strava API with the athlete's token before anything is removed, so a leaked callback URL
+  cannot delete data or revoke a connection.
 
 Challenge verification
 -----------------------
   On subscription creation, Strava GETs the callback URL with:
     hub.mode=subscribe, hub.challenge=<random>, hub.verify_token=<our token>
-  We verify the token and echo back {"hub.challenge": <value>}.
+  We verify the token and echo back {"hub.challenge": <value>}. This proves to
+  Strava that we own the URL; it does not authenticate later events.
 
 Delivery model
 --------------
@@ -37,7 +45,7 @@ from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
 from fastapi import Request
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
@@ -66,6 +74,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Strava notify-only events."""
 
     user_id_field = "owner_id"
+    requires_callback_token = True
 
     def __init__(self, workouts: StravaWorkouts) -> None:
         super().__init__("strava")
@@ -75,6 +84,9 @@ class StravaWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
     # BaseWebhookHandler interface
     # ------------------------------------------------------------------
+
+    def callback_token(self) -> SecretStr | None:
+        return settings.strava_webhook_token
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
         """Check the X-Strava-Signature timestamp only; its HMAC can't be verified (see the module docstring)."""

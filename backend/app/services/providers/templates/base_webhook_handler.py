@@ -38,12 +38,14 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from fastapi import Request
+from pydantic import SecretStr
 
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories import UserConnectionRepository
-from app.utils.exceptions import WebhookVerificationError
+from app.utils.exceptions import NotFoundError, WebhookVerificationError
 from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import CALLBACK_TOKEN_PARAM, callback_token_matches, redact_callback_url
 
 logger = get_logger(__name__)
 
@@ -69,11 +71,18 @@ class BaseWebhookHandler(ABC):
       unified router answers 501.
     * ``handle`` – the full pipeline orchestrator; override only when the
       standard *verify → parse → dispatch* sequence is insufficient.
+    * ``requires_callback_token`` and ``callback_token`` – for providers whose
+      requests cannot be authenticated otherwise, a random secret in the
+      callback path (see ``app.utils.webhook_callback``).
     """
 
     #: Top-level webhook-payload key holding the provider-side user id.
     #: Override extract_user_id() instead when it isn't a flat field (e.g. Garmin).
     user_id_field: str | None = None
+
+    #: Every request must come to ``/webhooks/{callback_token}``. Set it together
+    #: with ``callback_token()``; the requests are rejected while that returns ``None``.
+    requires_callback_token: bool = False
 
     def __init__(self, provider_name: str) -> None:
         self.provider_name = provider_name
@@ -88,6 +97,46 @@ class BaseWebhookHandler(ABC):
     def find_connection(self, db: DbSession, provider_user_id: str) -> UserConnection | None:
         """Resolve the active connection for an id returned by ``extract_user_id``."""
         return UserConnectionRepository().get_by_provider_user_id(db, self.provider_name, provider_user_id)
+
+    # ------------------------------------------------------------------
+    # Callback path secret
+    # ------------------------------------------------------------------
+
+    def callback_token(self) -> SecretStr | None:
+        """Secret expected in the callback path, ``None`` while it is not configured."""
+        return None
+
+    def authenticate_callback(self, request: Request) -> None:
+        """Check the callback token in the request path, before any other handling.
+
+        Called by the unified router before ``handle()``, ``handle_challenge`` and
+        ``handle_probe``, so it covers every request the provider sends there, even
+        when a provider overrides ``handle()`` and answers early. ``handle()`` calls
+        it as well, for the deprecated routes that call ``handle()`` directly.
+
+        Raises:
+            ``WebhookVerificationError`` (401) when the provider requires a token and
+            the path carries no token or a wrong one.
+            ``NotFoundError`` (404) when the path carries a token the provider does
+            not use.
+        """
+        provided = request.path_params.get(CALLBACK_TOKEN_PARAM)
+        if not self.requires_callback_token:
+            if provided is not None:
+                raise NotFoundError("Not Found")
+            return
+        expected = self.callback_token()
+        if callback_token_matches(expected, provided):
+            return
+        logger.warning(
+            "Webhook callback token rejected",
+            provider=self.provider_name,
+            action="webhook_callback_token_rejected",
+            token_present=provided is not None,
+            token_configured=bool(expected and expected.get_secret_value()),
+            client_host=request.client.host if request.client else None,
+        )
+        raise WebhookVerificationError("Invalid webhook callback token")
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -196,7 +245,8 @@ class BaseWebhookHandler(ABC):
     def handle(self, request: Request, body: bytes, db: DbSession) -> dict[str, Any]:
         """Orchestrate the full webhook handling pipeline.
 
-        Executes: ``verify_signature`` → ``parse_payload`` → ``dispatch``.
+        Executes: ``authenticate_callback`` → ``verify_signature`` →
+        ``parse_payload`` → ``dispatch``.
 
         Override this only when the standard sequence is insufficient (e.g.
         when Garmin mixes PING and PUSH in the same endpoint and the routing
@@ -211,14 +261,15 @@ class BaseWebhookHandler(ABC):
             Result ``dict`` from ``dispatch()``.
 
         Raises:
-            ``WebhookVerificationError`` (401) if ``verify_signature`` returns ``False``.
+            ``WebhookVerificationError`` (401) if the callback token or ``verify_signature`` fails.
             ``InvalidInputError`` (400) if ``parse_payload`` raises a validation error.
         """
+        self.authenticate_callback(request)
         if not self.verify_signature(request, body):
             logger.warning(
                 "Webhook signature verification failed",
                 provider=self.provider_name,
-                path=request.url.path,
+                path=redact_callback_url(request.url.path),
                 client_host=request.client.host if request.client else None,
             )
             raise WebhookVerificationError("Invalid webhook signature")

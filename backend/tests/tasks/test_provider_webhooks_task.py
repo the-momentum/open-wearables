@@ -11,8 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import app.integrations.celery.tasks.provider_webhooks_task as task
+from app.config import settings
 from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.incoming_webhooks import WebhookOperationResult, WebhookSubscriptionStatus
+from app.services.providers.strava.webhook_service import StravaWebhookService
 
 
 def _deleted(subscription_id: str) -> WebhookOperationResult:
@@ -74,3 +76,11 @@ def test_provider_without_webhook_service_is_reported_not_retried(strategy: Magi
     result = _run("apple", LiveSyncMode.PULL, strategy)
 
     assert result["errors"] == 1
+
+
+def test_strava_without_a_callback_token_fails_instead_of_skipping(strategy: MagicMock) -> None:
+    """Strava in webhook mode is not polled, so a missing token must fail loudly, not pass as a skip."""
+    strategy.webhook_service = StravaWebhookService()
+
+    with patch.object(settings, "strava_webhook_token", None), pytest.raises(RuntimeError, match="failed for 1 of 1"):
+        _run("strava", LiveSyncMode.WEBHOOK, strategy)

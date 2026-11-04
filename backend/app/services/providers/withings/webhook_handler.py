@@ -1,7 +1,6 @@
 """Authenticate Withings notifications, acknowledge them, and defer ingestion to Celery."""
 
 from datetime import datetime, timedelta
-from secrets import compare_digest
 from typing import Any, assert_never
 from urllib.parse import parse_qs
 from uuid import UUID, uuid4
@@ -27,6 +26,7 @@ from app.services.providers.withings.workouts import WithingsWorkouts
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.exceptions import WebhookVerificationError
 from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import callback_token_matches
 
 logger = get_logger(__name__)
 
@@ -58,12 +58,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
 
     @staticmethod
     def _has_valid_callback_token(request: Request) -> bool:
-        expected = settings.withings_webhook_token
-        actual = request.query_params.get("token")
-        if expected is None or not actual:
-            return False
-        # compare_digest raises TypeError on non-ASCII str; the token is caller-supplied.
-        return compare_digest(actual.encode("utf-8"), expected.get_secret_value().encode("utf-8"))
+        return callback_token_matches(settings.withings_webhook_token, request.query_params.get("token"))
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
         """Verify the callback token and require a userid-bearing notify body."""

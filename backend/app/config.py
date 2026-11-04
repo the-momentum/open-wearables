@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import warnings
 from datetime import timedelta
 from functools import lru_cache
@@ -29,6 +30,9 @@ DEFAULT_ADMIN_PASSWORD = "your-secure-password"
 
 # SECRET_KEY signs every JWT (HS256); the old .env.example default is shorter, so it fails too
 MIN_SECRET_KEY_LENGTH = 32
+_CALLBACK_TOKEN = re.compile(r"[A-Za-z0-9_-]+")
+# The token is the only credential, and a wrong guess costs nothing but a 401.
+_CALLBACK_TOKEN_MIN_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -242,6 +246,8 @@ class Settings(BaseSettings):
     strava_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     strava_default_scope: str = "activity:read_all,profile:read_all"
     strava_webhook_verify_token: SecretStr | None = None
+    # Random secret in the webhook callback path; Strava webhooks are rejected while unset.
+    strava_webhook_token: SecretStr | None = None
     strava_webhook_signature_tolerance_seconds: int = Field(300, ge=0)
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
@@ -430,6 +436,19 @@ class Settings(BaseSettings):
         if self.strava_webhook_verify_token is None or self.strava_webhook_verify_token.get_secret_value() == "":
             self.strava_webhook_verify_token = SecretStr(derive_secret(self.secret_key, "strava-webhook-verify-token"))
         return self
+
+    @field_validator("strava_webhook_token", mode="after")
+    @classmethod
+    def check_webhook_callback_token(cls, v: SecretStr | None) -> SecretStr | None:
+        """A callback token is one unguessable URL path segment, so it must not need escaping."""
+        token = v.get_secret_value() if v is not None else ""
+        if not token:
+            return v
+        if not _CALLBACK_TOKEN.fullmatch(token):
+            raise ValueError("webhook callback token may contain only letters, digits, '-' and '_'")
+        if len(token) < _CALLBACK_TOKEN_MIN_LENGTH:
+            raise ValueError(f"webhook callback token must be at least {_CALLBACK_TOKEN_MIN_LENGTH} characters long")
+        return v
 
     @model_validator(mode="after")
     def derive_oura_webhook_verification_token(self) -> "Settings":

@@ -108,6 +108,14 @@ class TestAccessLogMiddleware:
         assert f"{key}=REDACTED" in path
         assert "appli=1" in path
 
+    def test_webhook_callback_token_is_redacted(self) -> None:
+        # The secret path segment is the only credential of an unsigned Strava event.
+        client = _build_client(AccessLogLevel.ALL)
+        with patch("app.middlewares.logger.log") as mock:
+            client.post("/api/v1/providers/strava/webhooks/s3cret?hub.verify_token=v3rify")
+        path = mock.call_args_list[0].kwargs["path"]
+        assert path == "/api/v1/providers/strava/webhooks/redacted?hub.verify_token=REDACTED"
+
     def test_sdk_attribution_headers_are_logged(self) -> None:
         client = _build_client(AccessLogLevel.ALL)
         with patch("app.middlewares.logger.log") as mock:
