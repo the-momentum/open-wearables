@@ -124,10 +124,9 @@ class Settings(BaseSettings):
     # picked up. Disabled by default. Set via a compact duration string: "2d", "20h",
     # "90m", "1d12h". Capped per provider by max_historical_days.
     pull_sync_lookback: timedelta | None = None
-    # Grace-period flag: auto-dispatch historical sync after OAuth connect (default: true).
-    # Pre-0.4.2 behaviour. Set to false once your integration calls /sync/historical explicitly.
-    # Will default to false in a future release.
-    historical_sync_on_connect: bool = True
+    # Opt-in: run the same historical sync as POST /sync/historical (default range) after every
+    # OAuth connect. Off by default - integrations call /sync/historical themselves.
+    historical_sync_on_connect: bool = False
 
     # Per-request timeout for provider API calls (connect/read/write/pool alike).
     provider_request_timeout_seconds: float = Field(30.0, gt=0, le=300)

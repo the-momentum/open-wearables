@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.config import Settings
 from app.utils.exceptions import UnsupportedProviderError
 from tests.factories import DeveloperFactory, UserConnectionFactory
 from tests.utils import developer_auth_headers
@@ -483,6 +484,9 @@ class TestOAuthCallbackHistoricalSync:
         assert self._callback(client, strategy, flag=False) == 303
 
         strategy.start_historical_sync.assert_not_called()
+
+    def test_flag_is_off_by_default(self) -> None:
+        assert Settings.model_fields["historical_sync_on_connect"].default is False
 
     def test_unsupported_provider_still_connects(self, client: TestClient, db: Session) -> None:
         strategy = self._strategy(uuid4())
