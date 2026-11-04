@@ -1,10 +1,9 @@
 from datetime import datetime
-from logging import getLogger
 from typing import Any
 
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def build_sync_params(start_date: str | None, end_date: str | None) -> dict[str, Any]:
@@ -18,11 +17,12 @@ def build_sync_params(start_date: str | None, end_date: str | None) -> dict[str,
             try:
                 datetime.fromisoformat(value.replace("Z", "+00:00"))
             except (ValueError, AttributeError) as e:
-                log_structured(
-                    logger,
-                    "warning",
-                    f"Invalid {label} format: {value}, error: {e}",
+                logger.warning(
+                    "Invalid date format",
                     task="build_sync_params",
+                    param=label,
+                    value=value,
+                    error=str(e),
                 )
 
     return {"start_date": start_date, "end_date": end_date}

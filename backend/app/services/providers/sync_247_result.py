@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -10,8 +9,10 @@ from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.responses.upload import Sync247Summary, Sync247TaskSummary
 from app.schemas.sync_status import SyncStatus
 from app.services.sync_status_service import run_status_from
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import AppError, ProviderError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class SwallowedWriteError(Exception):
@@ -19,10 +20,12 @@ class SwallowedWriteError(Exception):
 
 
 def error_code_of(error: BaseException) -> str:
-    """A short, value-free label for an error: the HTTP status when it has one, else its type.
-
-    The exception text is left out: a database error carries the rows it failed on.
-    """
+    """A short, value-free, stable label for an error: the provider's HTTP status when it has one (``http_404``),
+    else a domain error's ``code`` (``reauth_required``). Never the text: a database error carries its rows."""
+    if isinstance(error, ProviderError) and error.upstream_status is not None:
+        return f"http_{error.upstream_status}"
+    if isinstance(error, AppError):
+        return error.code.lower()
     status_code = getattr(error, "status_code", None) or getattr(getattr(error, "response", None), "status_code", None)
     return f"http_{status_code}" if isinstance(status_code, int) else type(error).__name__
 
@@ -210,7 +213,6 @@ class Sync247Run:
         provider: str,
         db: DbSession,
         user_id: UUID,
-        logger: logging.Logger,
         *,
         task: str = "load_and_save_all",
         fatal: tuple[type[BaseException], ...] = (),
@@ -218,7 +220,6 @@ class Sync247Run:
         self.result = Sync247Result(provider=provider)
         self.db = db
         self.user_id = user_id
-        self.logger = logger
         self.task = task
         self.fatal = fatal
 
@@ -282,26 +283,22 @@ class Sync247Run:
     def fail(self, data_type: str, error: Exception, *, capture: bool = False) -> None:
         """Record and log a failure outside a ``step`` — e.g. a shared fetch feeding several types."""
         self.result.fail(data_type, error)
-        # The error's text stays out: a database error carries the rows it failed on.
-        message = "Failed to sync data type"
-        extra = {
-            "provider": self.result.provider,
-            "task": self.task,
-            "data_type": data_type,
-            "user_id": str(self.user_id),
-            "error_code": error_code_of(error),
-        }
-        if capture:
-            log_and_capture_error(error, self.logger, message, extra=extra)
-        else:
-            log_structured(self.logger, "error", message, **extra)
+        # The error's text stays out: a database error carries the rows it failed on. With capture the logger
+        # reports it, except a provider's answer about the user's state (a lost grant, a throttle), logged as a warning.
+        logger.error(
+            "Failed to sync data type",
+            exc_info=error if capture else None,
+            provider=self.result.provider,
+            task=self.task,
+            data_type=data_type,
+            user_id=str(self.user_id),
+            error_code=error_code_of(error),
+        )
 
     def log_summary(self, **extra: Any) -> None:
         """Emit one structured line summarizing the run."""
-        log_structured(
-            self.logger,
-            "info",
-            f"{self.result.provider} 24/7 sync complete",
+        logger.info(
+            "24/7 sync complete",
             provider=self.result.provider,
             task=self.task,
             user_id=str(self.user_id),

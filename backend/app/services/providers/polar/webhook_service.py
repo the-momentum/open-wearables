@@ -16,7 +16,6 @@ Webhook auto-deactivates after 7 days of failed delivery. Use activate() to
 re-enable it (Polar will ping the URL again before activating).
 """
 
-from logging import getLogger
 from typing import Any
 
 import httpx
@@ -35,9 +34,9 @@ from app.schemas.responses.incoming_webhooks import (
     WebhookSubscriptionStatus,
 )
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 _POLAR_API_URL = "https://www.polaraccesslink.com"
 
@@ -68,9 +67,7 @@ class PolarWebhookService(BaseWebhookService):
                 try:
                     return PolarWebhookSubscription.model_validate(webhooks[0])
                 except ValidationError as ve:
-                    log_structured(
-                        logger,
-                        "error",
+                    logger.error(
                         "Failed to parse Polar webhook response",
                         provider="polar",
                         action="polar_webhook_parse_error",
@@ -78,9 +75,7 @@ class PolarWebhookService(BaseWebhookService):
                     )
                     return None
         except httpx.HTTPError as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Failed to fetch Polar webhook",
                 provider="polar",
                 action="polar_webhook_get_error",
@@ -111,9 +106,7 @@ class PolarWebhookService(BaseWebhookService):
             subscription_id = existing.id
 
             if existing_url == callback_url:
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Polar webhook already registered",
                     provider="polar",
                     action="polar_webhook_skipped",
@@ -155,9 +148,7 @@ class PolarWebhookService(BaseWebhookService):
                 )
                 resp.raise_for_status()
         except httpx.HTTPError as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Failed to delete Polar webhook",
                 provider="polar",
                 action="polar_webhook_delete_error",
@@ -170,9 +161,7 @@ class PolarWebhookService(BaseWebhookService):
                 status=WebhookSubscriptionStatus.ERROR,
                 error=str(e),
             )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Polar webhook deleted",
             provider="polar",
             action="polar_webhook_deleted",
@@ -193,9 +182,7 @@ class PolarWebhookService(BaseWebhookService):
                 )
                 resp.raise_for_status()
         except httpx.HTTPError as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Failed to patch Polar webhook URL",
                 provider="polar",
                 action="polar_webhook_patch_error",
@@ -208,9 +195,7 @@ class PolarWebhookService(BaseWebhookService):
                 status=WebhookSubscriptionStatus.ERROR,
                 error=str(e),
             )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Patched Polar webhook URL",
             provider="polar",
             action="polar_webhook_patched",
@@ -227,9 +212,7 @@ class PolarWebhookService(BaseWebhookService):
                 timeout=30.0,
             )
             if resp.status_code == status.HTTP_409_CONFLICT:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Polar webhook already exists (409) — signature_secret_key not returned;"
                     " delete and recreate manually to obtain it",
                     provider="polar",
@@ -239,9 +222,7 @@ class PolarWebhookService(BaseWebhookService):
                 return {"status": "skipped", "reason": "already_exists"}
             resp.raise_for_status()
             result = resp.json().get("data", resp.json())
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Polar webhook created",
                 provider="polar",
                 action="polar_webhook_created",
@@ -257,7 +238,7 @@ class PolarWebhookService(BaseWebhookService):
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/activate", auth=auth, timeout=30.0)
             resp.raise_for_status()
-            log_structured(logger, "info", "Polar webhook activated", provider="polar")
+            logger.info("Polar webhook activated", provider="polar")
             return {"status": "activated"}
 
     async def deactivate(self) -> dict[str, Any]:
@@ -266,7 +247,7 @@ class PolarWebhookService(BaseWebhookService):
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/deactivate", auth=auth, timeout=30.0)
             resp.raise_for_status()
-            log_structured(logger, "info", "Polar webhook deactivated", provider="polar")
+            logger.info("Polar webhook deactivated", provider="polar")
             return {"status": "deactivated"}
 
     async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:

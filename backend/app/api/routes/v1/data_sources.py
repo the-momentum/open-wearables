@@ -1,6 +1,5 @@
 """API endpoints for user data sources."""
 
-from logging import getLogger
 from typing import Annotated
 from uuid import UUID
 
@@ -11,7 +10,7 @@ from app.schemas.model_crud.data_priority import DataSourceListResponse
 from app.services import ApiKeyDep, PriorityService
 
 router = APIRouter()
-priority_service = PriorityService(log=getLogger(__name__))
+priority_service = PriorityService()
 
 
 @router.get(
