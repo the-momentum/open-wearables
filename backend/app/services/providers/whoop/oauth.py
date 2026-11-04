@@ -1,5 +1,3 @@
-import logging
-
 import httpx
 
 from app.config import settings
@@ -13,9 +11,9 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WhoopOAuth(BaseOAuthTemplate):
@@ -58,9 +56,7 @@ class WhoopOAuth(BaseOAuthTemplate):
             provider_user_id = user_data.get("user_id")
             provider_user_id = str(provider_user_id) if provider_user_id is not None else None
 
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Fetched Whoop user profile",
                 provider="whoop",
                 task="get_provider_user_info",
@@ -68,13 +64,12 @@ class WhoopOAuth(BaseOAuthTemplate):
             )
             return {"user_id": provider_user_id, "username": None}
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
-                f"Failed to fetch Whoop user profile: {e}",
+            logger.error(
+                "Failed to fetch Whoop user profile",
                 provider="whoop",
                 task="get_provider_user_info",
                 user_id=user_id,
+                error=str(e),
             )
             return {"user_id": None, "username": None}
 

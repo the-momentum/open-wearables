@@ -1,6 +1,5 @@
 import contextlib
 from datetime import datetime, timezone
-from logging import getLogger
 from typing import cast
 
 from celery import shared_task
@@ -14,9 +13,9 @@ from app.services.sdk.sleep_service import (
     is_ready_to_finish,
     load_sleep_states,
 )
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(name=CeleryTask.FINALIZE_STALE_SLEEPS)
@@ -44,9 +43,4 @@ def finalize_stale_sleeps() -> None:
                         lock.release()
 
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Error finalizing stale sleep for user {user_id}: {e}",
-                    extra={"user_id": user_id},
-                )
+                logger.error("Error finalizing stale sleep", exc_info=e, user_id=user_id)
