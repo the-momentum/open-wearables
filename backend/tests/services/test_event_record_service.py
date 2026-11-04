@@ -1279,12 +1279,13 @@ class TestCreateOrMergeSleep:
         assert coverage is not None
         return coverage.coverage_end
 
-    def test_a_re_sent_session_moves_its_providers_sleep_coverage(self, db: Session) -> None:
-        """A night corrected from 08:00 to 07:00, then extended to 09:00: the sleep coverage follows it."""
+    def test_a_re_sent_session_widens_its_providers_sleep_coverage(self, db: Session) -> None:
+        """A night extended to 09:00 widens the coverage; corrected to 07:00 it does not narrow it, as that recount
+        takes the global coverage lock (the provider did sync at 08:00 all the same)."""
         data_source = DataSourceFactory(provider=ProviderName.OURA, source="oura")
 
         assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(8)) == self._dt(8)
-        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(7)) == self._dt(7)
+        assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(7)) == self._dt(8)
         assert self._sleep_coverage_end_after_sending(db, data_source, self._dt(9)) == self._dt(9)
 
 

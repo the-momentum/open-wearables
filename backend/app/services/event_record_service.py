@@ -227,18 +227,13 @@ class EventRecordService(
         """Return the local calendar date of a sleep session start."""
         return cls._to_local(start_datetime, zone_offset).date()
 
-    def _move_sleep_coverage(
-        self, db_session: DbSession, session: EventRecord, old_start: datetime, old_end: datetime
-    ) -> None:
-        """Move the provider's sleep coverage with a session re-sent over another window."""
+    def _widen_sleep_coverage(self, db_session: DbSession, session: EventRecord) -> None:
+        """Widen the provider's sleep coverage to a session re-sent over a longer window.
+
+        A shorter one is not narrowed here: that recount takes the global coverage lock, too much for every webhook.
+        """
         data_source = self.data_source_repo.get(db_session, session.data_source_id)
         if data_source is None:
-            return
-        if session.start_datetime > old_start or session.end_datetime < old_end:
-            # A shorter window may narrow the coverage. Only a recount from the records can, and it takes a global lock.
-            data_type_coverage_repository.refresh_events(
-                db_session, [(data_source.user_id, data_source.provider, EventCategory.SLEEP.value)]
-            )
             return
         span = CoverageSpan(
             data_source.user_id,
@@ -455,7 +450,7 @@ class EventRecordService(
                         setattr(adjacent, field, new_val)
                 adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
                 db_session.flush()
-                self._move_sleep_coverage(db_session, adjacent, old_start, old_end)
+                self._widen_sleep_coverage(db_session, adjacent)
                 # Its session rows are rolled up over the window it has now, on the days it left and joined.
                 mark_dirty_days(
                     db_session,
