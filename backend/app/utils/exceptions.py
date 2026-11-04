@@ -33,9 +33,32 @@ class ResourceAlreadyExistsError(Exception):
         super().__init__(detail)
 
 
+# Error code a dead grant is reported under, in sync logs and per-notification results
+REAUTH_REQUIRED = "reauth_required"
+
+
+class ReauthRequiredError(HTTPException):
+    """The stored grant can no longer produce an access token; the user has to reconnect."""
+
+    def __init__(self, provider: str, user_id: UUID, detail: str):
+        self.provider = provider
+        self.user_id = user_id
+        super().__init__(status_code=401, detail=detail)
+
+
 class InvalidCursorError(Exception):
     def __init__(self, cursor: str):
         self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
+
+
+class ReconcileWindowTooLargeError(Exception):
+    """A source_selection=reconcile page would merge more days on the fly than the server allows."""
+
+    code = "reconcile_too_many_days"
+
+    def __init__(self, days: int, max_days: int, queued: bool):
+        self.days, self.max_days, self.queued = days, max_days, queued
+        super().__init__(f"{days} days to merge on the fly, at most {max_days}")
 
 
 class DatetimeParseError(ValueError):
@@ -70,6 +93,23 @@ def _(exc: ResourceAlreadyExistsError, _: str) -> HTTPException:
 @handle_exception.register
 def _(exc: InvalidCursorError, _: str) -> HTTPException:
     return HTTPException(status_code=400, detail=exc.detail)
+
+
+@handle_exception.register
+def _(exc: ReconcileWindowTooLargeError, _: str) -> HTTPException:
+    # Structured, so a client can lower its page size by the numbers rather than parse a sentence.
+    return HTTPException(
+        status_code=400,
+        detail={
+            "code": exc.code,
+            "message": "source_selection=reconcile would merge more days on the fly than allowed for one page; "
+            "lower `limit` or narrow the range.",
+            "days": exc.days,
+            "max_days": exc.max_days,
+            # Queued to be stored by the rollup; not a promise of when, as its budget decides.
+            "queued": exc.queued,
+        },
+    )
 
 
 @handle_exception.register

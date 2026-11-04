@@ -2,11 +2,18 @@ from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import HealthScore
+from app.models import DataSource, HealthScore
 from app.repositories import HealthScoreRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory
-from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
+from app.schemas.model_crud.activities import (
+    HealthScoreCreate,
+    HealthScoreQueryParams,
+    HealthScoreResponse,
+    HealthScoreUpdate,
+)
+from app.schemas.utils.metadata import SourceMetadata
+from app.services.priority_service import priority_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
@@ -32,6 +39,10 @@ class HealthScoreService(
         return self.crud.bulk_create(db_session, scores)
 
     @handle_exceptions
+    def bulk_create_keeping_highest(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
+        return self.crud.bulk_create_keeping_highest(db_session, scores)
+
+    @handle_exceptions
     def get_latest_by_category(
         self,
         db_session: DbSession,
@@ -54,8 +65,32 @@ class HealthScoreService(
         db_session: DbSession,
         user_id: UUID,
         params: HealthScoreQueryParams,
-    ) -> tuple[list[HealthScore], int]:
-        return self.crud.get_with_filters(db_session, user_id, params)
+    ) -> tuple[list[HealthScoreResponse], int]:
+        """Scores with their source, one OW score per category and day."""
+        rows, total_count = self.crud.get_with_filters(
+            db_session,
+            user_id,
+            params,
+            priority_service.get_source_ranking(db_session),
+        )
+        return [self._to_response(score, data_source) for score, data_source in rows], total_count
+
+    @staticmethod
+    def _to_response(score: HealthScore, data_source: DataSource | None) -> HealthScoreResponse:
+        response = HealthScoreResponse.model_validate(score)
+        if data_source is None:
+            return response
+        return response.model_copy(
+            update={
+                "source": SourceMetadata(
+                    provider=data_source.provider,
+                    source=data_source.source,
+                    device=data_source.device_model,
+                    device_type=data_source.device_type,
+                    device_id=data_source.device_id,
+                )
+            }
+        )
 
 
 health_score_service = HealthScoreService(log=getLogger(__name__))

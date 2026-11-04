@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import NamedTuple
 from uuid import UUID, uuid4
 
 from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select, update
@@ -7,7 +8,7 @@ from sqlalchemy.orm import InstrumentedAttribute, selectinload
 
 from app.database import DbSession
 from app.models import SyncRun, SyncRunDataType
-from app.schemas.sync_status import DataTypeOutcome, SyncRunWrite, SyncScope, SyncStatus
+from app.schemas.sync_status import DataTypeOutcome, SyncRunWrite, SyncScope, SyncSource, SyncStatus
 
 
 def _overlaps(
@@ -27,6 +28,15 @@ def _overlaps(
     if range_start is not None:
         conditions.append(end_column > range_start)
     return conditions
+
+
+class HistoricalTypeRow(NamedTuple):
+    run_id: UUID
+    run_started_at: datetime
+    data_type: str | None
+    status: SyncStatus | None
+    covered_start: datetime | None
+    covered_end: datetime | None
 
 
 class SyncRunRepository:
@@ -181,6 +191,46 @@ class SyncRunRepository:
     def get_with_data_types(self, db_session: DbSession, run_key: str) -> SyncRun | None:
         stmt = select(SyncRun).where(SyncRun.run_key == run_key).options(selectinload(SyncRun.data_types))
         return db_session.execute(stmt).scalar_one_or_none()
+
+    def record_window(self, db_session: DbSession, run_key: str, window_start: datetime, window_end: datetime) -> None:
+        stmt = (
+            update(SyncRun)
+            .where(SyncRun.run_key == run_key, SyncRun.window_end.is_(None))
+            .values(window_start=window_start, window_end=window_end)
+        )
+        db_session.execute(stmt)
+        db_session.commit()
+
+    def last_window_end(
+        self, db_session: DbSession, user_id: UUID, provider: str, source: SyncSource
+    ) -> datetime | None:
+        stmt = select(func.max(SyncRun.window_end)).where(
+            SyncRun.user_id == user_id, SyncRun.provider == provider, SyncRun.source == source
+        )
+        return db_session.execute(stmt).scalar()
+
+    def historical_data_type_statuses(
+        self, db_session: DbSession, user_id: UUID, provider: str, source: SyncSource
+    ) -> list[HistoricalTypeRow]:
+        """Every type row of this provider's historical runs, raw; a run with no rows yet comes back once with Nones."""
+        stmt = (
+            select(
+                SyncRun.id,
+                SyncRun.started_at,
+                SyncRunDataType.data_type,
+                SyncRunDataType.status,
+                SyncRunDataType.covered_start,
+                SyncRunDataType.covered_end,
+            )
+            .outerjoin(SyncRunDataType, SyncRunDataType.run_id == SyncRun.id)
+            .where(
+                SyncRun.user_id == user_id,
+                SyncRun.provider == provider,
+                SyncRun.source == source,
+                SyncRun.scope == SyncScope.HISTORICAL,
+            )
+        )
+        return [HistoricalTypeRow(*row) for row in db_session.execute(stmt).all()]
 
     def list_for_user(
         self,

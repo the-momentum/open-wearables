@@ -47,6 +47,7 @@ from app.services.providers.google_health.data_247 import (
 from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import REAUTH_REQUIRED, ReauthRequiredError
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -176,6 +177,9 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         for item in items:
             try:
                 results.append(self._process_one(db, item, trace_id))
+            except ReauthRequiredError as e:
+                # Already revoked: an expected state, not a failure for Sentry; the rest of the batch goes on
+                results.append({"status": "error", "error": REAUTH_REQUIRED, "user_id": str(e.user_id)})
             except Exception as e:
                 log_and_capture_error(
                     e,
@@ -246,8 +250,8 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "no_interval", "user_id": str(user_id)}
 
         start, end = window
-        self.connection_repo.update_last_synced_at(db, connection)
         count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+        self.connection_repo.update_last_synced_at(db, connection)
 
         log_structured(
             logger,

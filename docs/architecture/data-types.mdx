@@ -297,6 +297,14 @@ parameter to ask for both).
 Sleep sessions follow the same rule: `sleep_stage_intervals` is omitted unless you pass
 `?include=stages` on `/events/sleep`.
 
+A sleep stage's minutes (`deep_minutes`, `light_minutes`, `rem_minutes`, `awake_minutes`) are
+`null` when the source did not measure that stage, and `0` only when it measured it and found
+none. An iPhone without a watch, older Apple Watches and many third-party apps record only time
+asleep or in bed, so their nights carry no light/deep/rem breakdown. Nights from cloud providers
+stored before this behavior was introduced may still show `0` for stages the provider did not
+report. In the daily sleep summary
+(`/summaries/sleep`), `stages` itself is `null` when no stage is reported.
+
 ---
 
 ## Events, Summaries and Health Scores
@@ -336,6 +344,10 @@ A provider's day value is not a point in an intraday series: resting heart rate,
 VO2 max and a provider's daily totals exist only at `1day` and coarser, where `raw` and the minute
 and hour buckets return nothing for them. Values stored before this release reach `1day` through a
 backfill that runs after the upgrade, and stay in `raw` until it has.
+
+With `source_selection=reconcile`, a movement series' day that several devices recorded (steps, distance,
+active energy, ...) is merged into one value, each moment counted once from the best-ranked device; see
+[Reconciled days](/developer-portal/settings/data-lifecycle#reconciled-days) for how, with an example.
 
 ---
 

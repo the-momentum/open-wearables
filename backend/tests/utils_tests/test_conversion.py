@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
-from app.utils.conversion import base_to_dict, seconds_to_minutes
+from app.utils.conversion import base_to_dict, seconds_to_minutes, sum_optional
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -450,3 +450,17 @@ class TestBaseToDictIntegration:
 )
 def test_seconds_to_minutes(seconds: tuple[int | None, ...], expected: int | None) -> None:
     assert seconds_to_minutes(*seconds) == expected
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        ((), None),
+        ((None, None), None),
+        ((0,), 0),
+        ((None, 0), 0),
+        ((30, None, 15), 45),
+    ],
+)
+def test_sum_optional(values: tuple[int | None, ...], expected: int | None) -> None:
+    assert sum_optional(*values) == expected
