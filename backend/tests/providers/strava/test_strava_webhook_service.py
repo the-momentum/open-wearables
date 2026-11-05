@@ -49,6 +49,24 @@ async def test_registers_the_token_url_whatever_the_caller_passes(strava: MagicM
     assert sent["callback_url"] == f"https://api.example.com/api/v1/providers/strava/webhooks/{TOKEN}"
 
 
+async def test_the_create_response_does_not_return_the_token(strava: MagicMock) -> None:
+    strava.post.return_value = _response(
+        {"id": 382915, "callback_url": f"https://api.example.com/api/v1/providers/strava/webhooks/{TOKEN}"}
+    )
+
+    result = await StravaWebhookService().register_subscriptions("")
+
+    assert result == [
+        {
+            "status": "created",
+            "response": {
+                "id": 382915,
+                "callback_url": "https://api.example.com/api/v1/providers/strava/webhooks/redacted",
+            },
+        }
+    ]
+
+
 async def test_a_rotated_token_replaces_the_subscription(strava: MagicMock) -> None:
     strava.get.return_value = _response(
         [{"id": 382914, "callback_url": "https://api.example.com/api/v1/providers/strava/webhooks/old-token"}]

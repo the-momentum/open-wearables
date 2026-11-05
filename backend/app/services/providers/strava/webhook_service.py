@@ -161,6 +161,9 @@ class StravaWebhookService(BaseWebhookService):
                     return [{"status": "skipped", "reason": "already_exists"}]
                 create_resp.raise_for_status()
                 result = create_resp.json()
+                # Strava answers {"id": ...} today; a callback_url it may add would carry the token.
+                if isinstance(result, dict) and isinstance(result.get("callback_url"), str):
+                    result["callback_url"] = redact_callback_url(result["callback_url"])
                 logger.info(
                     "Strava webhook subscription created",
                     provider="strava",
