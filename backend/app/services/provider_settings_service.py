@@ -9,7 +9,7 @@ from app.schemas.model_crud.data_priority import (
 )
 from app.services.providers.base_strategy import ProviderCapabilities
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import InvalidInputError, UnsupportedProviderError
+from app.utils.exceptions import ConfigurationError, InvalidInputError, UnsupportedProviderError
 
 _NON_PROVIDER_NAMES = {ProviderName.UNKNOWN, ProviderName.INTERNAL}
 
@@ -94,7 +94,7 @@ class ProviderSettingsService:
             if handler is not None and handler.requires_callback_token:
                 token = handler.callback_token()
                 if token is None or not token.get_secret_value():
-                    raise ValueError(
+                    raise ConfigurationError(
                         f"Provider '{provider}' needs a webhook callback token before switching to webhooks"
                     )
 

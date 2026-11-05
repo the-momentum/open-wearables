@@ -20,7 +20,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
-from app.utils.exceptions import InvalidInputError, UnsupportedProviderError
+from app.utils.exceptions import ConfigurationError, InvalidInputError, UnsupportedProviderError
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -412,7 +412,7 @@ class TestProviderSettingsServiceLiveSyncMode:
         with (
             patch.object(settings, "strava_webhook_token", token),
             patch("app.services.providers.base_strategy.celery_app.send_task") as send_task,
-            pytest.raises(ValueError, match="needs a webhook callback token"),
+            pytest.raises(ConfigurationError, match="needs a webhook callback token"),
         ):
             service.update_provider_setting(db, "strava", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK))
 
