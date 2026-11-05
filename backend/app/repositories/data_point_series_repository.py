@@ -1,4 +1,4 @@
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, LiteralString, NamedTuple, overload
@@ -240,6 +240,45 @@ class WorkoutWindow(NamedTuple):
     fallback_source_ids: tuple[UUID, ...] = ()
 
 
+class StoredWindow(NamedTuple):
+    """A sample's window, looked up among the stored samples of its type from its user's sources of one writer app."""
+
+    user_id: UUID
+    source_app_id: str | None
+    series_type_definition_id: int
+    start: datetime
+    end: datetime
+    external_id: str | None
+
+
+# One lookup per window, LATERAL so the (source, type, time) unique index bounds it: as a plain join the planner
+# keeps only the source in the index condition and filters the type and time afterwards. Through the writer app, not
+# the data source, so a sample filed under another device model of the same app still counts.
+_STORED_IN_WINDOWS = text("""
+    SELECT c.stored, c.total
+    FROM unnest(
+        CAST(:user_ids AS uuid[]),
+        CAST(:app_ids AS text[]),
+        CAST(:type_ids AS integer[]),
+        CAST(:starts AS timestamptz[]),
+        CAST(:ends AS timestamptz[]),
+        CAST(:external_ids AS text[])
+    ) WITH ORDINALITY AS w(user_id, source_app_id, type_id, start_at, end_at, external_id, pos)
+    CROSS JOIN LATERAL (
+        SELECT count(*) AS stored, coalesce(sum(s.value), 0) AS total
+        FROM data_source ds
+        JOIN series_sample s ON s.data_source_id = ds.id
+        WHERE ds.user_id = w.user_id
+          AND ds.source_app_id = w.source_app_id
+          AND s.series_type_definition_id = w.type_id
+          AND s.recorded_at >= w.start_at
+          AND s.recorded_at < w.end_at
+          AND (w.external_id IS NULL OR s.external_id IS DISTINCT FROM w.external_id)
+    ) c
+    ORDER BY w.pos
+""")
+
+
 class LatestValue(NamedTuple):
     """A series' latest reading and the source it came from."""
 
@@ -356,6 +395,29 @@ class DataPointSeriesRepository(
             ),
         )
         return counts
+
+    def stored_in_windows(self, db_session: DbSession, windows: Sequence[StoredWindow]) -> list[tuple[int, Decimal]]:
+        """Per window, in order, the number and the sum of the stored samples of its type recorded in [start, end).
+
+        The samples come from the user's data sources of the window's writer app, whatever device model they are
+        filed under. A sample with the window's own external_id doesn't count, so a re-sent sample doesn't cover
+        itself. A window without a source_app_id matches nothing, and the match is on the app id whatever the
+        provider (only HealthKit writes `com.apple.health.*` ids).
+        """
+        if not windows:
+            return []
+        rows = db_session.execute(
+            _STORED_IN_WINDOWS,
+            {
+                "user_ids": [window.user_id for window in windows],
+                "app_ids": [window.source_app_id for window in windows],
+                "type_ids": [window.series_type_definition_id for window in windows],
+                "starts": [window.start for window in windows],
+                "ends": [window.end for window in windows],
+                "external_ids": [window.external_id for window in windows],
+            },
+        ).all()
+        return [(row.stored, row.total) for row in rows]
 
     @staticmethod
     def _with_live_sessions(
