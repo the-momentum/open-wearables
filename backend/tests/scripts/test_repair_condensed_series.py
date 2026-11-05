@@ -4,14 +4,15 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
+from uuid import uuid4
 
-import pytest
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, SeriesSample, SeriesTypeDefinition, User
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
+from app.services.sdk.import_service import ImportService
 from tests.factories import DataPointSeriesFactory, DataSourceFactory, EventRecordFactory, UserFactory
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "data_migrations" / "repair_condensed_series.py"
@@ -28,7 +29,6 @@ def _load_module() -> ModuleType:
 
 _module = _load_module()
 repair_condensed_series = _module.repair_condensed_series
-_repair = _module._repair
 
 WATCH_APP = "com.apple.health.5C1B9A4E-0D7E-4F7B-9E8A-2E3D4C5B6A70"
 NOW = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
@@ -48,6 +48,9 @@ def _sample(
     window: int | None = None,
     external_id: str | None = None,
 ) -> SeriesSample:
+    """Windowed rows get an external id as the SDK's series always have one."""
+    if window and external_id is None:
+        external_id = str(uuid4())
     definition = db.query(SeriesTypeDefinition).filter_by(code=series_type.value).one()
     return DataPointSeriesFactory(
         data_source=source,
@@ -82,6 +85,17 @@ def _row(db: Session, sample: SeriesSample) -> SeriesSample | None:
     assert identity is not None
     db.expire_all()
     return db.get(SeriesSample, identity)
+
+
+def _active_energy(db: Session) -> list[tuple[datetime, int | None, str | None, Decimal]]:
+    db.expire_all()
+    rows = (
+        db.query(SeriesSample)
+        .filter(SeriesSample.series_type_definition_id == get_series_type_id(SeriesType.active_energy))
+        .order_by(SeriesSample.recorded_at)
+        .all()
+    )
+    return [(row.recorded_at, row.window_seconds, row.external_id, row.value) for row in rows]
 
 
 class TestRepairCondensedSeries:
@@ -238,23 +252,38 @@ class TestRepairCondensedSeries:
 
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
 
+    def test_a_restored_series_sent_again_is_dropped_at_ingest(self, db: Session) -> None:
+        source = _source()
+        _workout(source)
+        _originals(db, source)
+        _sample(db, source, SeriesType.active_energy, START, "15", window=600, external_id="SERIES")
+        assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
+        stored = _active_energy(db)
+        payload = {
+            "provider": "apple",
+            "sdkVersion": "0.17.0",
+            "syncTimestamp": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "data": {
+                "records": [
+                    {
+                        "id": "SERIES",
+                        "type": "HKQuantityTypeIdentifierActiveEnergyBurned",
+                        "unit": "kcal",
+                        "value": "15",
+                        "startDate": START.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "endDate": (START + timedelta(seconds=600)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "source": {
+                            "appId": WATCH_APP,
+                            "name": "Test Apple Watch",
+                            "deviceModel": "Watch",
+                            "deviceHardwareVersion": "Watch6,18",
+                        },
+                    }
+                ]
+            },
+        }
 
-ACTIVE_ENERGY = get_series_type_id(SeriesType.active_energy)
-HEART_RATE = get_series_type_id(SeriesType.heart_rate)
+        ImportService().load_data(db, payload, str(source.user_id))
 
-
-@pytest.mark.parametrize(
-    ("type_id", "value", "total", "largest", "expected"),
-    [
-        (ACTIVE_ENERGY, "15", "13.5", "1.5", ("restored", Decimal("1.5"))),
-        (ACTIVE_ENERGY, "13.5005", "13.5", "1.5", ("deleted", None)),
-        (ACTIVE_ENERGY, "13.4", "13.5", "1.5", ("deleted", None)),
-        (ACTIVE_ENERGY, "12.4", "13.5", "1.5", ("kept", None)),
-        (ACTIVE_ENERGY, "40", "13.5", "1.5", ("kept", None)),
-        (HEART_RATE, "144.5", "1000", "140", ("deleted", None)),
-    ],
-)
-def test_repair_decides_by_what_the_row_has_over_the_sum(
-    type_id: int, value: str, total: str, largest: str, expected: tuple[str, Decimal | None]
-) -> None:
-    assert _repair(type_id, Decimal(value), Decimal(total), Decimal(largest)) == expected
+        assert len(stored) == 10
+        assert _active_energy(db) == stored

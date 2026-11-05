@@ -9,7 +9,7 @@ import pytest
 from app.repositories.data_point_series_repository import Coverage
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
-from app.services.sdk.condensed_series import is_candidate, is_condensed
+from app.services.sdk.condensed_series import is_candidate, is_condensed, repair_action
 
 NOW = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
 WATCH_APP = "com.apple.health.5C1B9A4E-0D7E-4F7B-9E8A-2E3D4C5B6A70"
@@ -85,3 +85,22 @@ class TestIsCondensed:
 
     def test_a_float_value_is_compared_as_a_decimal(self) -> None:
         assert is_condensed(_sample().model_copy(update={"value": 15.0}), None, _coverage(10, "15"))
+
+
+@pytest.mark.parametrize(
+    ("series_type", "value", "total", "largest", "expected"),
+    [
+        (SeriesType.active_energy, "15", "13.5", "1.5", ("restored", Decimal("1.5"))),
+        (SeriesType.active_energy, "13.5005", "13.5", "1.5", ("deleted", None)),
+        (SeriesType.active_energy, "13.4", "13.5", "1.5", ("deleted", None)),
+        (SeriesType.active_energy, "12.4", "13.5", "1.5", ("kept", None)),
+        (SeriesType.active_energy, "40", "13.5", "1.5", ("kept", None)),
+        (SeriesType.heart_rate, "144.5", "1000", "140", ("deleted", None)),
+    ],
+)
+def test_repair_action_decides_by_what_the_series_has_over_the_sum(
+    series_type: SeriesType, value: str, total: str, largest: str, expected: tuple[str, Decimal | None]
+) -> None:
+    coverage = Coverage(9, Decimal(total), Decimal(largest))
+
+    assert repair_action(series_type, Decimal(value), coverage) == expected

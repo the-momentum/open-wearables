@@ -10,6 +10,7 @@ from collections import Counter
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Literal
 
 from app.constants.devices_map import is_apple_own_source
 from app.database import DbSession
@@ -39,6 +40,10 @@ MIN_CONDENSED_AGE = timedelta(days=30)
 MIN_COVERED = 2
 # A cumulative series must equal the sum of the samples it covers, within this share of its value
 SUM_TOLERANCE = Decimal("0.01")
+# Above this, what a stored series has over the samples it covers is the original it replaced; less is rounding
+REPLACED_MIN = Decimal("0.001")
+
+Repair = Literal["restored", "deleted", "kept"]
 
 
 def is_candidate(sample: TimeSeriesSampleCreate, count: int | None, now: datetime) -> bool:
@@ -63,6 +68,16 @@ def is_condensed(sample: TimeSeriesSampleCreate, count: int | None, coverage: Co
 
 def _within_sum(value: Decimal, total: Decimal) -> bool:
     return abs(value - total) <= abs(value) * SUM_TOLERANCE
+
+
+def repair_action(series_type: SeriesType, value: Decimal, coverage: Coverage) -> tuple[Repair, Decimal | None]:
+    """What to do with a stored series over MIN_COVERED+ samples, and for a restored one the original it replaced."""
+    if get_aggregation_method(series_type) is not AggregationMethod.SUM:
+        return "deleted", None  # the reading it replaced can't be recovered
+    replaced = value - coverage.total
+    if replaced > 2 * coverage.largest or (replaced < 0 and not _within_sum(value, coverage.total)):
+        return "kept", None
+    return ("restored", replaced) if replaced > REPLACED_MIN else ("deleted", None)
 
 
 def drop_condensed_series[SampleT: TimeSeriesSampleCreate](

@@ -190,7 +190,7 @@ uv run python scripts/data_migrations/scale_apple_xml_percentages.py \
     || echo "Warning: Apple Health XML percentage scaling failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-05-01 once all deployments have migrated.
-# Gives back the HealthKit samples a condensed series replaced and deletes the series stored over
+# Restores the HealthKit samples a condensed series replaced and deletes the series stored over
 # their originals (#1983). Runs once per instance (data_migration).
 echo 'Running HealthKit condensed series repair...'
 uv run python scripts/data_migrations/repair_condensed_series.py \
