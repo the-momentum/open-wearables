@@ -83,14 +83,36 @@ class TestCondensedSeriesAtIngest:
 
         assert _stored(db) == originals
 
-    def test_a_counted_heart_rate_series_is_dropped_over_one_stored_reading(self, db: Session) -> None:
+    def test_a_counted_heart_rate_series_over_all_its_stored_readings_is_dropped(self, db: Session) -> None:
         user_id = str(UserFactory().id)
-        load_healthkit_records(db, user_id, [healthkit_record(HEART_RATE, OLD + timedelta(seconds=60), 0, "140")])
+        readings = [
+            healthkit_record(HEART_RATE, OLD + timedelta(seconds=second), 0, "140") for second in range(0, 300, 30)
+        ]
+        load_healthkit_records(db, user_id, readings)
         stored = _stored(db, SeriesType.heart_rate)
 
         load_healthkit_records(db, user_id, [healthkit_record(HEART_RATE, OLD, 300, "144", count=10)])
 
+        assert len(stored) == 10
         assert _stored(db, SeriesType.heart_rate) == stored
+
+    def test_a_counted_heart_rate_series_over_one_stored_reading_is_kept(self, db: Session) -> None:
+        user_id = str(UserFactory().id)
+        load_healthkit_records(db, user_id, [healthkit_record(HEART_RATE, OLD + timedelta(seconds=60), 0, "140")])
+
+        load_healthkit_records(db, user_id, [healthkit_record(HEART_RATE, OLD, 300, "144", count=10)])
+
+        assert (OLD, 300, Decimal("144")) in _stored(db, SeriesType.heart_rate)
+
+    def test_a_series_condensed_again_over_the_one_kept_is_dropped(self, db: Session) -> None:
+        user_id = str(UserFactory().id)
+        load_healthkit_records(db, user_id, [healthkit_record(ACTIVE_ENERGY, OLD, 600, "15", count=10)])  # kept
+        stored = _stored(db)
+
+        load_healthkit_records(db, user_id, [healthkit_record(ACTIVE_ENERGY, OLD, 600, "15", count=10)])  # new id
+
+        assert stored == [(OLD, 600, Decimal("15"))]
+        assert _stored(db) == stored
 
     def test_a_counted_series_over_part_of_its_originals_is_kept(self, db: Session) -> None:
         user_id = str(UserFactory().id)

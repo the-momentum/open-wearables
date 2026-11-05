@@ -41,6 +41,9 @@ from app.services.data_migration_service import data_migration_service
 from app.services.sdk.condensed_series import CONDENSED_TYPES, MIN_CONDENSED_AGE, repair_action
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import local_date
+from app.utils.structured_logging import get_logger
+
+logger = get_logger("app.scripts.repair_condensed_series")
 
 PROGRESS_SECONDS = 30
 LOOKUP_CHUNK = 2000
@@ -85,7 +88,8 @@ _DELETE = text("DELETE FROM series_sample WHERE id = ANY(:ids)")
 
 
 def repair_condensed_series(db: Session, *, dry_run: bool, now: datetime | None = None) -> Counter[str]:
-    """Repairs and commits one data source at a time (nothing on a dry run). Returns the rows by action."""
+    """Repairs and commits one data source at a time (nothing on a dry run). Returns the rows by action, and the
+    sources that failed under "failed"; a failed source is rolled back and left for the next run."""
     params = {
         "types": sorted(get_series_type_id(series_type) for series_type in CONDENSED_TYPES),
         "before": (now or datetime.now(timezone.utc)) - MIN_CONDENSED_AGE,
@@ -100,67 +104,90 @@ def repair_condensed_series(db: Session, *, dry_run: bool, now: datetime | None 
         if time.monotonic() - last_progress >= PROGRESS_SECONDS:
             last_progress = time.monotonic()
             print(f"Repairing condensed series: {index}/{len(sources)} sources, {dict(done)} so far...")
-        restored: list[dict[str, UUID | Decimal]] = []
-        deleted: list[UUID] = []
-        days: set[tuple[UUID, date]] = set()
-        seen: set[UUID] = set()
-        candidates: list[Any] = []
-        for row in db.execute(_SERIES, {**params, "source_id": source_id, "user_id": user_id}).all():
-            if row.id not in seen:  # a row inside two overlapping workouts
-                seen.add(row.id)
-                candidates.append(row)
-        for start in range(0, len(candidates), LOOKUP_CHUNK):
-            chunk = candidates[start : start + LOOKUP_CHUNK]
-            windows = [
-                StoredWindow(
-                    user_id=user_id,
-                    source_app_id=app_id,
-                    series_type_definition_id=row.series_type_definition_id,
-                    start=row.recorded_at,
-                    end=row.recorded_at + timedelta(seconds=row.window_seconds),
-                    external_id=row.external_id,
-                )
-                for row in chunk
-            ]
-            for row, coverage in zip(chunk, timeseries_service.stored_in_windows(db, windows), strict=True):
-                series_type = get_series_type_from_id(row.series_type_definition_id)
-                if (action := repair_action(series_type, row.value, coverage)) is None:
-                    continue
-                repair, value = action
-                done[repair] += 1
-                by_type[(series_type.value, repair)] += 1
-                if repair == "kept":
-                    continue
-                if value is not None:
-                    restored.append({"id": row.id, "value": value})
-                else:
-                    deleted.append(row.id)
-                days.add((source_id, local_date(row.recorded_at, row.zone_offset)))
-        if dry_run or not days:
+        try:
+            source_done, source_by_type = _repair_source(db, source_id, user_id, app_id, params, dry_run)
+        except Exception as e:
+            db.rollback()
+            done["failed"] += 1
+            logger.error(
+                "Failed to repair condensed series of a data source", exc_info=e, data_source_id=str(source_id)
+            )
             continue
-        if restored:
-            db.execute(_RESTORE, restored)
-        if deleted:
-            db.execute(_DELETE, {"ids": deleted})
-        mark_dirty_days(db, days)
-        db.commit()
+        done.update(source_done)
+        by_type.update(source_by_type)
     verb = "Would repair" if dry_run else "Repaired"
     for type_name in sorted({name for name, _ in by_type}):
         counts = ", ".join(f"{by_type[(type_name, action)]} {action}" for action in ("restored", "deleted", "kept"))
         print(f"  {type_name}: {counts}")
     print(f"{verb} condensed series: {done['restored']} restored, {done['deleted']} deleted, {done['kept']} kept.")
+    if done["failed"]:
+        print(f"{done['failed']} data sources failed and stay for the next run.")
     return done
 
 
+def _repair_source(
+    db: Session, source_id: UUID, user_id: UUID, app_id: str, params: dict[str, Any], dry_run: bool
+) -> tuple[Counter[str], Counter[tuple[str, str]]]:
+    """One source's counts, merged into the totals only once it is committed (or, on a dry run, read)."""
+    done: Counter[str] = Counter()
+    by_type: Counter[tuple[str, str]] = Counter()
+    restored: list[dict[str, UUID | Decimal]] = []
+    deleted: list[UUID] = []
+    days: set[tuple[UUID, date]] = set()
+    seen: set[UUID] = set()
+    candidates: list[Any] = []
+    for row in db.execute(_SERIES, {**params, "source_id": source_id, "user_id": user_id}).all():
+        if row.id not in seen:  # a row inside two overlapping workouts
+            seen.add(row.id)
+            candidates.append(row)
+    for start in range(0, len(candidates), LOOKUP_CHUNK):
+        chunk = candidates[start : start + LOOKUP_CHUNK]
+        windows = [
+            StoredWindow(
+                user_id=user_id,
+                source_app_id=app_id,
+                series_type_definition_id=row.series_type_definition_id,
+                start=row.recorded_at,
+                end=row.recorded_at + timedelta(seconds=row.window_seconds),
+                external_id=row.external_id,
+            )
+            for row in chunk
+        ]
+        for row, coverage in zip(chunk, timeseries_service.stored_in_windows(db, windows), strict=True):
+            series_type = get_series_type_from_id(row.series_type_definition_id)
+            if (action := repair_action(series_type, row.value, coverage)) is None:
+                continue
+            repair, value = action
+            done[repair] += 1
+            by_type[(series_type.value, repair)] += 1
+            if repair == "kept":
+                continue
+            if value is not None:
+                restored.append({"id": row.id, "value": value})
+            else:
+                deleted.append(row.id)
+            days.add((source_id, local_date(row.recorded_at, row.zone_offset)))
+    if dry_run or not days:
+        return done, by_type
+    if restored:
+        db.execute(_RESTORE, restored)
+    if deleted:
+        db.execute(_DELETE, {"ids": deleted})
+    mark_dirty_days(db, days)
+    db.commit()
+    return done, by_type
+
+
 def _migrate(db: Session, dry_run: bool) -> bool:
-    repair_condensed_series(db, dry_run=dry_run)
-    return not dry_run
+    done = repair_condensed_series(db, dry_run=dry_run)
+    return not dry_run and not done["failed"]
 
 
 def main(dry_run: bool) -> None:
     with engine.connect() as connection, Session(bind=connection) as db:
         db.execute(_LOCK_TIMEOUT)
         db.execute(_NO_JIT)
+        db.commit()  # a rollback after a failed source would otherwise revert these settings
         data_migration_service.run(db, "repair_condensed_series", lambda: _migrate(db, dry_run), dry_run=dry_run)
 
 

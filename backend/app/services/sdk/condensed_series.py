@@ -59,11 +59,12 @@ def is_candidate(sample: TimeSeriesSampleCreate, count: int | None, now: datetim
 
 def is_condensed(sample: TimeSeriesSampleCreate, count: int | None, coverage: Coverage) -> bool:
     """Whether a candidate repeats the stored samples its window covers."""
-    if coverage.covered < (1 if count is not None else MIN_COVERED):
-        return False
     if get_aggregation_method(sample.series_type) is AggregationMethod.SUM:
-        return _within_sum(Decimal(str(sample.value)), coverage.total)
-    return True
+        # The sum also catches a series condensed again over one OW kept, which covers only that one
+        enough = coverage.covered >= (1 if count is not None else MIN_COVERED)
+        return enough and _within_sum(Decimal(str(sample.value)), coverage.total)
+    # Without a sum to check, a counted series must cover all its readings: one alone may be all OW has of them
+    return coverage.covered >= (count if count is not None else MIN_COVERED)
 
 
 def _within_sum(value: Decimal, total: Decimal) -> bool:

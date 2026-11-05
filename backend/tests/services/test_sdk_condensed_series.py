@@ -65,13 +65,18 @@ class TestIsCandidate:
 
 
 class TestIsCondensed:
-    def test_with_a_count_one_covered_sample_is_enough(self) -> None:
-        assert is_condensed(_sample(SeriesType.heart_rate, value="148.3"), 4, _coverage(1, "140"))
-        assert not is_condensed(_sample(SeriesType.heart_rate, value="148.3"), 4, _coverage(0, "0"))
+    def test_with_a_count_a_heart_rate_series_must_cover_all_its_readings(self) -> None:
+        heart_rate = _sample(SeriesType.heart_rate, value="148.3")
+        assert not is_condensed(heart_rate, 10, _coverage(1, "140"))  # one alone may be all OW has of them
+        assert is_condensed(heart_rate, 10, _coverage(10, "1400"))
+        assert is_condensed(heart_rate, 4, _coverage(4, "560"))
+        assert not is_condensed(heart_rate, 4, _coverage(0, "0"))
 
     def test_with_a_count_a_cumulative_series_must_match_what_it_covers(self) -> None:
         assert not is_condensed(_sample(value="15"), 10, _coverage(1, "1.5"))  # part of its originals
         assert is_condensed(_sample(value="15"), 10, _coverage(10, "15"))
+        # condensed again with a new id over the series OW kept
+        assert is_condensed(_sample(value="15"), 3, Coverage(1, Decimal("15"), Decimal("15")))
 
     def test_a_cumulative_sample_is_the_sum_of_what_it_covers(self) -> None:
         assert is_condensed(_sample(value="15"), None, _coverage(10, "15"))

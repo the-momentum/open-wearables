@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
+from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -306,6 +308,40 @@ class TestRepairCondensedSeries:
     def test_the_migration_reports_whether_it_changed_anything(self, db: Session) -> None:
         assert migrate(db, dry_run=False) is True
         assert migrate(db, dry_run=True) is False
+
+    def test_a_failing_source_does_not_stop_the_others(self, db: Session) -> None:
+        series = []
+        for _ in range(2):
+            source = _source()
+            _workout(source)
+            _originals(db, source)
+            series.append(_sample(db, source, SeriesType.active_energy, START, "15", window=600))
+        db.commit()  # the failed source's rollback must not undo the test data
+        real = _module.timeseries_service.stored_in_windows
+
+        def failing_first_call() -> Any:
+            calls = 0
+
+            def lookup(*args: Any, **kwargs: Any) -> Any:
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise RuntimeError("lock timeout")
+                return real(*args, **kwargs)
+
+            return patch.object(_module.timeseries_service, "stored_in_windows", side_effect=lookup)
+
+        with failing_first_call(), patch.object(_module, "logger") as logger:
+            done = repair_condensed_series(db, dry_run=False, now=NOW)
+        with failing_first_call():  # the first source is still unrepaired
+            migrated = migrate(db, dry_run=False)
+
+        assert done == Counter(restored=1, failed=1)
+        assert migrated is False  # not recorded, so the next start retries the failed source
+        logger.error.assert_called_once()
+        assert isinstance(logger.error.call_args.kwargs["exc_info"], RuntimeError)
+        values = sorted(row.value for row in (_row(db, sample) for sample in series) if row)
+        assert values == [Decimal("1.5"), Decimal("15")]
 
     def test_a_restored_series_sent_again_is_dropped_at_ingest(self, db: Session) -> None:
         source = _source()
