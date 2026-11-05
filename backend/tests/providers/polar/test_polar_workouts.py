@@ -568,6 +568,13 @@ class TestGetUnifiedWorkoutType:
             ("CYCLING", "INDOOR_CYCLING", WorkoutType.INDOOR_CYCLING),
             ("OTHER", "JUMP_ROPE", WorkoutType.CARDIO_TRAINING),
             ("OTHER", "KICKBOXING_MARTIAL_ARTS", WorkoutType.BOXING),
+            ("OTHER", "TENNIS", WorkoutType.TENNIS),
+            ("OTHER", "VERTICALSPORTS_WALLCLIMBING", WorkoutType.INDOOR_CLIMBING),
+            ("OTHER", "STRENGTH_TRAINING", WorkoutType.STRENGTH_TRAINING),
+            ("RUNNING", "TREADMILL_RUNNING", WorkoutType.TREADMILL),
+            ("RUNNING", "UNKNOWN_DETAIL", WorkoutType.RUNNING),
+            ("OTHER", "UNKNOWN_DETAIL", WorkoutType.GENERIC),
+            ("UNKNOWN_SPORT", None, WorkoutType.OTHER),
         ],
     )
     def test_mappings(self, sport: str, detailed: str, expected: WorkoutType) -> None:

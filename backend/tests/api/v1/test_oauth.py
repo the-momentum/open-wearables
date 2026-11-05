@@ -7,13 +7,12 @@ Tests the /api/v1/oauth endpoints including:
 - PUT /api/v1/oauth/providers/{provider} - test update provider status
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -369,31 +368,6 @@ class TestOAuthUpdateProviderEndpoint:
         # Assert
         assert response.status_code == 400
         assert response.json()["code"] == "UNSUPPORTED_PROVIDER"
-
-    def test_update_live_sync_mode_to_webhook_without_callback_token(
-        self,
-        client: TestClient,
-        db: Session,
-        mock_external_apis: dict[str, MagicMock],
-    ) -> None:
-        """Switching Strava to webhooks without STRAVA_WEBHOOK_TOKEN returns 503 with the reason."""
-        developer = DeveloperFactory()
-        headers = developer_auth_headers(developer.id)
-
-        with (
-            patch.object(settings, "strava_webhook_token", None),
-            patch("app.services.providers.base_strategy.celery_app.send_task") as send_task,
-        ):
-            response = client.put(
-                "/api/v1/oauth/providers/strava",
-                headers=headers,
-                json={"live_sync_mode": "webhook"},
-            )
-
-        assert response.status_code == 503
-        assert response.json()["code"] == "CONFIGURATION_ERROR"
-        assert "needs a webhook callback token" in response.json()["detail"]
-        send_task.assert_not_called()
 
     def test_update_provider_response_structure(
         self,

@@ -1,9 +1,4 @@
-"""Strava webhooks are accepted only on the callback URL that carries STRAVA_WEBHOOK_TOKEN.
-
-Strava signs its events with a key it does not share, so the secret path segment is
-the only thing that tells a Strava request from a forged one. It is checked on the
-event POST and on the subscription handshake GET, which Strava sends to the same URL.
-"""
+"""Strava webhooks are accepted only on the callback URL that carries the callback token."""
 
 import json
 import time
@@ -17,8 +12,9 @@ from pydantic import SecretStr
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
+from app.utils.webhook_callback import callback_token
 
-TOKEN = "3f9c1e7a5b2d4c8e9a0b1c2d3e4f5a6b"
+TOKEN = callback_token("strava").get_secret_value()
 BASE = "/api/v1/providers/strava/webhooks"
 HANDLER = "app.services.providers.strava.webhook_handler"
 
@@ -31,12 +27,6 @@ CREATE_EVENT = {
     "subscription_id": 382914,
     "updates": {},
 }
-
-
-@pytest.fixture(autouse=True)
-def _strava_token() -> Generator[None, None, None]:
-    with patch.object(settings, "strava_webhook_token", SecretStr(TOKEN)):
-        yield
 
 
 @pytest.fixture
@@ -81,13 +71,6 @@ class TestEvents:
         response = _post_event(client, path)
 
         assert response.status_code == 401
-        celery.send_task.assert_not_called()
-
-    def test_every_event_is_rejected_while_the_token_is_unset(self, client: TestClient, celery: MagicMock) -> None:
-        with patch.object(settings, "strava_webhook_token", None):
-            responses = [_post_event(client, BASE), _post_event(client, f"{BASE}/{TOKEN}")]
-
-        assert [r.status_code for r in responses] == [401, 401]
         celery.send_task.assert_not_called()
 
     @pytest.mark.parametrize("path", ["/api/v1/strava/webhooks", "/api/v1/strava/webhook"])

@@ -6832,6 +6832,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -6869,6 +6870,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PresignedURLResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                  "code": "NOT_FOUND"
                 }
               }
             }
@@ -6926,6 +6943,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -6963,6 +6981,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MultipartCreateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                  "code": "NOT_FOUND"
                 }
               }
             }
@@ -7020,6 +7054,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7114,6 +7149,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7208,6 +7244,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7288,7 +7325,7 @@
           "External: Apple Health Import"
         ],
         "summary": "Import Xml File",
-        "description": "Import XML file into the database.",
+        "description": "Import an Apple Health XML file of up to 200 MiB into the database. Larger files must use the S3 multipart upload.",
         "operationId": "import_xml_file_api_v1_users__user_id__import_apple_xml_direct_post",
         "security": [
           {
@@ -7302,6 +7339,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7343,6 +7381,54 @@
                     "type": "string"
                   },
                   "title": "Response Import Xml File Api V1 Users  User Id  Import Apple Xml Direct Post"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                  "code": "NOT_FOUND"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File is over 200 MiB",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "Direct upload accepts files up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
+                  "code": "CONTENT_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Task queue unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Unable to queue XML processing",
+                  "code": "SERVICE_UNAVAILABLE"
                 }
               }
             }
@@ -9282,7 +9368,58 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "additionalProperties": true,
+                                    "description": "Exercise segment of a workout (Health Connect `ExerciseSegment`).",
+                                    "properties": {
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "startDate": {
+                                        "format": "date-time",
+                                        "title": "Startdate",
+                                        "type": "string"
+                                      },
+                                      "endDate": {
+                                        "format": "date-time",
+                                        "title": "Enddate",
+                                        "type": "string"
+                                      },
+                                      "repetitions": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Repetitions"
+                                      },
+                                      "metadata": {
+                                        "anyOf": [
+                                          {
+                                            "additionalProperties": true,
+                                            "type": "object"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Metadata"
+                                      }
+                                    },
+                                    "required": [
+                                      "startDate",
+                                      "endDate"
+                                    ],
+                                    "title": "WorkoutSegment",
                                     "type": "object"
                                   },
                                   "type": "array"
@@ -9297,7 +9434,102 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "additionalProperties": true,
+                                    "description": "HealthKit workout event (lap, segment or marker) or Health Connect lap (no `type`).",
+                                    "properties": {
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "startDate": {
+                                        "format": "date-time",
+                                        "title": "Startdate",
+                                        "type": "string"
+                                      },
+                                      "endDate": {
+                                        "format": "date-time",
+                                        "title": "Enddate",
+                                        "type": "string"
+                                      },
+                                      "duration": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Duration"
+                                      },
+                                      "distanceM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Distancem"
+                                      },
+                                      "strokeStyle": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Strokestyle"
+                                      },
+                                      "strokeCount": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Strokecount"
+                                      },
+                                      "swolf": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Swolf"
+                                      },
+                                      "metadata": {
+                                        "anyOf": [
+                                          {
+                                            "additionalProperties": true,
+                                            "type": "object"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Metadata"
+                                      }
+                                    },
+                                    "required": [
+                                      "startDate",
+                                      "endDate"
+                                    ],
+                                    "title": "WorkoutLap",
                                     "type": "object"
                                   },
                                   "type": "array"

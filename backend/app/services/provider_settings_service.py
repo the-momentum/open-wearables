@@ -9,7 +9,7 @@ from app.schemas.model_crud.data_priority import (
 )
 from app.services.providers.base_strategy import ProviderCapabilities
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import ConfigurationError, InvalidInputError, UnsupportedProviderError
+from app.utils.exceptions import InvalidInputError, UnsupportedProviderError
 
 _NON_PROVIDER_NAMES = {ProviderName.UNKNOWN, ProviderName.INTERNAL}
 
@@ -88,15 +88,6 @@ class ProviderSettingsService:
 
         if update.live_sync_mode is not None and not strategy.live_sync_configurable:
             raise UnsupportedProviderError(provider, "live sync mode configuration")
-
-        if update.live_sync_mode == LiveSyncMode.WEBHOOK:
-            handler = strategy.webhooks
-            if handler is not None and handler.requires_callback_token:
-                token = handler.callback_token()
-                if token is None or not token.get_secret_value():
-                    raise ConfigurationError(
-                        f"Provider '{provider}' needs a webhook callback token before switching to webhooks"
-                    )
 
         db_settings_map = self.repo.get_all(db)
         current = db_settings_map.get(provider)

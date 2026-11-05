@@ -1,22 +1,10 @@
-"""Random secret in a provider's webhook callback path.
-
-For providers that do not sign their webhooks (or sign them with a key we cannot
-get), the callback URL itself is the credential:
-``{API_BASE_URL}/api/v1/providers/{provider}/webhooks/{callback_token}``. Only the
-provider learns the URL, at subscription time, so a request that knows the token
-came from the provider. ``BaseWebhookHandler.authenticate_callback`` checks it on
-every request.
-
-The token is a path segment, so it lands in access logs like any URL. Keep it out
-of application logs, Sentry events and API responses with ``redact_callback_url``.
-"""
-
 import re
 from secrets import compare_digest
 
 from pydantic import SecretStr
 
 from app.config import settings
+from app.utils.config_utils import derive_secret
 
 #: Path parameter of the unified router's ``/{callback_token}`` routes.
 CALLBACK_TOKEN_PARAM = "callback_token"
@@ -31,11 +19,13 @@ def provider_webhook_url(provider: str) -> str:
     return f"{settings.api_base_url}{settings.api_v1}/providers/{provider}/webhooks"
 
 
-def callback_url(provider: str, token: SecretStr | None) -> str | None:
-    """The callback URL carrying ``token``, or ``None`` while the token is not configured."""
-    if token is None or not token.get_secret_value():
-        return None
-    return f"{provider_webhook_url(provider)}/{token.get_secret_value()}"
+def callback_token(provider: str) -> SecretStr:
+    """Secret in the callback path of a provider that cannot authenticate its webhooks otherwise."""
+    return SecretStr(derive_secret(settings.secret_key, f"{provider}-webhook-callback-token"))
+
+
+def callback_url(provider: str) -> str:
+    return f"{provider_webhook_url(provider)}/{callback_token(provider).get_secret_value()}"
 
 
 def callback_token_matches(expected: SecretStr | None, provided: str | None) -> bool:
@@ -47,5 +37,5 @@ def callback_token_matches(expected: SecretStr | None, provided: str | None) -> 
 
 
 def redact_callback_url(url: str) -> str:
-    """Replace the callback token in a URL or path with ``redacted``."""
+    """Replace the callback token in a URL or path with ``redacted``; it lands in logs like any URL."""
     return _TOKEN_SEGMENT.sub(r"\1redacted", url)

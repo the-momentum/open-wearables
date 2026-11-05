@@ -9,13 +9,12 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Request
-from pydantic import SecretStr
 
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.utils.exceptions import WebhookVerificationError
-from app.utils.webhook_callback import CALLBACK_TOKEN_PARAM
+from app.utils.webhook_callback import CALLBACK_TOKEN_PARAM, callback_token
 
-TOKEN = "3f9c1e7a5b2d4c8e9a0b1c2d3e4f5a6b"
+TOKEN = callback_token("test").get_secret_value()
 
 
 class _TokenHandler(BaseWebhookHandler):
@@ -24,9 +23,6 @@ class _TokenHandler(BaseWebhookHandler):
     def __init__(self) -> None:
         super().__init__("test")
         self.signature_checked = False
-
-    def callback_token(self) -> SecretStr | None:
-        return SecretStr(TOKEN)
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
         self.signature_checked = True

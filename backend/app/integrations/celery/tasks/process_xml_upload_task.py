@@ -106,10 +106,10 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
         SessionLocal() as db,
     ):
         try:
-            temp_dir = tempfile.gettempdir()
-            temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
-
-            with open(temp_xml_file, "wb") as f:
+            # A unique name per task: concurrent uploads share the filename (every iPhone
+            # exports "export.xml"), and a shared path would mix their contents.
+            fd, temp_xml_file = tempfile.mkstemp(prefix="temp_import_", suffix=".xml")
+            with os.fdopen(fd, "wb") as f:
                 f.write(file_contents)
 
             stats = _import_xml_data(db, temp_xml_file, user_id)

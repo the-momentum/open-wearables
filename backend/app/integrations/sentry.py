@@ -153,12 +153,7 @@ def _redact_callback_tokens(value: Any) -> Any:
 
 
 def _redact_webhook_callback_tokens(event: "Event", hint: "Hint") -> "Event":
-    """A webhook callback path carries a secret token, a credential in every mode.
-
-    It shows up in the request URL and, with local variables on, in every ASGI scope
-    (``path``, ``raw_path``) and in reprs of the path params, so every string in the
-    event is checked.
-    """
+    """The callback token is a credential in every mode; it reaches URLs, ASGI scopes and reprs alike."""
     return cast("Event", _redact_callback_tokens(event))
 
 
