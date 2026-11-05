@@ -1,5 +1,6 @@
 import type { Cookies } from '@sveltejs/kit';
 import {
+	ApiError,
 	refreshTokens,
 	revokeToken,
 	type Developer,
@@ -117,7 +118,7 @@ export async function validAccessToken(cookies: Cookies, session: Session): Prom
 /**
  * Refreshes whether or not it is due: the API can refuse a token that has not
  * expired, after a secret rotates or on another stack's database. Null, with
- * the session cleared, once it cannot be renewed.
+ * the session cleared, once the API refuses the refresh; an outage is rethrown.
  */
 export async function renewSession(cookies: Cookies, session: Session): Promise<string | null> {
 	if (!session.refreshToken) {
@@ -131,7 +132,8 @@ export async function renewSession(cookies: Cookies, session: Session): Promise<
 		if (session.passwordChange) renewed.passwordChange = session.passwordChange;
 		store(cookies, renewed);
 		return renewed.accessToken;
-	} catch {
+	} catch (error) {
+		if (!(error instanceof ApiError && error.status < 500)) throw error;
 		clearSession(cookies);
 		return null;
 	}

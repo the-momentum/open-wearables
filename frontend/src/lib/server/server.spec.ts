@@ -1,7 +1,14 @@
 import { isRedirect, type Cookies } from '@sveltejs/kit';
 import { getRequestEvent } from '$app/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiGet, apiPost, refreshTokens, type Developer, type TokenResponse } from './api';
+import {
+	ApiError,
+	apiGet,
+	apiPost,
+	refreshTokens,
+	type Developer,
+	type TokenResponse
+} from './api';
 import { createAuthContext, type AuthContext } from './auth';
 import { forgetAll, keep, recall } from './cache';
 import {
@@ -168,11 +175,23 @@ describe('a token the API refuses', () => {
 	});
 
 	it('ends the session when the refresh is refused too', async () => {
-		vi.mocked(refreshTokens).mockRejectedValue(new Error('401'));
+		vi.mocked(refreshTokens).mockRejectedValue(
+			new ApiError(401, 'Invalid or revoked refresh token')
+		);
 		const cookies = jar(session({ refreshToken: 'rt-refused' }));
 
 		await expect(redirectOf(createAuthContext(cookies).rejected('access'))).resolves.toBe('/login');
 		expect(cookies.get(SESSION_COOKIE)).toBeUndefined();
+	});
+
+	it('keeps the session when the refresh fails on an outage', async () => {
+		vi.mocked(refreshTokens).mockRejectedValue(new ApiError(503, 'Service Unavailable'));
+		const cookies = jar(session({ refreshToken: 'rt-outage' }));
+
+		await expect(createAuthContext(cookies).rejected('access')).rejects.toMatchObject({
+			status: 503
+		});
+		expect(cookies.get(SESSION_COOKIE)).toBeDefined();
 	});
 
 	it('ends the session when the renewed token is refused as well', async () => {

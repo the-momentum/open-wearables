@@ -107,7 +107,7 @@ const PORT = Number(process.env.MOCK_API_PORT ?? 8787);
 let issued = 0;
 const validAccessTokens = new Set<string>();
 const validRefreshTokens = new Set<string>();
-// Backend routes without auth: a stale bearer token there is ignored, not refused.
+// Backend GET routes without auth: a stale bearer token there is ignored, not refused.
 const PUBLIC_PATHS = new Set([
 	'/api/v1/oauth/providers',
 	'/api/v1/meta/coverage',
@@ -164,7 +164,11 @@ const server = Bun.serve({
 
 		// As the backend does: a bearer token it did not issue is refused, except on public routes.
 		const bearer = request.headers.get('authorization')?.replace('Bearer ', '');
-		if (bearer !== undefined && !PUBLIC_PATHS.has(pathname) && !validAccessTokens.has(bearer)) {
+		if (
+			bearer !== undefined &&
+			!(request.method === 'GET' && PUBLIC_PATHS.has(pathname)) &&
+			!validAccessTokens.has(bearer)
+		) {
 			return json({ detail: 'Could not validate credentials' }, 401);
 		}
 
