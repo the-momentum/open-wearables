@@ -1,5 +1,4 @@
 import json
-import math
 from json import JSONDecodeError
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, status
@@ -44,19 +43,16 @@ def _direct_upload_limit() -> int:
     return min(MAX_DIRECT_UPLOAD_SIZE, MAX_FILE_SIZE)
 
 
-def _mib(size: int, *, round_up: bool) -> str:
-    """Size in MiB with one decimal, rounded so a file over the limit never reads as equal to it."""
-    tenths = size * 10 / _MIB
-    return f"{(math.ceil(tenths) if round_up else math.floor(tenths)) / 10:g}"
+def _mib(size: int) -> str:
+    return f"{size // _MIB}"
 
 
-def _too_large_detail(file_size: int, limit: int) -> str:
-    size = _mib(file_size, round_up=True)
+def _too_large_detail(file_size: int) -> str:
     # Multipart rejects files over the product-wide limit too, so only point there when it would accept the file.
     if file_size > MAX_FILE_SIZE:
-        return f"File is {size} MiB, XML import accepts up to {_mib(MAX_FILE_SIZE, round_up=False)} MiB."
+        return f"XML import accepts files up to {_mib(MAX_FILE_SIZE)} MiB."
     return (
-        f"File is {size} MiB, direct upload accepts up to {_mib(limit, round_up=False)} MiB. "
+        f"Direct upload accepts files up to {_mib(_direct_upload_limit())} MiB. "
         f"Use the multipart upload ({_MULTIPART_CREATE_PATH}) for larger files."
     )
 
@@ -187,13 +183,13 @@ def abort_multipart_upload(
     responses={
         **problem_doc(
             413,
-            f"File is over {_mib(_direct_upload_limit(), round_up=False)} MiB",
-            _too_large_detail(1024 * _MIB, _direct_upload_limit()),
+            f"File is over {_mib(_direct_upload_limit())} MiB",
+            _too_large_detail(_direct_upload_limit() + 1),
         ),
         **problem_doc(503, "Task queue unavailable", "Unable to queue XML processing"),
     },
     description=(
-        f"Import an Apple Health XML file of up to {_mib(_direct_upload_limit(), round_up=False)} MiB "
+        f"Import an Apple Health XML file of up to {_mib(_direct_upload_limit())} MiB "
         "into the database. "
         "Larger files must use the S3 multipart upload."
     ),
@@ -206,9 +202,8 @@ def import_xml_file(
     """Queue a small XML upload for import; the file travels inside the Celery message."""
     # Starlette's multipart parser always sets the size of the spooled file.
     file_size = file.size or 0
-    limit = _direct_upload_limit()
-    if file_size > limit:
-        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large_detail(file_size, limit))
+    if file_size > _direct_upload_limit():
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large_detail(file_size))
 
     file_contents = file.file.read()
     filename = file.filename or "upload.xml"
