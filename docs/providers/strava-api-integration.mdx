@@ -131,10 +131,10 @@ STRAVA_DEFAULT_SCOPE=activity:read_all,profile:read_all
 
     The callback token is derived from `SECRET_KEY` and is not shown anywhere. Strava sends a `GET` handshake to that URL; Open Wearables checks the token in the path and the `hub.verify_token` parameter, and echoes back `hub.challenge` to confirm the subscription. Requests without the token, or with a wrong one, are rejected with `401`.
 
-    Every backend start registers the subscription again while Strava is in webhook mode. Nothing happens while the URL is unchanged; after a new `SECRET_KEY` or `API_BASE_URL`, the old subscription is deleted and a new one created, since Strava allows only **one subscription per application** and its callback URL cannot be changed. You can also trigger it with `POST /api/v1/providers/strava/webhooks/subscriptions` (see [provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions)); for Strava, its `callback_url` parameter is ignored.
+    After a new `SECRET_KEY` or `API_BASE_URL`, register the subscription again with `POST /api/v1/providers/strava/webhooks/subscriptions` (see [provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions)). Strava allows only **one subscription per application** and its callback URL cannot be changed, so Open Wearables deletes the old subscription and creates a new one; for Strava, the `callback_url` parameter is ignored. Instances upgrading from a version without the token do this once on their own at startup.
 
     <Warning>
-    Treat the callback URL like a password. Anyone who knows it can send events in Strava's name, though deletes and deauthorizations are still confirmed in the Strava API. Open Wearables masks the token in its logs, in Sentry, and in the subscription list, but your reverse proxy's access logs record full request paths. If the URL leaks, rotate `SECRET_KEY` and restart: the subscription moves to a new URL on startup.
+    Treat the callback URL like a password. Anyone who knows it can send events in Strava's name, though deletes and deauthorizations are still confirmed in the Strava API. Open Wearables masks the token in its logs, in Sentry, and in the subscription list, but your reverse proxy's access logs record full request paths. If the URL leaks, rotate `SECRET_KEY`, restart, and register the subscription again.
     </Warning>
   </Step>
 

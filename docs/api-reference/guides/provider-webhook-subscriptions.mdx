@@ -131,7 +131,7 @@ Provider-specific behaviour:
 | **Strava** | Registers subscription; Strava sends a GET challenge that must echo back `hub.challenge` | Returns `skipped` | Deletes the old subscription and creates a new one |
 
 <Note>
-  **Strava**: `callback_url` is ignored. Open Wearables always registers `{API_BASE_URL}/api/v1/providers/strava/webhooks/{callback token}`, with the token derived from `SECRET_KEY`. The token is shown as `redacted` when you list subscriptions. The backend re-registers the subscription on every start while Strava is in webhook mode, so a new `SECRET_KEY` or `API_BASE_URL` moves it.
+  **Strava**: `callback_url` is ignored. Open Wearables always registers `{API_BASE_URL}/api/v1/providers/strava/webhooks/{callback token}`, with the token derived from `SECRET_KEY`. The token is shown as `redacted` when you list subscriptions. Call this again after a new `SECRET_KEY` or `API_BASE_URL`: it replaces the subscription with one on the new URL.
 </Note>
 
 <Note>
