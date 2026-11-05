@@ -1,7 +1,7 @@
 """Redis locks held by a token, so a holder whose lock expired can neither release nor extend one taken since."""
 
 import threading
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from uuid import uuid4
 
@@ -29,7 +29,7 @@ def release(key: str, token: str) -> None:
 
 
 @contextmanager
-def kept_alive(key: str, token: str, ttl_seconds: int) -> Iterator[None]:
+def kept_alive(key: str, token: str, ttl_seconds: int) -> Generator[None]:
     """Extend the lock in the background every third of its TTL while the block runs, however long one step takes."""
     stop = threading.Event()
 
