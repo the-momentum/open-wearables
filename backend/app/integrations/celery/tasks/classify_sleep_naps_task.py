@@ -47,21 +47,24 @@ def classify_sleep_naps(after: str | None = None, failed: int = 0) -> dict:
             migrations = DataMigrationRepository()
             if migrations.is_completed(db, MIGRATION):
                 return {"skipped": "done"}
+            countdown = 5
             try:
                 cursor, failed, finished = classify_sources(
                     db, UUID(after) if after else None, failed, _BUDGET_SECONDS, lost
                 )
-            except LockLostError:
-                # Another run holds the lock now and carries on; the next startup queues one anyway.
-                logger.warning("Sleep nap classification lost its lock, stopping", data_source_id=after)
-                return {"stopped": "lock_lost"}
+            except LockLostError as stopped:
+                # Redis failed or another run took over: the continuation waits, then skips while another holds it.
+                logger.warning("Sleep nap classification lost its lock, retrying later", data_source_id=after)
+                cursor, failed, finished, countdown = stopped.after, stopped.failed, False, 60
             if finished and not failed:
                 migrations.mark_completed(db, MIGRATION)
                 db.commit()
     finally:
         redis_lock.release(_LOCK_KEY, token)
     if not finished:
-        classify_sleep_naps.apply_async(kwargs={"after": str(cursor), "failed": failed}, countdown=5)
+        classify_sleep_naps.apply_async(
+            kwargs={"after": str(cursor) if cursor else None, "failed": failed}, countdown=countdown
+        )
     return {"finished": finished, "failed": failed}
 
 
@@ -80,7 +83,7 @@ def classify_sources(
     while batch := sources.sleep_sources(db, NAP_INFERRED_PROVIDERS, after, _SOURCES_PER_QUERY):
         for source_id, user_id in batch:
             if lost is not None and lost.is_set():
-                raise LockLostError
+                raise LockLostError(after, failed)
             try:
                 event_record_service.reclassify_sleep_naps(db, user_id, source_id, None)
             except Exception as exc:
@@ -90,7 +93,7 @@ def classify_sources(
             else:
                 if lost is not None and lost.is_set():
                     db.rollback()
-                    raise LockLostError
+                    raise LockLostError(after, failed)
                 db.commit()
             after = source_id
             if time.monotonic() >= deadline:
@@ -100,6 +103,10 @@ def classify_sources(
 
 class LockLostError(Exception):
     """The run's Redis lock was lost, so another run may be classifying the same data sources."""
+
+    def __init__(self, after: UUID | None, failed: int) -> None:
+        super().__init__("lock lost")
+        self.after, self.failed = after, failed
 
 
 def bound_lock_waits(db: Session) -> None:

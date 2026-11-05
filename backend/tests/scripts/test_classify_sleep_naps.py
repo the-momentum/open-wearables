@@ -273,3 +273,21 @@ def test_a_lost_lock_stops_before_the_next_source(db: Session) -> None:
         classify_sources(db, None, 0, 60, lost)
 
     assert _is_nap(db, nap) is False
+
+
+def test_a_run_that_lost_its_lock_retries_from_the_last_source_done(db: Session) -> None:
+    _night_and_nap(ProviderName.APPLE)
+
+    with (
+        patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)),
+        patch.object(redis_lock, "extend", side_effect=ConnectionError("redis down")),
+        patch("app.integrations.celery.tasks.classify_sleep_naps_task._LOCK_TTL_SECONDS", 1),
+        patch(
+            "app.integrations.celery.tasks.classify_sleep_naps_task.classify_sources",
+            side_effect=lambda *args: (time.sleep(1), classify_sources(*args))[1],
+        ),
+        patch.object(classify_sleep_naps, "apply_async") as apply_async,
+    ):
+        assert classify_sleep_naps() == {"finished": False, "failed": 0}
+
+    assert apply_async.call_args.kwargs == {"kwargs": {"after": None, "failed": 0}, "countdown": 60}
