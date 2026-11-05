@@ -189,6 +189,13 @@ echo 'Running Apple Health XML percentage scaling...'
 uv run python scripts/data_migrations/scale_apple_xml_percentages.py \
     || echo "Warning: Apple Health XML percentage scaling failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Flags the stored naps of providers that don't report them and rebuilds the internal sleep
+# scores of the days that change. Runs once per instance (data_migration).
+echo 'Running sleep nap classification...'
+uv run python scripts/data_migrations/classify_sleep_naps.py \
+    || echo "Warning: sleep nap classification failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
