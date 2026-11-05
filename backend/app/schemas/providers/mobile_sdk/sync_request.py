@@ -80,8 +80,10 @@ class MetricRecord(BaseModel):
     source: SourceInfo | None = None
     value: Decimal
     unit: str | None
-    # How many quantities the sample holds (HKQuantitySample.count): above 1 for a series
-    count: int | None = None
+    count: int | None = Field(
+        None,
+        description="HKQuantitySample.count: above 1 for a quantity series, such as one HealthKit condensed",
+    )
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 

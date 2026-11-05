@@ -107,7 +107,7 @@ An Apple Watch night is usually available 15 to 20 minutes after it reaches Open
 
 ## Condensed Workout Samples
 
-HealthKit condenses the heart rate, energy and distance samples of Apple Watch workouts that are a few months old into series and deletes the originals. The SDK uploads such a series like any new sample, so Open Wearables drops it when it already holds the originals from the same Apple device; otherwise the workout would count twice. A series whose originals never reached Open Wearables, such as one condensed before the first sync, is kept as a single sample spanning its time window.
+HealthKit condenses the heart rate, energy and distance samples of Apple Watch workouts that are a few months old into series and deletes the originals. The SDK uploads such a series like any new sample, so Open Wearables drops it when it already holds the originals from the same Apple device; otherwise the workout would count twice. A series whose originals never reached Open Wearables, such as one condensed before the first sync, is kept as a single sample spanning its time window. Series stored before this was in place are repaired once when Open Wearables starts; series webhooks already sent for them are not retracted.
 
 ## Apple Health as a Data Bridge
 
