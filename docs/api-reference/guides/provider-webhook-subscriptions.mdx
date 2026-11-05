@@ -264,11 +264,13 @@ These endpoints receive the actual event notifications from providers. They are 
 | `POST` | `/api/v1/providers/{provider}/webhooks` | Receives incoming event payloads. Verifies the provider signature, parses the event, and dispatches a background sync task. |
 | `GET` | `/api/v1/providers/{provider}/webhooks` | Handles subscription verification challenges (Oura `verification_token`, Strava `hub.challenge`). |
 | `HEAD` | `/api/v1/providers/{provider}/webhooks` | Handles callback reachability probes (Withings). |
-| `POST`, `GET`, `HEAD` | `/api/v1/providers/{provider}/webhooks/{callback_token}` | The same, for providers whose callback URL carries a secret token (Strava). |
+| `POST`, `GET`, `HEAD` | `/api/v1/providers/{provider}/webhooks/{callback_token}` | The same, for providers whose callback URL carries a secret token (Strava, Garmin). |
 
-The callback URL you register with a provider must point to `POST /api/v1/providers/{provider}/webhooks`, or to `POST /api/v1/providers/{provider}/webhooks/{callback_token}` for providers that use a callback token (Strava). For local development, use [ngrok](/dev-guides/ngrok-setup) to expose that endpoint publicly.
+The callback URL you register with a provider must point to `POST /api/v1/providers/{provider}/webhooks`, or to `POST /api/v1/providers/{provider}/webhooks/{callback_token}` for providers that use a callback token (Strava, Garmin). For local development, use [ngrok](/dev-guides/ngrok-setup) to expose that endpoint publicly.
 
 Strava signs its events with a key it does not share, so Open Wearables authenticates them with a random secret in the callback path instead. Set `STRAVA_WEBHOOK_TOKEN` to a value generated with `openssl rand -hex 32`; Open Wearables registers `/api/v1/providers/strava/webhooks/<secret>`. A Strava request to `/api/v1/providers/strava/webhooks` without the secret, or with a wrong one, is rejected with `401`, the subscription handshake included. A provider that does not use a callback token answers `404` on `/webhooks/{callback_token}`.
+
+Garmin does not sign its notifications at all, and the `garmin-client-id` header it sends is public. Set `GARMIN_WEBHOOK_TOKEN` to a value generated with `openssl rand -hex 32`, and set `/api/v1/providers/garmin/webhooks/<secret>` as the URL of every data type in the Garmin portal by hand. Garmin requests without the secret, or with a wrong one, are rejected with `401`, including those sent to the deprecated `/api/v1/garmin/webhooks/push` and `/api/v1/garmin/webhooks/ping`. See [Garmin API Integration](/providers/garmin-api-integration) for upgrading and rotating the token.
 
 Withings recommends adding a random shared secret to the exact callback URL. Set `WITHINGS_WEBHOOK_TOKEN` to a value generated with `openssl rand -hex 32`; Open Wearables registers `?token=<secret>` and validates it on notification POSTs and reachability HEAD probes. See the [Withings notification security guidance](https://developer.withings.com/developer-guide/v3/integration-guide/public-health-data-api/data-api/notifications/notification-overview/).
 

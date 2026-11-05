@@ -7,71 +7,71 @@ New integrations must use:
   POST /api/v1/providers/{provider}/webhooks
 
 Migration status:
-  Garmin  — was in production; old URLs kept until Garmin Developer Portal
-            is updated to the new canonical path.
+  Garmin  — was in production; old URLs kept, but every request to them is
+            rejected with 401, since its callback URL must carry a secret token
+            (POST /api/v1/providers/garmin/webhooks/{token}). The rejection is
+            logged with a hint to update the URLs in the Garmin portal.
   Oura    — was not in production; old paths kept for completeness only.
   Strava  — was not in production; old paths removed, since its callback URL
             must carry a secret token (POST /api/v1/providers/strava/webhooks/{token}).
 """
 
-from typing import Annotated
+from typing import NoReturn
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
-from app.database import DbSession
-from app.services.providers.factory import ProviderFactory
-from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.services.providers.garmin.webhook_handler import report_rejected_webhook_url, webhook_url_hint
+from app.utils.exceptions import WebhookVerificationError
+from app.utils.structured_logging import get_logger
 
 from .oura_webhooks import router as oura_webhooks_router
 
+logger = get_logger(__name__)
+
 router = APIRouter()
-
-_factory = ProviderFactory()
-
-
-def _get_garmin_handler() -> BaseWebhookHandler:
-    strategy = _factory.get_provider("garmin")
-    if strategy.webhooks is None:
-        raise RuntimeError("Garmin webhook handler not initialised")
-    return strategy.webhooks
-
-
-async def _read_body(request: Request) -> bytes:
-    return await request.body()
 
 
 # ---------------------------------------------------------------------------
 # Garmin — canonical path changed from /garmin/webhooks/{ping,push}
-#          to /providers/garmin/webhooks in commit e458cdeb.
+#          to /providers/garmin/webhooks in commit e458cdeb, and to
+#          /providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} for ENG-1895.
 # ---------------------------------------------------------------------------
 
 
-@router.post("/garmin/webhooks/ping")
-def garmin_webhook_ping_compat(
-    request: Request,
-    db: DbSession,
-    body: Annotated[bytes, Depends(_read_body)],
-) -> dict:
-    """Deprecated: POST /api/v1/garmin/webhooks/ping.
+def _reject_garmin_legacy_route(request: Request) -> NoReturn:
+    """These paths cannot carry the callback token, so no request to them is authenticated.
 
-    Use POST /api/v1/providers/garmin/webhooks instead.
+    A request with our ``garmin-client-id`` header is most likely Garmin itself, still
+    set up with the old URL: ``report_rejected_webhook_url`` logs it as an error.
+    Anything else is logged as a warning.
     """
-    handler = _get_garmin_handler()
-    return handler.handle(request, body, db)
+    if not report_rejected_webhook_url(request):
+        logger.warning(
+            "Request to a deprecated Garmin webhook URL rejected",
+            provider="garmin",
+            action="garmin_webhook_deprecated_route_rejected",
+            path=request.url.path,
+            client_host=request.client.host if request.client else None,
+        )
+    raise WebhookVerificationError(f"Deprecated Garmin webhook URL, use {webhook_url_hint()}")
+
+
+@router.post("/garmin/webhooks/ping")
+def garmin_webhook_ping_compat(request: Request) -> dict:
+    """Deprecated: POST /api/v1/garmin/webhooks/ping. Always rejected with 401.
+
+    Use POST /api/v1/providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} instead.
+    """
+    _reject_garmin_legacy_route(request)
 
 
 @router.post("/garmin/webhooks/push")
-def garmin_webhook_push_compat(
-    request: Request,
-    db: DbSession,
-    body: Annotated[bytes, Depends(_read_body)],
-) -> dict:
-    """Deprecated: POST /api/v1/garmin/webhooks/push.
+def garmin_webhook_push_compat(request: Request) -> dict:
+    """Deprecated: POST /api/v1/garmin/webhooks/push. Always rejected with 401.
 
-    Use POST /api/v1/providers/garmin/webhooks instead.
+    Use POST /api/v1/providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} instead.
     """
-    handler = _get_garmin_handler()
-    return handler.handle(request, body, db)
+    _reject_garmin_legacy_route(request)
 
 
 # Oura — re-registered at the old path for completeness.

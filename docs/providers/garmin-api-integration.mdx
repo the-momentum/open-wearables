@@ -52,8 +52,9 @@ Garmin describes both business tiers as intended for organizations (company, uni
 ## What you need by the end
 
 - **App credentials**: Client ID + Client Secret
+- **Webhook token**: a random `GARMIN_WEBHOOK_TOKEN` (`openssl rand -hex 32`)
 - **API Tools configured**:
-  - Endpoints enabled
+  - Endpoints enabled, all pointing at the webhook URL with that token
   - Data types + OAuth scopes selected
 - **Partner verification passed** (to request production access later)
 - **Production credentials** (only after Garmin approves your evaluation app for production use)
@@ -127,21 +128,30 @@ Garmin describes both business tiers as intended for organizations (company, uni
     Garmin’s API Tools are configured per app. To access them, log in with that app’s **Client ID** + **Client Secret**.
 
     **Enable endpoints**
+    - Generate the webhook token with `openssl rand -hex 32` and set it as `GARMIN_WEBHOOK_TOKEN` (see the **Provide Garmin credentials to Open Wearables** step below)
     - Open [API Endpoints](https://apis.garmin.com/tools/endpoints)
-    - For **every** endpoint, set the URL to your Open Wearables webhook push endpoint:
+    - For **every** endpoint, set the URL to your Open Wearables webhook endpoint, with the token as the last path segment:
 
     ```
-    https://<your-domain>/api/v1/garmin/webhooks/push
+    https://<your-domain>/api/v1/providers/garmin/webhooks/<GARMIN_WEBHOOK_TOKEN>
     ```
 
     For local development with ngrok:
     ```
-    https://<your-ngrok-id>.ngrok-free.app/api/v1/garmin/webhooks/push
+    https://<your-ngrok-id>.ngrok-free.app/api/v1/providers/garmin/webhooks/<GARMIN_WEBHOOK_TOKEN>
     ```
 
     - Set delivery type to **push** (dropdown on the right)
     - Check **enabled** for each endpoint you want to activate
-    - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint
+    - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint. That includes **Deregistrations** and **User Permissions**
+
+    <Note>
+    Garmin does not sign its notifications, and the `garmin-client-id` header it sends is public: your client ID appears in every OAuth authorization URL. The token in the URL path is what proves that a notification comes from Garmin. Open Wearables rejects every Garmin notification with `401` while `GARMIN_WEBHOOK_TOKEN` is unset, or when the token in the path is missing or wrong.
+    </Note>
+
+    <Warning>
+    Treat the webhook URL like a password. Anyone who knows it can send health data or account deregistrations in Garmin's name. Open Wearables masks the token in its logs and in Sentry, but your reverse proxy's access logs record full request paths.
+    </Warning>
 
     **Which endpoints to enable:**
 
@@ -186,11 +196,44 @@ API_BASE_URL=http://localhost:8000
 # Garmin OAuth Credentials
 GARMIN_CLIENT_ID=your_client_id_here
 GARMIN_CLIENT_SECRET=your_client_secret_here
+
+# Secret in the webhook URL. Generate with: openssl rand -hex 32
+GARMIN_WEBHOOK_TOKEN=
 ```
+
+    | Variable | Description |
+    |----------|-------------|
+    | `GARMIN_CLIENT_ID` | Client ID of your Garmin app |
+    | `GARMIN_CLIENT_SECRET` | Client Secret of your Garmin app |
+    | `GARMIN_WEBHOOK_TOKEN` | Random secret that you put in the webhook URL of every endpoint in the Garmin portal. Generate it with `openssl rand -hex 32`. It must be at least 32 characters long and contain only letters, digits, `-` and `_`. Required: Garmin delivers all data by push, so while it is unset every Garmin notification is rejected with `401` and no Garmin data arrives. The backend logs a warning at startup in that case |
 
     <Note>
     If you later move from evaluation to production, you’ll update these credentials to the production ones.
     </Note>
+
+    <Warning>
+    **Upgrading an instance that already receives Garmin data?** Older versions accepted Garmin notifications at `/api/v1/providers/garmin/webhooks` and at the deprecated `/api/v1/garmin/webhooks/push` and `/api/v1/garmin/webhooks/ping`, authenticated only by the public client ID. Open Wearables now rejects every notification sent to those URLs with `401`. Set `GARMIN_WEBHOOK_TOKEN` and change the URL of **every** data type in [API Endpoints](https://apis.garmin.com/tools/endpoints), **Deregistrations** and **User Permissions** included.
+
+    To upgrade without losing data, pause delivery in the Garmin portal while you switch:
+
+    1. In [API Endpoints](https://apis.garmin.com/tools/endpoints), turn **On Hold** on. Garmin queues notifications for up to 7 days instead of sending them.
+    2. Set `GARMIN_WEBHOOK_TOKEN` and deploy the new version (backend and Celery workers).
+    3. Change the URL of every data type to `https://<your-domain>/api/v1/providers/garmin/webhooks/<GARMIN_WEBHOOK_TOKEN>`.
+    4. Turn **On Hold** off. Garmin resumes delivery, including the queued notifications, within about 2 minutes.
+
+    If a notification is rejected anyway, Garmin retries it with backoff, usually for long enough to fix the URLs, but only **On Hold** guarantees that nothing is lost. Until then, the backend logs an error with the URL to set for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token.
+    </Warning>
+  </Step>
+  <Step title="Rotate the webhook token">
+    Rotate `GARMIN_WEBHOOK_TOKEN` if the webhook URL may have leaked:
+
+    1. In [API Endpoints](https://apis.garmin.com/tools/endpoints), turn **On Hold** on.
+    2. Generate a new value with `openssl rand -hex 32` and set it as `GARMIN_WEBHOOK_TOKEN`.
+    3. Restart the backend (the Celery workers do not use the token). From now on, notifications sent to the old URL are rejected with `401`.
+    4. Change the URL of every data type to the one with the new token, **Deregistrations** and **User Permissions** included.
+    5. Turn **On Hold** off.
+
+    Garmin queues notifications while **On Hold** is on, so none are lost during the rotation.
   </Step> 
   <Step title="Go to production (partner verification + production access)">
     Evaluation apps are for internal development. To go production, Garmin requires partner verification:

@@ -116,6 +116,13 @@ class TestAccessLogMiddleware:
         path = mock.call_args_list[0].kwargs["path"]
         assert path == "/api/v1/providers/strava/webhooks/redacted?hub.verify_token=REDACTED"
 
+    def test_garmin_webhook_callback_token_is_redacted(self) -> None:
+        # Garmin does not sign its notifications either; the operator sets this URL in its portal.
+        client = _build_client(AccessLogLevel.ALL)
+        with patch("app.middlewares.logger.log") as mock:
+            client.post("/api/v1/providers/garmin/webhooks/s3cret")
+        assert mock.call_args_list[0].kwargs["path"] == "/api/v1/providers/garmin/webhooks/redacted"
+
     def test_webhook_callback_token_in_a_query_value_is_redacted(self) -> None:
         # Subscription endpoints take the callback URL as ?callback_url=.
         client = _build_client(AccessLogLevel.ALL)

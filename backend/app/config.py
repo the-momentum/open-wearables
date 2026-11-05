@@ -207,6 +207,8 @@ class Settings(BaseSettings):
     garmin_client_secret: SecretStr | None = None
     garmin_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     garmin_default_scope: str = ""  # Scope is managed at app creation in Garmin Developer Portal
+    # Random secret in the webhook callback path; Garmin webhooks are rejected while unset.
+    garmin_webhook_token: SecretStr | None = None
 
     # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None
@@ -437,7 +439,7 @@ class Settings(BaseSettings):
             self.strava_webhook_verify_token = SecretStr(derive_secret(self.secret_key, "strava-webhook-verify-token"))
         return self
 
-    @field_validator("strava_webhook_token", mode="after")
+    @field_validator("strava_webhook_token", "garmin_webhook_token", mode="after")
     @classmethod
     def check_webhook_callback_token(cls, v: SecretStr | None) -> SecretStr | None:
         """A callback token is one unguessable URL path segment, so it must not need escaping."""

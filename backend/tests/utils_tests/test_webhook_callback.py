@@ -50,6 +50,10 @@ def test_token_matching(expected: SecretStr | None, provided: str | None, matche
             f"/api/v1/providers/strava/webhooks/{TOKEN}?hub.mode=subscribe",
             "/api/v1/providers/strava/webhooks/redacted?hub.mode=subscribe",
         ),
+        (
+            f"https://api.example.com/api/v1/providers/garmin/webhooks/{TOKEN}",
+            "https://api.example.com/api/v1/providers/garmin/webhooks/redacted",
+        ),
         ("/api/v1/providers/strava/webhooks", "/api/v1/providers/strava/webhooks"),
         ("/api/v1/providers/strava/webhooks/subscriptions", "/api/v1/providers/strava/webhooks/subscriptions"),
         (
@@ -62,18 +66,24 @@ def test_redaction_hides_only_the_token(url: str, redacted: str) -> None:
     assert redact_callback_url(url) == redacted
 
 
+TOKEN_SETTINGS = ["strava_webhook_token", "garmin_webhook_token"]
+
+
+@pytest.mark.parametrize("field", TOKEN_SETTINGS)
 @pytest.mark.parametrize("token", ["with/slash", "with space", "with%2F", "żółw"])
-def test_config_rejects_a_token_that_is_not_one_plain_path_segment(token: str) -> None:
+def test_config_rejects_a_token_that_is_not_one_plain_path_segment(field: str, token: str) -> None:
     with pytest.raises(ValidationError, match="may contain only letters"):
-        Settings(strava_webhook_token=token.ljust(40, "a"))
+        Settings(**{field: token.ljust(40, "a")})
 
 
+@pytest.mark.parametrize("field", TOKEN_SETTINGS)
 @pytest.mark.parametrize("token", ["abc", "subscriptions", TOKEN[:-1]])
-def test_config_rejects_a_guessable_token(token: str) -> None:
+def test_config_rejects_a_guessable_token(field: str, token: str) -> None:
     with pytest.raises(ValidationError, match="at least 32 characters"):
-        Settings(strava_webhook_token=token)
+        Settings(**{field: token})
 
 
+@pytest.mark.parametrize("field", TOKEN_SETTINGS)
 @pytest.mark.parametrize("token", [TOKEN, "A-b_" * 8, ""])
-def test_config_accepts_a_long_random_token_or_none(token: str) -> None:
-    assert Settings(strava_webhook_token=token).strava_webhook_token == SecretStr(token)
+def test_config_accepts_a_long_random_token_or_none(field: str, token: str) -> None:
+    assert getattr(Settings(**{field: token}), field) == SecretStr(token)

@@ -7,6 +7,23 @@ never exceeded.
 
 PING (callbackURL-based) mode is not supported — those notifications are
 ignored and the endpoint still returns 200 so Garmin stops retrying.
+
+Authenticity
+------------
+  Garmin does not sign its notifications and sends no secret with them. The
+  operator sets the callback URL by hand in the Garmin portal (Endpoint
+  Configuration, separately for every data type) to
+  ``/api/v1/providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN}``. The random token
+  in the path is the only credential. ``BaseWebhookHandler.authenticate_callback``
+  checks it on every request and rejects everything while the token is unset,
+  so the deprecated ``/garmin/webhooks/{ping,push}`` routes, which carry no
+  token, are always rejected. When a rejected request carries our
+  ``garmin-client-id``, ``report_rejected_webhook_url`` logs an error with the
+  URL to set in the portal.
+
+  The ``garmin-client-id`` header is checked too, but only to filter out noise:
+  the client id is public (it is in every OAuth authorize URL), so anyone can
+  send it.
 """
 
 import contextlib
@@ -16,6 +33,7 @@ from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
 from fastapi import Request
+from pydantic import SecretStr
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
@@ -37,8 +55,9 @@ from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.exceptions import InvalidInputError
+from app.utils.exceptions import InvalidInputError, WebhookVerificationError
 from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import provider_webhook_url, redact_callback_url
 
 logger = get_logger(__name__)
 
@@ -62,14 +81,72 @@ WELLNESS_TYPES: list[str] = [
 ]
 
 
+def webhook_url_hint() -> str:
+    """The callback URL to set for every data type in the Garmin portal, with the token as a placeholder."""
+    return f"{provider_webhook_url('garmin')}/<GARMIN_WEBHOOK_TOKEN>"
+
+
+def check_webhook_token_configured() -> None:
+    """Warn at startup when Garmin credentials are set but the webhook token is not.
+
+    Only a warning: ``.env.example`` ships placeholder Garmin credentials, so this
+    also fires on instances that never use Garmin. ``report_rejected_webhook_url``
+    raises the error once Garmin itself is turned away.
+    """
+    secret = settings.garmin_client_secret
+    if not (settings.garmin_client_id and secret and secret.get_secret_value()):
+        return
+    token = settings.garmin_webhook_token
+    if token is not None and token.get_secret_value():
+        return
+    logger.warning(
+        "GARMIN_WEBHOOK_TOKEN is not set, so every Garmin webhook is rejected with 401. If you use Garmin, "
+        "generate it with `openssl rand -hex 32`, then set webhook_url as the callback URL of every data type "
+        "in the Garmin portal",
+        provider="garmin",
+        action="garmin_webhook_token_unconfigured",
+        webhook_url=webhook_url_hint(),
+    )
+
+
+def report_rejected_webhook_url(request: Request) -> bool:
+    """Log an error with the URL to set when a rejected request comes from our Garmin app.
+
+    A request carrying our ``garmin-client-id`` but no valid token is most likely
+    Garmin itself, still set up with an old URL (or the token is unset or was
+    rotated), and no Garmin data arrives until the operator fixes it. The client
+    id is public, so a scanner can send it too, but scanners rarely do.
+
+    Returns:
+        ``True`` when the error was logged, ``False`` (nothing logged) for any
+        other caller.
+    """
+    expected = settings.garmin_client_id
+    if not expected or request.headers.get("garmin-client-id") != expected:
+        return False
+    logger.error(
+        "Garmin webhook rejected: its URL does not carry the right GARMIN_WEBHOOK_TOKEN, so no Garmin data "
+        "arrives. Set GARMIN_WEBHOOK_TOKEN if it is unset, and in the Garmin portal "
+        "(https://apis.garmin.com/tools/endpoints) set webhook_url as the callback URL of every data type, "
+        "Deregistrations and User Permissions included",
+        provider="garmin",
+        action="garmin_webhook_url_rejected",
+        webhook_url=webhook_url_hint(),
+        path=redact_callback_url(request.url.path),
+        client_host=request.client.host if request.client else None,
+    )
+    return True
+
+
 class GarminWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Garmin Health API push/ping events.
 
-    Garmin does not sign request bodies with HMAC; it identifies itself via the
-    ``garmin-client-id`` request header.  ``verify_signature`` checks that this
-    header matches the configured ``settings.garmin_client_id`` (constant-time),
-    failing closed when the value is not configured.
+    Requests are authenticated by ``GARMIN_WEBHOOK_TOKEN`` in the callback path
+    (see the module docstring). ``verify_signature`` then only checks that the
+    public ``garmin-client-id`` header matches ``settings.garmin_client_id``.
     """
+
+    requires_callback_token = True
 
     def __init__(self, garmin_workouts: GarminWorkouts, garmin_247: Garmin247Data, oauth: GarminOAuth) -> None:
         super().__init__("garmin")
@@ -93,7 +170,23 @@ class GarminWebhookHandler(BaseWebhookHandler):
     # BaseWebhookHandler interface
     # ------------------------------------------------------------------
 
+    def callback_token(self) -> SecretStr | None:
+        return settings.garmin_webhook_token
+
+    def authenticate_callback(self, request: Request) -> None:
+        """Check the token as the base class does, and flag Garmin itself being turned away."""
+        try:
+            super().authenticate_callback(request)
+        except WebhookVerificationError:
+            report_rejected_webhook_url(request)
+            raise
+
     def verify_signature(self, request: Request, body: bytes) -> bool:
+        """Check the ``garmin-client-id`` header: a noise filter, not authentication.
+
+        The client id is public, so this only drops requests meant for another
+        Garmin app. The callback token, checked before this, is the credential.
+        """
         expected = settings.garmin_client_id
         if not expected:
             logger.error(

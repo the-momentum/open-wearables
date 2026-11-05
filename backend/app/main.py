@@ -30,6 +30,9 @@ from app.services import raw_payload_storage
 from app.services.api_key_service import API_KEY_REQUIRED
 from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
+from app.services.providers.garmin.webhook_handler import (
+    check_webhook_token_configured as check_garmin_webhook_token_configured,
+)
 from app.utils.exceptions import (
     AppError,
     ConfigurationError,
@@ -89,6 +92,7 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
             "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
         )
     svix_service.register_event_types()
+    check_garmin_webhook_token_configured()
     yield
     # Hand the last partial interval of telemetry counters to Redis before exiting.
     with contextlib.suppress(Exception):

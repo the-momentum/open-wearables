@@ -13,7 +13,8 @@ CALLBACK_TOKEN = "3f9c1e7a5b2d4c8e9a0b1c2d3e4f5a6b"
 
 
 def test_provider_without_a_challenge_gets_501(client: TestClient, db: Session) -> None:
-    response = client.get("/api/v1/providers/garmin/webhooks")
+    with patch.object(settings, "garmin_webhook_token", SecretStr(CALLBACK_TOKEN)):
+        response = client.get(f"/api/v1/providers/garmin/webhooks/{CALLBACK_TOKEN}")
 
     assert response.status_code == 501
     assert response.json()["detail"] == "Provider 'garmin' does not support webhook subscription verification via GET."
