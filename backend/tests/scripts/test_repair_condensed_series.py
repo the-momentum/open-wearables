@@ -13,7 +13,13 @@ from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, SeriesSample, SeriesTypeDefinition, User
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
 from app.services.sdk.import_service import ImportService
-from tests.factories import DataPointSeriesFactory, DataSourceFactory, EventRecordFactory, UserFactory
+from tests.factories import (
+    APPLE_WATCH_APP_ID,
+    DataPointSeriesFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    UserFactory,
+)
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "data_migrations" / "repair_condensed_series.py"
 
@@ -30,12 +36,11 @@ def _load_module() -> ModuleType:
 _module = _load_module()
 repair_condensed_series = _module.repair_condensed_series
 
-WATCH_APP = "com.apple.health.5C1B9A4E-0D7E-4F7B-9E8A-2E3D4C5B6A70"
 NOW = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
 START = datetime(2026, 7, 2, 22, 27, tzinfo=timezone.utc)
 
 
-def _source(user: User | None = None, model: str = "Watch6,18", app_id: str = WATCH_APP) -> DataSource:
+def _source(user: User | None = None, model: str = "Watch6,18", app_id: str = APPLE_WATCH_APP_ID) -> DataSource:
     return DataSourceFactory(user=user, provider=ProviderName.APPLE, source_app_id=app_id, device_model=model)
 
 
@@ -252,6 +257,17 @@ class TestRepairCondensedSeries:
 
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
 
+    def test_two_copies_of_one_series_in_sibling_sources_cover_each_other_and_are_kept(self, db: Session) -> None:
+        user = UserFactory()
+        watch = _source(user)
+        phone = _source(user, model="iPhone15,2")
+        _workout(watch)
+        _originals(db, watch)
+        copies = [_sample(db, source, SeriesType.active_energy, START, "15", window=600) for source in (watch, phone)]
+
+        assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(kept=2)
+        assert all(_row(db, copy) is not None for copy in copies)
+
     def test_a_restored_series_sent_again_is_dropped_at_ingest(self, db: Session) -> None:
         source = _source()
         _workout(source)
@@ -273,7 +289,7 @@ class TestRepairCondensedSeries:
                         "startDate": START.strftime("%Y-%m-%dT%H:%M:%SZ"),
                         "endDate": (START + timedelta(seconds=600)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         "source": {
-                            "appId": WATCH_APP,
+                            "appId": APPLE_WATCH_APP_ID,
                             "name": "Test Apple Watch",
                             "deviceModel": "Watch",
                             "deviceHardwareVersion": "Watch6,18",

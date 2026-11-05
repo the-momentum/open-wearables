@@ -10,9 +10,9 @@ from app.repositories.data_point_series_repository import Coverage
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.services.sdk.condensed_series import is_candidate, is_condensed, repair_action
+from tests.factories import APPLE_WATCH_APP_ID
 
 NOW = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
-WATCH_APP = "com.apple.health.5C1B9A4E-0D7E-4F7B-9E8A-2E3D4C5B6A70"
 
 
 def _sample(
@@ -20,7 +20,7 @@ def _sample(
     *,
     days_ago: int = 120,
     window: int | None = 600,
-    app_id: str | None = WATCH_APP,
+    app_id: str | None = APPLE_WATCH_APP_ID,
     value: str = "15",
 ) -> TimeSeriesSampleCreate:
     return TimeSeriesSampleCreate(

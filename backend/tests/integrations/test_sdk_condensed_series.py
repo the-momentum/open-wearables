@@ -6,18 +6,20 @@ from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import SeriesSample
 from app.schemas.enums import SeriesType, get_series_type_id
 from app.services.sdk.import_service import ImportService, LoadDataResult
-from tests.factories import UserFactory
+from tests.factories import APPLE_WATCH_APP_ID, UserFactory
 
-WATCH_APP = "com.apple.health.5C1B9A4E-0D7E-4F7B-9E8A-2E3D4C5B6A70"
 OURA_APP = "com.ouraring.oura"
 ACTIVE_ENERGY = "HKQuantityTypeIdentifierActiveEnergyBurned"
+BASAL_ENERGY = "HKQuantityTypeIdentifierBasalEnergyBurned"
+DISTANCE = "HKQuantityTypeIdentifierDistanceWalkingRunning"
 HEART_RATE = "HKQuantityTypeIdentifierHeartRate"
-UNITS = {ACTIVE_ENERGY: "kcal", HEART_RATE: "count/min"}
+UNITS = {ACTIVE_ENERGY: "kcal", BASAL_ENERGY: "kcal", DISTANCE: "m", HEART_RATE: "count/min"}
 # A workout old enough for HealthKit to condense, and one that is not
 OLD = (datetime.now(timezone.utc) - timedelta(days=120)).replace(second=0, microsecond=0)
 RECENT = (datetime.now(timezone.utc) - timedelta(days=1)).replace(second=0, microsecond=0)
@@ -35,7 +37,7 @@ def _record(
     *,
     count: int | None = None,
     record_id: str | None = None,
-    app_id: str = WATCH_APP,
+    app_id: str = APPLE_WATCH_APP_ID,
     hardware: str | None = "Watch6,18",
     device_model: str = "Watch",
 ) -> dict[str, Any]:
@@ -67,9 +69,9 @@ def _load(db: Session, user_id: str, records: list[dict[str, Any]]) -> LoadDataR
     return ImportService().load_data(db, payload, user_id)
 
 
-def _originals(start: datetime, **source: Any) -> list[dict[str, Any]]:
-    """A workout's active energy as the watch writes it: 1.5 kcal a minute for 10 minutes."""
-    return [_record(ACTIVE_ENERGY, start + timedelta(minutes=minute), 60, "1.5", **source) for minute in range(10)]
+def _originals(start: datetime, kind: str = ACTIVE_ENERGY, value: str = "1.5", **source: Any) -> list[dict[str, Any]]:
+    """A workout's samples as the watch writes them: one a minute for 10 minutes (default 1.5 kcal active energy)."""
+    return [_record(kind, start + timedelta(minutes=minute), 60, value, **source) for minute in range(10)]
 
 
 def _stored(
@@ -86,15 +88,25 @@ def _stored(
 
 
 class TestCondensedSeriesAtIngest:
-    def test_a_series_over_stored_originals_is_dropped(self, db: Session) -> None:
+    @pytest.mark.parametrize(
+        ("kind", "series_type", "minute_value", "series_value"),
+        [
+            (ACTIVE_ENERGY, SeriesType.active_energy, "1.5", "15"),
+            (BASAL_ENERGY, SeriesType.basal_energy, "1.2", "12"),
+            (DISTANCE, SeriesType.distance_walking_running, "80", "800"),
+        ],
+    )
+    def test_a_series_over_stored_originals_is_dropped(
+        self, db: Session, kind: str, series_type: SeriesType, minute_value: str, series_value: str
+    ) -> None:
         user_id = str(UserFactory().id)
-        _load(db, user_id, _originals(OLD))
-        originals = _stored(db)
+        _load(db, user_id, _originals(OLD, kind, minute_value))
+        originals = _stored(db, series_type)
 
-        _load(db, user_id, [_record(ACTIVE_ENERGY, OLD, 600, "15")])
+        _load(db, user_id, [_record(kind, OLD, 600, series_value)])
 
         assert len(originals) == 10
-        assert _stored(db) == originals
+        assert _stored(db, series_type) == originals
 
     def test_a_series_without_stored_originals_is_kept(self, db: Session) -> None:
         user_id = str(UserFactory().id)

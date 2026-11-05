@@ -26,7 +26,7 @@ from app.repositories.data_point_series_repository import (
 )
 from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
-from tests.factories import DataPointSeriesFactory, DataSourceFactory, UserFactory
+from tests.factories import APPLE_WATCH_APP_ID, DataPointSeriesFactory, DataSourceFactory, UserFactory
 
 
 class TestDataPointSeriesRepository:
@@ -1080,7 +1080,6 @@ class TestHasSamplesInRange:
         assert not self._probe(db, source, "Edge")
 
 
-WATCH_APP = "com.apple.health.5C1B9A4E-0D7E-4F7B-9E8A-2E3D4C5B6A70"
 WINDOW_START = datetime(2026, 7, 2, 20, 27, tzinfo=timezone.utc)
 
 
@@ -1104,7 +1103,7 @@ class TestStoredInWindows:
     def _window(user_id: UUID, minutes: int, external_id: str | None = None) -> StoredWindow:
         return StoredWindow(
             user_id=user_id,
-            source_app_id=WATCH_APP,
+            source_app_id=APPLE_WATCH_APP_ID,
             series_type_definition_id=get_series_type_id(SeriesType.active_energy),
             start=WINDOW_START,
             end=WINDOW_START + timedelta(minutes=minutes),
@@ -1114,7 +1113,7 @@ class TestStoredInWindows:
     def test_counts_and_sums_the_samples_inside_the_window(
         self, db: Session, series_repo: DataPointSeriesRepository
     ) -> None:
-        source = DataSourceFactory(source_app_id=WATCH_APP, device_model="Watch6,18")
+        source = DataSourceFactory(source_app_id=APPLE_WATCH_APP_ID, device_model="Watch6,18")
         for minute, value in ((0, "1.5"), (5, "2.5"), (10, "4")):  # the last one at the window's end
             self._energy(db, source, minute, value)
 
@@ -1126,12 +1125,16 @@ class TestStoredInWindows:
         self, db: Session, series_repo: DataPointSeriesRepository
     ) -> None:
         user = UserFactory()
-        self._energy(db, DataSourceFactory(user=user, source_app_id=WATCH_APP, device_model="Watch6,18"), 1, "1")
-        self._energy(db, DataSourceFactory(user=user, source_app_id=WATCH_APP, device_model="iPhone15,2"), 2, "2")
+        self._energy(
+            db, DataSourceFactory(user=user, source_app_id=APPLE_WATCH_APP_ID, device_model="Watch6,18"), 1, "1"
+        )
+        self._energy(
+            db, DataSourceFactory(user=user, source_app_id=APPLE_WATCH_APP_ID, device_model="iPhone15,2"), 2, "2"
+        )
         self._energy(db, DataSourceFactory(user=user, source_app_id="com.ouraring.oura", device_model=None), 3, "4")
-        self._energy(db, DataSourceFactory(source_app_id=WATCH_APP, device_model="Watch6,18"), 4, "8")
+        self._energy(db, DataSourceFactory(source_app_id=APPLE_WATCH_APP_ID, device_model="Watch6,18"), 4, "8")
         DataPointSeriesFactory(  # heart rate, another type
-            data_source=DataSourceFactory(user=user, source_app_id=WATCH_APP, device_model="Watch7,9"),
+            data_source=DataSourceFactory(user=user, source_app_id=APPLE_WATCH_APP_ID, device_model="Watch7,9"),
             recorded_at=WINDOW_START + timedelta(minutes=5),
         )
 
@@ -1140,7 +1143,7 @@ class TestStoredInWindows:
         ]
 
     def test_a_sample_does_not_cover_itself(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        source = DataSourceFactory(source_app_id=WATCH_APP, device_model="Watch6,18")
+        source = DataSourceFactory(source_app_id=APPLE_WATCH_APP_ID, device_model="Watch6,18")
         self._energy(db, source, 0, "3", external_id="SERIES")
         self._energy(db, source, 1, "1", external_id="ORIGINAL")
         self._energy(db, source, 2, "1")
@@ -1151,7 +1154,7 @@ class TestStoredInWindows:
     def test_keeps_the_order_and_gives_nothing_for_an_empty_window(
         self, db: Session, series_repo: DataPointSeriesRepository
     ) -> None:
-        source = DataSourceFactory(source_app_id=WATCH_APP, device_model="Watch6,18")
+        source = DataSourceFactory(source_app_id=APPLE_WATCH_APP_ID, device_model="Watch6,18")
         self._energy(db, source, 30, "2")
         later = self._window(source.user_id, 35)._replace(start=WINDOW_START + timedelta(minutes=25))
 
