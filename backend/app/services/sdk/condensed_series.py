@@ -34,7 +34,7 @@ CONDENSED_TYPES = frozenset(
         SeriesType.distance_cycling,
     }
 )
-# Apple condenses workouts a few months old
+# Apple condenses workouts a few months old; 30 days leaves a margin
 MIN_CONDENSED_AGE = timedelta(days=30)
 # Without a count, one stored sample can be an overlapping reading, so a series must cover this many
 MIN_COVERED = 2
@@ -70,8 +70,11 @@ def _within_sum(value: Decimal, total: Decimal) -> bool:
     return abs(value - total) <= abs(value) * SUM_TOLERANCE
 
 
-def repair_action(series_type: SeriesType, value: Decimal, coverage: Coverage) -> tuple[Repair, Decimal | None]:
-    """What to do with a stored series over MIN_COVERED+ samples, and for a restored one the original it replaced."""
+def repair_action(series_type: SeriesType, value: Decimal, coverage: Coverage) -> tuple[Repair, Decimal | None] | None:
+    """The repair for a stored series, and the value to restore when it replaced an original; None for a row that
+    covers too few samples to be one."""
+    if coverage.covered < MIN_COVERED:
+        return None
     if get_aggregation_method(series_type) is not AggregationMethod.SUM:
         return "deleted", None  # the reading it replaced can't be recovered
     replaced = value - coverage.total

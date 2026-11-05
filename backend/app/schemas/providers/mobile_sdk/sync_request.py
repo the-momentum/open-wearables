@@ -82,7 +82,9 @@ class MetricRecord(BaseModel):
     unit: str | None
     count: int | None = Field(
         None,
-        description="HKQuantitySample.count: above 1 for a quantity series, such as one HealthKit condensed",
+        description=(
+            "HKQuantitySample.count. Above 1 for a quantity series, e.g. one HealthKit condensed from older samples."
+        ),
     )
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 

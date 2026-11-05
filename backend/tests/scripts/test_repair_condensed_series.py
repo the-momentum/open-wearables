@@ -6,13 +6,13 @@ from pathlib import Path
 from types import ModuleType
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, SeriesSample, SeriesTypeDefinition, User
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
-from app.services.sdk.import_service import ImportService
 from tests.factories import (
     APPLE_WATCH_APP_ID,
     DataPointSeriesFactory,
@@ -20,6 +20,7 @@ from tests.factories import (
     EventRecordFactory,
     UserFactory,
 )
+from tests.fixtures.healthkit_records import ACTIVE_ENERGY, healthkit_record, load_healthkit_records
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "data_migrations" / "repair_condensed_series.py"
 
@@ -35,6 +36,7 @@ def _load_module() -> ModuleType:
 
 _module = _load_module()
 repair_condensed_series = _module.repair_condensed_series
+migrate = _module._migrate
 
 NOW = datetime(2026, 11, 5, 12, tzinfo=timezone.utc)
 START = datetime(2026, 7, 2, 22, 27, tzinfo=timezone.utc)
@@ -79,10 +81,16 @@ def _workout(source: DataSource, start: datetime = START) -> None:
     )
 
 
-def _originals(db: Session, source: DataSource, first_minute: int = 1) -> None:
-    """A workout's active energy stored before samples kept a window: 1.5 kcal a minute up to minute 9."""
+def _originals(
+    db: Session,
+    source: DataSource,
+    first_minute: int = 1,
+    series_type: SeriesType = SeriesType.active_energy,
+    value: str = "1.5",
+) -> None:
+    """A workout's samples stored before samples kept a window: one a minute up to minute 9 (1.5 kcal by default)."""
     for minute in range(first_minute, 10):
-        _sample(db, source, SeriesType.active_energy, START + timedelta(minutes=minute), "1.5")
+        _sample(db, source, series_type, START + timedelta(minutes=minute), value)
 
 
 def _row(db: Session, sample: SeriesSample) -> SeriesSample | None:
@@ -104,16 +112,26 @@ def _active_energy(db: Session) -> list[tuple[datetime, int | None, str | None, 
 
 
 class TestRepairCondensedSeries:
-    def test_a_series_that_replaced_an_original_gives_it_back(self, db: Session) -> None:
+    @pytest.mark.parametrize(
+        ("series_type", "minute_value", "series_value"),
+        [
+            (SeriesType.active_energy, "1.5", "15"),
+            (SeriesType.basal_energy, "1.2", "12"),
+            (SeriesType.distance_walking_running, "80", "800"),
+        ],
+    )
+    def test_a_series_that_replaced_an_original_gives_it_back(
+        self, db: Session, series_type: SeriesType, minute_value: str, series_value: str
+    ) -> None:
         source = _source()
         _workout(source)
-        _originals(db, source)  # minutes 1-9: 13.5 kcal; the one at minute 0 was replaced
-        series = _sample(db, source, SeriesType.active_energy, START, "15", window=600, external_id="SERIES")
+        _originals(db, source, series_type=series_type, value=minute_value)  # minutes 1-9; minute 0 was replaced
+        series = _sample(db, source, series_type, START, series_value, window=600, external_id="SERIES")
 
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
         repaired = _row(db, series)
         assert repaired is not None
-        assert (repaired.value, repaired.window_seconds, repaired.external_id) == (Decimal("1.5"), None, None)
+        assert (repaired.value, repaired.window_seconds, repaired.external_id) == (Decimal(minute_value), None, None)
 
     def test_a_series_that_replaced_nothing_is_deleted(self, db: Session) -> None:
         source = _source()
@@ -257,16 +275,37 @@ class TestRepairCondensedSeries:
 
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
 
-    def test_two_copies_of_one_series_in_sibling_sources_cover_each_other_and_are_kept(self, db: Session) -> None:
+    def test_two_copies_of_one_series_in_sibling_sources_are_repaired_once(self, db: Session) -> None:
         user = UserFactory()
         watch = _source(user)
         phone = _source(user, model="iPhone15,2")
         _workout(watch)
         _originals(db, watch)
-        copies = [_sample(db, source, SeriesType.active_energy, START, "15", window=600) for source in (watch, phone)]
+        for source in (watch, phone):  # copies of one HealthKit series share its UUID
+            _sample(db, source, SeriesType.active_energy, START, "15", window=600, external_id="SERIES")
 
-        assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(kept=2)
-        assert all(_row(db, copy) is not None for copy in copies)
+        assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1, deleted=1)
+        assert sum(value for *_, value in _active_energy(db)) == Decimal("15")
+
+    def test_a_series_inside_two_overlapping_workouts_is_repaired_once(self, db: Session) -> None:
+        source = _source()
+        _workout(source)  # START-5min .. START+1h
+        EventRecordFactory(
+            data_source=source,
+            category="workout",
+            type_="running",
+            start_datetime=START + timedelta(minutes=10),
+            end_datetime=START + timedelta(hours=2),
+        )
+        for minute in range(13, 22):  # inside both workouts; minute 12 was replaced
+            _sample(db, source, SeriesType.active_energy, START + timedelta(minutes=minute), "1.5")
+        _sample(db, source, SeriesType.active_energy, START + timedelta(minutes=12), "15", window=600)
+
+        assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
+
+    def test_the_migration_reports_whether_it_changed_anything(self, db: Session) -> None:
+        assert migrate(db, dry_run=False) is True
+        assert migrate(db, dry_run=True) is False
 
     def test_a_restored_series_sent_again_is_dropped_at_ingest(self, db: Session) -> None:
         source = _source()
@@ -275,31 +314,11 @@ class TestRepairCondensedSeries:
         _sample(db, source, SeriesType.active_energy, START, "15", window=600, external_id="SERIES")
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
         stored = _active_energy(db)
-        payload = {
-            "provider": "apple",
-            "sdkVersion": "0.17.0",
-            "syncTimestamp": NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "data": {
-                "records": [
-                    {
-                        "id": "SERIES",
-                        "type": "HKQuantityTypeIdentifierActiveEnergyBurned",
-                        "unit": "kcal",
-                        "value": "15",
-                        "startDate": START.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "endDate": (START + timedelta(seconds=600)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "source": {
-                            "appId": APPLE_WATCH_APP_ID,
-                            "name": "Test Apple Watch",
-                            "deviceModel": "Watch",
-                            "deviceHardwareVersion": "Watch6,18",
-                        },
-                    }
-                ]
-            },
-        }
-
-        ImportService().load_data(db, payload, str(source.user_id))
+        load_healthkit_records(
+            db,
+            str(source.user_id),
+            [healthkit_record(ACTIVE_ENERGY, START, 600, "15", record_id="SERIES", hardware="Watch6,18")],
+        )
 
         assert len(stored) == 10
         assert _active_energy(db) == stored

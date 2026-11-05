@@ -104,3 +104,7 @@ def test_repair_action_decides_by_what_the_series_has_over_the_sum(
     coverage = Coverage(9, Decimal(total), Decimal(largest))
 
     assert repair_action(series_type, Decimal(value), coverage) == expected
+
+
+def test_repair_action_is_none_for_a_row_that_covers_too_few_samples_to_be_a_series() -> None:
+    assert repair_action(SeriesType.active_energy, Decimal("3"), Coverage(1, Decimal("1.5"), Decimal("1.5"))) is None

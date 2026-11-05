@@ -4,15 +4,16 @@
 The why and the decision rules are in app/services/sdk/condensed_series.py; this applies them to stored rows.
 
 Reads the rows with a window (stored since #1931) inside the user's Apple workouts older than MIN_CONDENSED_AGE.
-A restored original gets no window and no external id, so a series sent again is dropped at ingest. Each data
-source is committed on its own and its days are queued for the rollup. Runs once per instance (data_migration);
-a re-run changes nothing.
+A restored original loses its window, so a re-run skips it, and its external id, so the series sent again finds
+it covered and is dropped at ingest. Each data source is committed on its own and its days are queued for the
+rollup. Runs once per instance (data_migration); a re-run changes nothing.
 
-Coverage is not narrowed: a deleted row starts within one window of the 2+ samples it covers, so the span is at
-most one window early.
+data_type_coverage is not narrowed: a deleted row starts within one window of the 2+ samples it covers, so the
+span is at most one window early.
 
-Known limits: a series of a user whose workouts never reached OW stays; so does one an old pod stores during a
-rolling deploy after the run; webhooks already sent are not retracted.
+Known limits: a series stays when the user's workouts never reached OW, when it covers only part of its stored
+originals, or when an old pod stores it during a rolling deploy after the run; webhooks already sent are not
+retracted.
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/repair_condensed_series.py --dry-run
@@ -20,6 +21,7 @@ Usage (inside Docker):
 """
 
 import argparse
+import time
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -36,11 +38,11 @@ from app.repositories.data_point_series_repository import StoredWindow
 from app.schemas.enums import EventCategory, ProviderName, get_series_type_id
 from app.schemas.enums.series_types import get_series_type_from_id
 from app.services.data_migration_service import data_migration_service
-from app.services.sdk.condensed_series import CONDENSED_TYPES, MIN_CONDENSED_AGE, MIN_COVERED, repair_action
+from app.services.sdk.condensed_series import CONDENSED_TYPES, MIN_CONDENSED_AGE, repair_action
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import local_date
 
-PROGRESS_EVERY = 1000
+PROGRESS_SECONDS = 30
 LOOKUP_CHUNK = 2000
 
 # A sync writing the same samples holds their rows; behind one, a statement fails and the next start
@@ -54,10 +56,9 @@ _SOURCES = text("""
     WHERE ds.source_app_id LIKE :prefix
     ORDER BY ds.id
 """)
-# The source's windowed rows inside the user's Apple workouts, each span read once across the user's sources (a
-# workout is often stored twice, e.g. SDK + XML import). OFFSET 0 keeps the lookup bounded by each span; flattened,
-# the planner reads the source's whole history. A series may start just before its workout, hence the 1-minute
-# margin. Every series the SDK sent has an external id, and the coverage lookup excludes a row by it.
+# The source's windowed rows inside the user's Apple workouts, each span once (a workout is often stored twice).
+# OFFSET 0 bounds each lookup by its span; flattened, the planner scans the source. 1-minute margin: a series may
+# start just before its workout. The lookup excludes the row by external id, which every SDK series has.
 _SERIES = text("""
     SELECT s.id, s.series_type_definition_id, s.recorded_at, s.zone_offset, s.value, s.window_seconds, s.external_id
     FROM (
@@ -94,9 +95,11 @@ def repair_condensed_series(db: Session, *, dry_run: bool, now: datetime | None 
     done: Counter[str] = Counter()
     by_type: Counter[tuple[str, str]] = Counter()
     sources = db.execute(_SOURCES, {"prefix": f"{APPLE_SOURCE_APP_PREFIX}%"}).all()
+    last_progress = time.monotonic()
     for index, (source_id, user_id, app_id) in enumerate(sources, start=1):
-        if index % PROGRESS_EVERY == 0:
-            print(f"Repairing condensed series: {index}/{len(sources)} sources...")
+        if time.monotonic() - last_progress >= PROGRESS_SECONDS:
+            last_progress = time.monotonic()
+            print(f"Repairing condensed series: {index}/{len(sources)} sources, {dict(done)} so far...")
         restored: list[dict[str, UUID | Decimal]] = []
         deleted: list[UUID] = []
         days: set[tuple[UUID, date]] = set()
@@ -120,10 +123,10 @@ def repair_condensed_series(db: Session, *, dry_run: bool, now: datetime | None 
                 for row in chunk
             ]
             for row, coverage in zip(chunk, timeseries_service.stored_in_windows(db, windows), strict=True):
-                if coverage.covered < MIN_COVERED:
-                    continue
                 series_type = get_series_type_from_id(row.series_type_definition_id)
-                repair, value = repair_action(series_type, row.value, coverage)
+                if (action := repair_action(series_type, row.value, coverage)) is None:
+                    continue
+                repair, value = action
                 done[repair] += 1
                 by_type[(series_type.value, repair)] += 1
                 if repair == "kept":

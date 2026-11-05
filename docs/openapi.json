@@ -8291,7 +8291,7 @@
                                   "type": "null"
                                 }
                               ],
-                              "description": "HKQuantitySample.count: above 1 for a quantity series, such as one HealthKit condensed",
+                              "description": "HKQuantitySample.count. Above 1 for a quantity series, e.g. one HealthKit condensed from older samples.",
                               "title": "Count"
                             },
                             "metadata": {
