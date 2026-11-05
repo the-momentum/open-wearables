@@ -381,10 +381,6 @@ class ApplicationFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
-# An Apple Watch's HealthKit source, as the SDK sends it
-APPLE_WATCH_APP_ID = "com.apple.health.5C1B9A4E-0D7E-4F7B-9E8A-2E3D4C5B6A70"
-
-
 class DataSourceFactory(BaseFactory):
     """Factory for DataSource model."""
 

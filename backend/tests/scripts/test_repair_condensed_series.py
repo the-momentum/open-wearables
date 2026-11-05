@@ -1,3 +1,5 @@
+"""Tests for the repair of HealthKit condensed series stored over their originals (#1983)."""
+
 import importlib.util
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
@@ -14,15 +16,15 @@ from sqlalchemy.orm import Session
 
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, SeriesSample, SeriesTypeDefinition, User
-from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
-from tests.factories import (
+from app.schemas.enums import ProviderName, SeriesType
+from tests.factories import DataPointSeriesFactory, DataSourceFactory, EventRecordFactory, UserFactory
+from tests.fixtures.healthkit_records import (
+    ACTIVE_ENERGY,
     APPLE_WATCH_APP_ID,
-    DataPointSeriesFactory,
-    DataSourceFactory,
-    EventRecordFactory,
-    UserFactory,
+    healthkit_record,
+    load_healthkit_records,
+    stored_samples,
 )
-from tests.fixtures.healthkit_records import ACTIVE_ENERGY, healthkit_record, load_healthkit_records
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "data_migrations" / "repair_condensed_series.py"
 
@@ -72,14 +74,14 @@ def _sample(
     )
 
 
-def _workout(source: DataSource, start: datetime = START) -> None:
-    """An Apple workout of the source's user, from five minutes before start to an hour after it."""
+def _workout(source: DataSource, start: datetime = START, end: datetime | None = None) -> None:
+    """An Apple workout of the source's user, from five minutes before start to end, by default an hour after start."""
     EventRecordFactory(
         data_source=source,
         category="workout",
         type_="running",
         start_datetime=start - timedelta(minutes=5),
-        end_datetime=start + timedelta(hours=1),
+        end_datetime=end or start + timedelta(hours=1),
     )
 
 
@@ -100,17 +102,6 @@ def _row(db: Session, sample: SeriesSample) -> SeriesSample | None:
     assert identity is not None
     db.expire_all()
     return db.get(SeriesSample, identity)
-
-
-def _active_energy(db: Session) -> list[tuple[datetime, int | None, str | None, Decimal]]:
-    db.expire_all()
-    rows = (
-        db.query(SeriesSample)
-        .filter(SeriesSample.series_type_definition_id == get_series_type_id(SeriesType.active_energy))
-        .order_by(SeriesSample.recorded_at)
-        .all()
-    )
-    return [(row.recorded_at, row.window_seconds, row.external_id, row.value) for row in rows]
 
 
 class TestRepairCondensedSeries:
@@ -154,12 +145,32 @@ class TestRepairCondensedSeries:
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(deleted=1)
         assert _row(db, series) is None
 
+    def test_heart_rate_series_covering_only_each_other_are_kept(self, db: Session) -> None:
+        user = UserFactory()
+        watch = _source(user)
+        phone = _source(user, model="iPhone15,2")
+        _workout(watch)
+        # a series and its re-condensation filed under the phone cover each other and a later one, but no readings
+        series = [
+            _sample(db, watch, SeriesType.heart_rate, START, "144", window=600),
+            _sample(db, phone, SeriesType.heart_rate, START, "146", window=600),
+            _sample(db, watch, SeriesType.heart_rate, START + timedelta(minutes=5), "150", window=300),
+        ]
+
+        assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(kept=2)
+        rows = [_row(db, sample) for sample in series]
+        assert [(row.value, row.window_seconds) for row in rows if row] == [
+            (Decimal("144"), 600),
+            (Decimal("146"), 600),
+            (Decimal("150"), 300),
+        ]
+
     def test_a_series_filed_under_another_model_is_matched_with_the_watch(self, db: Session) -> None:
         user = UserFactory()
         watch = _source(user)
         _workout(watch)
         _originals(db, watch, first_minute=0)
-        series = _sample(db, _source(user, "iPhone15,2"), SeriesType.active_energy, START, "15", window=600)
+        series = _sample(db, _source(user, model="iPhone15,2"), SeriesType.active_energy, START, "15", window=600)
 
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(deleted=1)
         assert _row(db, series) is None
@@ -173,7 +184,7 @@ class TestRepairCondensedSeries:
         _workout(watch, recent)
         for minute in (1, 2):
             _sample(db, watch, SeriesType.active_energy, recent + timedelta(minutes=minute), "1")
-        oura = _source(user, "Oura Ring", app_id="com.ouraring.oura")
+        oura = _source(user, model="Oura Ring", app_id="com.ouraring.oura")
         for minute in (1, 2):
             _sample(db, oura, SeriesType.active_energy, START + timedelta(minutes=minute), "1")
         untouched = [
@@ -287,18 +298,12 @@ class TestRepairCondensedSeries:
             _sample(db, source, SeriesType.active_energy, START, "15", window=600, external_id="SERIES")
 
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1, deleted=1)
-        assert sum(value for *_, value in _active_energy(db)) == Decimal("15")
+        assert sum(value for *_, value in stored_samples(db)) == Decimal("15")
 
     def test_a_series_inside_two_overlapping_workouts_is_repaired_once(self, db: Session) -> None:
         source = _source()
         _workout(source)  # START-5min .. START+1h
-        EventRecordFactory(
-            data_source=source,
-            category="workout",
-            type_="running",
-            start_datetime=START + timedelta(minutes=10),
-            end_datetime=START + timedelta(hours=2),
-        )
+        _workout(source, START + timedelta(minutes=15), START + timedelta(hours=2))  # START+10min .. START+2h
         for minute in range(13, 22):  # inside both workouts; minute 12 was replaced
             _sample(db, source, SeriesType.active_energy, START + timedelta(minutes=minute), "1.5")
         _sample(db, source, SeriesType.active_energy, START + timedelta(minutes=12), "15", window=600)
@@ -349,12 +354,10 @@ class TestRepairCondensedSeries:
         _originals(db, source)
         _sample(db, source, SeriesType.active_energy, START, "15", window=600, external_id="SERIES")
         assert repair_condensed_series(db, dry_run=False, now=NOW) == Counter(restored=1)
-        stored = _active_energy(db)
+        stored = stored_samples(db)
         load_healthkit_records(
-            db,
-            str(source.user_id),
-            [healthkit_record(ACTIVE_ENERGY, START, 600, "15", record_id="SERIES", hardware="Watch6,18")],
+            db, str(source.user_id), [healthkit_record(ACTIVE_ENERGY, START, 600, "15", record_id="SERIES")]
         )
 
         assert len(stored) == 10
-        assert _active_energy(db) == stored
+        assert stored_samples(db) == stored

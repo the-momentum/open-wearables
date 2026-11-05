@@ -241,9 +241,8 @@ class WorkoutWindow(NamedTuple):
 
 
 class StoredWindow(NamedTuple):
-    """Where to look for stored samples: one user's writer app, one type, [start, end)."""
+    """A writer app's samples of one type in [start, end), less the one with external_id."""
 
-    user_id: UUID
     source_app_id: str | None
     series_type_definition_id: int
     start: datetime
@@ -252,9 +251,10 @@ class StoredWindow(NamedTuple):
 
 
 class Coverage(NamedTuple):
-    """What a window covers among the stored samples: how many, their sum and the largest."""
+    """The stored samples in a window: how many, how many are instants, their sum and the largest value."""
 
     covered: int
+    instants: int
     total: Decimal
     largest: Decimal
 
@@ -262,26 +262,20 @@ class Coverage(NamedTuple):
 # LATERAL so each window is one range of the (source, type, time) index; a plain join filters type and time after it.
 # Matched by writer app: a series can be filed under another device model.
 _STORED_IN_WINDOWS = text("""
-    SELECT c.covered, c.total, c.largest
+    SELECT stored.covered, stored.instants, stored.total, stored.largest
     FROM unnest(
-        CAST(:user_ids AS uuid[]),
-        CAST(:app_ids AS text[]),
-        CAST(:type_ids AS integer[]),
-        CAST(:starts AS timestamptz[]),
-        CAST(:ends AS timestamptz[]),
-        CAST(:external_ids AS text[])
-    ) WITH ORDINALITY AS w(user_id, source_app_id, type_id, start_at, end_at, external_id, pos)
+        CAST(:app_ids AS text[]), CAST(:type_ids AS integer[]), CAST(:starts AS timestamptz[]),
+        CAST(:ends AS timestamptz[]), CAST(:external_ids AS text[])
+    ) WITH ORDINALITY AS w(source_app_id, type_id, start_at, end_at, external_id, pos)
     CROSS JOIN LATERAL (
-        SELECT count(*) AS covered, coalesce(sum(s.value), 0) AS total, coalesce(max(s.value), 0) AS largest
+        SELECT count(*) AS covered, count(*) FILTER (WHERE s.window_seconds IS NULL) AS instants,
+            coalesce(sum(s.value), 0) AS total, coalesce(max(s.value), 0) AS largest
         FROM data_source ds
         JOIN series_sample s ON s.data_source_id = ds.id
-        WHERE ds.user_id = w.user_id
-          AND ds.source_app_id = w.source_app_id
-          AND s.series_type_definition_id = w.type_id
-          AND s.recorded_at >= w.start_at
-          AND s.recorded_at < w.end_at
-          AND (w.external_id IS NULL OR s.external_id IS DISTINCT FROM w.external_id)
-    ) c
+        WHERE ds.user_id = :user_id AND ds.source_app_id = w.source_app_id
+            AND s.series_type_definition_id = w.type_id AND s.recorded_at >= w.start_at AND s.recorded_at < w.end_at
+            AND (w.external_id IS NULL OR s.external_id IS DISTINCT FROM w.external_id)
+    ) stored
     ORDER BY w.pos
 """)
 
@@ -403,12 +397,11 @@ class DataPointSeriesRepository(
         )
         return counts
 
-    def stored_in_windows(self, db_session: DbSession, windows: Sequence[StoredWindow]) -> list[Coverage]:
-        """Per window, in order, the count, sum and largest of the stored samples of its type and writer app in
-        [start, end).
-
-        A sample with the window's external_id is left out, so a re-sent sample doesn't cover itself.
-        """
+    def stored_in_windows(
+        self, db_session: DbSession, user_id: UUID, windows: Sequence[StoredWindow]
+    ) -> list[Coverage]:
+        """Each window's Coverage among the user's samples, in order. A sample with the window's external_id is left
+        out: a re-sent sample doesn't cover itself."""
         if not windows:
             return []
         # The planner prices a big batch high and JIT-compiles it, which costs more than running it.
@@ -416,7 +409,7 @@ class DataPointSeriesRepository(
         rows = db_session.execute(
             _STORED_IN_WINDOWS,
             {
-                "user_ids": [window.user_id for window in windows],
+                "user_id": user_id,
                 "app_ids": [window.source_app_id for window in windows],
                 "type_ids": [window.series_type_definition_id for window in windows],
                 "starts": [window.start for window in windows],
@@ -424,7 +417,7 @@ class DataPointSeriesRepository(
                 "external_ids": [window.external_id for window in windows],
             },
         ).all()
-        return [Coverage(row.covered, row.total, row.largest) for row in rows]
+        return [Coverage(row.covered, row.instants, row.total, row.largest) for row in rows]
 
     @staticmethod
     def _with_live_sessions(

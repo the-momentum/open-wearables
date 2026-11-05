@@ -198,10 +198,10 @@ uv run python scripts/data_migrations/register_strava_token_callback.py \
 
 # TODO: Remove this after ~2027-05-01 once all deployments have migrated.
 # Restores the HealthKit samples a condensed series replaced and deletes the series stored over
-# their originals (#1983). Runs once per instance (data_migration).
+# their originals. Runs once per instance (data_migration).
 echo 'Running HealthKit condensed series repair...'
 uv run python scripts/data_migrations/repair_condensed_series.py \
-    || echo "Warning: HealthKit condensed series repair failed, will retry on next startup."
+    || echo "Warning: HealthKit condensed series repair failed — will retry on next startup."
 
 # Initialize archival settings
 echo 'Initializing archival settings...'

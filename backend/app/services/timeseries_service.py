@@ -302,9 +302,11 @@ class TimeSeriesService(
             db_session, user_id, source, device_model, series_types, start_datetime, end_datetime
         )
 
-    def stored_in_windows(self, db_session: DbSession, windows: Sequence[StoredWindow]) -> list[Coverage]:
-        """Per window, what the stored samples of its type and writer app cover."""
-        return self.crud.stored_in_windows(db_session, windows)
+    def stored_in_windows(
+        self, db_session: DbSession, user_id: UUID, windows: Sequence[StoredWindow]
+    ) -> list[Coverage]:
+        """Per window, what the user's stored samples of its type and writer app cover."""
+        return self.crud.stored_in_windows(db_session, user_id, windows)
 
     @staticmethod
     def _emit_timeseries_webhooks(
