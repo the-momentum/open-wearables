@@ -5,7 +5,7 @@ from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKUser, PrimaryKey, str_64
+from app.mappings import FKUser, PrimaryKey, encrypted_text, str_64
 from app.schemas.auth import ConnectionStatus
 
 
@@ -38,8 +38,8 @@ class UserConnection(BaseDbModel):
     provider_username: Mapped[str | None]
 
     # OAuth tokens (optional for SDK-based providers like Apple)
-    access_token: Mapped[str | None]
-    refresh_token: Mapped[str | None]
+    access_token: Mapped[encrypted_text | None]
+    refresh_token: Mapped[encrypted_text | None]
     token_expires_at: Mapped[datetime | None]
     scope: Mapped[str | None]
 

@@ -6,6 +6,8 @@ from sqlalchemy import ForeignKey, Numeric, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import mapped_column
 
+from app.utils.token_encryption import EncryptedText
+
 T = TypeVar("T")
 
 # Pre-defined indexes
@@ -41,6 +43,8 @@ numeric_10_3 = Annotated[Decimal, mapped_column(Numeric(10, 3))]
 numeric_10_2 = Annotated[Decimal, mapped_column(Numeric(10, 2))]
 numeric_15_5 = Annotated[Decimal, mapped_column(Numeric(15, 5))]
 numeric_unbounded = Annotated[Decimal, mapped_column(Numeric)]
+# A provider token: plaintext or encrypted in the row, always the token itself on the model
+encrypted_text = Annotated[str, mapped_column(EncryptedText)]
 # Values written to the unbounded columns are rounded here: GPS keeps ~1 cm, float noise stays out of the rows.
 SERIES_VALUE_SCALE = 7
 
