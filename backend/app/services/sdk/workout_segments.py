@@ -63,7 +63,7 @@ def _lap_kind(lap: WorkoutLap) -> str | None:
 
 
 def _build_segment(kind: str, index: int, item: WorkoutLap | WorkoutSegment) -> dict[str, Any]:
-    elapsed = (item.endDate - item.startDate).total_seconds()
+    elapsed = (_as_utc(item.endDate) - _as_utc(item.startDate)).total_seconds()
     seg: dict[str, Any] = {
         "kind": kind,
         "index": index,

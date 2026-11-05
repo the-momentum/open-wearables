@@ -171,3 +171,12 @@ class TestTolerance:
 
         assert [s["kind"] for s in segments] == ["split", "lap"]
         assert segments[1]["start_time"] == "2026-09-01T06:05:00+00:00"
+
+    def test_lap_with_one_naive_date_keeps_its_elapsed_time(self) -> None:
+        workout = _workout(
+            laps=[{"type": "lap", "startDate": "2026-09-01T06:00:00", "endDate": "2026-09-01T06:01:00Z"}]
+        )
+
+        [lap] = build_workout_segments(workout) or []
+
+        assert lap["elapsed_seconds"] == 60
