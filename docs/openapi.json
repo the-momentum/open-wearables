@@ -9348,7 +9348,7 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "description": "Lap / segment / marker event of a workout.\n\niOS sends HealthKit workout events here (`type` is lap, segment or marker), Health Connect\nsends its laps without a `type`. Pool-swim laps carry the stroke fields; older iOS SDK builds\nonly put them in `metadata`, as stringified `HKSwimmingStrokeStyle` / `HKSWOLFScore`.",
+                                    "description": "HealthKit workout event (lap, segment or marker) or Health Connect lap (no `type`).",
                                     "properties": {
                                       "type": {
                                         "anyOf": [

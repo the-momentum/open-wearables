@@ -106,12 +106,7 @@ class WorkoutStatistic(BaseModel):
 
 
 class WorkoutLap(BaseModel):
-    """Lap / segment / marker event of a workout.
-
-    iOS sends HealthKit workout events here (`type` is lap, segment or marker), Health Connect
-    sends its laps without a `type`. Pool-swim laps carry the stroke fields; older iOS SDK builds
-    only put them in `metadata`, as stringified `HKSwimmingStrokeStyle` / `HKSWOLFScore`.
-    """
+    """HealthKit workout event (lap, segment or marker) or Health Connect lap (no `type`)."""
 
     type: str | None = None
     startDate: datetime

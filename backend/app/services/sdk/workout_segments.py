@@ -1,15 +1,3 @@
-"""Normalise mobile-SDK workout laps and segments into the `workout_details.segments` shape.
-
-The output matches what the FIT parser stores for Garmin (`app/services/fit_parser.py`), so
-`/workouts?include=segments` returns the same JSON regardless of provider:
-
-- pool-swim laps (they carry a stroke style or SWOLF) -> `kind: length`
-- other laps -> `kind: lap`
-- HealthKit segment events and Health Connect exercise segments -> `kind: split`
-
-HealthKit markers carry no interval worth keeping and are skipped.
-"""
-
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -46,7 +34,7 @@ _LEADING_NUMBER = re.compile(r"^\s*(-?\d+(?:\.\d+)?)")
 
 
 def build_workout_segments(workout: Workout) -> list[dict[str, Any]] | None:
-    """Return the workout's laps and segments as `workout_details.segments` rows, or None if there are none."""
+    """Laps and segments in the shape the FIT parser stores for Garmin; HealthKit markers are dropped."""
     items: list[tuple[str, WorkoutLap | WorkoutSegment]] = []
     for lap in workout.laps or []:
         kind = _lap_kind(lap)
