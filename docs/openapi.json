@@ -8282,6 +8282,17 @@
                               ],
                               "title": "Unit"
                             },
+                            "count": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Count"
+                            },
                             "metadata": {
                               "anyOf": [
                                 {
