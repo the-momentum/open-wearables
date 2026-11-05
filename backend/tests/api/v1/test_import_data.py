@@ -120,7 +120,7 @@ class TestSNSNotificationEndpoint:
         assert "secret-marker" not in response.text
 
 
-_ROUTE = "app.api.routes.v1.import_xml"
+_SERVICE = "app.services.providers.apple.apple_xml.direct_upload_service"
 _MIB = 1024 * 1024
 _XML = b"<HealthData></HealthData>"
 
@@ -141,8 +141,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML)),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML)),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
         ):
             mock_task.delay.return_value.id = "task-1"
             response = _upload_direct(client, str(user.id), _XML)
@@ -155,8 +155,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML) - 1),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML) - 1),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -168,8 +168,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_FILE_SIZE", len(_XML) - 1),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_FILE_SIZE", len(_XML) - 1),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -180,8 +180,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload"),
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload"),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
 
@@ -196,9 +196,9 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
-            patch(f"{_ROUTE}.MAX_FILE_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload"),
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
+            patch(f"{_SERVICE}.MAX_FILE_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload"),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
 
@@ -209,8 +209,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
-            patch(f"{_ROUTE}.logger") as mock_logger,
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.logger") as mock_logger,
         ):
             mock_task.delay.side_effect = OperationalError("Error 32 while writing to socket. Broken pipe.")
             response = _upload_direct(client, str(user.id), _XML)
