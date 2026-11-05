@@ -29,9 +29,9 @@ _BUDGET_SECONDS = 240
 _SOURCES_PER_QUERY = 100
 
 
-@shared_task(
-    name=CeleryTask.CLASSIFY_SLEEP_NAPS, acks_late=True, reject_on_worker_lost=True, soft_time_limit=330, time_limit=360
-)
+# No time limit: a run stops between data sources on its own, and a limit hit inside a long source would count it as
+# failed on every attempt, so the migration would never be recorded.
+@shared_task(name=CeleryTask.CLASSIFY_SLEEP_NAPS, acks_late=True, reject_on_worker_lost=True)
 def classify_sleep_naps(after: str | None = None, failed: int = 0) -> dict:
     """Flag the naps of the data sources after ``after`` for a few minutes, then queue the next run from there.
 
