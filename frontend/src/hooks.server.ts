@@ -1,6 +1,12 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit';
 import { createAuthContext } from '$lib/server/auth';
+import { getBranding } from '$lib/server/branding';
 import { parseTheme, THEME_COOKIE, themeClass } from '$lib/theme';
+
+// Validates INSTANCE_BRANDING before the first request, so a bad value is logged at startup.
+export const init: ServerInit = () => {
+	getBranding();
+};
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.auth = createAuthContext(event.cookies);
