@@ -63,11 +63,7 @@ async function raiseFor(response: Response): Promise<never> {
 	throw new ApiError(response.status, detail ?? response.statusText);
 }
 
-/**
- * A refused token gets one more try once the session renews it; when it cannot,
- * the session ends here and the request redirects to sign-in, so no page has to
- * tell a lapsed session apart from a failed call.
- */
+/** A refused session token is renewed and retried once; a session that cannot renew redirects to sign-in. */
 async function authorized(
 	path: string,
 	init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> },

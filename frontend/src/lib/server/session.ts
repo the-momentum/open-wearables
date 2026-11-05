@@ -69,7 +69,7 @@ function store(cookies: Cookies, session: Session): void {
 	});
 }
 
-const clear = (cookies: Cookies) => cookies.delete(SESSION_COOKIE, { path: '/' });
+export const clearSession = (cookies: Cookies) => cookies.delete(SESSION_COOKIE, { path: '/' });
 
 export function createSession(cookies: Cookies, tokens: TokenResponse, developer: Developer): void {
 	store(cookies, sessionFromTokens(tokens, developer));
@@ -121,7 +121,7 @@ export async function validAccessToken(cookies: Cookies, session: Session): Prom
  */
 export async function renewSession(cookies: Cookies, session: Session): Promise<string | null> {
 	if (!session.refreshToken) {
-		clear(cookies);
+		clearSession(cookies);
 		return null;
 	}
 
@@ -132,13 +132,13 @@ export async function renewSession(cookies: Cookies, session: Session): Promise<
 		store(cookies, renewed);
 		return renewed.accessToken;
 	} catch {
-		clear(cookies);
+		clearSession(cookies);
 		return null;
 	}
 }
 
 export async function destroySession(cookies: Cookies): Promise<void> {
 	const existing = readSession(cookies);
-	clear(cookies);
+	clearSession(cookies);
 	if (existing?.refreshToken) await revokeToken(existing.refreshToken);
 }

@@ -177,11 +177,13 @@ describe('a token the API refuses', () => {
 
 	it('ends the session when the renewed token is refused as well', async () => {
 		vi.mocked(refreshTokens).mockResolvedValue(tokens({ access_token: 'renewed' }));
-		const auth = createAuthContext(jar(session({ refreshToken: 'rt-twice' })));
+		const cookies = jar(session({ refreshToken: 'rt-twice' }));
+		const auth = createAuthContext(cookies);
 		await auth.rejected('access');
 
 		await expect(redirectOf(auth.rejected('renewed'))).resolves.toBe('/login');
 		expect(refreshTokens).toHaveBeenCalledTimes(1);
+		expect(cookies.get(SESSION_COOKIE)).toBeUndefined();
 	});
 });
 

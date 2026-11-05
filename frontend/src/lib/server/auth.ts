@@ -1,15 +1,11 @@
 import { redirect, type Cookies } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
-import { readSession, renewSession, validAccessToken, type Session } from './session';
+import { clearSession, readSession, renewSession, validAccessToken, type Session } from './session';
 
 export type AuthContext = {
 	session(): Session | null;
 	accessToken(): Promise<string | null>;
-	/**
-	 * The API refused `token`. A token the session renewed answers with its
-	 * successor; null means it was never this session's to renew. When the
-	 * session cannot be renewed, it is cleared and this redirects to sign-in.
-	 */
+	/** The renewed token, null for a token this session never held, or a redirect to sign-in. */
 	rejected(token: string): Promise<string | null>;
 };
 
@@ -20,6 +16,8 @@ export function createAuthContext(cookies: Cookies): AuthContext {
 	let renewal: { from: string; to: Promise<string> } | undefined;
 
 	async function signedOut(): Promise<never> {
+		// A cookie left behind would send /login straight back to the dashboard.
+		clearSession(cookies);
 		redirect(303, resolve('/login'));
 	}
 
