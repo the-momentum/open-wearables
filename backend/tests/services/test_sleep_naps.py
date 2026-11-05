@@ -105,7 +105,7 @@ class TestFindNaps:
         assert find_naps([night, at_eight_pm]) == set()
 
     def test_the_first_part_of_a_night_split_after_20_00_is_not_a_nap(self) -> None:
-        # Production case: 20:13-23:54, then the night from 02:08, a gap of 2 h 14
+        # A real night: 20:13-23:54, then the rest from 02:08, a gap of 2 h 14
         night = _session(*NIGHT)
         first_part = _session("2026-03-23T20:13", "2026-03-23T23:54", 161)
         rest = _session("2026-03-24T02:08", "2026-03-24T07:00", 290)
@@ -143,7 +143,7 @@ class TestFindNaps:
         assert find_naps([night, nap, next_night]) == {nap.id}
 
     def test_without_a_zone_offset_the_issue_nap_is_a_nap(self) -> None:
-        # #938: a 16 min nap that Garmin Connect wrote to Apple Health, which gives no zone offset
+        # #938's example: a 16 min nap that Garmin Connect wrote to Apple Health without a zone offset
         night = _session("2026-04-17T22:22", "2026-04-18T04:35", 372, zone=None)
         nap = _session("2026-04-18T13:48", "2026-04-18T14:04", 16, zone=None)
 

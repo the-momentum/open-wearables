@@ -30,14 +30,14 @@ NAP_INFERRED_PROVIDERS: frozenset[ProviderName] = frozenset(
         ProviderName.WITHINGS,
     }
 )
-# Shorter sleep would count as a nap with hardly any sleep in it; Oura's minimum too
+# Less sleep than this hardly makes a nap; Oura's minimum too
 NAP_MIN_SLEEP = timedelta(minutes=15)
 # 3 h of sleep or more is never a nap: Oura and Garmin draw the line here, and Apple stages sleep from here on
 NAP_MAX_SLEEP = timedelta(hours=3)
 # Sleep that starts at night belongs to a night, even when it's short
 NAP_START_HOURS = range(6, 20)
-# Without a zone offset the start hour isn't known, so a nap has to be further from the night than its longest
-# awakenings (insomnia, segmented sleep) last
+# Without a zone offset the start hour isn't known, so a nap has to be further from the night than a night-time
+# awakening lasts (insomnia, segmented sleep)
 NAP_GAP_WITHOUT_ZONE = timedelta(hours=4)
 
 
@@ -58,7 +58,7 @@ class SleepWindow:
         if not NAP_MIN_SLEEP <= self.asleep < NAP_MAX_SLEEP:
             return False
         if self.zone_offset is None:
-            # Read in UTC, a night far from UTC would start in the daytime; find_naps keeps it further from the night
+            # No start hour to check; find_naps asks it for NAP_GAP_WITHOUT_ZONE instead
             return True
         return self.start.astimezone(iso_to_timezone(self.zone_offset)).hour in NAP_START_HOURS
 
