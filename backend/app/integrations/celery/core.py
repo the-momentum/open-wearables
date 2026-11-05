@@ -240,6 +240,13 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        # TODO: Remove after ~2027-05-01, with the task. Picks a lost run up again; a no-op once it is done.
+        "classify-sleep-naps": {
+            "task": CeleryTask.CLASSIFY_SLEEP_NAPS,
+            "schedule": crontab(minute="*/15"),
+            "args": (),
+            "kwargs": {},
+        },
         # Safety net: picks the one-off aggregate backfill up again if a run was lost; a no-op once it is done.
         "run-aggregate-backfill": {
             "task": CeleryTask.RUN_AGGREGATE_BACKFILL,

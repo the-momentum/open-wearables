@@ -656,7 +656,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         sleep_light_minutes=int(metrics["light_seconds"] // 60) if has_phases else None,
         sleep_awake_minutes=int(metrics["awake_seconds"] // 60) if has_awake else None,
         sleep_efficiency_score=sleep_efficiency,
-        is_nap=False,
+        is_nap=False,  # re-flagged after the write
         sleep_stages=cleaned_stages or None,
     )
 
@@ -669,6 +669,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         # Delete from Redis only after a successful DB write so a transient error
         # keeps the session available for the next periodic finalization attempt.
         delete_sleep_state(user_id, state)
+        event_record_service.reclassify_sleep_naps_after_write(db_session, UUID(user_id), created_or_existing_record)
     except Exception as e:
         logger.error(
             "Error saving sleep record",
