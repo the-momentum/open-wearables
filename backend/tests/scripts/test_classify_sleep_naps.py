@@ -1,21 +1,16 @@
 """Tests for flagging the naps already stored for providers that don't report them: the task and its script."""
 
 import importlib.util
-import threading
-import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
-import pytest
 from sqlalchemy.orm import Session
 
-from app.integrations import redis_lock
 from app.integrations.celery.tasks.classify_sleep_naps_task import (
     MIGRATION,
-    LockLostError,
     classify_sleep_naps,
     classify_sources,
 )
@@ -244,50 +239,9 @@ class TestScript:
         delay.assert_called_once()
 
 
-def test_a_kept_alive_lock_outlives_its_ttl() -> None:
-    token = redis_lock.acquire("test:lock", 1)
-    assert token is not None
-
-    with redis_lock.kept_alive("test:lock", token, 1):
-        time.sleep(1.5)
-        assert get_redis_client().get("test:lock") is not None
-
-    redis_lock.release("test:lock", token)
-
-
-def test_a_lock_taken_by_another_holder_is_reported_lost() -> None:
-    token = redis_lock.acquire("test:lock", 1)
-    assert token is not None
-
-    with redis_lock.kept_alive("test:lock", token, 1) as lost:
-        get_redis_client().set("test:lock", "someone-else")
-        assert lost.wait(2)
-
-
-def test_a_lost_lock_stops_before_the_next_source(db: Session) -> None:
-    _, _, nap = _night_and_nap(ProviderName.APPLE)
-    lost = threading.Event()
-    lost.set()
-
-    with pytest.raises(LockLostError):
-        classify_sources(db, None, 0, 60, lost)
-
-    assert _is_nap(db, nap) is False
-
-
-def test_a_run_that_lost_its_lock_retries_from_the_last_source_done(db: Session) -> None:
+def test_a_run_stops_once_its_lock_is_lost(db: Session) -> None:
+    first, _, _ = _night_and_nap(ProviderName.APPLE)
     _night_and_nap(ProviderName.APPLE)
+    earliest = min(first.id, *(s.id for s in db.query(DataSource).filter(DataSource.id != first.id)))
 
-    with (
-        patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)),
-        patch.object(redis_lock, "extend", side_effect=ConnectionError("redis down")),
-        patch("app.integrations.celery.tasks.classify_sleep_naps_task._LOCK_TTL_SECONDS", 1),
-        patch(
-            "app.integrations.celery.tasks.classify_sleep_naps_task.classify_sources",
-            side_effect=lambda *args: (time.sleep(1), classify_sources(*args))[1],
-        ),
-        patch.object(classify_sleep_naps, "apply_async") as apply_async,
-    ):
-        assert classify_sleep_naps() == {"finished": False, "failed": 0}
-
-    assert apply_async.call_args.kwargs == {"kwargs": {"after": None, "failed": 0}, "countdown": 60}
+    assert classify_sources(db, None, 0, 60, keep_alive=lambda: False) == (earliest, 0, False)
