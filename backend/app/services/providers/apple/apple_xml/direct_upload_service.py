@@ -1,5 +1,6 @@
 from typing import BinaryIO
 
+from app.config import settings
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas.providers.apple.apple_xml import MAX_DIRECT_UPLOAD_SIZE, MAX_FILE_SIZE
 from app.utils.exceptions import ContentTooLargeError, ServiceUnavailableError
@@ -8,7 +9,7 @@ from app.utils.structured_logging import get_logger
 logger = get_logger(__name__)
 
 _MIB = 1024 * 1024
-_MULTIPART_CREATE_PATH = "POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create"
+_MULTIPART_CREATE_PATH = f"POST {settings.api_v1}/users/{{user_id}}/import/apple/xml/s3/multipart/create"
 # Room for the multipart framing around the file: the boundaries and the part headers with the filename.
 _MULTIPART_OVERHEAD = 64 * 1024
 
