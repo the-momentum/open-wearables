@@ -79,8 +79,10 @@ from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.services.sleep_finality import final_record_ids
+from app.services.sleep_naps import reclassify_naps
 from app.utils.context import current_sync_payload
 from app.utils.conversion import as_dict_list, as_float, as_int, as_model, minutes_to_seconds, sum_optional
+from app.utils.dates import local_date
 from app.utils.pagination import encode_cursor
 from app.utils.sleep_stages import measured_stages
 from app.utils.structured_logging import get_logger
@@ -303,6 +305,43 @@ class EventRecordService(
         if creators:
             self.health_score_repo.bulk_create(db_session, creators)
 
+    def reclassify_sleep_naps(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        data_source_id: UUID,
+        wake_dates: set[date] | None,
+    ) -> int:
+        """Re-flag a data source's naps around the given local wake dates (its whole history for None).
+
+        A session that became or stopped being a nap is rescored with its day. The caller commits.
+        Returns how many flags changed.
+        """
+        changes = reclassify_naps(db_session, data_source_id, wake_dates)
+        if changes:
+            # Per day: the score query caps its rows from the window's start, so far-apart days would lose scores
+            for wake_date in sorted({change.wake_date for change in changes}):
+                self._recompute_sleep_scores(db_session, user_id, {wake_date})
+        return len(changes)
+
+    def reclassify_sleep_naps_after_write(self, db_session: DbSession, user_id: UUID, record: EventRecord) -> bool:
+        """Re-flag the naps around a stored sleep session and commit; True when a flag changed.
+
+        A night that arrives after a nap makes it one. On failure the session keeps the flag it was stored with,
+        and the next write on its days re-flags them.
+        """
+        record_id, wake_date = record.id, local_date(record.end_datetime, record.zone_offset)
+        try:
+            if self.reclassify_sleep_naps(db_session, user_id, record.data_source_id, {wake_date}):
+                db_session.commit()
+                return True
+        except Exception as e:
+            db_session.rollback()
+            logger.error(
+                "Nap re-flagging failed after sleep write", exc_info=e, record_id=str(record_id), user_id=str(user_id)
+            )
+        return False
+
     def find_adjacent_sleep_record(
         self,
         db_session: DbSession,
@@ -368,6 +407,9 @@ class EventRecordService(
         result, inserted, final_detail = self._create_or_merge_sleep_inner(
             db_session, user_id, record, detail, threshold_minutes
         )
+        is_nap = final_detail.is_nap
+        if self.reclassify_sleep_naps_after_write(db_session, user_id, result) and result.sleep_detail is not None:
+            is_nap = result.sleep_detail.is_nap
         if inserted:
             eff = final_detail.sleep_efficiency_score
             has_stages = any(
@@ -403,7 +445,7 @@ class EventRecordService(
                 }
                 if has_stages
                 else None,
-                is_nap=final_detail.is_nap,
+                is_nap=is_nap,
                 source_app=record.source,
                 device_type=device_type,
                 sleep_duration_seconds=(
@@ -1336,10 +1378,14 @@ class EventRecordService(
         data_source = self.data_source_repo.get(db_session, record.data_source_id)
         if not data_source or data_source.user_id != user_id:
             return False
+        # Read before the delete: without the night, a nap of that day may be its main sleep now
+        source_id, wake_date = record.data_source_id, local_date(record.end_datetime, record.zone_offset)
         self.crud.delete_flush(db_session, record)
         data_type_coverage_repository.refresh_events(
             db_session, [(data_source.user_id, data_source.provider, record.category)]
         )
+        if category == EventCategory.SLEEP:
+            self.reclassify_sleep_naps(db_session, user_id, source_id, {wake_date})
         db_session.commit()
         return True
 
