@@ -1,16 +1,18 @@
-"""Tests for flagging the naps already stored for providers that don't report them."""
+"""Tests for flagging the naps already stored for providers that don't report them: the task and its script."""
 
 import importlib.util
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
-import pytest
 from sqlalchemy.orm import Session
 
+from app.integrations.celery.tasks.classify_sleep_naps_task import MIGRATION, classify_sleep_naps, classify_sources
+from app.integrations.redis_client import get_redis_client
 from app.models import DataSource, HealthScore, SleepDetails
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.services.event_record_service import event_record_service
 from tests.factories import DataSourceFactory, EventRecordFactory, HealthScoreFactory, SleepDetailsFactory
@@ -27,7 +29,7 @@ def _load_module() -> ModuleType:
     return module
 
 
-classify_sleep_naps = _load_module().classify_sleep_naps
+_script = _load_module()
 
 
 def _stored(source: DataSource, start: datetime, end: datetime, asleep_minutes: int) -> SleepDetails:
@@ -54,6 +56,10 @@ def _night_and_nap(provider: ProviderName) -> tuple[DataSource, SleepDetails, Sl
     return source, night, nap
 
 
+def _classify(db: Session) -> tuple[UUID | None, int, bool]:
+    return classify_sources(db, None, 0, 60)
+
+
 def _is_nap(db: Session, details: SleepDetails) -> bool | None:
     db.expire_all()
     return db.get(SleepDetails, details.record_id).is_nap
@@ -64,7 +70,7 @@ class TestClassifySleepNaps:
         _, apple_night, apple_nap = _night_and_nap(ProviderName.APPLE)
         _, _, withings_nap = _night_and_nap(ProviderName.WITHINGS)
 
-        assert classify_sleep_naps(db, dry_run=False) == 2
+        assert _classify(db)[1:] == (0, True)
         assert _is_nap(db, apple_nap) is True
         assert _is_nap(db, withings_nap) is True
         assert _is_nap(db, apple_night) is False
@@ -72,7 +78,7 @@ class TestClassifySleepNaps:
     def test_leaves_other_providers_alone(self, db: Session) -> None:
         _, _, garmin_nap = _night_and_nap(ProviderName.GARMIN)
 
-        assert classify_sleep_naps(db, dry_run=False) == 0
+        _classify(db)
         assert _is_nap(db, garmin_nap) is False
 
     def test_removes_the_internal_sleep_score_of_a_nap(self, db: Session) -> None:
@@ -87,7 +93,7 @@ class TestClassifySleepNaps:
             event_record_id=nap.record_id,
         )
 
-        classify_sleep_naps(db, dry_run=False)
+        _classify(db)
 
         db.expire_all()
         assert db.query(HealthScore).filter(HealthScore.event_record_id == nap.record_id).count() == 0
@@ -95,14 +101,14 @@ class TestClassifySleepNaps:
     def test_a_second_run_changes_nothing(self, db: Session) -> None:
         _night_and_nap(ProviderName.APPLE)
 
-        classify_sleep_naps(db, dry_run=False)
+        _classify(db)
 
-        assert classify_sleep_naps(db, dry_run=False) == 0
+        assert _script.count_nap_changes(db) == 0
 
     def test_a_dry_run_counts_and_changes_nothing(self, db: Session) -> None:
         _, _, nap = _night_and_nap(ProviderName.APPLE)
 
-        assert classify_sleep_naps(db, dry_run=True) == 1
+        assert _script.count_nap_changes(db) == 1
         assert _is_nap(db, nap) is False
 
     def test_a_failing_source_does_not_stop_the_others(self, db: Session) -> None:
@@ -117,11 +123,8 @@ class TestClassifySleepNaps:
                 raise RuntimeError("boom")
             return original(session, user_id, source_id, wake_dates)
 
-        with (
-            patch.object(event_record_service, "reclassify_sleep_naps", side_effect=flaky),
-            pytest.raises(RuntimeError),
-        ):
-            classify_sleep_naps(db, dry_run=False)
+        with patch.object(event_record_service, "reclassify_sleep_naps", side_effect=flaky):
+            assert _classify(db)[1:] == (1, True)
 
         assert _is_nap(db, other_nap) is True
         assert _is_nap(db, failing_nap) is False
@@ -154,7 +157,79 @@ class TestClassifySleepNaps:
         )
         db.flush()
 
-        assert classify_sleep_naps(db, dry_run=False) == 2
+        _classify(db)
 
         db.expire_all()
         assert db.query(HealthScore).filter(HealthScore.event_record_id == late_night.record_id).count() == 1
+
+    def test_a_spent_budget_stops_after_the_source_and_resumes_from_it(self, db: Session) -> None:
+        first, _, first_nap = _night_and_nap(ProviderName.APPLE)
+        second, _, second_nap = _night_and_nap(ProviderName.APPLE)
+        earlier, later = sorted([(first.id, first_nap), (second.id, second_nap)], key=lambda pair: pair[0])
+
+        assert classify_sources(db, None, 0, 0) == (earlier[0], 0, False)
+        assert (_is_nap(db, earlier[1]), _is_nap(db, later[1])) == (True, False)
+
+        assert classify_sources(db, earlier[0], 0, 60)[1:] == (0, True)
+        assert _is_nap(db, later[1]) is True
+
+
+def _session(db: Session) -> MagicMock:
+    session = MagicMock()
+    session.__enter__.return_value = db
+    return session
+
+
+class TestClassifySleepNapsTask:
+    def test_records_the_migration_once_every_source_is_done(self, db: Session) -> None:
+        _, _, nap = _night_and_nap(ProviderName.APPLE)
+
+        with patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)):
+            assert classify_sleep_naps() == {"finished": True, "failed": 0}
+            assert classify_sleep_naps() == {"skipped": "done"}
+
+        assert _is_nap(db, nap) is True
+        assert DataMigrationRepository().is_completed(db, MIGRATION)
+
+    def test_a_failed_source_leaves_the_migration_for_the_next_startup(self, db: Session) -> None:
+        _night_and_nap(ProviderName.APPLE)
+        db.commit()
+
+        with (
+            patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)),
+            patch.object(event_record_service, "reclassify_sleep_naps", side_effect=RuntimeError("boom")),
+        ):
+            assert classify_sleep_naps() == {"finished": True, "failed": 1}
+
+        assert not DataMigrationRepository().is_completed(db, MIGRATION)
+
+    def test_an_unfinished_run_queues_the_next_from_its_cursor(self, db: Session) -> None:
+        source, _, _ = _night_and_nap(ProviderName.APPLE)
+
+        with (
+            patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)),
+            patch("app.integrations.celery.tasks.classify_sleep_naps_task._BUDGET_SECONDS", 0),
+            patch.object(classify_sleep_naps, "apply_async") as apply_async,
+        ):
+            assert classify_sleep_naps() == {"finished": False, "failed": 0}
+
+        assert apply_async.call_args.kwargs["kwargs"] == {"after": str(source.id), "failed": 0}
+
+    def test_a_run_waits_out_one_already_in_progress(self, db: Session) -> None:
+        get_redis_client().set("classify_sleep_naps:lock", "1")
+
+        assert classify_sleep_naps() == {"skipped": "previous_run_in_progress"}
+
+
+class TestScript:
+    def test_queues_the_task_until_it_is_done(self, db: Session) -> None:
+        with (
+            patch.object(_script, "SessionLocal", return_value=_session(db)),
+            patch.object(_script, "create_celery"),
+            patch.object(_script.classify_sleep_naps, "delay") as delay,
+        ):
+            _script.main(dry_run=False)
+            DataMigrationRepository().mark_completed(db, MIGRATION)
+            _script.main(dry_run=False)
+
+        delay.assert_called_once()

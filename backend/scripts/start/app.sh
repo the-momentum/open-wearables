@@ -197,11 +197,11 @@ uv run python scripts/data_migrations/register_strava_token_callback.py \
     || echo "Warning: Strava webhook re-registration not queued — will retry on next startup."
 
 # TODO: Remove this after ~2027-05-01 once all deployments have migrated.
-# Flags the stored naps of providers that don't report them and rebuilds the internal sleep
-# scores of the days that change. Runs once per instance (data_migration).
-echo 'Running sleep nap classification...'
+# Queues the flagging of the stored naps of providers that don't report them; it runs in Celery and rebuilds
+# the internal sleep scores of the days that change. Queued until done (data_migration).
+echo 'Queueing sleep nap classification...'
 uv run python scripts/data_migrations/classify_sleep_naps.py \
-    || echo "Warning: sleep nap classification failed — will retry on next startup."
+    || echo "Warning: sleep nap classification not queued — will retry on next startup."
 
 # Initialize archival settings
 echo 'Initializing archival settings...'
