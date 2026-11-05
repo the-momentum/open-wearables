@@ -69,7 +69,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                     order_by=(
                         DataSource.id.is_(None),  # a score without a source comes last
                         *ranking.order_terms(),
-                        # Longest sleep first, so an unflagged nap (#938) doesn't beat the night
+                        # Longest sleep first, so a nap that isn't flagged doesn't beat the night
                         func.coalesce(SleepDetails.sleep_total_duration_minutes, 0).desc(),
                         HealthScore.recorded_at.desc(),
                         HealthScore.id,
