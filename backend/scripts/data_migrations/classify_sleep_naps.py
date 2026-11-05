@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Flag the naps stored before writes flagged them (#938), with the rule in app.services.sleep_naps.
+"""Flag the naps already stored for providers that don't report naps (#938).
 
-One data source at a time with a commit after each; the internal sleep scores of the days whose flags change
-are rebuilt. A failing data source is rolled back and logged, and the run is retried on the next startup.
+Their sleep was all stored with is_nap false, so a daytime nap counted as the day's main sleep. Writes now
+flag naps with the rule in app.services.sleep_naps; this applies it to the sleep stored before, one data
+source at a time with a commit after each. The internal sleep scores of the days whose flags change are
+rebuilt. A failing data source is rolled back and logged, and the run is retried on the next startup.
 
 Runs once per instance (data_migration). --dry-run counts the flags that would change.
 

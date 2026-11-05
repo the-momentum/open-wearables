@@ -335,9 +335,11 @@ class EventRecordService(
             if self.reclassify_sleep_naps(db_session, user_id, record.data_source_id, {wake_date}):
                 db_session.commit()
                 return True
-        except Exception:
+        except Exception as e:
             db_session.rollback()
-            logger.exception("Nap re-flagging failed after sleep write", record_id=record_id, user_id=user_id)
+            logger.error(
+                "Nap re-flagging failed after sleep write", exc_info=e, record_id=str(record_id), user_id=str(user_id)
+            )
         return False
 
     def find_adjacent_sleep_record(

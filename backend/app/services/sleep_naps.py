@@ -83,7 +83,11 @@ def find_naps(sessions: Sequence[SleepWindow]) -> set[UUID]:
         nights = [main for main in (mains[day], mains.get(day + timedelta(days=1))) if main is not None]
         for session in group:
             limit = merge_gap if session.zone_offset is not None else max(merge_gap, NAP_GAP_WITHOUT_ZONE)
-            if session is not mains[day] and session.could_be_nap and all(_gap(session, n) > limit for n in nights):
+            if (
+                session is not mains[day]
+                and session.could_be_nap
+                and all(_gap(session, night) > limit for night in nights)
+            ):
                 naps.add(session.id)
     return naps
 
