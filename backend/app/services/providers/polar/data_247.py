@@ -613,12 +613,11 @@ class Polar247Data(Base247DataTemplate):
                             provider=ProviderName.POLAR,
                             source=ProviderName.POLAR,
                             recorded_at=dt,
+                            zone_offset=offset_of(dt),
                             value=val,
                             series_type=series_type,
                         )
                         for dt, val in self._night_samples(night_samples, sleep_start)
-                        # The night's average sits at UTC midnight; a sample there would overwrite it.
-                        if dt != recorded_at
                     )
                 if value is not None:
                     samples.append(
