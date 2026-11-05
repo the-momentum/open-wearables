@@ -1,5 +1,6 @@
 """Flags the naps already stored for providers that don't report them, once per instance (#938)."""
 
+import threading
 import time
 from uuid import UUID
 
@@ -41,17 +42,19 @@ def classify_sleep_naps(after: str | None = None, failed: int = 0) -> dict:
     if token is None:
         return {"skipped": "previous_run_in_progress"}
     try:
-        with redis_lock.kept_alive(_LOCK_KEY, token, _LOCK_TTL_SECONDS), SessionLocal() as db:
+        with redis_lock.kept_alive(_LOCK_KEY, token, _LOCK_TTL_SECONDS) as lost, SessionLocal() as db:
             bound_lock_waits(db)
             migrations = DataMigrationRepository()
             if migrations.is_completed(db, MIGRATION):
                 return {"skipped": "done"}
-            cursor, failed, finished = classify_sources(
-                db,
-                UUID(after) if after else None,
-                failed,
-                _BUDGET_SECONDS,
-            )
+            try:
+                cursor, failed, finished = classify_sources(
+                    db, UUID(after) if after else None, failed, _BUDGET_SECONDS, lost
+                )
+            except LockLostError:
+                # Another run holds the lock now and carries on; the next startup queues one anyway.
+                logger.warning("Sleep nap classification lost its lock, stopping", data_source_id=after)
+                return {"stopped": "lock_lost"}
             if finished and not failed:
                 migrations.mark_completed(db, MIGRATION)
                 db.commit()
@@ -67,24 +70,36 @@ def classify_sources(
     after: UUID | None,
     failed: int,
     budget_seconds: float,
+    lost: threading.Event | None = None,
 ) -> tuple[UUID | None, int, bool]:
     """Re-flag the data sources after ``after`` until the budget is spent; returns the last source done, the
-    failures so far and whether every source is done. Commits per data source."""
+    failures so far and whether every source is done. Commits per data source; raises LockLostError, with the
+    current source rolled back, once ``lost`` is set."""
     deadline = time.monotonic() + budget_seconds
     sources = DataSourceRepository(DataSource)
     while batch := sources.sleep_sources(db, NAP_INFERRED_PROVIDERS, after, _SOURCES_PER_QUERY):
         for source_id, user_id in batch:
+            if lost is not None and lost.is_set():
+                raise LockLostError
             try:
                 event_record_service.reclassify_sleep_naps(db, user_id, source_id, None)
-                db.commit()
             except Exception as exc:
                 db.rollback()
                 failed += 1
                 logger.error("Failed to classify sleep naps", exc_info=exc, data_source_id=str(source_id))
+            else:
+                if lost is not None and lost.is_set():
+                    db.rollback()
+                    raise LockLostError
+                db.commit()
             after = source_id
             if time.monotonic() >= deadline:
                 return after, failed, False
     return after, failed, True
+
+
+class LockLostError(Exception):
+    """The run's Redis lock was lost, so another run may be classifying the same data sources."""
 
 
 def bound_lock_waits(db: Session) -> None:

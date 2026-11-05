@@ -1,6 +1,7 @@
 """Tests for flagging the naps already stored for providers that don't report them: the task and its script."""
 
 import importlib.util
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -8,10 +9,16 @@ from types import ModuleType
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.integrations import redis_lock
-from app.integrations.celery.tasks.classify_sleep_naps_task import MIGRATION, classify_sleep_naps, classify_sources
+from app.integrations.celery.tasks.classify_sleep_naps_task import (
+    MIGRATION,
+    LockLostError,
+    classify_sleep_naps,
+    classify_sources,
+)
 from app.integrations.redis_client import get_redis_client
 from app.models import DataSource, HealthScore, SleepDetails
 from app.repositories.data_migration_repository import DataMigrationRepository
@@ -246,3 +253,23 @@ def test_a_kept_alive_lock_outlives_its_ttl() -> None:
         assert get_redis_client().get("test:lock") is not None
 
     redis_lock.release("test:lock", token)
+
+
+def test_a_lock_taken_by_another_holder_is_reported_lost() -> None:
+    token = redis_lock.acquire("test:lock", 1)
+    assert token is not None
+
+    with redis_lock.kept_alive("test:lock", token, 1) as lost:
+        get_redis_client().set("test:lock", "someone-else")
+        assert lost.wait(2)
+
+
+def test_a_lost_lock_stops_before_the_next_source(db: Session) -> None:
+    _, _, nap = _night_and_nap(ProviderName.APPLE)
+    lost = threading.Event()
+    lost.set()
+
+    with pytest.raises(LockLostError):
+        classify_sources(db, None, 0, 60, lost)
+
+    assert _is_nap(db, nap) is False

@@ -29,19 +29,28 @@ def release(key: str, token: str) -> None:
 
 
 @contextmanager
-def kept_alive(key: str, token: str, ttl_seconds: int) -> Generator[None]:
-    """Extend the lock in the background every third of its TTL while the block runs, however long one step takes."""
+def kept_alive(key: str, token: str, ttl_seconds: int) -> Generator[threading.Event]:
+    """Extend the lock in the background every third of its TTL while the block runs, however long one step takes.
+
+    Yields an event set once the lock is lost (another holder took it, or Redis failed), for the block to stop on.
+    """
     stop = threading.Event()
+    lost = threading.Event()
 
     def renew() -> None:
         while not stop.wait(ttl_seconds / 3):
-            if not extend(key, token, ttl_seconds):
+            try:
+                held = extend(key, token, ttl_seconds)
+            except Exception:
+                held = False
+            if not held:
+                lost.set()
                 return
 
     thread = threading.Thread(target=renew, daemon=True)
     thread.start()
     try:
-        yield
+        yield lost
     finally:
         stop.set()
         thread.join()
