@@ -7,8 +7,10 @@ from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.utils.webhook_callback import callback_token
 
 VERIFY_TOKEN = "strava-verify-token"
+CALLBACK_TOKEN = callback_token("strava").get_secret_value()
 
 
 def test_provider_without_a_challenge_gets_501(client: TestClient, db: Session) -> None:
@@ -21,7 +23,7 @@ def test_provider_without_a_challenge_gets_501(client: TestClient, db: Session) 
 def test_provider_with_a_challenge_echoes_it(client: TestClient, db: Session) -> None:
     with patch.object(settings, "strava_webhook_verify_token", SecretStr(VERIFY_TOKEN)):
         response = client.get(
-            "/api/v1/providers/strava/webhooks",
+            f"/api/v1/providers/strava/webhooks/{CALLBACK_TOKEN}",
             params={"hub.mode": "subscribe", "hub.challenge": "abc123", "hub.verify_token": VERIFY_TOKEN},
         )
 
@@ -32,7 +34,7 @@ def test_provider_with_a_challenge_echoes_it(client: TestClient, db: Session) ->
 def test_challenge_with_a_wrong_token_is_rejected(client: TestClient, db: Session) -> None:
     with patch.object(settings, "strava_webhook_verify_token", SecretStr(VERIFY_TOKEN)):
         response = client.get(
-            "/api/v1/providers/strava/webhooks",
+            f"/api/v1/providers/strava/webhooks/{CALLBACK_TOKEN}",
             params={"hub.mode": "subscribe", "hub.challenge": "abc123", "hub.verify_token": "guess"},
         )
 

@@ -114,51 +114,28 @@ STRAVA_DEFAULT_SCOPE=activity:read_all,profile:read_all
     | `STRAVA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Default `activity:read_all,profile:read_all` covers all activity data and athlete profile |
     | `STRAVA_WEBHOOK_VERIFY_TOKEN` | Optional. Strava sends this back during webhook subscription verification to confirm ownership. When unset, it is derived from `SECRET_KEY`, so Strava never receives `SECRET_KEY` itself |
 
+    <Note>
+    Strava signs its webhook events with a key it does not share, so Open Wearables cannot check the signature. Instead, the callback URL carries a secret derived from `SECRET_KEY`, which authenticates each event. In addition, before deleting an activity or disconnecting an athlete, Open Wearables confirms the change in the Strava API.
+    </Note>
+
   </Step>
 
   <Step title="Create a webhook subscription">
-    To receive real-time activity notifications, you need to create a webhook subscription with the Strava API. Your server must be publicly accessible for Strava to reach the webhook endpoint.
+    To receive real-time activity notifications, Strava needs a webhook subscription pointing at your Open Wearables instance. Your server must be publicly accessible over HTTPS. For local development, use a tunneling tool like [ngrok](/dev-guides/ngrok-setup).
 
-    Ask Open Wearables to create the subscription. It sends Strava the verify token from `STRAVA_WEBHOOK_VERIFY_TOKEN`, or the one it derives from `SECRET_KEY` when that is unset, so you never handle the token yourself:
+    In your Open Wearables dashboard, go to **Settings → Providers**, find **Strava**, and switch its live sync mode from **Periodic pull** to **Webhook**. Open Wearables registers the subscription in the background with this callback URL:
 
-```bash
-curl -X POST "https://yourdomain.com/api/v1/providers/strava/webhooks/subscriptions?callback_url=https://yourdomain.com/api/v1/providers/strava/webhooks" \
-  -H "Authorization: Bearer $TOKEN"
+```
+{API_BASE_URL}/api/v1/providers/strava/webhooks/{callback token}
 ```
 
-    Strava then sends a GET request to your `callback_url` with a `hub.verify_token` parameter. Open Wearables checks it and echoes back the challenge to confirm the subscription. See [Provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions) for listing and deleting subscriptions.
+    The callback token is derived from `SECRET_KEY` and is not shown anywhere. Strava sends a `GET` handshake to that URL; Open Wearables checks the token in the path and the `hub.verify_token` parameter, and echoes back `hub.challenge` to confirm the subscription. Requests without the token, or with a wrong one, are rejected with `401`.
 
-    <Note>
-    To create the subscription yourself with the Strava API instead, set `STRAVA_WEBHOOK_VERIFY_TOKEN` to your own random value (e.g. `openssl rand -hex 32`) and pass the same value as `verify_token`. The derived token is not shown anywhere, so it doesn't work with a manual request.
-
-```bash
-curl -X POST https://www.strava.com/api/v3/push_subscriptions \
-  -F client_id=YOUR_CLIENT_ID \
-  -F client_secret=YOUR_CLIENT_SECRET \
-  -F callback_url=https://yourdomain.com/api/v1/providers/strava/webhooks \
-  -F verify_token=YOUR_WEBHOOK_VERIFY_TOKEN
-```
-    </Note>
+    After a new `SECRET_KEY` or `API_BASE_URL`, register the subscription again with `POST /api/v1/providers/strava/webhooks/subscriptions` (see [provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions)). Strava allows only **one subscription per application** and its callback URL cannot be changed, so Open Wearables deletes the old subscription and creates a new one; for Strava, the `callback_url` parameter is ignored. Instances upgrading from a version without the token do this once on their own at startup.
 
     <Warning>
-    The `callback_url` must be publicly accessible over HTTPS. For local development, use a tunneling tool like [ngrok](https://ngrok.com/) to expose your local server.
+    Treat the callback URL like a password. Anyone who knows it can send events in Strava's name, though deletes and deauthorizations are still confirmed in the Strava API. Open Wearables masks the token in its logs, in Sentry, and in the subscription list, but your reverse proxy's access logs record full request paths. If the URL leaks, rotate `SECRET_KEY`, restart, and register the subscription again. A new `SECRET_KEY` also invalidates issued access tokens (refresh tokens stay valid, so sessions renew), and changes the webhook secrets derived from it (Google Health, Oura, Suunto) unless those are set explicitly, so those providers need their subscriptions or portal settings updated too.
     </Warning>
-
-    <Note>
-    Strava allows only **one webhook subscription per application**. If you need to change the callback URL, delete the existing subscription first:
-
-```bash
-# List existing subscriptions
-curl -G https://www.strava.com/api/v3/push_subscriptions \
-  -d client_id=YOUR_CLIENT_ID \
-  -d client_secret=YOUR_CLIENT_SECRET
-
-# Delete a subscription
-curl -X DELETE "https://www.strava.com/api/v3/push_subscriptions/SUBSCRIPTION_ID" \
-  -d client_id=YOUR_CLIENT_ID \
-  -d client_secret=YOUR_CLIENT_SECRET
-```
-    </Note>
   </Step>
 
   <Step title="Verify the integration">
@@ -168,11 +145,6 @@ curl -X DELETE "https://www.strava.com/api/v3/push_subscriptions/SUBSCRIPTION_ID
     2. Connect a Strava account through the OAuth flow
     3. Create or record an activity on Strava
     4. The webhook should deliver the event and Open Wearables will fetch and store the full activity data
-
-    You can check the webhook health endpoint at:
-    ```
-    GET /api/v1/strava/health
-    ```
   </Step>
 </Steps>
 
