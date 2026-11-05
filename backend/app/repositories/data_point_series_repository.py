@@ -274,6 +274,7 @@ _STORED_IN_WINDOWS = text("""
         JOIN series_sample s ON s.data_source_id = ds.id
         WHERE ds.user_id = :user_id AND ds.source_app_id = w.source_app_id
             AND s.series_type_definition_id = w.type_id AND s.recorded_at >= w.start_at AND s.recorded_at < w.end_at
+            AND (s.window_seconds IS NULL OR s.recorded_at + make_interval(secs => s.window_seconds) <= w.end_at)
             AND (w.external_id IS NULL OR s.external_id IS DISTINCT FROM w.external_id)
     ) stored
     ORDER BY w.pos

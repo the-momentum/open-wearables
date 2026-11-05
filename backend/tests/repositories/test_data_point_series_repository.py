@@ -1131,6 +1131,17 @@ class TestStoredInWindows:
             Coverage(2, 2, Decimal("4"), Decimal("2.5"))
         ]
 
+    def test_a_sample_counts_only_when_it_ends_inside_the_window(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        source = self._watch()
+        self._energy(db, source, 8, "1.5", window_seconds=120)  # ends at the window's end
+        self._energy(db, source, 9, "4", window_seconds=120)  # ends after it
+
+        assert series_repo.stored_in_windows(db, source.user_id, [self._window()]) == [
+            Coverage(1, 0, Decimal("1.5"), Decimal("1.5"))
+        ]
+
     def test_reads_every_source_of_the_writer_app_and_nothing_else(
         self, db: Session, series_repo: DataPointSeriesRepository
     ) -> None:
