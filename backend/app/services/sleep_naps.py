@@ -16,6 +16,7 @@ from app.config import settings
 from app.constants.sdk_providers import SDK_PROVIDERS
 from app.database import DbSession
 from app.models import DataSource, EventRecord, SleepDetails
+from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.local_day import utc_midnight
 from app.schemas.enums import ProviderName
@@ -55,6 +56,7 @@ class SleepWindow:
 
     @property
     def could_be_nap(self) -> bool:
+        """Its sleep fits a nap and, when its zone offset gives the start hour, it starts in the daytime."""
         if not NAP_MIN_SLEEP <= self.asleep < NAP_MAX_SLEEP:
             return False
         if self.zone_offset is None:
@@ -86,6 +88,7 @@ def find_naps(sessions: Sequence[SleepWindow]) -> set[UUID]:
     return naps
 
 
+_data_sources = DataSourceRepository(DataSource)
 _event_records = EventRecordRepository(EventRecord)
 
 
@@ -97,7 +100,7 @@ class NapChange:
 
 
 def _window(record: EventRecord, details: SleepDetails | None) -> SleepWindow:
-    # Time asleep, else the session's length, as the sleep summary reads it
+    """The session with its time asleep, else its length, as the sleep summary reads it."""
     minutes = details.sleep_total_duration_minutes if details is not None else None
     asleep = timedelta(minutes=minutes) if minutes is not None else timedelta(seconds=record.duration_seconds or 0)
     return SleepWindow(record.id, record.start_datetime, record.end_datetime, record.zone_offset, asleep)
@@ -116,10 +119,9 @@ def reclassify_naps(
     main sleep, so a write on day D re-flags D-1 to D+1. Returns the flags that changed (not written in a dry
     run); a provider that flags naps keeps its flags. Flushes first, so the caller's pending sessions count.
     """
-    data_source = db_session.get(DataSource, data_source_id)
+    data_source = _data_sources.get(db_session, data_source_id)
     if data_source is None or data_source.provider not in NAP_INFERRED_PROVIDERS:
         return []
-    db_session.flush()
     if wake_dates is None:
         first = last = None
         rows = _event_records.get_source_sleep_records(db_session, data_source_id)
@@ -135,6 +137,7 @@ def reclassify_naps(
     naps = find_naps(list(windows.values()))
 
     changes: list[NapChange] = []
+    flags: list[tuple[SleepDetails, bool]] = []
     for record, details in rows:
         if details is None:
             continue
@@ -144,8 +147,7 @@ def reclassify_naps(
         is_nap = record.id in naps
         if bool(details.is_nap) != is_nap:
             changes.append(NapChange(record.id, is_nap, window.wake_date))
-            if not dry_run:
-                details.is_nap = is_nap
-    if changes and not dry_run:
-        db_session.flush()
+            flags.append((details, is_nap))
+    if flags and not dry_run:
+        _event_records.set_nap_flags(db_session, flags)
     return changes

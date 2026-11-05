@@ -1570,7 +1570,8 @@ class EventRecordRepository(
         ends_before: datetime | None = None,
     ) -> list[tuple[EventRecord, SleepDetails | None]]:
         """A data source's sleep records with their details, those ending in [ends_from, ends_before) when given.
-        Stage timelines aren't loaded."""
+        Stage timelines aren't loaded. Flushes first, so the caller's pending sessions count."""
+        db_session.flush()
         query = (
             db_session.query(EventRecord, SleepDetails)
             .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
@@ -1583,6 +1584,12 @@ class EventRecordRepository(
         if ends_before is not None:
             query = query.filter(EventRecord.end_datetime < ends_before)
         return [(record, details) for record, details in query.all()]
+
+    def set_nap_flags(self, db_session: DbSession, flags: list[tuple[SleepDetails, bool]]) -> None:
+        """Set the nap flag of each sleep details row and flush."""
+        for details, is_nap in flags:
+            details.is_nap = is_nap
+        db_session.flush()
 
 
 def local_days(source_id: UUID, start: datetime, end: datetime, zone_offset: str | None) -> list[tuple[UUID, date]]:
