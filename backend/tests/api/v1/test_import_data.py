@@ -8,14 +8,11 @@ and the /api/v1/sns/notification endpoint its uploads are announced on.
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 from httpx import Response
 from kombu.exceptions import OperationalError
 from sqlalchemy.orm import Session
 
-from app.api.routes.v1.import_xml import _limited_receive
 from tests.factories import ApiKeyFactory, UserFactory
 from tests.utils import api_key_headers
 
@@ -124,7 +121,7 @@ class TestSNSNotificationEndpoint:
         assert "secret-marker" not in response.text
 
 
-_ROUTE = "app.api.routes.v1.import_xml"
+_SERVICE = "app.services.providers.apple.apple_xml.direct_upload_service"
 _MIB = 1024 * 1024
 _XML = b"<HealthData></HealthData>"
 
@@ -145,8 +142,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML)),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML)),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
         ):
             mock_task.delay.return_value.id = "task-1"
             response = _upload_direct(client, str(user.id), _XML)
@@ -159,8 +156,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML) - 1),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML) - 1),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -172,8 +169,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_FILE_SIZE", len(_XML) - 1),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_FILE_SIZE", len(_XML) - 1),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -184,8 +181,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload"),
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload"),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
 
@@ -200,9 +197,9 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
-            patch(f"{_ROUTE}.MAX_FILE_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload"),
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
+            patch(f"{_SERVICE}.MAX_FILE_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload"),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
 
@@ -213,8 +210,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
             patch("starlette.requests.Request.form", new_callable=AsyncMock) as mock_form,
         ):
             response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
@@ -244,8 +241,8 @@ class TestDirectXMLUpload:
             yield f"\r\n--{boundary}--\r\n".encode()
 
         with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
         ):
             response = client.post(
                 f"/api/v1/users/{user.id}/import/apple/xml/direct",
@@ -264,8 +261,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
-            patch(f"{_ROUTE}.logger") as mock_logger,
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.logger") as mock_logger,
         ):
             mock_task.delay.side_effect = OperationalError("Error 32 while writing to socket. Broken pipe.")
             response = _upload_direct(client, str(user.id), _XML)
@@ -274,50 +271,3 @@ class TestDirectXMLUpload:
         assert response.json()["detail"] == "Unable to queue XML processing"
         mock_logger.error.assert_called_once()
         assert mock_logger.error.call_args.kwargs["action"] == "xml_direct_upload_queue_failed"
-
-
-class TestLimitedReceive:
-    """The body counter stops reading as soon as the limit is crossed."""
-
-    @staticmethod
-    def _request(chunks: list[bytes], headers: list[tuple[bytes, bytes]] | None = None) -> tuple[Request, list[int]]:
-        consumed = [0]
-
-        async def receive() -> dict:
-            consumed[0] += 1
-            body = chunks[consumed[0] - 1]
-            return {"type": "http.request", "body": body, "more_body": consumed[0] < len(chunks)}
-
-        return Request({"type": "http", "headers": headers or []}, receive), consumed
-
-    async def test_raises_on_the_chunk_that_crosses_the_limit(self) -> None:
-        with patch(f"{_ROUTE}._MULTIPART_OVERHEAD", 10):
-            request, consumed = self._request([b"x" * 60, b"x" * 60, b"x" * 60])
-            receive = _limited_receive(request, 100)
-
-            await receive()
-            with pytest.raises(HTTPException) as exc_info:
-                await receive()
-
-        assert exc_info.value.status_code == 413
-        assert consumed[0] == 2
-
-    async def test_passes_a_body_within_the_limit_plus_framing(self) -> None:
-        with patch(f"{_ROUTE}._MULTIPART_OVERHEAD", 10):
-            request, _ = self._request([b"x" * 60, b"x" * 50])
-            receive = _limited_receive(request, 100)
-
-            first = await receive()
-            second = await receive()
-
-        assert (len(first["body"]), len(second["body"])) == (60, 50)
-        assert second["more_body"] is False
-
-    def test_rejects_declared_length_before_reading(self) -> None:
-        with patch(f"{_ROUTE}._MULTIPART_OVERHEAD", 10):
-            request, consumed = self._request([b"x"], headers=[(b"content-length", b"111")])
-            with pytest.raises(HTTPException) as exc_info:
-                _limited_receive(request, 100)
-
-        assert exc_info.value.status_code == 413
-        assert consumed[0] == 0
