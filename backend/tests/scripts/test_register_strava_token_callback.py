@@ -25,3 +25,11 @@ def test_strava_in_webhook_mode_is_registered_again(db: Session) -> None:
 
 def test_strava_in_pull_mode_is_left_alone(db: Session) -> None:
     _send_task(db, LiveSyncMode.PULL).assert_not_called()
+
+
+def test_dry_run_queues_nothing(db: Session) -> None:
+    ProviderSettingsRepository().upsert(db, "strava", is_enabled=True, live_sync_mode=LiveSyncMode.WEBHOOK)
+    with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        assert not register_strava_token_callback(db, dry_run=True)
+
+    send_task.assert_not_called()
