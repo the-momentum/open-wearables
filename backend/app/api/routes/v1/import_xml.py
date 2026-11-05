@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from app.config import settings
 from app.database import DbSession
 from app.integrations.celery.tasks.process_aws_upload_task import complete_and_process_aws_upload
-from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas.providers.apple.apple_xml import (
     MultipartAbortRequest,
     MultipartAbortResponse,
@@ -25,6 +24,12 @@ from app.schemas.providers.apple.apple_xml import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services import ApiKeyDep, user_service
 from app.services.providers.apple.apple_xml.aws_service import require_bucket_name
+from app.services.providers.apple.apple_xml.direct_upload_service import (
+    direct_upload_limit,
+    direct_upload_service,
+    mib,
+    too_large_detail,
+)
 from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
 from app.services.providers.apple.apple_xml.presigned_url_service import presigned_url_service
 from app.services.providers.apple.apple_xml.sns_service import sns_service
@@ -164,23 +169,37 @@ def abort_multipart_upload(
     return MultipartAbortResponse(status="aborted", key=request.key)
 
 
-@router.post("/users/{user_id}/import/apple/xml/direct", responses={**_USER_NOT_FOUND})
+@router.post(
+    "/users/{user_id}/import/apple/xml/direct",
+    responses={
+        **_USER_NOT_FOUND,
+        **problem_doc(
+            413,
+            f"File is over {mib(direct_upload_limit())} MiB",
+            too_large_detail(direct_upload_limit() + 1),
+        ),
+        **problem_doc(503, "Task queue unavailable", "Unable to queue XML processing"),
+    },
+    description=(
+        f"Import an Apple Health XML file of up to {mib(direct_upload_limit())} MiB "
+        "into the database. "
+        "Larger files must use the S3 multipart upload."
+    ),
+)
 def import_xml_file(
     user_id: UUID,
     file: UploadFile,
     db: DbSession,
     _api_key: ApiKeyDep,
 ) -> dict[str, str]:
-    """Import XML file into the database."""
+    """Queue a small XML upload for import."""
     user_service.get(db, user_id, raise_404=True)
-    file_contents = file.file.read()
-    filename = file.filename or "upload.xml"
-
-    task = process_xml_upload.delay(file_contents=file_contents, filename=filename, user_id=str(user_id))
+    # Starlette's multipart parser always sets the size of the spooled file.
+    task_id = direct_upload_service.queue_import(str(user_id), file.file, file.size or 0, file.filename or "upload.xml")
 
     return {
         "status": "processing",
-        "task_id": task.id,
+        "task_id": task_id,
         "user_id": str(user_id),
     }
 

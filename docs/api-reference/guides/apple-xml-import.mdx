@@ -17,7 +17,7 @@ Import complete Apple Health data exports via XML files using one of these metho
 
 1. **S3-compatible multipart upload** (Recommended) - For large files, uploads parts directly to an S3-compatible bucket (AWS S3 or self-hosted), reports progress, and explicitly queues processing.
 2. **S3 presigned POST with SNS** - AWS-only workflow for deployments configured with `APPLE_XML_UPLOAD_COMPLETION_MODE=sns`.
-3. **Direct Upload** - For smaller files or testing, uploads directly to the API
+3. **Direct Upload** - For files up to 200 MiB or testing, uploads directly to the API. Needs no object storage.
 
 ## Authentication
 
@@ -670,6 +670,33 @@ as retryable with exponential backoff.
       </Step>
     </Steps>
 
+    <Warning>
+      Direct upload accepts files up to **200 MiB**. The file is passed to the worker
+      inside the task queue message, so the API, Redis and the worker each hold a copy
+      of it in memory. An Apple Health export from a few years of Apple Watch use is
+      usually larger, so use the multipart upload for real exports. If
+      `APPLE_XML_MAX_FILE_SIZE_BYTES` is set lower, that limit applies here too.
+    </Warning>
+
+    | Status | Meaning |
+    |--------|---------|
+    | `200 OK` | File queued for processing |
+    | `401` | Invalid or missing API key |
+    | `413` | File is over 200 MiB. Use the multipart upload |
+    | `422` | The request has no `file` part |
+    | `503` | The task queue is unavailable. Retry with backoff |
+
+    <ResponseExample>
+    ```json 413 File too large
+    {
+      "title": "Content Too Large",
+      "status": 413,
+      "detail": "Direct upload accepts files up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
+      "code": "CONTENT_TOO_LARGE"
+    }
+    ```
+    </ResponseExample>
+
     <Accordion title="View Complete Script (Copy & Run)">
     ```python upload_xml_direct.py
     #!/usr/bin/env python3
@@ -696,10 +723,11 @@ as retryable with exponential backoff.
             print(f"Error: File not found: {file_path}")
             sys.exit(1)
         
-        # Check file size
-        file_size_mb = file_path.stat().st_size / (1024 * 1024)
-        if file_size_mb > 10:
-            print(f"Warning: File is {file_size_mb:.1f}MB. Consider using S3 method for large files.")
+        # Direct upload accepts files up to 200 MiB
+        file_size_mib = file_path.stat().st_size / (1024 * 1024)
+        if file_size_mib > 200:
+            print(f"Error: File is {file_size_mib:.1f} MiB. Use the multipart upload for files over 200 MiB.")
+            sys.exit(1)
         
         # Upload directly
         print(f"Uploading {file_path.name}...")
@@ -746,7 +774,7 @@ See [Data Types Guide](/architecture/data-types) for complete list.
 
 <CardGroup cols={2}>
   <Card title="Use S3 for Large Files" icon="cloud-arrow-up">
-    Files over 10MB should use multipart upload to avoid API request limits
+    Direct upload accepts files up to 200 MiB. Use multipart upload for anything larger
   </Card>
   
   <Card title="Handle Async Processing" icon="clock">

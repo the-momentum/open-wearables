@@ -1,7 +1,7 @@
 """
 Tests for import data endpoints.
 
-Tests the /api/v1/users/{user_id}/import/apple/xml endpoint for XML import
+Tests the /api/v1/users/{user_id}/import/apple/xml endpoints for XML import
 and the /api/v1/sns/notification endpoint its uploads are announced on.
 """
 
@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from httpx import Response
+from kombu.exceptions import OperationalError
 from sqlalchemy.orm import Session
 
 from tests.factories import ApiKeyFactory, UserFactory
@@ -123,6 +125,9 @@ class TestXMLImportEndpoint:
         assert response.status_code == 422
 
 
+_SERVICE = "app.services.providers.apple.apple_xml.direct_upload_service"
+
+
 class TestXMLDirectImportEndpoint:
     URL = "/api/v1/users/{user_id}/import/apple/xml/direct"
 
@@ -130,7 +135,7 @@ class TestXMLDirectImportEndpoint:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch("app.api.routes.v1.import_xml.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
             delay.return_value.id = "task-id"
             response = client.post(
                 self.URL.format(user_id=user.id),
@@ -145,7 +150,7 @@ class TestXMLDirectImportEndpoint:
     def test_unknown_user_is_not_queued(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch("app.api.routes.v1.import_xml.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
             response = client.post(
                 self.URL.format(user_id=uuid4()),
                 headers=headers,
@@ -158,7 +163,7 @@ class TestXMLDirectImportEndpoint:
     def test_rejects_non_uuid_user_id(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch("app.api.routes.v1.import_xml.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
             response = client.post(
                 self.URL.format(user_id="not-a-uuid"),
                 headers=headers,
@@ -191,3 +196,103 @@ class TestSNSNotificationEndpoint:
         assert response.status_code == 400
         assert response.json()["detail"] == "Invalid SNS notification"
         assert "secret-marker" not in response.text
+
+
+_MIB = 1024 * 1024
+_XML = b"<HealthData></HealthData>"
+
+
+def _upload_direct(client: TestClient, user_id: str, content: bytes) -> Response:
+    api_key = ApiKeyFactory()
+    return client.post(
+        f"/api/v1/users/{user_id}/import/apple/xml/direct",
+        headers=api_key_headers(api_key.plain_key),
+        files={"file": ("export.xml", content, "application/xml")},
+    )
+
+
+class TestDirectXMLUpload:
+    """Test suite for the direct XML upload endpoint."""
+
+    def test_queues_file_at_limit(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML)),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+        ):
+            mock_task.delay.return_value.id = "task-1"
+            response = _upload_direct(client, str(user.id), _XML)
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "processing", "task_id": "task-1", "user_id": str(user.id)}
+        mock_task.delay.assert_called_once_with(file_contents=_XML, filename="export.xml", user_id=str(user.id))
+
+    def test_rejects_file_over_limit_without_queueing(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML) - 1),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+        ):
+            response = _upload_direct(client, str(user.id), _XML)
+
+        assert response.status_code == 413
+        assert response.headers["content-type"] == "application/problem+json"
+        mock_task.delay.assert_not_called()
+
+    def test_lower_product_limit_applies_to_direct_upload(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_SERVICE}.MAX_FILE_SIZE", len(_XML) - 1),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+        ):
+            response = _upload_direct(client, str(user.id), _XML)
+
+        assert response.status_code == 413
+        mock_task.delay.assert_not_called()
+
+    def test_413_message_points_to_multipart(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload"),
+        ):
+            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == (
+            "Direct upload accepts files up to 3 MiB. "
+            "Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) "
+            "for larger files."
+        )
+
+    def test_413_message_skips_multipart_for_file_over_product_limit(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
+            patch(f"{_SERVICE}.MAX_FILE_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload"),
+        ):
+            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == "XML import accepts files up to 3 MiB."
+
+    def test_returns_503_when_queue_rejects_task(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.logger") as mock_logger,
+        ):
+            mock_task.delay.side_effect = OperationalError("Error 32 while writing to socket. Broken pipe.")
+            response = _upload_direct(client, str(user.id), _XML)
+
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Unable to queue XML processing"
+        mock_logger.error.assert_called_once()
+        assert mock_logger.error.call_args.kwargs["action"] == "xml_direct_upload_queue_failed"

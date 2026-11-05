@@ -7325,7 +7325,7 @@
           "External: Apple Health Import"
         ],
         "summary": "Import Xml File",
-        "description": "Import XML file into the database.",
+        "description": "Import an Apple Health XML file of up to 200 MiB into the database. Larger files must use the S3 multipart upload.",
         "operationId": "import_xml_file_api_v1_users__user_id__import_apple_xml_direct_post",
         "security": [
           {
@@ -7397,6 +7397,38 @@
                   "status": 404,
                   "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
                   "code": "NOT_FOUND"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File is over 200 MiB",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "Direct upload accepts files up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
+                  "code": "CONTENT_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Task queue unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Unable to queue XML processing",
+                  "code": "SERVICE_UNAVAILABLE"
                 }
               }
             }
