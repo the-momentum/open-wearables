@@ -20,7 +20,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
-from app.utils.exceptions import ConfigurationError, InvalidInputError, UnsupportedProviderError
+from app.utils.exceptions import InvalidInputError, UnsupportedProviderError
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -403,49 +403,6 @@ class TestProviderSettingsServiceLiveSyncMode:
 
         with pytest.raises(UnsupportedProviderError, match="does not support live sync mode configuration"):
             service.update_provider_setting(db, "garmin", update)
-
-    @pytest.mark.parametrize("token", [None, SecretStr("")])
-    def test_webhook_mode_without_a_callback_token_is_refused(self, db: Session, token: SecretStr | None) -> None:
-        """Strava in webhook mode is not polled, so without a token no data would arrive at all."""
-        service = ProviderSettingsService()
-
-        with (
-            patch.object(settings, "strava_webhook_token", token),
-            patch("app.services.providers.base_strategy.celery_app.send_task") as send_task,
-            pytest.raises(ConfigurationError, match="needs a webhook callback token"),
-        ):
-            service.update_provider_setting(db, "strava", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK))
-
-        send_task.assert_not_called()
-        strava = next(p for p in service.get_all_providers(db) if p.provider == "strava")
-        assert strava.live_sync_mode == LiveSyncMode.PULL
-
-    def test_pull_mode_without_a_callback_token_is_allowed(self, db: Session) -> None:
-        """Leaving webhook mode must always work, also after the token was removed."""
-        service = ProviderSettingsService()
-
-        with (
-            patch.object(settings, "strava_webhook_token", None),
-            patch("app.services.providers.base_strategy.celery_app.send_task"),
-        ):
-            result = service.update_provider_setting(
-                db, "strava", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.PULL)
-            )
-
-        assert result.live_sync_mode == LiveSyncMode.PULL
-
-    def test_webhook_mode_with_a_callback_token_is_allowed(self, db: Session) -> None:
-        service = ProviderSettingsService()
-
-        with (
-            patch.object(settings, "strava_webhook_token", SecretStr("a" * 32)),
-            patch("app.services.providers.base_strategy.celery_app.send_task"),
-        ):
-            result = service.update_provider_setting(
-                db, "strava", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
-            )
-
-        assert result.live_sync_mode == LiveSyncMode.WEBHOOK
 
     def test_update_live_sync_mode_explicit_null_raises(self, db: Session) -> None:
         """Should raise ValidationError when live_sync_mode is explicitly set to null.

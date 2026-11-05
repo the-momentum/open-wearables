@@ -7,11 +7,6 @@ called once during setup, not part of the inbound webhook pipeline.
 Strava allows exactly one subscription per app. If a subscription already
 exists with a different callback URL it is deleted and re-created.
 
-The callback URL carries settings.strava_webhook_token as a path segment (see
-``app.utils.webhook_callback``), so it is built here, never taken from the caller,
-and redacted in every subscription this service returns. Rotating the token
-changes the URL, and the next registration replaces the subscription.
-
 Inbound webhook processing is handled by StravaWebhookHandler.
 """
 
@@ -61,27 +56,14 @@ class StravaWebhookService(BaseWebhookService):
     async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
         """Register or update the Strava webhook subscription.
 
-        ``callback_url`` is ignored: the URL must carry the secret token, so it is
-        built from API_BASE_URL and STRAVA_WEBHOOK_TOKEN. Without the token nothing
-        is registered, since the handler would reject every event. That is an
-        error, not a skip: Strava in webhook mode is left out of periodic pull, so
-        a silent skip would stop its data altogether.
+        ``callback_url`` is ignored: the registered URL always carries the callback token.
 
         GETs the existing subscription first. If one exists with the same
         callback URL it is skipped. If the callback URL differs the old
         subscription is deleted and a new one is created. Safe to call
         multiple times.
         """
-        token_url = build_callback_url("strava", settings.strava_webhook_token)
-        if token_url is None:
-            logger.error(
-                "Strava webhook subscription not registered: STRAVA_WEBHOOK_TOKEN is not set",
-                provider="strava",
-                action="strava_webhook_subscription_token_unconfigured",
-            )
-            return [{"status": "error", "error": "STRAVA_WEBHOOK_TOKEN is not set"}]
-
-        callback_url = token_url
+        callback_url = build_callback_url("strava")
         client_id, client_secret = self._get_strava_credentials()
         verify_token = settings.strava_webhook_verify_token.get_secret_value()  # ty:ignore[unresolved-attribute]
 

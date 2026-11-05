@@ -193,6 +193,12 @@ uv run python scripts/data_migrations/scale_apple_xml_percentages.py \
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
 
+# Re-registers the provider webhooks whose callback URL is derived from SECRET_KEY and API_BASE_URL;
+# a no-op while that URL is unchanged.
+echo 'Queueing webhook callback registration...'
+uv run python scripts/init/register_webhook_callbacks.py \
+    || echo "Warning: webhook callback registration not queued — will retry on next startup."
+
 # Register webhook event types with Svix (with retry, non-fatal)
 echo 'Registering webhook event types...'
 for i in 1 2 3; do

@@ -1,4 +1,4 @@
-"""The Strava subscription always points at the callback URL that carries STRAVA_WEBHOOK_TOKEN."""
+"""The Strava subscription always points at the callback URL that carries the callback token."""
 
 from collections.abc import Generator
 from typing import Any
@@ -10,8 +10,9 @@ from pydantic import SecretStr
 
 from app.config import settings
 from app.services.providers.strava.webhook_service import StravaWebhookService
+from app.utils.webhook_callback import callback_token
 
-TOKEN = "3f9c1e7a5b2d4c8e9a0b1c2d3e4f5a6b"
+TOKEN = callback_token("strava").get_secret_value()
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +21,6 @@ def _strava_settings() -> Generator[None, None, None]:
         patch.object(settings, "api_base_url", "https://api.example.com"),
         patch.object(settings, "strava_client_id", "293960"),
         patch.object(settings, "strava_client_secret", SecretStr("client-secret")),
-        patch.object(settings, "strava_webhook_token", SecretStr(TOKEN)),
     ):
         yield
 
@@ -88,13 +88,4 @@ async def test_the_current_url_is_left_alone(strava: MagicMock) -> None:
 
     assert result == [{"subscription_id": 382914, "status": "skipped"}]
     strava.delete.assert_not_awaited()
-    strava.post.assert_not_awaited()
-
-
-async def test_registration_without_a_token_is_an_error(strava: MagicMock) -> None:
-    with patch.object(settings, "strava_webhook_token", None):
-        result = await StravaWebhookService().register_subscriptions("")
-
-    assert result == [{"status": "error", "error": "STRAVA_WEBHOOK_TOKEN is not set"}]
-    strava.get.assert_not_awaited()
     strava.post.assert_not_awaited()
