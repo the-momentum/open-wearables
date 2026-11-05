@@ -1142,6 +1142,31 @@ class TestStoredInWindows:
             Coverage(1, 0, Decimal("1.5"), Decimal("1.5"))
         ]
 
+    def test_a_sample_counts_when_only_the_truncated_seconds_put_it_past_the_window(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        # Windows are whole seconds: a series over 0.1-10.9 s reads as ending at 10.1 s, its original over 5.5-10.9 s
+        # as ending at 10.5 s
+        source = self._watch()
+        DataPointSeriesFactory(
+            data_source=source,
+            series_type=db.query(SeriesTypeDefinition).filter_by(code=SeriesType.active_energy.value).one(),
+            recorded_at=self.START + timedelta(seconds=5.5),
+            value=Decimal("2"),
+            window_seconds=5,
+        )
+        window = StoredWindow(
+            source_app_id=APPLE_WATCH_APP_ID,
+            series_type_definition_id=get_series_type_id(SeriesType.active_energy),
+            start=self.START + timedelta(seconds=0.1),
+            end=self.START + timedelta(seconds=10.1),
+            external_id=None,
+        )
+
+        assert series_repo.stored_in_windows(db, source.user_id, [window]) == [
+            Coverage(1, 0, Decimal("2"), Decimal("2"))
+        ]
+
     def test_reads_every_source_of_the_writer_app_and_nothing_else(
         self, db: Session, series_repo: DataPointSeriesRepository
     ) -> None:
