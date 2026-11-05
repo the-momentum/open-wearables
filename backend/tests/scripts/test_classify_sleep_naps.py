@@ -1,6 +1,7 @@
 """Tests for flagging the naps already stored for providers that don't report them: the task and its script."""
 
 import importlib.util
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
@@ -9,6 +10,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.integrations import redis_lock
 from app.integrations.celery.tasks.classify_sleep_naps_task import MIGRATION, classify_sleep_naps, classify_sources
 from app.integrations.redis_client import get_redis_client
 from app.models import DataSource, HealthScore, SleepDetails
@@ -233,3 +235,14 @@ class TestScript:
             _script.main(dry_run=False)
 
         delay.assert_called_once()
+
+
+def test_a_kept_alive_lock_outlives_its_ttl() -> None:
+    token = redis_lock.acquire("test:lock", 1)
+    assert token is not None
+
+    with redis_lock.kept_alive("test:lock", token, 1):
+        time.sleep(1.5)
+        assert get_redis_client().get("test:lock") is not None
+
+    redis_lock.release("test:lock", token)

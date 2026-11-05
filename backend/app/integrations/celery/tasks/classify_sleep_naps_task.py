@@ -1,7 +1,6 @@
 """Flags the naps already stored for providers that don't report them, once per instance (#938)."""
 
 import time
-from collections.abc import Callable
 from uuid import UUID
 
 from celery import shared_task
@@ -22,7 +21,7 @@ logger = get_logger(__name__)
 
 MIGRATION = "classify_sleep_naps"
 _LOCK_KEY = "classify_sleep_naps:lock"
-# Extended after every data source, so it only runs out on a holder that stopped making progress.
+# Kept alive in the background while a run works, so it only runs out on a holder that died.
 _LOCK_TTL_SECONDS = 420
 # Work per run; the task then queues the next one, so no single run holds a worker for long.
 _BUDGET_SECONDS = 240
@@ -42,7 +41,7 @@ def classify_sleep_naps(after: str | None = None, failed: int = 0) -> dict:
     if token is None:
         return {"skipped": "previous_run_in_progress"}
     try:
-        with SessionLocal() as db:
+        with redis_lock.kept_alive(_LOCK_KEY, token, _LOCK_TTL_SECONDS), SessionLocal() as db:
             bound_lock_waits(db)
             migrations = DataMigrationRepository()
             if migrations.is_completed(db, MIGRATION):
@@ -52,7 +51,6 @@ def classify_sleep_naps(after: str | None = None, failed: int = 0) -> dict:
                 UUID(after) if after else None,
                 failed,
                 _BUDGET_SECONDS,
-                keep_alive=lambda: redis_lock.extend(_LOCK_KEY, token, _LOCK_TTL_SECONDS),
             )
             if finished and not failed:
                 migrations.mark_completed(db, MIGRATION)
@@ -69,7 +67,6 @@ def classify_sources(
     after: UUID | None,
     failed: int,
     budget_seconds: float,
-    keep_alive: Callable[[], bool] = lambda: True,
 ) -> tuple[UUID | None, int, bool]:
     """Re-flag the data sources after ``after`` until the budget is spent; returns the last source done, the
     failures so far and whether every source is done. Commits per data source."""
@@ -85,7 +82,7 @@ def classify_sources(
                 failed += 1
                 logger.error("Failed to classify sleep naps", exc_info=exc, data_source_id=str(source_id))
             after = source_id
-            if time.monotonic() >= deadline or not keep_alive():
+            if time.monotonic() >= deadline:
                 return after, failed, False
     return after, failed, True
 
