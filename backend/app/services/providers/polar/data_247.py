@@ -617,6 +617,8 @@ class Polar247Data(Base247DataTemplate):
                             series_type=series_type,
                         )
                         for dt, val in self._night_samples(night_samples, sleep_start)
+                        # The night's average sits at UTC midnight; a sample there would overwrite it.
+                        if dt != recorded_at
                     )
                 if value is not None:
                     samples.append(

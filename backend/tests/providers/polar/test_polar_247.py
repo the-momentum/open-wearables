@@ -895,6 +895,23 @@ class TestPolar247NightlyRechargeNormalization:
             datetime(2024, 1, 15, 0, 4, tzinfo=timezone.utc),
         ]
 
+    def test_a_sample_at_utc_midnight_leaves_the_nightly_average(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
+        sample_recharge["hrv_samples"] = {"23:55": 40, "00:00": 99, "00:05": 41}
+        sleep_starts = {"2024-01-15": datetime(2024, 1, 14, 23, 54, tzinfo=timezone.utc)}
+
+        _, samples = data_247.normalize_nightly_recharge([sample_recharge], uuid4(), sleep_starts)
+
+        hrv = {
+            s.recorded_at: float(s.value) for s in samples if s.series_type == SeriesType.heart_rate_variability_rmssd
+        }
+        assert hrv == {
+            datetime(2024, 1, 14, 23, 55, tzinfo=timezone.utc): 40,
+            datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc): 48,
+            datetime(2024, 1, 15, 0, 5, tzinfo=timezone.utc): 41,
+        }
+
     def test_per_sample_values_need_the_nights_sleep_start(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         sample_recharge["hrv_samples"] = {"23:51": 86, "23:56": 81}
 
