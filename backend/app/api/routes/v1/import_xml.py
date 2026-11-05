@@ -27,12 +27,15 @@ from app.services.providers.apple.apple_xml.aws_service import require_bucket_na
 from app.services.providers.apple.apple_xml.direct_upload_service import (
     direct_upload_limit,
     direct_upload_service,
+    max_request_body,
     mib,
+    request_too_large_detail,
     too_large_detail,
 )
 from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
 from app.services.providers.apple.apple_xml.presigned_url_service import presigned_url_service
 from app.services.providers.apple.apple_xml.sns_service import sns_service
+from app.utils.body_limit import body_limit_route
 from app.utils.problem import problem_doc
 
 router = APIRouter()
@@ -169,7 +172,11 @@ def abort_multipart_upload(
     return MultipartAbortResponse(status="aborted", key=request.key)
 
 
-@router.post(
+# Rejects an oversized upload while it streams in, before FastAPI spools it to disk.
+_direct_router = APIRouter(route_class=body_limit_route(max_request_body, request_too_large_detail))
+
+
+@_direct_router.post(
     "/users/{user_id}/import/apple/xml/direct",
     responses={
         **_USER_NOT_FOUND,
@@ -202,6 +209,9 @@ def import_xml_file(
         "task_id": task_id,
         "user_id": str(user_id),
     }
+
+
+router.include_router(_direct_router)
 
 
 @router.post("/sns/notification", status_code=status.HTTP_202_ACCEPTED)

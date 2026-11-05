@@ -5,7 +5,8 @@ Tests the /api/v1/users/{user_id}/import/apple/xml endpoints for XML import
 and the /api/v1/sns/notification endpoint its uploads are announced on.
 """
 
-from unittest.mock import MagicMock, patch
+from collections.abc import Iterator
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -277,10 +278,61 @@ class TestDirectXMLUpload:
             patch(f"{_SERVICE}.MAX_FILE_SIZE", 3 * _MIB),
             patch(f"{_SERVICE}.process_xml_upload"),
         ):
-            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
+            response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
 
         assert response.status_code == 413
         assert response.json()["detail"] == "XML import accepts files up to 3 MiB."
+
+    def test_rejects_declared_oversized_body_before_parsing_it(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch("starlette.requests.Request.form", new_callable=AsyncMock) as mock_form,
+        ):
+            response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
+
+        assert response.status_code == 413
+        assert response.headers["content-type"] == "application/problem+json"
+        assert response.json()["detail"] == (
+            "Direct upload accepts files up to 3 MiB. "
+            "Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) "
+            "for larger files."
+        )
+        mock_form.assert_not_called()
+        mock_task.delay.assert_not_called()
+
+    def test_rejects_undeclared_oversized_body(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        boundary = "test-boundary"
+
+        def body() -> Iterator[bytes]:
+            # A generator makes httpx send the body chunked, without Content-Length.
+            yield (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="export.xml"\r\n'
+                "Content-Type: application/xml\r\n\r\n"
+            ).encode()
+            for _ in range(4):
+                yield b"x" * _MIB
+            yield f"\r\n--{boundary}--\r\n".encode()
+
+        with (
+            patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+        ):
+            response = client.post(
+                f"/api/v1/users/{user.id}/import/apple/xml/direct",
+                headers={
+                    **api_key_headers(ApiKeyFactory().plain_key),
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                },
+                content=body(),
+            )
+
+        assert response.status_code == 413
+        assert response.json()["detail"].startswith("Direct upload accepts files up to 3 MiB.")
+        mock_task.delay.assert_not_called()
 
     def test_returns_503_when_queue_rejects_task(self, client: TestClient, db: Session) -> None:
         user = UserFactory()

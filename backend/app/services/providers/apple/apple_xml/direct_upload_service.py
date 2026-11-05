@@ -10,6 +10,8 @@ logger = get_logger(__name__)
 
 _MIB = 1024 * 1024
 _MULTIPART_CREATE_PATH = f"POST {settings.api_v1}/users/{{user_id}}/import/apple/xml/s3/multipart/create"
+# Room for the multipart framing around the file: the boundaries and the part headers with the filename.
+_MULTIPART_OVERHEAD = 64 * 1024
 
 
 def direct_upload_limit() -> int:
@@ -28,6 +30,14 @@ def too_large_detail(file_size: int) -> str:
         f"Direct upload accepts files up to {mib(direct_upload_limit())} MiB. "
         f"Use the multipart upload ({_MULTIPART_CREATE_PATH}) for larger files."
     )
+
+
+def max_request_body() -> int:
+    return direct_upload_limit() + _MULTIPART_OVERHEAD
+
+
+def request_too_large_detail(body_size: int) -> str:
+    return too_large_detail(body_size - _MULTIPART_OVERHEAD)
 
 
 class DirectUploadService:
