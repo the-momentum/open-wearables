@@ -51,3 +51,31 @@ test('sends an already signed-in visitor away from the sign-in page', async ({ p
 	await page.goto('/login');
 	await expect(page).toHaveURL('/dashboard');
 });
+
+// A session from another stack, or from before its SECRET_KEY rotated.
+test('sends a session the API no longer accepts back to sign in', async ({
+	page,
+	context,
+	request
+}) => {
+	await signIn(page);
+	await request.post('http://localhost:8787/__forget-tokens/all');
+
+	await page.goto('/login');
+	await expect(page).toHaveURL('/login');
+	await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+	const cookie = (await context.cookies()).find((c) => c.name === 'ow_session');
+	expect(cookie, 'the dead session should be cleared').toBeUndefined();
+});
+
+test('renews a refused access token while its refresh token still works', async ({
+	page,
+	request
+}) => {
+	await signIn(page);
+	await request.post('http://localhost:8787/__forget-tokens/access');
+
+	await page.goto('/users');
+	await expect(page).toHaveURL('/users');
+	await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+});
