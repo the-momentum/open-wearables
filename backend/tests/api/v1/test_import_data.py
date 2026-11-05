@@ -180,21 +180,34 @@ class TestDirectXMLUpload:
         assert response.status_code == 413
         mock_task.delay.assert_not_called()
 
-    def test_413_message_shows_size_and_multipart_path(self, client: TestClient, db: Session) -> None:
+    def test_413_message_points_to_multipart(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
 
         with (
             patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
             patch(f"{_ROUTE}.process_xml_upload"),
         ):
-            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 60 * 1024))
+            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
 
         assert response.status_code == 413
         assert response.json()["detail"] == (
-            "File is 3.1 MiB, direct upload accepts up to 3 MiB. "
+            "Direct upload accepts files up to 3 MiB. "
             "Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) "
             "for larger files."
         )
+
+    def test_413_message_skips_multipart_for_file_over_product_limit(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
+            patch(f"{_ROUTE}.MAX_FILE_SIZE", 3 * _MIB),
+            patch(f"{_ROUTE}.process_xml_upload"),
+        ):
+            response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
+
+        assert response.status_code == 413
+        assert response.json()["detail"] == "XML import accepts files up to 3 MiB."
 
     def test_rejects_declared_oversized_body_before_parsing_it(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
@@ -209,7 +222,7 @@ class TestDirectXMLUpload:
         assert response.status_code == 413
         assert response.headers["content-type"] == "application/problem+json"
         assert response.json()["detail"] == (
-            "File is over 3 MiB, direct upload accepts up to 3 MiB. "
+            "Direct upload accepts files up to 3 MiB. "
             "Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) "
             "for larger files."
         )
@@ -244,49 +257,8 @@ class TestDirectXMLUpload:
             )
 
         assert response.status_code == 413
-        assert response.json()["detail"].startswith("File is over 3 MiB, direct upload accepts up to 3 MiB.")
+        assert response.json()["detail"].startswith("Direct upload accepts files up to 3 MiB.")
         mock_task.delay.assert_not_called()
-
-    def test_declared_body_over_product_limit_skips_multipart(self, client: TestClient, db: Session) -> None:
-        user = UserFactory()
-
-        with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
-            patch(f"{_ROUTE}.MAX_FILE_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload"),
-        ):
-            response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
-
-        assert response.status_code == 413
-        assert response.json()["detail"] == "File is over 3 MiB, XML import accepts up to 3 MiB."
-
-    def test_413_message_skips_multipart_when_product_limit_is_below_direct_limit(
-        self, client: TestClient, db: Session
-    ) -> None:
-        user = UserFactory()
-
-        with (
-            patch(f"{_ROUTE}.MAX_FILE_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload"),
-        ):
-            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
-
-        assert response.status_code == 413
-        assert response.json()["detail"] == "File is 3.1 MiB, XML import accepts up to 3 MiB."
-
-    def test_413_message_does_not_round_a_file_just_over_the_limit_down_to_it(
-        self, client: TestClient, db: Session
-    ) -> None:
-        user = UserFactory()
-
-        with (
-            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_ROUTE}.process_xml_upload"),
-        ):
-            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
-
-        assert response.status_code == 413
-        assert response.json()["detail"].startswith("File is 3.1 MiB, direct upload accepts up to 3 MiB.")
 
     def test_returns_503_when_queue_rejects_task(self, client: TestClient, db: Session) -> None:
         user = UserFactory()

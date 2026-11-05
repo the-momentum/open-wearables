@@ -7357,7 +7357,7 @@
                 "example": {
                   "title": "Content Too Large",
                   "status": 413,
-                  "detail": "File is over 200 MiB, direct upload accepts up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
+                  "detail": "Direct upload accepts files up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
                   "code": "CONTENT_TOO_LARGE"
                 }
               }
@@ -9314,7 +9314,58 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "additionalProperties": true,
+                                    "description": "Exercise segment of a workout (Health Connect `ExerciseSegment`).",
+                                    "properties": {
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "startDate": {
+                                        "format": "date-time",
+                                        "title": "Startdate",
+                                        "type": "string"
+                                      },
+                                      "endDate": {
+                                        "format": "date-time",
+                                        "title": "Enddate",
+                                        "type": "string"
+                                      },
+                                      "repetitions": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Repetitions"
+                                      },
+                                      "metadata": {
+                                        "anyOf": [
+                                          {
+                                            "additionalProperties": true,
+                                            "type": "object"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Metadata"
+                                      }
+                                    },
+                                    "required": [
+                                      "startDate",
+                                      "endDate"
+                                    ],
+                                    "title": "WorkoutSegment",
                                     "type": "object"
                                   },
                                   "type": "array"
@@ -9329,7 +9380,102 @@
                               "anyOf": [
                                 {
                                   "items": {
-                                    "additionalProperties": true,
+                                    "description": "HealthKit workout event (lap, segment or marker) or Health Connect lap (no `type`).",
+                                    "properties": {
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "startDate": {
+                                        "format": "date-time",
+                                        "title": "Startdate",
+                                        "type": "string"
+                                      },
+                                      "endDate": {
+                                        "format": "date-time",
+                                        "title": "Enddate",
+                                        "type": "string"
+                                      },
+                                      "duration": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Duration"
+                                      },
+                                      "distanceM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Distancem"
+                                      },
+                                      "strokeStyle": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Strokestyle"
+                                      },
+                                      "strokeCount": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Strokecount"
+                                      },
+                                      "swolf": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Swolf"
+                                      },
+                                      "metadata": {
+                                        "anyOf": [
+                                          {
+                                            "additionalProperties": true,
+                                            "type": "object"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Metadata"
+                                      }
+                                    },
+                                    "required": [
+                                      "startDate",
+                                      "endDate"
+                                    ],
+                                    "title": "WorkoutLap",
                                     "type": "object"
                                   },
                                   "type": "array"

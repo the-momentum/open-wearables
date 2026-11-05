@@ -107,6 +107,12 @@ const PORT = Number(process.env.MOCK_API_PORT ?? 8787);
 let issued = 0;
 const validAccessTokens = new Set<string>();
 const validRefreshTokens = new Set<string>();
+// Backend GET routes without auth: a stale bearer token there is ignored, not refused.
+const PUBLIC_PATHS = new Set([
+	'/api/v1/oauth/providers',
+	'/api/v1/meta/coverage',
+	'/api/v1/webhooks/event-types'
+]);
 
 function issueTokens() {
 	issued += 1;
@@ -168,6 +174,25 @@ const server = Bun.serve({
 			resetSeed();
 			resetSyncs();
 			return new Response(null, { status: 204 });
+		}
+
+		// The portal pointed at another stack, or its SECRET_KEY rotated: tokens it
+		// holds stop working. `access` keeps the refresh tokens, so renewing still works.
+		const forgetMatch = pathname.match(/^\/__forget-tokens\/(access|all)$/);
+		if (forgetMatch) {
+			validAccessTokens.clear();
+			if (forgetMatch[1] === 'all') validRefreshTokens.clear();
+			return new Response(null, { status: 204 });
+		}
+
+		// As the backend does: a bearer token it did not issue is refused, except on public routes.
+		const bearer = request.headers.get('authorization')?.replace('Bearer ', '');
+		if (
+			bearer !== undefined &&
+			!(request.method === 'GET' && PUBLIC_PATHS.has(pathname)) &&
+			!validAccessTokens.has(bearer)
+		) {
+			return json({ detail: 'Could not validate credentials' }, 401);
 		}
 
 		if (pathname === '/__empty-aggregates') {
