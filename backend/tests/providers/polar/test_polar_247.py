@@ -941,3 +941,35 @@ class TestPolar247HypnogramParsing:
         start = datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc)
         assert data_247._parse_hypnogram({}, start, end) == []
+
+
+class TestPolar247SleepWiseWebhook:
+    """Polar's SleepWise webhooks point at a placeholder URL the API rejects without ``from``."""
+
+    @pytest.mark.parametrize(
+        ("event", "endpoint", "key"),
+        [
+            (PolarWebhookEventType.SLEEP_WISE_ALERTNESS, "/v3/users/sleepwise/alertness", "alertness"),
+            (
+                PolarWebhookEventType.SLEEP_WISE_CIRCADIAN_BEDTIME,
+                "/v3/users/sleepwise/circadian-bedtime",
+                "circadian_bedtime",
+            ),
+        ],
+    )
+    def test_fetches_the_recent_range_not_the_placeholder_path(
+        self, data_247: Polar247Data, event: PolarWebhookEventType, endpoint: str, key: str
+    ) -> None:
+        api = MagicMock(return_value=[])
+        with (
+            patch.object(data_247, "_make_api_request", api),
+            patch.object(data_247, "_save_scores", return_value=WriteCounts(0, 0)),
+        ):
+            saved = data_247.fetch_and_save_from_webhook(MagicMock(), uuid4(), event, f"{endpoint}/date")
+
+        api.assert_called_once()
+        _, _, path = api.call_args.args
+        params = api.call_args.kwargs["params"]
+        assert path == endpoint
+        assert date.fromisoformat(params["from"]) < date.fromisoformat(params["to"])
+        assert key in saved
