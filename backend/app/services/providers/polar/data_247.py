@@ -63,7 +63,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import seconds_to_minutes, sum_optional
-from app.utils.dates import offset_to_iso
+from app.utils.dates import iso_to_timezone, offset_of, offset_to_iso
 from app.utils.exceptions import ProviderError
 from app.utils.structured_logging import get_logger
 
@@ -286,6 +286,7 @@ class Polar247Data(Base247DataTemplate):
                 duration_seconds=duration_seconds,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
+                zone_offset=offset_of(start_dt),
                 external_id=f"sleep-{parsed.date}",
                 provider=ProviderName.POLAR,
                 user_id=user_id,
@@ -572,16 +573,23 @@ class Polar247Data(Base247DataTemplate):
 
     NightlyRechargeNormalized = tuple[list[HealthScoreCreate], list[TimeSeriesSampleCreate]]
 
+    def _night_samples(self, items: dict[str, Any], sleep_start: datetime) -> list[tuple[datetime, Any]]:
+        """Local HH:MM keys of the night starting at sleep_start; the first key may precede it by a minute."""
+        entries = self._hhmm_to_datetimes(items, sleep_start)
+        if not entries:
+            return []
+        shift = timedelta(days=round((sleep_start - entries[0][0]) / timedelta(days=1)))
+        return [(dt + shift, val) for dt, val in entries]
+
     def normalize_nightly_recharge(
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
+        sleep_starts: dict[str, datetime] | None = None,
     ) -> NightlyRechargeNormalized:
-        """HRV and breathing rate are four-hour averages from early sleep, so one sample per night.
+        """Nightly HRV and breathing averages as day values, plus per-sample values once the sleep start is known.
 
-        Samples are emitted only for records processed by future syncs; existing database rows
-        are not updated. Historical records not processed again by a sync require a separate
-        backfill or replay to populate their time-series samples.
+        sleep_starts maps the night's date to its sleep start, whose offset places Polar's local HH:MM keys.
         """
         scores: list[HealthScoreCreate] = []
         samples: list[TimeSeriesSampleCreate] = []
@@ -592,10 +600,25 @@ class Polar247Data(Base247DataTemplate):
                 continue
             # Polar sends a bare date, so anchor the night to UTC midnight instead of leaving it naive.
             recorded_at = datetime.fromisoformat(parsed.date).replace(tzinfo=timezone.utc)
-            for value, series_type in (
-                (parsed.heart_rate_variability_avg, SeriesType.heart_rate_variability_rmssd),
-                (parsed.breathing_rate_avg, SeriesType.respiratory_rate),
+            sleep_start = (sleep_starts or {}).get(parsed.date)
+            for value, night_samples, series_type in (
+                (parsed.heart_rate_variability_avg, parsed.hrv_samples, SeriesType.heart_rate_variability_rmssd),
+                (parsed.breathing_rate_avg, parsed.breathing_samples, SeriesType.respiratory_rate),
             ):
+                if sleep_start is not None and night_samples:
+                    samples.extend(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            provider=ProviderName.POLAR,
+                            source=ProviderName.POLAR,
+                            recorded_at=dt,
+                            zone_offset=offset_of(dt),
+                            value=val,
+                            series_type=series_type,
+                        )
+                        for dt, val in self._night_samples(night_samples, sleep_start)
+                    )
                 if value is not None:
                     samples.append(
                         TimeSeriesSampleCreate(
@@ -1038,17 +1061,38 @@ class Polar247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime,
         end_time: datetime,
+        sleep_starts: dict[str, datetime] | None = None,
     ) -> int:
         """Save the night's score and samples, reporting the series writes.
 
         The sync report splits inserts from updates, which only the series write can tell it:
         health scores are inserted with on_conflict_do_nothing and report nothing back.
         """
-        scores, samples = self.normalize_nightly_recharge(
-            self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
-        )
+        raw_items = self.get_nightly_recharge_data(db, user_id, start_time, end_time)
+        known = sleep_starts or {}
+        known = {**self._stored_sleep_starts(db, user_id, raw_items, known), **known}
+        scores, samples = self.normalize_nightly_recharge(raw_items, user_id, known)
         self._save_scores(db, scores)
         return self._save_timeseries(db, samples)
+
+    @staticmethod
+    def _stored_sleep_starts(
+        db: DbSession, user_id: UUID, raw_items: list[dict[str, Any]], known: dict[str, datetime]
+    ) -> dict[str, datetime]:
+        """Local starts of stored Polar nights this sync did not fetch, for recharges that carry samples."""
+        dates = {
+            raw["date"]
+            for raw in raw_items
+            if raw.get("date") and raw["date"] not in known and (raw.get("hrv_samples") or raw.get("breathing_samples"))
+        }
+        stored = event_record_service.crud.get_by_external_ids(
+            db, user_id, (f"sleep-{d}" for d in dates), provider=ProviderName.POLAR
+        )
+        return {
+            external_id.removeprefix("sleep-"): record.start_datetime.astimezone(iso_to_timezone(record.zone_offset))
+            for external_id, record in stored.items()
+            if record.zone_offset
+        }
 
     def _save_sleep(
         self,
@@ -1056,8 +1100,12 @@ class Polar247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime,
         end_time: datetime,
+        sleep_starts: dict[str, datetime] | None = None,
     ) -> int:
-        """Returns the number of sleep sessions saved (score and HR rows ride along)."""
+        """Returns the number of sleep sessions saved (score and HR rows ride along).
+
+        Fills sleep_starts with each night's start by date, for Nightly Recharge to place its samples.
+        """
         raw_items = self.get_sleep_data(db, user_id, start_time, end_time)
         normalized = self.normalize_sleep(raw_items, user_id)
         count = 0
@@ -1065,6 +1113,8 @@ class Polar247Data(Base247DataTemplate):
         hr_samples: list[TimeSeriesSampleCreate] = []
 
         for record, detail, score, hr in normalized:
+            if sleep_starts is not None and record.external_id:
+                sleep_starts[record.external_id.removeprefix("sleep-")] = record.start_datetime
             try:
                 self._claim_night_stored_without_id(db, user_id, record)
                 stored = event_record_service.create_or_merge_sleep(
@@ -1102,8 +1152,9 @@ class Polar247Data(Base247DataTemplate):
     ) -> Sync247Result:
         start_time, end_time = self.resolve_window(start_time, end_time)
 
+        sleep_starts: dict[str, datetime] = {}
         tasks: dict[str, Callable[[], WriteCounts | int]] = {
-            "sleep": lambda: self._save_sleep(db, user_id, start_time, end_time),
+            "sleep": lambda: self._save_sleep(db, user_id, start_time, end_time, sleep_starts),
             "daily_activity": lambda: self._save_timeseries(
                 db,
                 self.normalize_daily_activity(
@@ -1117,7 +1168,7 @@ class Polar247Data(Base247DataTemplate):
             "cardio_load": lambda: self._save_scores(
                 db, self.normalize_cardio_load(self.get_cardio_load_data(db, user_id, start_time, end_time), user_id)
             ),
-            "nightly_recharge": lambda: self._save_nightly_recharge(db, user_id, start_time, end_time),
+            "nightly_recharge": lambda: self._save_nightly_recharge(db, user_id, start_time, end_time, sleep_starts),
             "alertness": lambda: self._save_scores(
                 db, self.normalize_alertness(self.get_alertness_data(db, user_id, start_time, end_time), user_id)
             ),

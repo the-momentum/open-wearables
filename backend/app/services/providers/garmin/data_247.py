@@ -605,26 +605,6 @@ class Garmin247Data(Base247DataTemplate):
 
         return samples
 
-    def save_dailies_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        normalized_daily: tuple[dict[str, Any], list[HealthScoreCreate]],
-    ) -> WriteCounts:
-        """Save daily data to SeriesSample and health scores.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        daily_data, health_scores = normalized_daily
-        samples = self._build_dailies_samples(user_id, daily_data)
-        counts = WriteCounts(0, 0)
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        if health_scores:
-            counts += health_score_service.bulk_create(db, health_scores)
-            db.commit()
-        return counts
-
     def _collect_heart_rate_samples(
         self,
         user_id: UUID,
@@ -858,32 +838,9 @@ class Garmin247Data(Base247DataTemplate):
 
         return samples
 
-    def save_epochs_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        normalized_epochs: dict[str, list[dict[str, Any]]],
-    ) -> WriteCounts:
-        """Save epoch samples to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_epochs_samples(user_id, normalized_epochs)
-        return self.data_point_repo.bulk_create(db, samples) if samples else WriteCounts(0, 0)
-
     # -------------------------------------------------------------------------
     # Body Composition - /wellness-api/rest/bodyComps
     # -------------------------------------------------------------------------
-
-    def get_body_composition(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> list[dict[str, Any]]:
-        """Fetch body composition from Garmin /wellness-api/rest/bodyComps."""
-        return self._fetch_in_chunks(db, user_id, "/wellness-api/rest/bodyComps", start_time, end_time)
 
     def _build_body_comp_samples(
         self,
@@ -999,22 +956,6 @@ class Garmin247Data(Base247DataTemplate):
 
         return samples
 
-    def save_body_composition(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_body_comp: dict[str, Any],
-    ) -> int:
-        """Save body composition metrics to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_body_comp_samples(user_id, raw_body_comp)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
-
     # -------------------------------------------------------------------------
     # HRV (Heart Rate Variability) - /wellness-api/rest/hrv
     # -------------------------------------------------------------------------
@@ -1093,22 +1034,6 @@ class Garmin247Data(Base247DataTemplate):
                     )
 
         return samples
-
-    def save_hrv_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_hrv: dict[str, Any],
-    ) -> int:
-        """Save HRV (Heart Rate Variability) data to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_hrv_samples(user_id, raw_hrv)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
 
     # -------------------------------------------------------------------------
     # Activity Data - /wellness-api/rest/activities
@@ -1330,23 +1255,6 @@ class Garmin247Data(Base247DataTemplate):
 
         return samples
 
-    def save_stress_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_stress: dict[str, Any],
-    ) -> int:
-        """Save individual stress/body battery timeseries
-        and peak body battery health score from a stressDetails record."""
-        samples = self._build_stress_samples(user_id, raw_stress)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        if score := self._normalize_body_battery_health_score(user_id, raw_stress):
-            counts += health_score_service.bulk_create(db, [score])
-            db.commit()
-        return counts
-
     # -------------------------------------------------------------------------
     # Respiration Data - /wellness-api/rest/respiration
     # -------------------------------------------------------------------------
@@ -1406,22 +1314,6 @@ class Garmin247Data(Base247DataTemplate):
                     pass
 
         return samples
-
-    def save_respiration_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_respiration: dict[str, Any],
-    ) -> int:
-        """Save respiration rate data to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_respiration_samples(user_id, raw_respiration)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
 
     # -------------------------------------------------------------------------
     # Pulse Ox Data - /wellness-api/rest/pulseOx
@@ -1483,22 +1375,6 @@ class Garmin247Data(Base247DataTemplate):
                     pass
 
         return samples
-
-    def save_pulse_ox_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_pulse_ox: dict[str, Any],
-    ) -> int:
-        """Save SpO2 (blood oxygen saturation) data to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_pulse_ox_samples(user_id, raw_pulse_ox)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
 
     # -------------------------------------------------------------------------
     # Blood Pressure - /wellness-api/rest/bloodPressures
@@ -1564,22 +1440,6 @@ class Garmin247Data(Base247DataTemplate):
 
         return samples
 
-    def save_blood_pressure_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_bp: dict[str, Any],
-    ) -> int:
-        """Save blood pressure data to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_blood_pressure_samples(user_id, raw_bp)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
-
     # -------------------------------------------------------------------------
     # User Metrics - /wellness-api/rest/userMetrics
     # -------------------------------------------------------------------------
@@ -1635,22 +1495,6 @@ class Garmin247Data(Base247DataTemplate):
 
         return samples
 
-    def save_user_metrics_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_metrics: dict[str, Any],
-    ) -> int:
-        """Save user metrics (VO2max, fitness age) to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_user_metrics_samples(user_id, raw_metrics)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
-
     # -------------------------------------------------------------------------
     # Skin Temperature - /wellness-api/rest/skinTemp
     # -------------------------------------------------------------------------
@@ -1690,22 +1534,6 @@ class Garmin247Data(Base247DataTemplate):
             )
 
         return samples
-
-    def save_skin_temp_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_skin_temp: dict[str, Any],
-    ) -> int:
-        """Save skin temperature data to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_skin_temp_samples(user_id, raw_skin_temp)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
 
     # -------------------------------------------------------------------------
     # Health Snapshot - /wellness-api/rest/healthSnapshot
@@ -1823,22 +1651,6 @@ class Garmin247Data(Base247DataTemplate):
 
         return samples
 
-    def save_health_snapshot_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_snapshot: dict[str, Any],
-    ) -> int:
-        """Save health snapshot data to SeriesSample.
-
-        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
-        """
-        samples = self._build_health_snapshot_samples(user_id, raw_snapshot)
-        counts: int = 0
-        if samples:
-            counts = self.data_point_repo.bulk_create(db, samples)
-        return counts
-
     # -------------------------------------------------------------------------
     # Move IQ - /wellness-api/rest/moveiq
     # -------------------------------------------------------------------------
@@ -1876,24 +1688,6 @@ class Garmin247Data(Base247DataTemplate):
             source=self.provider_name,
             user_id=user_id,
         )
-
-    def save_moveiq_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_moveiq: dict[str, Any],
-    ) -> int:
-        """Save Move IQ auto-detected activities as EventRecords."""
-        record = self._build_moveiq_record(user_id, raw_moveiq)
-        if not record:
-            return 0
-
-        try:
-            event_record_service.create(db, record)
-            return 1
-        except Exception as e:
-            logger.debug("Move IQ record may already exist", provider="garmin", user_id=str(user_id), error=str(e))
-            return 0
 
     # -------------------------------------------------------------------------
     # Menstrual Cycle Tracking - /wellness-api/rest/mct

@@ -190,6 +190,13 @@ uv run python scripts/data_migrations/scale_apple_xml_percentages.py \
     || echo "Warning: Apple Health XML percentage scaling failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Moves the Strava webhook subscription to the callback URL with the token; the old one is rejected.
+# Queues the reconcile task while Strava is in webhook mode. Runs once per instance (data_migration).
+echo 'Queueing Strava webhook re-registration...'
+uv run python scripts/data_migrations/register_strava_token_callback.py \
+    || echo "Warning: Strava webhook re-registration not queued — will retry on next startup."
+
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
 # Restores the HealthKit samples a condensed series replaced and deletes the series stored over
 # their originals (#1983). Runs once per instance (data_migration).
 echo 'Running HealthKit condensed series repair...'

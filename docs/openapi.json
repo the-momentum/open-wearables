@@ -6832,6 +6832,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -6869,6 +6870,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PresignedURLResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                  "code": "NOT_FOUND"
                 }
               }
             }
@@ -6926,6 +6943,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -6963,6 +6981,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MultipartCreateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                  "code": "NOT_FOUND"
                 }
               }
             }
@@ -7020,6 +7054,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7114,6 +7149,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7208,6 +7244,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7288,7 +7325,7 @@
           "External: Apple Health Import"
         ],
         "summary": "Import Xml File",
-        "description": "Import XML file into the database.",
+        "description": "Import an Apple Health XML file of up to 200 MiB into the database. Larger files must use the S3 multipart upload.",
         "operationId": "import_xml_file_api_v1_users__user_id__import_apple_xml_direct_post",
         "security": [
           {
@@ -7302,6 +7339,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           },
@@ -7343,6 +7381,54 @@
                     "type": "string"
                   },
                   "title": "Response Import Xml File Api V1 Users  User Id  Import Apple Xml Direct Post"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                  "code": "NOT_FOUND"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File is over 200 MiB",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Content Too Large",
+                  "status": 413,
+                  "detail": "Direct upload accepts files up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
+                  "code": "CONTENT_TOO_LARGE"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Task queue unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Unable to queue XML processing",
+                  "code": "SERVICE_UNAVAILABLE"
                 }
               }
             }
@@ -13454,136 +13540,6 @@
         ]
       }
     },
-    "/api/v1/strava/webhooks": {
-      "get": {
-        "tags": [
-          "System: Strava Webhooks"
-        ],
-        "summary": "Strava Webhook Verification",
-        "description": "Strava webhook subscription verification (GET).\n\nDelegates to StravaWebhookHandler.handle_challenge().",
-        "operationId": "strava_webhook_verification_api_v1_strava_webhooks_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Strava Webhook Verification Api V1 Strava Webhooks Get"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Server error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "System: Strava Webhooks"
-        ],
-        "summary": "Strava Webhook Event",
-        "description": "Strava webhook event handler (POST).\n\nDelegates to StravaWebhookHandler (signature verification, parsing,\nCelery task dispatch).",
-        "operationId": "strava_webhook_event_api_v1_strava_webhooks_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Strava Webhook Event Api V1 Strava Webhooks Post"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Server error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/strava/webhooks/health": {
-      "get": {
-        "tags": [
-          "System: Strava Webhooks"
-        ],
-        "summary": "Strava Webhook Health",
-        "description": "Health check endpoint for Strava webhook configuration.",
-        "operationId": "strava_webhook_health_api_v1_strava_webhooks_health_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Strava Webhook Health Api V1 Strava Webhooks Health Get"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Server error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/providers/{provider}/webhooks": {
       "post": {
         "tags": [
@@ -13838,7 +13794,7 @@
           "System: Provider Webhooks"
         ],
         "summary": "Register Webhook Subscriptions",
-        "description": "Register or update webhook subscriptions for a provider.",
+        "description": "Register or update webhook subscriptions for a provider.\n\n``callback_url`` defaults to this deployment's ``/providers/{provider}/webhooks``.\nProviders whose callback URL carries a secret token (Strava) ignore it.",
         "operationId": "register_webhook_subscriptions_api_v1_providers__provider__webhooks_subscriptions_post",
         "security": [
           {
@@ -13858,9 +13814,16 @@
           {
             "name": "callback_url",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Callback Url"
             }
           }
@@ -14217,6 +14180,215 @@
         }
       }
     },
+    "/api/v1/providers/{provider}/webhooks/{callback_token}": {
+      "post": {
+        "tags": [
+          "System: Provider Webhooks"
+        ],
+        "summary": "Handle Provider Webhook With Token",
+        "description": "Receive an incoming webhook event on a callback URL that carries a secret token.",
+        "operationId": "handle_provider_webhook_with_token_api_v1_providers__provider__webhooks__callback_token__post",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "callback_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Callback Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Handle Provider Webhook With Token Api V1 Providers  Provider  Webhooks  Callback Token  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "System: Provider Webhooks"
+        ],
+        "summary": "Verify Provider Webhook With Token",
+        "description": "Handle a GET subscription challenge on a callback URL that carries a secret token.",
+        "operationId": "verify_provider_webhook_with_token_api_v1_providers__provider__webhooks__callback_token__get",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "callback_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Callback Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Verify Provider Webhook With Token Api V1 Providers  Provider  Webhooks  Callback Token  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "System: Provider Webhooks"
+        ],
+        "summary": "Probe Provider Webhook With Token",
+        "description": "Handle a callback reachability probe on a callback URL that carries a secret token.",
+        "operationId": "probe_provider_webhook_with_token_api_v1_providers__provider__webhooks__callback_token__head",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "callback_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Callback Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/garmin/webhooks/ping": {
       "post": {
         "tags": [
@@ -14279,139 +14451,6 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Garmin Webhook Push Compat Api V1 Garmin Webhooks Push Post"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Server error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        },
-        "deprecated": true
-      }
-    },
-    "/api/v1/strava/webhook": {
-      "get": {
-        "tags": [
-          "System: Provider Webhooks (Deprecated)"
-        ],
-        "summary": "Strava Webhook Verification",
-        "description": "Strava webhook subscription verification (GET).\n\nDelegates to StravaWebhookHandler.handle_challenge().",
-        "operationId": "strava_webhook_verification_api_v1_strava_webhook_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Strava Webhook Verification Api V1 Strava Webhook Get"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Server error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        },
-        "deprecated": true
-      },
-      "post": {
-        "tags": [
-          "System: Provider Webhooks (Deprecated)"
-        ],
-        "summary": "Strava Webhook Event",
-        "description": "Strava webhook event handler (POST).\n\nDelegates to StravaWebhookHandler (signature verification, parsing,\nCelery task dispatch).",
-        "operationId": "strava_webhook_event_api_v1_strava_webhook_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Strava Webhook Event Api V1 Strava Webhook Post"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "5XX": {
-            "description": "Server error",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        },
-        "deprecated": true
-      }
-    },
-    "/api/v1/strava/webhook/health": {
-      "get": {
-        "tags": [
-          "System: Provider Webhooks (Deprecated)"
-        ],
-        "summary": "Strava Webhook Health",
-        "description": "Health check endpoint for Strava webhook configuration.",
-        "operationId": "strava_webhook_health_api_v1_strava_webhook_health_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Strava Webhook Health Api V1 Strava Webhook Health Get"
                 }
               }
             }

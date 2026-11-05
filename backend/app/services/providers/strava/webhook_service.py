@@ -23,6 +23,8 @@ from app.schemas.responses.incoming_webhooks import (
 )
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import callback_url as build_callback_url
+from app.utils.webhook_callback import redact_callback_url
 
 logger = get_logger(__name__)
 
@@ -54,14 +56,14 @@ class StravaWebhookService(BaseWebhookService):
     async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
         """Register or update the Strava webhook subscription.
 
+        ``callback_url`` is ignored: the registered URL always carries the callback token.
+
         GETs the existing subscription first. If one exists with the same
         callback URL it is skipped. If the callback URL differs the old
         subscription is deleted and a new one is created. Safe to call
         multiple times.
         """
-        if not callback_url:
-            raise ValueError("callback_url is required to register webhook subscription")
-
+        callback_url = build_callback_url("strava")
         client_id, client_secret = self._get_strava_credentials()
         verify_token = settings.strava_webhook_verify_token.get_secret_value()  # ty:ignore[unresolved-attribute]
 
@@ -141,6 +143,9 @@ class StravaWebhookService(BaseWebhookService):
                     return [{"status": "skipped", "reason": "already_exists"}]
                 create_resp.raise_for_status()
                 result = create_resp.json()
+                # Strava answers {"id": ...} today; a callback_url it may add would carry the token.
+                if isinstance(result, dict) and isinstance(result.get("callback_url"), str):
+                    result["callback_url"] = redact_callback_url(result["callback_url"])
                 logger.info(
                     "Strava webhook subscription created",
                     provider="strava",
@@ -182,7 +187,9 @@ class StravaWebhookService(BaseWebhookService):
             result: list[StravaWebhookSubscription] = []
             for item in raw if isinstance(raw, list) else []:
                 try:
-                    result.append(StravaWebhookSubscription.model_validate(item))
+                    subscription = StravaWebhookSubscription.model_validate(item)
+                    subscription.callback_url = redact_callback_url(subscription.callback_url)
+                    result.append(subscription)
                 except ValidationError as ve:
                     logger.error(
                         "Failed to parse Strava webhook subscription",
