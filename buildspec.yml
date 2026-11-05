@@ -50,10 +50,12 @@ version: 0.2
 #      (i-0a106a2ce91b2baf9), gated by IAM ssm:StartSession:
 #        aws ssm start-session --target i-0a106a2ce91b2baf9 \
 #          --document-name AWS-StartPortForwardingSessionToRemoteHost \
-#          --parameters "host=open-wearables-frontend.ren.internal,portNumber=3000,localPortNumber=3000"
+#          --parameters \
+#          "host=open-wearables-frontend.ren.internal,portNumber=3000,localPortNumber=3000"
 #        aws ssm start-session --target i-0a106a2ce91b2baf9 \
 #          --document-name AWS-StartPortForwardingSessionToRemoteHost \
-#          --parameters "host=open-wearables-backend.ren.internal,portNumber=8000,localPortNumber=8000"
+#          --parameters \
+#          "host=open-wearables-backend.ren.internal,portNumber=8000,localPortNumber=8000"
 #      (the jumphost resolves the Cloud Map names via VPC DNS — no task IP
 #      lookup needed).
 #      The dashboard (SvelteKit SSR) calls the API server-side over Cloud Map
@@ -82,9 +84,12 @@ env:
     ECS_CLUSTER: open-wearables
     # Cloud Map services in the ren.internal private DNS namespace — the backend
     # and frontend register their task IPs here (see header for the URLs).
-    BACKEND_REGISTRY_ARN: "arn:aws:servicediscovery:us-east-1:948806324983:service/srv-4elfpwhc2awt3zc3"
-    FRONTEND_REGISTRY_ARN: "arn:aws:servicediscovery:us-east-1:948806324983:service/srv-sxlgmvrntnijsufr"
-    ECS_PRIVATE_SUBNETS: "subnet-0f712e0039993451d,subnet-072c3c6010bc6bcd9,subnet-094d2d53ee554fb6c"
+    BACKEND_REGISTRY_ARN: "arn:aws:servicediscovery:us-east-1:\
+      948806324983:service/srv-4elfpwhc2awt3zc3"
+    FRONTEND_REGISTRY_ARN: "arn:aws:servicediscovery:us-east-1:\
+      948806324983:service/srv-sxlgmvrntnijsufr"
+    ECS_PRIVATE_SUBNETS: "subnet-0f712e0039993451d,subnet-072c3c6010bc6bcd9,\
+      subnet-094d2d53ee554fb6c"
     ECS_TASK_EXECUTION_ROLE_ARN: "arn:aws:iam::948806324983:role/ren-ecs-task-execution"
     ECS_TASK_CPU: "1024"
     ECS_TASK_MEMORY: "2048"
@@ -114,7 +119,8 @@ env:
     # ren-app-sg: the shared app-tier SG that ren-db-sg and
     # open-wearables-cache-sg already grant DB/Valkey ingress from.
     BACKEND_SECURITY_GROUP_ID: sg-020d06900bcccea65
-    BACKEND_TARGET_GROUP_ARN: "arn:aws:elasticloadbalancing:us-east-1:948806324983:targetgroup/open-wearables-backend-tg/36e612314bfc6df1"
+    BACKEND_TARGET_GROUP_ARN: "arn:aws:elasticloadbalancing:us-east-1:\
+      948806324983:targetgroup/open-wearables-backend-tg/36e612314bfc6df1"
     BACKEND_DESIRED_COUNT: "1"
     BACKEND_CONTAINER_PORT: "8000"
     BACKEND_LOG_GROUP: /ecs/open-wearables/backend
@@ -183,7 +189,7 @@ env:
     SVIX_DESIRED_COUNT: "1"
     SVIX_CONTAINER_PORT: "8071"
     SVIX_LOG_GROUP: /ecs/open-wearables/svix
-    SVIX_REGISTRY_ARN: "arn:aws:servicediscovery:us-east-1:948806324983:service/srv-fb7emxq4zot76by7"
+    SVIX_REGISTRY_ARN: arn:aws:servicediscovery:us-east-1:948806324983:service/srv-fb7emxq4zot76by7
     SVIX_ECR_REPOSITORY: frontbacklabs/svix-server
     # Keep in sync with the svix/svix-server tag in docker-compose.yml.
     SVIX_VERSION: "v1.101.0"
@@ -228,7 +234,8 @@ env:
     # run as ow_migration via IAM tokens in buildspec.migrate.yml, never here.)
     # The ren-*-client-credentials secrets are {"client_id","client_secret"}
     # objects. The execution role's ren-secrets-read policy covers ren-*.
-    DB_CREDENTIALS_SECRET_ARN: "arn:aws:secretsmanager:us-east-1:948806324983:secret:ren-open-wearables-db-app-credentials-ACoApt"
+    DB_CREDENTIALS_SECRET_ARN: "arn:aws:secretsmanager:us-east-1:\
+      948806324983:secret:ren-open-wearables-db-app-credentials-ACoApt"
     ADMIN_EMAIL_SECRET: ren-admin-email
     ADMIN_PASSWORD_SECRET: ren-admin-password
     SECRET_KEY_SECRET: ren-owear-secret-key
@@ -254,7 +261,8 @@ phases:
       - |
         set -euo pipefail
         for command in aws docker jq; do
-          command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 1; }
+          command -v "$command" >/dev/null \
+            || { echo "Missing required command: $command" >&2; exit 1; }
         done
         for variable in \
           DEPLOY_REGION \
@@ -272,14 +280,16 @@ phases:
           REDIS_HOST \
           API_BASE_URL \
           FRONTEND_URL; do
-          [[ -n "${!variable:-}" ]] || { echo "Missing required CodeBuild variable: $variable" >&2; exit 1; }
+          [[ -n "${!variable:-}" ]] \
+            || { echo "Missing required CodeBuild variable: $variable" >&2; exit 1; }
         done
-        SOURCE_REVISION="${CODEBUILD_RESOLVED_SOURCE_VERSION:?CODEBUILD_RESOLVED_SOURCE_VERSION is required}"
-        [[ "${SOURCE_REVISION:0:7}" =~ ^[0-9A-Fa-f]{7}$ ]] || { echo "The resolved source version must begin with a Git commit SHA" >&2; exit 1; }
+        SOURCE_REVISION="${CODEBUILD_RESOLVED_SOURCE_VERSION:?is required}"
+        [[ "${SOURCE_REVISION:0:7}" =~ ^[0-9A-Fa-f]{7}$ ]] \
+          || { echo "The resolved source version must begin with a Git commit SHA" >&2; exit 1; }
         # The ECR repos use immutable tags (only "latest" is overwritable), so
         # a re-run of this pipeline on the same commit cannot repush the bare
         # SHA tag — append the build number to keep every push unique.
-        IMAGE_TAG="${SOURCE_REVISION:0:7}-${CODEBUILD_BUILD_NUMBER:?CODEBUILD_BUILD_NUMBER is required}"
+        IMAGE_TAG="${SOURCE_REVISION:0:7}-${CODEBUILD_BUILD_NUMBER:?is required}"
         AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
         ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$DEPLOY_REGION.amazonaws.com"
         for repository in \
@@ -298,7 +308,8 @@ phases:
         aws ecs describe-clusters --region "$DEPLOY_REGION" --clusters "$ECS_CLUSTER" \
           --query 'failures' --output json | jq -e 'length == 0' >/dev/null
         [[ "$(aws elbv2 describe-target-groups --region "$DEPLOY_REGION" \
-          --target-group-arns "$BACKEND_TARGET_GROUP_ARN" --query 'TargetGroups[0].TargetType' --output text)" == "ip" ]] || \
+          --target-group-arns "$BACKEND_TARGET_GROUP_ARN" \
+          --query 'TargetGroups[0].TargetType' --output text)" == "ip" ]] || \
           { echo "BACKEND_TARGET_GROUP_ARN must use target type ip for Fargate" >&2; exit 1; }
         aws ecr get-login-password --region "$DEPLOY_REGION" | \
           docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -307,8 +318,8 @@ phases:
     commands:
       - |
         set -euo pipefail
-        SOURCE_REVISION="${CODEBUILD_RESOLVED_SOURCE_VERSION:?CODEBUILD_RESOLVED_SOURCE_VERSION is required}"
-        IMAGE_TAG="${SOURCE_REVISION:0:7}-${CODEBUILD_BUILD_NUMBER:?CODEBUILD_BUILD_NUMBER is required}"
+        SOURCE_REVISION="${CODEBUILD_RESOLVED_SOURCE_VERSION:?is required}"
+        IMAGE_TAG="${SOURCE_REVISION:0:7}-${CODEBUILD_BUILD_NUMBER:?is required}"
         AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
         ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$DEPLOY_REGION.amazonaws.com"
 
@@ -361,8 +372,8 @@ phases:
     commands:
       - |
         set -euo pipefail
-        SOURCE_REVISION="${CODEBUILD_RESOLVED_SOURCE_VERSION:?CODEBUILD_RESOLVED_SOURCE_VERSION is required}"
-        IMAGE_TAG="${SOURCE_REVISION:0:7}-${CODEBUILD_BUILD_NUMBER:?CODEBUILD_BUILD_NUMBER is required}"
+        SOURCE_REVISION="${CODEBUILD_RESOLVED_SOURCE_VERSION:?is required}"
+        IMAGE_TAG="${SOURCE_REVISION:0:7}-${CODEBUILD_BUILD_NUMBER:?is required}"
         AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
         ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.$DEPLOY_REGION.amazonaws.com"
 
@@ -595,9 +606,14 @@ phases:
           local network_configuration private_subnets status running rollout
           local -a create_arguments update_arguments
           private_subnets="${ECS_PRIVATE_SUBNETS//[[:space:]]/}"
-          network_configuration="awsvpcConfiguration={subnets=[$private_subnets],securityGroups=[$security_group],assignPublicIp=DISABLED}"
+          network_configuration="awsvpcConfiguration={subnets=[$private_subnets],"
+          network_configuration+="securityGroups=[$security_group],assignPublicIp=DISABLED}"
           status="$(aws ecs describe-services --region "$DEPLOY_REGION" --cluster "$ECS_CLUSTER" \
             --services "$service" --query 'services[0].status' --output text)"
+
+          local load_balancer_arg
+          load_balancer_arg="targetGroupArn=$target_group,"
+          load_balancer_arg+="containerName=$service,containerPort=$container_port"
 
           if [[ "$status" == "ACTIVE" ]]; then
             update_arguments=(
@@ -615,7 +631,7 @@ phases:
               update_arguments+=(--service-registries "registryArn=$service_registry")
             fi
             if [[ -n "$target_group" ]]; then
-              update_arguments+=(--load-balancers "targetGroupArn=$target_group,containerName=$service,containerPort=$container_port")
+              update_arguments+=(--load-balancers "$load_balancer_arg")
             fi
             aws ecs update-service "${update_arguments[@]}" >/dev/null
           elif [[ "$status" == "None" ]]; then
@@ -637,7 +653,7 @@ phases:
             fi
             if [[ -n "$target_group" ]]; then
               create_arguments+=(
-                --load-balancers "targetGroupArn=$target_group,containerName=$service,containerPort=$container_port"
+                --load-balancers "$load_balancer_arg"
                 --health-check-grace-period-seconds "$health_grace"
               )
             fi
@@ -670,8 +686,10 @@ phases:
               --query 'services[0].deployments[?status==`PRIMARY`].rolloutState | [0]' \
               --output text)"
             [[ "$running" == "$task_definition" && "$rollout" == "COMPLETED" ]] && break
-            if [[ "$rollout" == "FAILED" || "$running" != "$task_definition" || $SECONDS -ge $deadline ]]; then
-              echo "ECS service $service rollout is $rollout on $running (wanted $task_definition COMPLETED)" >&2
+            if [[ "$rollout" == "FAILED" || "$running" != "$task_definition" \
+                || $SECONDS -ge $deadline ]]; then
+              echo "ECS service $service rollout is $rollout on $running" \
+                "(wanted $task_definition COMPLETED)" >&2
               return 1
             fi
             sleep 5
@@ -688,20 +706,25 @@ phases:
         for caller in ${BACKEND_CALLER_SECURITY_GROUP_IDS//,/ }; do
           grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$caller" "$BACKEND_CONTAINER_PORT"
         done
-        grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$ALB_SECURITY_GROUP_ID" "$BACKEND_CONTAINER_PORT"
-        grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$ADMIN_SECURITY_GROUP_ID" "$BACKEND_CONTAINER_PORT"
+        grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$ALB_SECURITY_GROUP_ID" \
+          "$BACKEND_CONTAINER_PORT"
+        grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$ADMIN_SECURITY_GROUP_ID" \
+          "$BACKEND_CONTAINER_PORT"
         # The dashboard's SSR server calls the backend itself (API_URL). Both
         # wear ren-app-sg, so this is a self-rule on 8000.
-        grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$FRONTEND_SECURITY_GROUP_ID" "$BACKEND_CONTAINER_PORT"
+        grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$FRONTEND_SECURITY_GROUP_ID" \
+          "$BACKEND_CONTAINER_PORT"
         # Frontend ingress on 3000: SSM jumphost only (admin tunnel to the
         # dashboard — nothing else is allowed to reach it).
-        grant_ingress "$FRONTEND_SECURITY_GROUP_ID" "$ADMIN_SECURITY_GROUP_ID" "$FRONTEND_CONTAINER_PORT"
+        grant_ingress "$FRONTEND_SECURITY_GROUP_ID" "$ADMIN_SECURITY_GROUP_ID" \
+          "$FRONTEND_CONTAINER_PORT"
 
         # svix tasks wear ren-app-sg like the rest; a self-rule lets sibling
         # tasks (backend, worker) reach svix-server on 8071 inside the VPC.
         if [[ -n "${SVIX_REGISTRY_ARN:-}" ]]; then
           ensure_log_group "$SVIX_LOG_GROUP"
-          grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$BACKEND_SECURITY_GROUP_ID" "$SVIX_CONTAINER_PORT"
+          grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$BACKEND_SECURITY_GROUP_ID" \
+            "$SVIX_CONTAINER_PORT"
         fi
 
         # ---------------------------------------------------------------------------
@@ -793,6 +816,11 @@ phases:
           '[.[] | select(.name != "ADMIN_EMAIL" and .name != "ADMIN_PASSWORD")]' \
           <<<"$BACKEND_SECRETS")"
 
+        deployment_config='deploymentCircuitBreaker={enable=true,rollback=true},'
+        deployment_config+='maximumPercent=200,minimumHealthyPercent=100'
+        beat_deployment_config='deploymentCircuitBreaker={enable=true,rollback=true},'
+        beat_deployment_config+='maximumPercent=100,minimumHealthyPercent=0'
+
         # --- Svix (outgoing webhooks) ---
         # Deployed before the backend so the API's startup event-type sync
         # finds it up. The image's default CMD (launch-svix-server) already
@@ -827,8 +855,7 @@ phases:
             "svix-server healthcheck http://localhost:$SVIX_CONTAINER_PORT" \
             "$SVIX_ENVIRONMENT" "$SVIX_SECRETS")"
           deploy_service "$SVIX_SERVICE" "$SVIX_TASK_DEFINITION" "$SVIX_DESIRED_COUNT" \
-            "$BACKEND_SECURITY_GROUP_ID" "$SVIX_REGISTRY_ARN" \
-            'deploymentCircuitBreaker={enable=true,rollback=true},maximumPercent=200,minimumHealthyPercent=100'
+            "$BACKEND_SECURITY_GROUP_ID" "$SVIX_REGISTRY_ARN" "$deployment_config"
         fi
 
         # OUTGOING_WEBHOOKS_ENABLED moved to SHARED_ENVIRONMENT — see above.
@@ -846,7 +873,8 @@ phases:
         # first task on a fresh database can take a while to answer the ALB
         # health check — hence the 300s grace period. The app has no dedicated
         # /health route; "/" is the 200-OK endpoint used for health checks.
-        BACKEND_HEALTH_COMMAND="python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:$BACKEND_CONTAINER_PORT/', timeout=5)\""
+        BACKEND_HEALTH_COMMAND='python -c "import urllib.request; urllib.request.urlopen('
+        BACKEND_HEALTH_COMMAND+="'http://127.0.0.1:$BACKEND_CONTAINER_PORT/', timeout=5)\""
         BACKEND_TASK_DEFINITION="$(register_task_definition \
           "$BACKEND_TASK_FAMILY" "$BACKEND_SERVICE" "$(image_uri "$BACKEND_ECR_REPOSITORY")" \
           "$BACKEND_TASK_ROLE_ARN" "$BACKEND_LOG_GROUP" "$BACKEND_CONTAINER_PORT" \
@@ -855,8 +883,7 @@ phases:
         # open-wearables-backend.ren.internal — resolvable by every VPC client,
         # including the ren-backend measurement-cacher RunTask.
         deploy_service "$BACKEND_SERVICE" "$BACKEND_TASK_DEFINITION" "$BACKEND_DESIRED_COUNT" \
-          "$BACKEND_SECURITY_GROUP_ID" "$BACKEND_REGISTRY_ARN" \
-          'deploymentCircuitBreaker={enable=true,rollback=true},maximumPercent=200,minimumHealthyPercent=100' \
+          "$BACKEND_SECURITY_GROUP_ID" "$BACKEND_REGISTRY_ARN" "$deployment_config" \
           "$BACKEND_TARGET_GROUP_ARN" "$BACKEND_CONTAINER_PORT" 300
 
         # Celery worker: same env/secrets as the backend minus the HTTP-only
@@ -870,15 +897,16 @@ phases:
             {"name":"DB_POOL_SIZE","value":"8"},
             {"name":"DB_MAX_OVERFLOW","value":"4"}
           ]' <<<"$SHARED_ENVIRONMENT")"
-        WORKER_COMMAND='["celery","-A","app.main:celery_app","worker","--loglevel=info","--pool=threads","--concurrency=8","--prefetch-multiplier=1","-Q","default,sdk_sync,garmin_sync,webhook_sync"]'
+        WORKER_COMMAND='["celery","-A","app.main:celery_app","worker","--loglevel=info",'
+        WORKER_COMMAND+='"--pool=threads","--concurrency=8","--prefetch-multiplier=1",'
+        WORKER_COMMAND+='"-Q","default,sdk_sync,garmin_sync,webhook_sync"]'
         WORKER_TASK_DEFINITION="$(register_task_definition \
           "$WORKER_TASK_FAMILY" "$WORKER_SERVICE" "$(image_uri "$WORKER_ECR_REPOSITORY")" \
           "$BACKEND_TASK_ROLE_ARN" "$WORKER_LOG_GROUP" "$BACKEND_CONTAINER_PORT" \
           "" "$WORKER_ENVIRONMENT" "$WORKER_BEAT_SECRETS" "$WORKER_COMMAND" \
           "$WORKER_TASK_CPU" "$WORKER_TASK_MEMORY")"
         deploy_service "$WORKER_SERVICE" "$WORKER_TASK_DEFINITION" "$WORKER_DESIRED_COUNT" \
-          "$BACKEND_SECURITY_GROUP_ID" "" \
-          'deploymentCircuitBreaker={enable=true,rollback=true},maximumPercent=200,minimumHealthyPercent=100'
+          "$BACKEND_SECURITY_GROUP_ID" "" "$deployment_config"
 
         # Celery beat: smallest pools (it only reads the schedule). desired=1 and
         # maximumPercent=100/minimumHealthyPercent=0 keep exactly one beat alive
@@ -888,14 +916,14 @@ phases:
             {"name":"DB_POOL_SIZE","value":"2"},
             {"name":"DB_MAX_OVERFLOW","value":"1"}
           ]' <<<"$SHARED_ENVIRONMENT")"
-        BEAT_COMMAND='["bash","-c","rm -f ./celerybeat.pid && exec celery -A app.main:celery_app beat -l info"]'
+        BEAT_COMMAND='["bash","-c","rm -f ./celerybeat.pid && '
+        BEAT_COMMAND+='exec celery -A app.main:celery_app beat -l info"]'
         BEAT_TASK_DEFINITION="$(register_task_definition \
           "$BEAT_TASK_FAMILY" "$BEAT_SERVICE" "$(image_uri "$BEAT_ECR_REPOSITORY")" \
           "$BACKEND_TASK_ROLE_ARN" "$BEAT_LOG_GROUP" "$BACKEND_CONTAINER_PORT" \
           "" "$BEAT_ENVIRONMENT" "$WORKER_BEAT_SECRETS" "$BEAT_COMMAND")"
         deploy_service "$BEAT_SERVICE" "$BEAT_TASK_DEFINITION" "$BEAT_DESIRED_COUNT" \
-          "$BACKEND_SECURITY_GROUP_ID" "" \
-          'deploymentCircuitBreaker={enable=true,rollback=true},maximumPercent=100,minimumHealthyPercent=0'
+          "$BACKEND_SECURITY_GROUP_ID" "" "$beat_deployment_config"
 
         # Frontend: SvelteKit (adapter-node) SSR on port 3000, reachable only
         # through the SSM jumphost tunnel (see header). Env is read at runtime,
@@ -913,12 +941,14 @@ phases:
             {"name":"API_URL","value":"http://open-wearables-backend.ren.internal:8000"},
             {"name":"VITE_API_URL","value":"http://localhost:8000"}
           ]')"
-        FRONTEND_HEALTH_COMMAND="node -e \"fetch('http://127.0.0.1:$FRONTEND_CONTAINER_PORT/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
+        FRONTEND_HEALTH_COMMAND='node -e "fetch('
+        FRONTEND_HEALTH_COMMAND+="'http://127.0.0.1:$FRONTEND_CONTAINER_PORT/'"
+        FRONTEND_HEALTH_COMMAND+=').then(r => process.exit(r.ok ? 0 : 1))'
+        FRONTEND_HEALTH_COMMAND+='.catch(() => process.exit(1))"'
         FRONTEND_TASK_DEFINITION="$(register_task_definition \
           "$FRONTEND_TASK_FAMILY" "$FRONTEND_SERVICE" "$(image_uri "$FRONTEND_ECR_REPOSITORY")" \
           "$FRONTEND_TASK_ROLE_ARN" "$FRONTEND_LOG_GROUP" "$FRONTEND_CONTAINER_PORT" \
           "$FRONTEND_HEALTH_COMMAND" "$FRONTEND_ENVIRONMENT" '[]')"
         deploy_service "$FRONTEND_SERVICE" "$FRONTEND_TASK_DEFINITION" "$FRONTEND_DESIRED_COUNT" \
-          "$FRONTEND_SECURITY_GROUP_ID" "$FRONTEND_REGISTRY_ARN" \
-          'deploymentCircuitBreaker={enable=true,rollback=true},maximumPercent=200,minimumHealthyPercent=100' \
+          "$FRONTEND_SECURITY_GROUP_ID" "$FRONTEND_REGISTRY_ARN" "$deployment_config" \
           "" "$FRONTEND_CONTAINER_PORT"
