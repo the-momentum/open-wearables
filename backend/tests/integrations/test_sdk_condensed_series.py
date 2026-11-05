@@ -112,14 +112,22 @@ class TestCondensedSeriesAtIngest:
 
         assert _stored(db) == originals
 
-    def test_a_count_above_one_drops_a_series_over_a_single_stored_sample(self, db: Session) -> None:
+    def test_a_counted_heart_rate_series_is_dropped_over_one_stored_reading(self, db: Session) -> None:
+        user_id = str(UserFactory().id)
+        _load(db, user_id, [_record(HEART_RATE, OLD + timedelta(seconds=60), 0, "140")])
+        stored = _stored(db, SeriesType.heart_rate)
+
+        _load(db, user_id, [_record(HEART_RATE, OLD, 300, "144", count=10)])
+
+        assert _stored(db, SeriesType.heart_rate) == stored
+
+    def test_a_counted_series_over_part_of_its_originals_is_kept(self, db: Session) -> None:
         user_id = str(UserFactory().id)
         _load(db, user_id, [_record(ACTIVE_ENERGY, OLD + timedelta(minutes=5), 60, "1.5")])
-        stored = _stored(db)
 
         _load(db, user_id, [_record(ACTIVE_ENERGY, OLD, 600, "15", count=10)])
 
-        assert _stored(db) == stored
+        assert (OLD, 600, Decimal("15")) in _stored(db)
 
     def test_a_heart_rate_series_over_stored_readings_is_dropped(self, db: Session) -> None:
         user_id = str(UserFactory().id)

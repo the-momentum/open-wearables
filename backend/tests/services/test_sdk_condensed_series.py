@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.repositories.data_point_series_repository import Coverage
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.services.sdk.condensed_series import is_candidate, is_condensed
@@ -31,6 +32,10 @@ def _sample(
         value=Decimal(value),
         series_type=series_type,
     )
+
+
+def _coverage(covered: int, total: str) -> Coverage:
+    return Coverage(covered, Decimal(total), Decimal(total))
 
 
 class TestIsCandidate:
@@ -60,19 +65,23 @@ class TestIsCandidate:
 
 
 class TestIsCondensed:
-    def test_with_a_count_one_stored_sample_is_enough(self) -> None:
-        assert is_condensed(_sample(), 4, 1, Decimal(0))
-        assert not is_condensed(_sample(), 4, 0, Decimal(0))
+    def test_with_a_count_one_covered_sample_is_enough(self) -> None:
+        assert is_condensed(_sample(SeriesType.heart_rate, value="148.3"), 4, _coverage(1, "140"))
+        assert not is_condensed(_sample(SeriesType.heart_rate, value="148.3"), 4, _coverage(0, "0"))
+
+    def test_with_a_count_a_cumulative_series_must_match_what_it_covers(self) -> None:
+        assert not is_condensed(_sample(value="15"), 10, _coverage(1, "1.5"))  # part of its originals
+        assert is_condensed(_sample(value="15"), 10, _coverage(10, "15"))
 
     def test_a_cumulative_sample_is_the_sum_of_what_it_covers(self) -> None:
-        assert is_condensed(_sample(value="15"), None, 10, Decimal("15"))
-        assert is_condensed(_sample(value="15"), None, 10, Decimal("14.9"))  # within 1%
-        assert not is_condensed(_sample(value="15"), None, 10, Decimal("14.8"))
-        assert not is_condensed(_sample(value="15"), None, 1, Decimal("15"))  # one overlapping reading
+        assert is_condensed(_sample(value="15"), None, _coverage(10, "15"))
+        assert is_condensed(_sample(value="15"), None, _coverage(10, "14.9"))  # within 1%
+        assert not is_condensed(_sample(value="15"), None, _coverage(10, "14.8"))
+        assert not is_condensed(_sample(value="15"), None, _coverage(1, "15"))  # one overlapping reading
 
     def test_a_heart_rate_sample_only_has_to_cover_stored_readings(self) -> None:
-        assert is_condensed(_sample(SeriesType.heart_rate, value="148.3"), None, 2, Decimal("290"))
-        assert not is_condensed(_sample(SeriesType.heart_rate, value="148.3"), None, 1, Decimal("140"))
+        assert is_condensed(_sample(SeriesType.heart_rate, value="148.3"), None, _coverage(2, "290"))
+        assert not is_condensed(_sample(SeriesType.heart_rate, value="148.3"), None, _coverage(1, "140"))
 
     def test_a_float_value_is_compared_as_a_decimal(self) -> None:
-        assert is_condensed(_sample().model_copy(update={"value": 15.0}), None, 10, Decimal("15"))
+        assert is_condensed(_sample().model_copy(update={"value": 15.0}), None, _coverage(10, "15"))

@@ -1,9 +1,9 @@
-"""HealthKit condensed series: older workout samples HealthKit merged into one sample after OW stored them (#1983).
+"""HealthKit condensed series (#1983).
 
-HealthKit condenses the samples of first-party workouts a few months old into quantity series and deletes the
-originals. The SDK uploads a series as a new sample, which would count the workout twice next to the originals OW
-already holds, so a series is dropped when its window covers stored samples of its type from the same Apple device.
-A series OW holds no originals for (a workout condensed before its first export) is kept.
+HealthKit merges the samples of first-party workouts a few months old into one series sample and deletes the
+originals. The SDK uploads the series as a new sample; it is dropped when OW already holds the originals, which
+would otherwise count twice. A series without stored originals is kept, and one kept over part of its originals
+still replaces the original at its start.
 """
 
 from collections import Counter
@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from app.constants.devices_map import is_apple_own_source
 from app.database import DbSession
-from app.repositories.data_point_series_repository import StoredWindow
+from app.repositories.data_point_series_repository import Coverage, StoredWindow
 from app.schemas.enums import AggregationMethod, SeriesType, get_series_type_id
 from app.schemas.enums.aggregation_method import get_aggregation_method
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
@@ -23,7 +23,7 @@ from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
-# The types Apple documents as condensed; a sample the SDK sends a count for is checked whatever its type
+# Types Apple documents as condensed; with a count from the SDK, any type is checked
 CONDENSED_TYPES = frozenset(
     {
         SeriesType.heart_rate,
@@ -33,17 +33,16 @@ CONDENSED_TYPES = frozenset(
         SeriesType.distance_cycling,
     }
 )
-# Apple condenses workouts a few months old, so a younger sample is never checked, whatever its count
+# Apple condenses workouts a few months old
 MIN_CONDENSED_AGE = timedelta(days=30)
-# Without a count, a series covers at least this many stored samples: one alone can be an overlapping reading
+# Without a count, one stored sample can be an overlapping reading, so a series must cover this many
 MIN_COVERED = 2
-# Without a count, a cumulative series is the sum of the stored samples it covers, within this share of its value
+# A cumulative series must equal the sum of the samples it covers, within this share of its value
 SUM_TOLERANCE = Decimal("0.01")
 
 
 def is_candidate(sample: TimeSeriesSampleCreate, count: int | None, now: datetime) -> bool:
-    """Whether a sample may be a condensed series: an Apple device's sample with a window, older than
-    MIN_CONDENSED_AGE, with a count above 1 or, without a count, of a type HealthKit condenses."""
+    """Whether a sample is worth a lookup: old, windowed, from an Apple device, and a series by count or type."""
     if not sample.window_seconds or not is_apple_own_source(sample.source_app_id):
         return False
     if as_utc(sample.recorded_at) >= now - MIN_CONDENSED_AGE:
@@ -53,16 +52,17 @@ def is_candidate(sample: TimeSeriesSampleCreate, count: int | None, now: datetim
     return sample.series_type in CONDENSED_TYPES
 
 
-def is_condensed(sample: TimeSeriesSampleCreate, count: int | None, stored: int, total: Decimal) -> bool:
-    """Whether a candidate repeats samples OW holds: `stored` samples summing to `total` inside its window."""
-    if count is not None:
-        return stored >= 1
-    if stored < MIN_COVERED:
+def is_condensed(sample: TimeSeriesSampleCreate, count: int | None, coverage: Coverage) -> bool:
+    """Whether a candidate repeats the stored samples its window covers."""
+    if coverage.covered < (1 if count is not None else MIN_COVERED):
         return False
     if get_aggregation_method(sample.series_type) is AggregationMethod.SUM:
-        value = Decimal(str(sample.value))
-        return abs(value - total) <= abs(value) * SUM_TOLERANCE
+        return _within_sum(Decimal(str(sample.value)), coverage.total)
     return True
+
+
+def _within_sum(value: Decimal, total: Decimal) -> bool:
+    return abs(value - total) <= abs(value) * SUM_TOLERANCE
 
 
 def drop_condensed_series[SampleT: TimeSeriesSampleCreate](
@@ -71,10 +71,9 @@ def drop_condensed_series[SampleT: TimeSeriesSampleCreate](
     counts: Mapping[str, int],
     now: datetime | None = None,
 ) -> list[SampleT]:
-    """The samples without the condensed series whose originals OW already holds.
+    """The samples (one user's upload) without the condensed series whose originals OW holds.
 
-    The samples are one user's (one SDK upload). `counts` maps a record id to the count the SDK sent for it;
-    a sample without one is judged by its window.
+    counts maps a record id to the count the SDK sent for it.
     """
     now = now or datetime.now(timezone.utc)
     counted = [(sample, _count(sample, counts)) for sample in samples]
@@ -85,7 +84,7 @@ def drop_condensed_series[SampleT: TimeSeriesSampleCreate](
     dropped = [
         sample
         for (sample, count), coverage in zip(candidates, coverages, strict=True)
-        if is_condensed(sample, count, coverage.covered, coverage.total)
+        if is_condensed(sample, count, coverage)
     ]
     if not dropped:
         return samples
