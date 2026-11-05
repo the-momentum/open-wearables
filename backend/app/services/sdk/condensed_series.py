@@ -13,11 +13,11 @@ from decimal import Decimal
 
 from app.constants.devices_map import is_apple_own_source
 from app.database import DbSession
-from app.models import SeriesSample
-from app.repositories.data_point_series_repository import DataPointSeriesRepository, StoredWindow
+from app.repositories.data_point_series_repository import StoredWindow
 from app.schemas.enums import AggregationMethod, SeriesType, get_series_type_id
 from app.schemas.enums.aggregation_method import get_aggregation_method
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
+from app.services.timeseries_service import timeseries_service
 from app.utils.dates import as_utc
 from app.utils.structured_logging import get_logger
 
@@ -39,8 +39,6 @@ MIN_CONDENSED_AGE = timedelta(days=30)
 MIN_COVERED = 2
 # Without a count, a cumulative series is the sum of the stored samples it covers, within this share of its value
 SUM_TOLERANCE = Decimal("0.01")
-
-_series_repo = DataPointSeriesRepository(SeriesSample)
 
 
 def is_candidate(sample: TimeSeriesSampleCreate, count: int | None, now: datetime) -> bool:
@@ -79,17 +77,15 @@ def drop_condensed_series[SampleT: TimeSeriesSampleCreate](
     a sample without one is judged by its window.
     """
     now = now or datetime.now(timezone.utc)
-    candidates = [sample for sample in samples if is_candidate(sample, _count(sample, counts), now)]
+    counted = [(sample, _count(sample, counts)) for sample in samples]
+    candidates = [(sample, count) for sample, count in counted if is_candidate(sample, count, now)]
     if not candidates:
         return samples
-    coverage = _series_repo.stored_in_windows(
-        db_session,
-        [_window(sample) for sample in candidates],
-    )
+    coverages = timeseries_service.stored_in_windows(db_session, [_window(sample) for sample, _ in candidates])
     dropped = [
         sample
-        for sample, (covered, total) in zip(candidates, coverage, strict=True)
-        if is_condensed(sample, _count(sample, counts), covered, total)
+        for (sample, count), coverage in zip(candidates, coverages, strict=True)
+        if is_condensed(sample, count, coverage.covered, coverage.total)
     ]
     if not dropped:
         return samples

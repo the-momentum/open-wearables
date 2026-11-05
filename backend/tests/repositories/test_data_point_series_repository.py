@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DataSource, SeriesSample, SeriesTypeDefinition
 from app.repositories.data_point_series_repository import (
+    Coverage,
     DataPointSeriesRepository,
     StoredWindow,
     TypeCounts,
@@ -1117,7 +1118,9 @@ class TestStoredInWindows:
         for minute, value in ((0, "1.5"), (5, "2.5"), (10, "4")):  # the last one at the window's end
             self._energy(db, source, minute, value)
 
-        assert series_repo.stored_in_windows(db, [self._window(source.user_id, 10)]) == [(2, Decimal("4"))]
+        assert series_repo.stored_in_windows(db, [self._window(source.user_id, 10)]) == [
+            Coverage(2, Decimal("4"), Decimal("2.5"))
+        ]
 
     def test_reads_every_source_of_the_writer_app_and_nothing_else(
         self, db: Session, series_repo: DataPointSeriesRepository
@@ -1132,7 +1135,9 @@ class TestStoredInWindows:
             recorded_at=WINDOW_START + timedelta(minutes=5),
         )
 
-        assert series_repo.stored_in_windows(db, [self._window(user.id, 10)]) == [(2, Decimal("3"))]
+        assert series_repo.stored_in_windows(db, [self._window(user.id, 10)]) == [
+            Coverage(2, Decimal("3"), Decimal("2"))
+        ]
 
     def test_a_sample_does_not_cover_itself(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         source = DataSourceFactory(source_app_id=WATCH_APP, device_model="Watch6,18")
@@ -1141,7 +1146,7 @@ class TestStoredInWindows:
         self._energy(db, source, 2, "1")
 
         window = self._window(source.user_id, 10, external_id="SERIES")
-        assert series_repo.stored_in_windows(db, [window]) == [(2, Decimal("2"))]
+        assert series_repo.stored_in_windows(db, [window]) == [Coverage(2, Decimal("2"), Decimal("1"))]
 
     def test_keeps_the_order_and_gives_nothing_for_an_empty_window(
         self, db: Session, series_repo: DataPointSeriesRepository
@@ -1151,7 +1156,7 @@ class TestStoredInWindows:
         later = self._window(source.user_id, 35)._replace(start=WINDOW_START + timedelta(minutes=25))
 
         assert series_repo.stored_in_windows(db, [self._window(source.user_id, 10), later]) == [
-            (0, Decimal(0)),
-            (1, Decimal("2")),
+            Coverage(0, Decimal(0), Decimal(0)),
+            Coverage(1, Decimal("2"), Decimal("2")),
         ]
         assert series_repo.stored_in_windows(db, []) == []

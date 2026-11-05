@@ -241,7 +241,7 @@ class WorkoutWindow(NamedTuple):
 
 
 class StoredWindow(NamedTuple):
-    """A sample's window, looked up among the stored samples of its type from its user's sources of one writer app."""
+    """Where to look for stored samples: one user's writer app, one type, [start, end)."""
 
     user_id: UUID
     source_app_id: str | None
@@ -251,11 +251,18 @@ class StoredWindow(NamedTuple):
     external_id: str | None
 
 
-# One lookup per window, LATERAL so the (source, type, time) unique index bounds it: as a plain join the planner
-# keeps only the source in the index condition and filters the type and time afterwards. Through the writer app, not
-# the data source, so a sample filed under another device model of the same app still counts.
+class Coverage(NamedTuple):
+    """What a window covers among the stored samples: how many, their sum and the largest."""
+
+    covered: int
+    total: Decimal
+    largest: Decimal
+
+
+# LATERAL so each window is one range of the (source, type, time) index; a plain join filters type and time after it.
+# Matched by writer app: a series can be filed under another device model.
 _STORED_IN_WINDOWS = text("""
-    SELECT c.stored, c.total
+    SELECT c.covered, c.total, c.largest
     FROM unnest(
         CAST(:user_ids AS uuid[]),
         CAST(:app_ids AS text[]),
@@ -265,7 +272,7 @@ _STORED_IN_WINDOWS = text("""
         CAST(:external_ids AS text[])
     ) WITH ORDINALITY AS w(user_id, source_app_id, type_id, start_at, end_at, external_id, pos)
     CROSS JOIN LATERAL (
-        SELECT count(*) AS stored, coalesce(sum(s.value), 0) AS total
+        SELECT count(*) AS covered, coalesce(sum(s.value), 0) AS total, coalesce(max(s.value), 0) AS largest
         FROM data_source ds
         JOIN series_sample s ON s.data_source_id = ds.id
         WHERE ds.user_id = w.user_id
@@ -396,16 +403,16 @@ class DataPointSeriesRepository(
         )
         return counts
 
-    def stored_in_windows(self, db_session: DbSession, windows: Sequence[StoredWindow]) -> list[tuple[int, Decimal]]:
-        """Per window, in order, the number and the sum of the stored samples of its type recorded in [start, end).
+    def stored_in_windows(self, db_session: DbSession, windows: Sequence[StoredWindow]) -> list[Coverage]:
+        """Per window, in order, the count, sum and largest of the stored samples of its type and writer app in
+        [start, end).
 
-        The samples come from the user's data sources of the window's writer app, whatever device model they are
-        filed under. A sample with the window's own external_id doesn't count, so a re-sent sample doesn't cover
-        itself. A window without a source_app_id matches nothing, and the match is on the app id whatever the
-        provider (only HealthKit writes `com.apple.health.*` ids).
+        A sample with the window's external_id is left out, so a re-sent sample doesn't cover itself.
         """
         if not windows:
             return []
+        # The planner prices a big batch high and JIT-compiles it, which costs more than running it.
+        db_session.execute(text("SET LOCAL jit = off"))
         rows = db_session.execute(
             _STORED_IN_WINDOWS,
             {
@@ -417,7 +424,7 @@ class DataPointSeriesRepository(
                 "external_ids": [window.external_id for window in windows],
             },
         ).all()
-        return [(row.stored, row.total) for row in rows]
+        return [Coverage(row.covered, row.total, row.largest) for row in rows]
 
     @staticmethod
     def _with_live_sessions(
