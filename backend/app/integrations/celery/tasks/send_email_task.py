@@ -1,4 +1,3 @@
-from logging import getLogger
 from typing import Any
 from uuid import UUID
 
@@ -11,10 +10,9 @@ from app.database import SessionLocal
 from app.models import Invitation
 from app.schemas.model_crud.user_management import InvitationStatus
 from app.utils.email_client import get_email_config_error, send_invitation_email
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EmailSendError(Exception):
@@ -43,26 +41,19 @@ class EmailTaskBase(Task):
                     if invitation and invitation.status == InvitationStatus.PENDING:
                         invitation.status = InvitationStatus.FAILED
                         db.commit()
-                        log_structured(
-                            logger,
-                            "warning",
-                            f"Marked invitation {invitation_id} as FAILED after all retries exhausted",
+                        logger.warning(
+                            "Marked invitation as FAILED after all retries exhausted",
                             provider="email",
                             task="send_invitation_email_task",
+                            invitation_id=invitation_id,
                         )
             except Exception as e:
-                log_structured(
-                    logger,
-                    "error",
-                    f"Failed to update invitation {invitation_id} to FAILED status: {e}",
+                logger.error(
+                    "Failed to update invitation to FAILED status",
+                    exc_info=e,
                     provider="email",
                     task="send_invitation_email_task",
-                )
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Failed to update invitation {invitation_id} to FAILED status: {e}",
-                    extra={"invitation_id": invitation_id, "task": "send_invitation_email_task", "provider": "email"},
+                    invitation_id=invitation_id,
                 )
 
         super().on_failure(exc, task_id, args, kwargs, einfo)
@@ -109,12 +100,11 @@ def send_invitation_email_task(
 
         # Skip if already sent (idempotency)
         if invitation.status == InvitationStatus.SENT:
-            log_structured(
-                logger,
-                "info",
-                f"Invitation {invitation_id} already sent, skipping",
+            logger.info(
+                "Invitation already sent, skipping",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
             )
             return {
                 "status": "success",
@@ -124,12 +114,11 @@ def send_invitation_email_task(
 
         # Skip if already failed (allow resend via separate action)
         if invitation.status == InvitationStatus.FAILED:
-            log_structured(
-                logger,
-                "info",
-                f"Invitation {invitation_id} previously failed, skipping",
+            logger.info(
+                "Invitation previously failed, skipping",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
             )
             return {
                 "status": "skipped",
@@ -142,12 +131,12 @@ def send_invitation_email_task(
 
         # Skip sending if email is not configured (allow manual invite links)
         if config_error := get_email_config_error():
-            log_structured(
-                logger,
-                "warning",
-                f"{config_error}, skipping send for invitation {invitation_id}",
+            logger.warning(
+                "Email not configured, skipping send for invitation",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
+                reason=config_error,
             )
             return {
                 "status": "skipped",
@@ -157,12 +146,13 @@ def send_invitation_email_task(
 
         # Send email only if status is PENDING
         attempt = self.request.retries + 1
-        log_structured(
-            logger,
-            "info",
-            f"Sending invitation email for {invitation_id} (attempt {attempt}/{settings.email_max_retries + 1})",
+        logger.info(
+            "Sending invitation email",
             provider="email",
             task="send_invitation_email_task",
+            invitation_id=invitation_id,
+            attempt=attempt,
+            max_attempts=settings.email_max_retries + 1,
         )
         success = send_invitation_email(to_email, invite_url, invited_by_email)
 
@@ -173,27 +163,20 @@ def send_invitation_email_task(
         try:
             invitation.status = InvitationStatus.SENT
             db.commit()
-            log_structured(
-                logger,
-                "info",
-                f"Updated invitation {invitation_id} status to SENT",
+            logger.info(
+                "Updated invitation status to SENT",
                 provider="email",
                 task="send_invitation_email_task",
+                invitation_id=invitation_id,
             )
         except Exception as e:
             db.rollback()
-            log_structured(
-                logger,
-                "error",
-                f"Failed to update invitation {invitation_id} status: {e}",
+            logger.error(
+                "Failed to update invitation status",
+                exc_info=e,
                 provider="email",
                 task="send_invitation_email_task",
-            )
-            log_and_capture_error(
-                e,
-                logger,
-                f"Failed to update invitation {invitation_id} status: {e}",
-                extra={"invitation_id": invitation_id, "task": "send_invitation_email_task", "provider": "email"},
+                invitation_id=invitation_id,
             )
             raise
 

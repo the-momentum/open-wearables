@@ -1,29 +1,33 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
-import contextlib
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID
 
+from app.algorithms.sleep import awakenings, significant_awakenings
 from app.database import DbSession
-from app.models import EventRecord, HealthScore, ProviderPriority, SeriesSample, User
-from app.repositories import EventRecordRepository, ProviderPriorityRepository
+from app.models import DataSource, EventRecord, HealthScore, SeriesSample, User
+from app.repositories import DataSourceRepository, EventRecordRepository
 from app.repositories.data_point_series_repository import (
     ActiveMinutesResult,
     DataPointSeriesRepository,
     IntensityMinutesResult,
 )
-from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.repositories.series_aggregate_repository import SeriesAggregateRepository, daily_activity
+from app.repositories.series_aggregate_repository import (
+    ACTIVITY_METRIC_GROUPS,
+    ACTIVITY_METRIC_KEYS,
+    SeriesAggregateRepository,
+    daily_activity,
+    utc_date,
+)
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
-    DeviceType,
-    ProviderName,
     SeriesType,
     get_series_type_id,
 )
+from app.schemas.model_crud.activities import SleepStage
 from app.schemas.responses.activity import (
     ActivitySummary,
     ActivityTotals,
@@ -46,12 +50,15 @@ from app.schemas.utils import (
     TimeseriesMetadata,
 )
 from app.services.aggregate_backfill_service import days_from_samples
-from app.utils.exceptions import handle_exceptions
+from app.services.priority_service import priority_service
 from app.utils.pagination import (
     decode_activity_cursor,
     encode_activity_cursor,
     encode_cursor,
 )
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Activity summary constants
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
@@ -80,6 +87,25 @@ BODY_AVERAGED_SERIES = [
     SeriesType.heart_rate_variability_rmssd,
 ]
 
+# The recovery summary's vitals by the key its rows carry, and the score components that stand in for them.
+RECOVERY_SERIES = {
+    SeriesType.resting_heart_rate: "resting_heart_rate",
+    SeriesType.heart_rate_variability_sdnn: "avg_hrv_sdnn",
+    SeriesType.heart_rate_variability_rmssd: "avg_hrv_rmssd",
+    SeriesType.oxygen_saturation: "avg_spo2",
+}
+RECOVERY_COMPONENTS = {
+    "resting_heart_rate": "resting_heart_rate",
+    "avg_hrv_rmssd": "hrv_rmssd_milli",
+    "avg_spo2": "spo2_percentage",
+}
+# Taken whole from the best-ranked source that has them, as the activity summary's metric groups.
+RECOVERY_METRIC_GROUPS: tuple[tuple[str, ...], ...] = (
+    *((key,) for key in RECOVERY_SERIES.values()),
+    ("sleep_duration_seconds", "sleep_efficiency_percent"),
+    ("recovery_score",),
+)
+
 # Default settings for body summary
 DEFAULT_AVERAGE_PERIOD_DAYS = 7
 DEFAULT_LATEST_WINDOW_HOURS = 4
@@ -90,28 +116,35 @@ def _midnight(day: date) -> datetime:
     return datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
 
 
-def _activity_key(row: dict) -> tuple:
+def _activity_key(row: dict, date_key: str = "activity_date") -> tuple:
     """The compound key an activity cursor points at: date, then source, then device."""
-    return (row["activity_date"], row["source"] or "", row.get("device_model") or "")
+    return (row[date_key], row["source"] or "", row.get("device_model") or "")
+
+
+def _interruptions_count(sessions: list[dict]) -> int | None:
+    """Significant awakenings across the day's main sleeps; None without main sleep or a usable timeline."""
+    main_sessions = [s for s in sessions if not s["is_nap"]]
+    if not main_sessions:
+        return None
+    count = 0
+    for session in main_sessions:
+        durations = awakenings([SleepStage(**stage) for stage in session["sleep_stages"] or []])
+        if durations is None:
+            return None
+        count += significant_awakenings(durations)
+    return count
 
 
 class SummariesService:
     """Service for aggregating daily health summaries."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_point_repo = DataPointSeriesRepository(SeriesSample)
         self.series_aggregate_repo = SeriesAggregateRepository()
         self.user_repo = UserRepository(User)
         self.health_score_repo = HealthScoreRepository(HealthScore)
-
-    @staticmethod
-    def _priority_orders(db_session: DbSession) -> tuple[dict[ProviderName, int], dict[DeviceType, int]]:
-        return (
-            ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session),
-            DeviceTypePriorityRepository().get_priority_order(db_session),
-        )
+        self.data_source_repo = DataSourceRepository(DataSource)
 
     def _filter_by_priority(
         self,
@@ -119,12 +152,14 @@ class SummariesService:
         user_id: UUID,
         results: list[dict] | list,
         date_key: str = "activity_date",
+        fill: tuple[tuple[str, ...], ...] = (),
     ) -> list[dict] | list:
         """Filter results to highest priority source per date.
 
         Args:
             results: List of dicts with date, source (provider), device_model
             date_key: Key name for date field (activity_date or sleep_date)
+            fill: Groups of keys the winner lacks entirely, taken whole from the best entry that has any of them
 
         Returns:
             Filtered list with only highest priority entry per date
@@ -132,7 +167,11 @@ class SummariesService:
         if not results:
             return results
 
-        provider_order, device_type_order = self._priority_orders(db_session)
+        ranking = priority_service.get_source_ranking(db_session)
+
+        def sort_key(entry: dict) -> tuple[int, int, str]:
+            provider = entry.get("provider") or entry.get("source")
+            return (*ranking.rank(provider, entry.get("device_type")), entry.get("device_model") or "")
 
         # Group results by date
         by_date: dict[date, list[dict]] = defaultdict(list)
@@ -147,25 +186,14 @@ class SummariesService:
                 filtered.append(entries[0])
                 continue
 
-            # Sort by priority
-            def sort_key(entry: dict) -> tuple[int, int, str]:
-                raw_provider = entry.get("provider") or entry.get("source")
-                try:
-                    provider = ProviderName(raw_provider)
-                except ValueError:
-                    provider = ProviderName.UNKNOWN
-
-                provider_priority = provider_order.get(provider, 99)
-
-                device_model = entry.get("device_model")
-                device_type_priority = 99
-                with contextlib.suppress(ValueError):
-                    device_type_priority = device_type_order.get(DeviceType(entry.get("device_type")), 99)
-
-                return (provider_priority, device_type_priority, device_model or "")
-
             entries_sorted = sorted(entries, key=sort_key)
-            filtered.append(entries_sorted[0])
+            winner = dict(entries_sorted[0]) if fill else entries_sorted[0]
+            for keys in fill:
+                if all(winner.get(key) is None for key in keys):
+                    donor = next((e for e in entries_sorted if any(e.get(key) is not None for key in keys)), None)
+                    if donor is not None:
+                        winner.update({key: donor.get(key) for key in keys})
+            filtered.append(winner)
 
         return filtered
 
@@ -201,7 +229,6 @@ class SummariesService:
             "vigorous_max": int(max_hr * HR_ZONE_VIGOROUS[1]),
         }
 
-    @handle_exceptions
     def get_sleep_summaries(
         self,
         db_session: DbSession,
@@ -212,10 +239,15 @@ class SummariesService:
         limit: int,
     ) -> PaginatedResponse[SleepSummary]:
         """Get daily sleep summaries aggregated by date, provider, and device."""
-        self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
+        logger.debug(
+            "Fetching sleep summaries",
+            user_id=str(user_id),
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
 
         results = self.event_record_repo.get_sleep_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session)
+            db_session, user_id, start_date, end_date, cursor, limit, priority_service.get_source_ranking(db_session)
         )
 
         # Check if there's more data
@@ -308,6 +340,7 @@ class SummariesService:
                 time_in_bed_minutes=result.get("time_in_bed_minutes"),
                 efficiency_percent=result.get("efficiency_percent"),
                 stages=stages,
+                interruptions_count=_interruptions_count(raw_sessions),
                 nap_count=result.get("nap_count"),
                 nap_duration_minutes=result.get("nap_duration_minutes"),
                 avg_heart_rate_bpm=avg_hr,
@@ -332,7 +365,6 @@ class SummariesService:
             ),
         )
 
-    @handle_exceptions
     def get_recovery_summaries(
         self,
         db_session: DbSession,
@@ -342,13 +374,9 @@ class SummariesService:
         cursor: str | None,
         limit: int,
     ) -> PaginatedResponse[RecoverySummary]:
-        """Get daily recovery summaries from HealthScore(RECOVERY) records.
-
-        Metrics come from the components JSONB stored alongside the recovery score:
-        resting_heart_rate, hrv_rmssd_milli, spo2_percentage.
-        """
-        results = self.health_score_repo.get_recovery_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session)
+        """Daily recovery summaries: the day's vitals, main sleep and recovery score, best source per date."""
+        results = self._page_days(
+            db_session, user_id, start_date, end_date, cursor, limit, "asc", self._recovery_days, "recovery_date"
         )
 
         has_more = len(results) > limit
@@ -359,13 +387,16 @@ class SummariesService:
         previous_cursor: str | None = None
 
         if results:
-            last_result = results[-1]
             if has_more:
-                next_cursor = encode_cursor(last_result["recorded_at"], last_result["record_id"], "next")
-
+                last = results[-1]
+                next_cursor = encode_activity_cursor(
+                    last["recovery_date"], last["source"] or "", last.get("device_model"), "next"
+                )
             if cursor:
-                first_result = results[0]
-                previous_cursor = encode_cursor(first_result["recorded_at"], first_result["record_id"], "prev")
+                first = results[0]
+                previous_cursor = encode_activity_cursor(
+                    first["recovery_date"], first["source"] or "", first.get("device_model"), "prev"
+                )
 
         data = [
             RecoverySummary(
@@ -376,14 +407,13 @@ class SummariesService:
                     device=r.get("device_model"),
                     device_type=r.get("device_type"),
                 ),
-                sleep_duration_seconds=None,
-                sleep_efficiency_percent=None,
-                resting_heart_rate_bpm=int(r["resting_heart_rate"])
-                if r.get("resting_heart_rate") is not None
-                else None,
-                avg_hrv_rmssd_ms=float(r["hrv_rmssd_milli"]) if r.get("hrv_rmssd_milli") is not None else None,
-                avg_spo2_percent=float(r["spo2_percentage"]) if r.get("spo2_percentage") is not None else None,
-                recovery_score=r.get("recovery_score"),
+                sleep_duration_seconds=r["sleep_duration_seconds"],
+                sleep_efficiency_percent=r["sleep_efficiency_percent"],
+                resting_heart_rate_bpm=round(r["resting_heart_rate"]) if r["resting_heart_rate"] is not None else None,
+                avg_hrv_sdnn_ms=r["avg_hrv_sdnn"],
+                avg_hrv_rmssd_ms=r["avg_hrv_rmssd"],
+                avg_spo2_percent=r["avg_spo2"],
+                recovery_score=r["recovery_score"],
             )
             for r in results
         ]
@@ -402,7 +432,6 @@ class SummariesService:
             ),
         )
 
-    @handle_exceptions
     def get_activity_summaries(
         self,
         db_session: DbSession,
@@ -426,10 +455,17 @@ class SummariesService:
         - Intensity minutes (HR zones using max HR = 220 - age):
           light 50-63%, moderate 64-76%, vigorous 77-93%
         """
-        self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
+        logger.debug(
+            "Fetching activity summaries",
+            user_id=str(user_id),
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
 
         # Only this page's days are aggregated, so its cost follows the page, not the period.
-        results = self._activity_page_days(db_session, user_id, start_date, end_date, cursor, limit, sort_order)
+        results = self._page_days(
+            db_session, user_id, start_date, end_date, cursor, limit, sort_order, self._activity_days
+        )
 
         # Check for more data
         has_more = len(results) > limit
@@ -628,7 +664,69 @@ class SummariesService:
         """One row per day in [start, end) from the day aggregates, best source per date."""
         results = daily_activity(db_session, user_id, start, end, days_from_samples(db_session))
         results = self._add_workout_only_days(db_session, user_id, start, end, results)
-        return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+        return self._filter_by_priority(
+            db_session, user_id, results, date_key="activity_date", fill=ACTIVITY_METRIC_GROUPS
+        )
+
+    def _recovery_days(self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
+        """One row per day in [start, end) from the vitals' day and night values, the main sleep and the
+        recovery score, best source per date."""
+        first_day, last_day = utc_date(start), utc_date(end - timedelta(microseconds=1))
+        identity = ("recovery_date", "provider", "source", "device_model", "device_type")
+
+        nights = self.event_record_repo.night_values(
+            db_session, user_id, [get_series_type_id(t) for t in RECOVERY_SERIES], first_day, last_day
+        )
+        values = self.series_aggregate_repo.day_values(
+            db_session, user_id, list(RECOVERY_SERIES), first_day, last_day, nights, days_from_samples(db_session)
+        )
+        source_ids = {source_id for by_day in values.values() for source_id, _ in by_day}
+        sources = {s.id: s for s in self.data_source_repo.get_by_ids(db_session, source_ids)}
+        # Data sources sharing provider, source and device count as one device, as in the activity summary.
+        readings: dict[tuple, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+        for series_type, by_day in values.items():
+            for (source_id, day), value in by_day.items():
+                s = sources[source_id]
+                key = (day, s.provider, s.source, s.device_model, s.device_type)
+                readings[key][RECOVERY_SERIES[series_type]].append(value)
+        metrics = {
+            key: {name: round(sum(v) / len(v), 1) for name, v in by_name.items()} for key, by_name in readings.items()
+        }
+        sleeps = {
+            tuple(sleep[field] for field in identity): sleep
+            for sleep in self.event_record_repo.daily_sleep_totals(db_session, user_id, first_day, last_day)
+        }
+        # A day's earliest score.
+        scores: dict[tuple, dict] = {}
+        for score in self.health_score_repo.get_recovery_scores(db_session, user_id, first_day, last_day):
+            scores.setdefault(tuple(score[field] for field in identity), score)
+
+        results = []
+        for key in metrics.keys() | sleeps.keys() | scores.keys():
+            score = scores.get(key, {})
+            # The metrics a provider sent with its score fill what the series lack.
+            components = {
+                name: float(score[component])
+                for name, component in RECOVERY_COMPONENTS.items()
+                if score.get(component) is not None
+            }
+            results.append(
+                {
+                    **dict(zip(identity, key, strict=True)),
+                    "sleep_duration_seconds": None,
+                    "sleep_efficiency_percent": None,
+                    **sleeps.get(key, {}),
+                    **dict.fromkeys(RECOVERY_SERIES.values()),
+                    **components,
+                    **metrics.get(key, {}),
+                    "recovery_score": score.get("recovery_score"),
+                }
+            )
+
+        results.sort(key=lambda r: _activity_key(r, "recovery_date"))
+        return self._filter_by_priority(
+            db_session, user_id, results, date_key="recovery_date", fill=RECOVERY_METRIC_GROUPS
+        )
 
     def _add_workout_only_days(
         self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime, results: list
@@ -642,16 +740,7 @@ class SummariesService:
                 "source": wa["source"],
                 "device_model": wa["device_model"],
                 "device_type": wa["device_type"],
-                "steps_sum": None,
-                "active_energy_sum": None,
-                "basal_energy_sum": None,
-                "total_energy_sum": None,
-                "hr_avg": None,
-                "hr_max": None,
-                "hr_min": None,
-                "distance_sum": None,
-                "flights_climbed_sum": None,
-                "active_time_minutes": None,
+                **dict.fromkeys(ACTIVITY_METRIC_KEYS),
             }
             for wa in self.event_record_repo.get_daily_workout_aggregates(db_session, user_id, start, end)
             if wa["workout_date"] not in covered
@@ -660,7 +749,7 @@ class SummariesService:
             return results
         return sorted([*results, *extra], key=lambda r: r["activity_date"])
 
-    def _activity_page_days(
+    def _page_days(
         self,
         db_session: DbSession,
         user_id: UUID,
@@ -669,6 +758,8 @@ class SummariesService:
         cursor: str | None,
         limit: int,
         sort_order: str,
+        days: Callable[[DbSession, UUID, datetime, datetime], list[dict]],
+        date_key: str = "activity_date",
     ) -> list[dict]:
         """The days for one page, in page order, plus one more if there is a next page.
 
@@ -700,7 +791,7 @@ class SummariesService:
                 window = (anchor, min(end_date, anchor + span))
                 complete = window[1] >= end_date
 
-            results = self._activity_days(db_session, user_id, *window)
+            results = days(db_session, user_id, *window)
             if sort_order == "desc":
                 results = list(reversed(results))
 
@@ -710,7 +801,11 @@ class SummariesService:
                 results = [
                     r
                     for r in results
-                    if (_activity_key(r) < cursor_key if backwards else _activity_key(r) > cursor_key)
+                    if (
+                        _activity_key(r, date_key) < cursor_key
+                        if backwards
+                        else _activity_key(r, date_key) > cursor_key
+                    )
                 ]
                 if direction == "prev":
                     results = list(reversed(results))
@@ -738,7 +833,6 @@ class SummariesService:
         bmi = weight_kg / (height_m * height_m)
         return round(bmi, 1)
 
-    @handle_exceptions
     def get_body_summary(
         self,
         db_session: DbSession,
@@ -768,9 +862,11 @@ class SummariesService:
         if not 1 <= latest_window_hours <= 24:
             raise ValueError("latest_window_hours must be between 1 and 24")
 
-        self.logger.debug(
-            f"Fetching body summary for user {user_id} "
-            f"(avg_period={average_period_days}d, latest_window={latest_window_hours}h)"
+        logger.debug(
+            "Fetching body summary",
+            user_id=str(user_id),
+            average_period_days=average_period_days,
+            latest_window_hours=latest_window_hours,
         )
 
         now = datetime.now(timezone.utc)
@@ -781,9 +877,11 @@ class SummariesService:
         if user and user.personal_record:
             birth_date = user.personal_record.birth_date
 
-        # --- SLOW-CHANGING: Get latest values for slow-changing metrics ---
-        slow_changing_values = self.data_point_repo.get_latest_values_for_types(
-            db_session, user_id, now, BODY_SLOW_CHANGING_SERIES
+        ranking = priority_service.get_source_ranking(db_session)
+
+        # --- SLOW-CHANGING: the preferred source's reading on each metric's newest day ---
+        slow_changing_values = self.data_point_repo.get_ranked_latest_values(
+            db_session, user_id, now, BODY_SLOW_CHANGING_SERIES, ranking
         )
 
         weight_data = slow_changing_values.get(SeriesType.weight)
@@ -792,33 +890,32 @@ class SummariesService:
         muscle_mass_data = slow_changing_values.get(SeriesType.lean_body_mass)
         bmi_data = slow_changing_values.get(SeriesType.body_mass_index)
 
-        weight_kg = weight_data[0] if weight_data else None
-        height_cm = height_data[0] if height_data else None
-        body_fat_pct = body_fat_data[0] if body_fat_data else None
-        muscle_mass_kg = muscle_mass_data[0] if muscle_mass_data else None
+        weight_kg = weight_data.value if weight_data else None
+        height_cm = height_data.value if height_data else None
+        body_fat_pct = body_fat_data.value if body_fat_data else None
+        muscle_mass_kg = muscle_mass_data.value if muscle_mass_data else None
 
         # Use stored BMI if available, otherwise calculate from weight and height
-        bmi = bmi_data[0] if bmi_data else self._calculate_bmi(weight_kg, height_cm)
+        bmi = bmi_data.value if bmi_data else self._calculate_bmi(weight_kg, height_cm)
 
         # Calculate age
         age = self._calculate_age(birth_date, now.date()) if birth_date else None
 
-        # Determine source from the most recently recorded slow-changing measurement.
-        # Tuple layout: (value, recorded_at, provider, source, device_model, device_type)
-        latest_measurement = max(
+        # The source named is the best-ranked of those the slow-changing values came from, the newest among equals.
+        named = min(
             (data for data in (weight_data, height_data, body_fat_data, muscle_mass_data, bmi_data) if data),
-            key=lambda data: data[1],
+            key=lambda data: (*ranking.rank(data.provider, data.device_type), -data.recorded_at.timestamp()),
             default=None,
         )
         provider = "unknown"
         source_name = None
         device_id = None
         device_type = None
-        if latest_measurement:
-            provider = latest_measurement[2] or "unknown"
-            source_name = latest_measurement[3]
-            device_id = latest_measurement[4]
-            device_type = latest_measurement[5]
+        if named:
+            provider = named.provider or "unknown"
+            source_name = named.source
+            device_id = named.device_model
+            device_type = named.device_type
 
         body_slow_changing = BodySlowChanging(
             weight_kg=weight_kg,
@@ -840,7 +937,14 @@ class SummariesService:
             db_session, user_id, [get_series_type_id(t) for t in BODY_AVERAGED_SERIES], first_day, last_day
         )
         averages = self.series_aggregate_repo.period_averages(
-            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights, days_from_samples(db_session)
+            db_session,
+            user_id,
+            BODY_AVERAGED_SERIES,
+            first_day,
+            last_day,
+            ranking,
+            nights,
+            days_from_samples(db_session),
         )
 
         resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
@@ -862,30 +966,22 @@ class SummariesService:
         # --- LATEST: Get recent point-in-time readings ---
         latest_window_start = now - timedelta(hours=latest_window_hours)
 
-        body_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.body_temperature, latest_window_start, now
-        )
-        skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
-        )
-        # Whoop and Polar report skin temperature once a night, as a day value.
-        if skin_temp_reading is None and (
-            day_value := self.series_aggregate_repo.latest_day_value(
-                db_session, user_id, SeriesType.skin_temperature, latest_window_start.date()
+        def latest_reading(series_type: SeriesType) -> tuple[float, datetime] | None:
+            return self.data_point_repo.get_latest_reading_within_window(
+                db_session, user_id, series_type, latest_window_start, now, ranking
             )
-        ):
-            skin_temp_reading = (*day_value, "", None)
-        # Get blood pressure readings within the window
-        bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now
-        )
-        bp_diastolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_diastolic, latest_window_start, now
-        )
 
-        # ignore provider and device id
-        body_temp_celsius, body_temp_measured_at, _, _ = body_temp_reading or (None, None, None, None)
-        skin_temp_celsius, skin_temp_measured_at, _, _ = skin_temp_reading or (None, None, None, None)
+        body_temp_reading = latest_reading(SeriesType.body_temperature)
+        # Whoop and Polar report skin temperature once a night, as a day value.
+        skin_temp_reading = latest_reading(SeriesType.skin_temperature) or self.series_aggregate_repo.latest_day_value(
+            db_session, user_id, SeriesType.skin_temperature, latest_window_start.date(), ranking
+        )
+        # Get blood pressure readings within the window
+        bp_systolic_reading = latest_reading(SeriesType.blood_pressure_systolic)
+        bp_diastolic_reading = latest_reading(SeriesType.blood_pressure_diastolic)
+
+        body_temp_celsius, body_temp_measured_at = body_temp_reading or (None, None)
+        skin_temp_celsius, skin_temp_measured_at = skin_temp_reading or (None, None)
 
         # Blood pressure readings are only meaningful as a pair recorded at the same time.
         # Validate that both readings exist and their timestamps match within tolerance.
@@ -895,11 +991,12 @@ class SummariesService:
         bp_measured_at = None
 
         if bp_systolic_reading and bp_diastolic_reading:
-            time_diff = abs((bp_systolic_reading[1] - bp_diastolic_reading[1]).total_seconds())
-            if time_diff <= BP_TIMESTAMP_TOLERANCE_SECONDS:
+            systolic, systolic_at = bp_systolic_reading
+            diastolic, diastolic_at = bp_diastolic_reading
+            if abs((systolic_at - diastolic_at).total_seconds()) <= BP_TIMESTAMP_TOLERANCE_SECONDS:
                 blood_pressure = BloodPressure(
-                    avg_systolic_mmhg=int(round(bp_systolic_reading[0])),
-                    avg_diastolic_mmhg=int(round(bp_diastolic_reading[0])),
+                    avg_systolic_mmhg=int(round(systolic)),
+                    avg_diastolic_mmhg=int(round(diastolic)),
                     # For single point-in-time reading, no min/max/count needed
                     max_systolic_mmhg=None,
                     max_diastolic_mmhg=None,
@@ -907,7 +1004,7 @@ class SummariesService:
                     min_diastolic_mmhg=None,
                     reading_count=1,
                 )
-                bp_measured_at = max(bp_systolic_reading[1], bp_diastolic_reading[1])
+                bp_measured_at = max(systolic_at, diastolic_at)
 
         # Check if we have any data at all
         has_slow_changing = any([weight_kg, height_cm, body_fat_pct, muscle_mass_kg])
@@ -939,4 +1036,4 @@ class SummariesService:
         )
 
 
-summaries_service = SummariesService(log=getLogger(__name__))
+summaries_service = SummariesService()

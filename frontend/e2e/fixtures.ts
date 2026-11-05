@@ -530,10 +530,16 @@ export const makeWorkouts = (query: URLSearchParams) => {
 	const start = new Date(query.get('start_date') ?? 0).getTime();
 	const end = new Date(query.get('end_date') ?? 0).getTime();
 
+	// Suunto is the lowest-ranked source here, so it stands in for the copy a
+	// higher-priority provider already recorded. The real endpoint matches by
+	// overlap in time, which these evenly spaced fixtures never produce.
+	const topSourceOnly = query.get('source_selection') === 'per_session';
+
 	const matching = WORKOUTS.filter((workout) => {
 		const at = new Date(workout.start_time).getTime();
 		if (at < start || at >= end) return false;
 		if (provider && workout.source.provider !== provider) return false;
+		if (topSourceOnly && workout.source.provider === 'suunto') return false;
 		return !type || workout.type === type;
 	});
 
@@ -783,7 +789,7 @@ export const makeSleep = (query: URLSearchParams) => {
 
 	// Oura outranks Suunto in the default priority order, so the winning source
 	// per night is the Oura one wherever both reported.
-	if (query.get('filter_by_priority') === 'true') {
+	if (query.get('source_selection') === 'per_session') {
 		matching = matching.filter((session) => session.source.provider === 'oura');
 	}
 
@@ -1670,7 +1676,12 @@ const MB = 1024 ** 2;
 
 /** Proportions like a real install: the live series is nearly all of it. */
 const buildLifecycle = () => ({
-	settings: { rollup_enabled: true, delete_after_days: null as number | null },
+	settings: {
+		rollup_enabled: true,
+		history_rollup_enabled: false,
+		delete_after_days: null as number | null
+	},
+	history_rollup: { state: 'off' },
 	storage: {
 		live_data_bytes: 38 * MB,
 		live_index_bytes: 420 * MB,
@@ -1702,6 +1713,7 @@ export const readLifecycle = () => {
 
 export const saveLifecycle = (body: {
 	rollup_enabled: boolean;
+	history_rollup_enabled: boolean;
 	delete_after_days: number | null;
 }) => {
 	LIFECYCLE_SCANS += 1;

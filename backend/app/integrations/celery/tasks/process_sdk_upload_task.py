@@ -1,5 +1,5 @@
 import uuid
-from logging import getLogger
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -35,9 +35,9 @@ from app.services.sync_status_service import (
 )
 from app.services.user_connection_service import user_connection_service
 from app.utils.context import sync_run_context
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_import_service(provider: str) -> SDKImportService:
@@ -46,7 +46,13 @@ def _get_import_service(provider: str) -> SDKImportService:
     raise ValueError(f"Unsupported provider: {provider}")
 
 
-def _batch_outcomes(types: list[str], workouts_saved: int, sleep_saved: int, scope: SyncScope) -> list[DataTypeOutcome]:
+def _batch_outcomes(
+    types: list[str],
+    spans: dict[str, tuple[datetime, datetime]],
+    workouts_saved: int,
+    sleep_saved: int,
+    scope: SyncScope,
+) -> list[DataTypeOutcome]:
     """What this batch wrote, per data type.
 
     types holds series type slugs only, since the importer collects it from the samples it
@@ -57,19 +63,30 @@ def _batch_outcomes(types: list[str], workouts_saved: int, sleep_saved: int, sco
     reports IN_PROGRESS and leaves the outcome to it — the two arrive in either order, and
     a batch claiming success would otherwise bury a reported failure. A live batch is the
     only report there will be, so it is its own verdict.
+
+    A historical batch skips series filled from workouts: no end event would ever close them.
     """
-    status = SyncStatus.IN_PROGRESS if scope == SyncScope.HISTORICAL else SyncStatus.SUCCESS
-    outcomes = [DataTypeOutcome(data_type=data_type, kind=DataTypeKind.SERIES, status=status) for data_type in types]
-    for name, saved in (("workouts", workouts_saved), ("sleep", sleep_saved)):
-        if saved:
-            outcomes.append(
-                DataTypeOutcome(
-                    data_type=name,
-                    kind=DataTypeKind.EVENT,
-                    status=status,
-                    items_inserted=saved,
-                )
+    historical = scope == SyncScope.HISTORICAL
+    status = SyncStatus.IN_PROGRESS if historical else SyncStatus.SUCCESS
+    reported = [(data_type, DataTypeKind.SERIES, 0) for data_type in types if not historical or data_type in spans]
+    reported += [
+        (name, DataTypeKind.EVENT, saved)
+        for name, saved in (("workouts", workouts_saved), ("sleep", sleep_saved))
+        if saved
+    ]
+    outcomes = []
+    for data_type, kind, saved in reported:
+        start, end = spans.get(data_type, (None, None))
+        outcomes.append(
+            DataTypeOutcome(
+                data_type=data_type,
+                kind=kind,
+                status=status,
+                items_inserted=saved,
+                covered_start=start,
+                covered_end=end,
             )
+        )
     return outcomes
 
 
@@ -114,9 +131,7 @@ def process_sdk_upload(
         try:
             content = get_payload_from_s3(payload_ref)
         except Exception:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Failed to load SDK payload from S3",
                 provider=provider,
                 action="load_payload_ref",
@@ -127,9 +142,7 @@ def process_sdk_upload(
             raise
 
     if content is None:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "No payload content or reference provided",
             provider=provider,
             action="validate_payload_present",
@@ -148,9 +161,7 @@ def process_sdk_upload(
     try:
         user_uuid = UUID(user_id)
     except ValueError:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Invalid user_id format",
             provider=provider,
             action="validate_user_id",
@@ -163,9 +174,7 @@ def process_sdk_upload(
     with SessionLocal() as db:
         user_repo = UserRepository(User)
         if not user_repo.get(db, user_uuid):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Skipping import for non-existent user",
                 provider=provider,
                 action="validate_user_exists",
@@ -175,10 +184,8 @@ def process_sdk_upload(
             return {"status": "skipped", "reason": "user_not_found", "batch_id": batch_id}
 
     # Log task start
-    log_structured(
-        logger,
-        "info",
-        f"{provider.capitalize()} sync batch processing started",
+    logger.info(
+        "SDK sync batch processing started",
         action=f"{provider}_batch_processing_start",
         batch_id=batch_id,
         user_id=user_id,
@@ -206,15 +213,12 @@ def process_sdk_upload(
         # Select the appropriate import service based on source
         import_service = _get_import_service(provider)
 
-        result = import_service.import_data_from_request(
-            db, content, content_type, user_id, batch_id=batch_id
-        ).model_dump()
+        response = import_service.import_data_from_request(db, content, content_type, user_id, batch_id=batch_id)
+        result = response.model_dump()
 
         # Log processing completion with results
-        log_structured(
-            logger,
-            "info",
-            f"{provider.capitalize()} sync batch processing completed",
+        logger.info(
+            "SDK sync batch processing completed",
             action=f"{provider}_batch_processing_complete",
             batch_id=batch_id,
             user_id=user_id,
@@ -266,7 +270,9 @@ def process_sdk_upload(
                 },
             )
             try_record_data_types(
-                run.run_id, _batch_outcomes(types, workouts_saved, sleep_saved, run.scope), scope=run.scope
+                run.run_id,
+                _batch_outcomes(types, response.spans, workouts_saved, sleep_saved, run.scope),
+                scope=run.scope,
             )
             if payload_ref and settings.raw_payload_storage == "disabled":
                 # Transport-only copy and the data is committed, so drop it. A failed batch

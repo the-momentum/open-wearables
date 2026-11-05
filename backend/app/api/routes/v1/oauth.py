@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
@@ -20,17 +20,17 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import UnsupportedProviderError, unknown_provider
 
 router = APIRouter()
 factory = ProviderFactory()
 
 
 def resolve_provider(slug: str) -> ProviderName:
-    # 400 rather than 404 keeps the response the enum-typed parameter used to give.
     try:
         return ProviderName(from_url_slug(slug))
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown provider: '{slug}'")
+        raise unknown_provider(slug, ("path", "provider"), (p.value for p in ProviderName)) from None
 
 
 def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
@@ -38,10 +38,7 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
     strategy = factory.get_provider(provider.value)
 
     if not strategy.oauth:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Provider '{provider.value}' does not support OAuth",
-        )
+        raise UnsupportedProviderError(provider.value, "OAuth")
     return strategy
 
 
@@ -108,7 +105,7 @@ def oauth_callback(
 
     # Stamp last_synced_at=now so the first periodic sync uses the connection
     # timestamp as its live-sync cursor and won't attempt to pull all history.
-    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
+    previous_synced_at = user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
 
     # Grace-period flag: automatically kick off a historical sync so integrators
     # who haven't yet adopted the explicit /sync/historical call still get backfill.
@@ -116,13 +113,18 @@ def oauth_callback(
     if settings.historical_sync_on_connect:
         caps = strategy.capabilities
         if caps.webhook_callback:
-            start_garmin_full_backfill.delay(str(oauth_state.user_id))
+            gap_start = user_connection_service.reconnect_gap_start(
+                db, oauth_state.user_id, provider_name.value, previous_synced_at
+            )
+            start_garmin_full_backfill.delay(str(oauth_state.user_id), gap_start.isoformat() if gap_start else None)
         elif caps.rest_pull:
             now = datetime.now(timezone.utc)
-            start_date = (now - timedelta(days=90)).isoformat()
+            start_date = user_connection_service.historical_start_on_connect(
+                db, oauth_state.user_id, provider_name.value, previous_synced_at, days=90
+            )
             sync_vendor_data.delay(
                 user_id=str(oauth_state.user_id),
-                start_date=start_date,
+                start_date=start_date.isoformat(),
                 end_date=now.isoformat(),
                 providers=[provider_name.value],
                 is_historical=True,
@@ -192,10 +194,7 @@ def update_provider_setting(
     _developer: DeveloperDep,
 ):
     """Update is_enabled and/or live_sync_mode for a single provider."""
-    try:
-        return provider_settings_service.update_provider_setting(db, provider, update)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return provider_settings_service.update_provider_setting(db, provider, update)
 
 
 @router.put("/providers", response_model=list[ProviderSettingRead], tags=["Internal: Providers"])

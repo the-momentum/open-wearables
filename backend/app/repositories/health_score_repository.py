@@ -3,22 +3,22 @@ from typing import Any
 from typing import cast as typing_cast
 from uuid import UUID
 
-from sqlalchemy import Date, and_, cast, func, or_, select, tuple_
+from sqlalchemy import Date, and_, cast, delete, func, literal_column, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
-from app.models import DataSource, HealthScore, SleepDetails
+from app.models import DataSource, EventRecord, HealthScore, SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
-from app.repositories.repositories import CrudRepository, source_priority_order
-from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
+from app.repositories.local_day import OFFSET_REACH, utc_midnight
+from app.repositories.repositories import CrudRepository, SourceRanking
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
-from app.utils.dates import as_utc
-from app.utils.pagination import decode_cursor
+from app.utils.dates import as_utc, local_date
 
 
 def _utc_midnight(moment: datetime) -> datetime:
     """Start of the UTC day ``moment`` falls on; a naive moment is read as UTC."""
-    return datetime.combine(typing_cast(datetime, as_utc(moment)).date(), time.min, tzinfo=timezone.utc)
+    return datetime.combine(as_utc(moment).date(), time.min, tzinfo=timezone.utc)
 
 
 class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, HealthScoreUpdate]):
@@ -35,8 +35,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         db_session: DbSession,
         user_id: UUID,
         params: HealthScoreQueryParams,
-        provider_order: dict[ProviderName, int],
-        device_type_order: dict[DeviceType, int],
+        ranking: SourceRanking,
     ) -> tuple[list[tuple[HealthScore, DataSource | None]], int]:
         """Scores newest first, with their data source; one OW score per category and day, picked before paging."""
         filters = [HealthScore.user_id == user_id]
@@ -69,7 +68,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                     partition_by=(HealthScore.category, cast(func.timezone("UTC", HealthScore.recorded_at), Date)),
                     order_by=(
                         DataSource.id.is_(None),  # a score without a source comes last
-                        *source_priority_order(provider_order, device_type_order),
+                        *ranking.order_terms(),
                         # Longest sleep first, so an unflagged nap (#938) doesn't beat the night
                         func.coalesce(SleepDetails.sleep_total_duration_minutes, 0).desc(),
                         HealthScore.recorded_at.desc(),
@@ -114,12 +113,108 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         if not creators:
             return WriteCounts(0, 0)
 
+        creators = self._replace_earlier_scores_of_the_nights(db_session, creators)
         values = [c.model_dump() for c in creators]
 
         stmt = insert(HealthScore).values(values).on_conflict_do_nothing().returning(HealthScore.id)
         inserted = len(db_session.execute(stmt).scalars().all())
         # Caller is responsible for commit — allows batching with other operations
         return WriteCounts(inserted, 0)
+
+    @staticmethod
+    def _replace_earlier_scores_of_the_nights(
+        db_session: DbSession, creators: list[HealthScoreCreate]
+    ) -> list[HealthScoreCreate]:
+        """A provider sleep score sits at its night's end, which a re-sent night moves (Whoop extends a scored
+        night, Garmin a fragment): the night's earlier scores, from its start to its end, give way to the new one,
+        stored or in the same batch.
+
+        The night is the provider's sleep record ending at the score, stored before its score. A score linked to
+        its record (Polar) is unique per record already.
+        """
+        ends = {
+            (c.user_id, c.provider, c.recorded_at)
+            for c in creators
+            if c.category == HealthScoreCategory.SLEEP
+            and c.provider != ProviderName.INTERNAL
+            and c.event_record_id is None
+        }
+        if not ends:
+            return creators
+        night = (
+            select(EventRecord.start_datetime, EventRecord.end_datetime, DataSource.user_id, DataSource.provider)
+            .join(DataSource, DataSource.id == EventRecord.data_source_id)
+            .where(
+                EventRecord.category == EventCategory.SLEEP,
+                tuple_(DataSource.user_id, DataSource.provider, EventRecord.end_datetime).in_(list(ends)),
+            )
+            .subquery()
+        )
+        nights = db_session.execute(select(night)).all()
+        if not nights:
+            return creators
+        db_session.execute(
+            delete(HealthScore)
+            .where(
+                HealthScore.category == HealthScoreCategory.SLEEP,
+                HealthScore.event_record_id.is_(None),
+                HealthScore.user_id == night.c.user_id,
+                HealthScore.provider == night.c.provider,
+                HealthScore.recorded_at >= night.c.start_datetime,
+                HealthScore.recorded_at <= night.c.end_datetime,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return [
+            c
+            for c in creators
+            if c.event_record_id is not None
+            or not any(
+                c.category == HealthScoreCategory.SLEEP
+                and (c.user_id, c.provider) == (n.user_id, n.provider)
+                and n.start_datetime <= c.recorded_at < n.end_datetime
+                for n in nights
+            )
+        ]
+
+    def drop_provider_sleep_score(self, db_session: DbSession, data_source_id: UUID, night_end: datetime) -> None:
+        """The provider score at a night's former end, left behind when the provider moved that end."""
+        db_session.execute(
+            delete(HealthScore)
+            .where(
+                HealthScore.category == HealthScoreCategory.SLEEP,
+                HealthScore.event_record_id.is_(None),
+                HealthScore.provider != ProviderName.INTERNAL,
+                tuple_(HealthScore.user_id, HealthScore.provider).in_(
+                    select(DataSource.user_id, DataSource.provider).where(DataSource.id == data_source_id)
+                ),
+                HealthScore.recorded_at == night_end,
+            )
+            .execution_options(synchronize_session=False)
+        )
+
+    def bulk_create_keeping_highest(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> WriteCounts:
+        """Bulk upsert health scores, keeping the higher value when a score for the same time is sent again.
+
+        For a peak the provider resends with more data as the day goes on, e.g. Garmin body battery.
+        Scores without a value are skipped.
+        """
+        # The highest of each key: ON CONFLICT DO UPDATE can't touch a row twice in one statement
+        with_value = sorted((c for c in creators if c.value is not None), key=lambda c: c.value or 0)
+        highest = {(c.user_id, c.provider, c.data_source_id, c.category, c.recorded_at): c for c in with_value}
+        if not highest:
+            return WriteCounts(0, 0)
+
+        stmt = insert(HealthScore).values([c.model_dump() for c in highest.values()])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id", "provider", "data_source_id", "category", "recorded_at"],
+            set_={"value": stmt.excluded.value},
+            where=or_(HealthScore.value.is_(None), stmt.excluded.value > HealthScore.value),
+        ).returning(literal_column("xmax = 0"))
+        was_insert = db_session.execute(stmt).scalars().all()
+        inserted = sum(was_insert)
+        # Caller is responsible for commit — allows batching with other operations
+        return WriteCounts(inserted, len(was_insert) - inserted)
 
     def get_latest_by_category(
         self,
@@ -162,83 +257,31 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             .delete(synchronize_session=False)
         )
 
-    def get_recovery_summaries(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
-        cursor: str | None,
-        limit: int,
-        provider_order: dict[ProviderName, int],
-        device_type_order: dict[DeviceType, int],
+    def get_recovery_scores(
+        self, db_session: DbSession, user_id: UUID, first_day: date, last_day: date
     ) -> list[dict[str, Any]]:
-        """Get recovery health scores for a date range with cursor-based pagination.
-
-        Per date only the highest-priority source's earliest score is kept, picked before pagination
-        so a page holds `limit` dates however many sources scored each day.
-
-        Returns list of dicts with keys: recovery_date, provider, source, device_model,
-        device_type, record_id, recorded_at, recovery_score, resting_heart_rate,
-        hrv_rmssd_milli, spo2_percentage.
-        Fetches limit+1 rows so callers can detect has_more without a separate COUNT query.
-        Ordering matches get_sleep_summaries: ASC by default, DESC when paginating backward.
-        """
-        # Provider scores have no data_source, so the provider rank comes from the score itself
-        ranked = (
-            select(
-                HealthScore.id,
-                func.row_number()
-                .over(
-                    partition_by=cast(HealthScore.recorded_at, Date),
-                    order_by=(
-                        *source_priority_order(provider_order, device_type_order, HealthScore.provider),
-                        HealthScore.recorded_at,
-                        HealthScore.id,
-                    ),
-                )
-                .label("source_rank"),
-            )
-            .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
-            .where(
-                HealthScore.user_id == user_id,
-                HealthScore.category == HealthScoreCategory.RECOVERY,
-                HealthScore.recorded_at >= start_date,
-                HealthScore.recorded_at < end_date,
-            )
-            .subquery()
-        )
-        # Outer join so scores without a data_source (older rows) still come back.
-        query = (
+        """Recovery scores of the local days from ``first_day`` to ``last_day``, earliest first, keyed by their
+        device's data source, else by the scoring provider; with the metrics a provider sent in the components."""
+        rows = (
             db_session.query(HealthScore, DataSource)
             .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
-            .filter(HealthScore.id.in_(select(ranked.c.id).where(ranked.c.source_rank == 1)))
+            .filter(
+                HealthScore.user_id == user_id,
+                HealthScore.category == HealthScoreCategory.RECOVERY,
+                HealthScore.recorded_at >= utc_midnight(first_day) - OFFSET_REACH,
+                HealthScore.recorded_at < utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
+            )
+            .order_by(HealthScore.recorded_at, HealthScore.id)
+            .all()
         )
-
-        if cursor:
-            cursor_ts, cursor_id, direction = decode_cursor(cursor)
-            if direction == "prev":
-                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) < (cursor_ts, cursor_id)).order_by(
-                    HealthScore.recorded_at.desc(), HealthScore.id.desc()
-                )
-            else:
-                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) > (cursor_ts, cursor_id)).order_by(
-                    HealthScore.recorded_at.asc(), HealthScore.id.asc()
-                )
-        else:
-            query = query.order_by(HealthScore.recorded_at.asc(), HealthScore.id.asc())
-
-        rows = query.limit(limit + 1).all()
 
         return [
             {
-                "recovery_date": row.recorded_at.date(),
-                "provider": row.provider,
+                "recovery_date": local_date(row.recorded_at, row.zone_offset),
+                "provider": data_source.provider if data_source else row.provider,
                 "source": data_source.source if data_source else None,
                 "device_model": data_source.device_model if data_source else None,
                 "device_type": data_source.device_type if data_source else None,
-                "record_id": row.id,
-                "recorded_at": row.recorded_at,
                 "recovery_score": int(row.value) if row.value is not None else None,
                 "resting_heart_rate": typing_cast(dict, row.components or {})
                 .get("resting_heart_rate", {})
@@ -247,6 +290,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                 "spo2_percentage": typing_cast(dict, row.components or {}).get("spo2_percentage", {}).get("value"),
             }
             for row, data_source in rows
+            if first_day <= local_date(row.recorded_at, row.zone_offset) <= last_day
         ]
 
     def get_latest_per_category(

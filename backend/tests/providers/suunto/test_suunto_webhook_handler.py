@@ -12,11 +12,15 @@ Bugs fixed:
    optional with a `startTime + totalTime` fallback in `_normalize_workout`.
 """
 
+from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from psycopg.errors import NotNullViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
@@ -25,6 +29,7 @@ from app.schemas.providers.suunto.workout_import import WorkoutJSON as SuuntoWor
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.webhook_handler import SuuntoWebhookHandler
 from app.services.providers.suunto.workouts import SuuntoWorkouts
+from tests.factories import UserConnectionFactory, UserFactory
 
 WORKOUT_KEY = "test-workout-key-0001"
 PAUSED_WORKOUT_KEY = "test-paused-workout-0001"
@@ -253,6 +258,71 @@ def paused_workout_payload() -> dict:
     }
 
 
+class TestFindConnection:
+    """The id from ``extract_user_id`` is the payload username, not the JWT ``sub``."""
+
+    def test_resolves_by_username_not_provider_user_id(self, db: Session) -> None:
+        handler = SuuntoWebhookHandler(suunto_workouts=MagicMock(), suunto_247=MagicMock())
+        connection = UserConnectionFactory(
+            user=UserFactory(),
+            provider="suunto",
+            provider_user_id="suunto-sub-123",
+            provider_username="suunto-runner",
+        )
+
+        user_id = handler.extract_user_id({"username": "suunto-runner"})
+
+        assert user_id == "suunto-runner"
+        assert handler.find_connection(db, user_id) == connection
+
+
+class TestProcessPayloadLastSyncedAt:
+    """last_synced_at moves only when the event was fetched from the Suunto API."""
+
+    USERNAME = "suunto-runner"
+
+    @pytest.fixture
+    def handler(self) -> SuuntoWebhookHandler:
+        return SuuntoWebhookHandler(suunto_workouts=MagicMock(), suunto_247=MagicMock())
+
+    def _connection(self) -> Any:
+        return UserConnectionFactory(
+            provider="suunto",
+            provider_username=self.USERNAME,
+            last_synced_at=datetime.now(timezone.utc) - timedelta(days=3),
+        )
+
+    @pytest.mark.parametrize(
+        ("event_type", "expected_status"),
+        [("ROUTE_CREATED", "skipped"), ("SOMETHING_NEW", "unknown_event_type")],
+    )
+    def test_unprocessed_event_keeps_last_synced_at(
+        self, db: Session, handler: SuuntoWebhookHandler, event_type: str, expected_status: str
+    ) -> None:
+        connection = self._connection()
+        before = connection.last_synced_at
+
+        result = handler.process_payload(db, {"type": event_type, "username": self.USERNAME}, TRACE_ID)
+        db.refresh(connection)
+
+        assert result["status"] == expected_status
+        assert connection.last_synced_at == before
+
+    def test_saved_workout_updates_last_synced_at(
+        self, db: Session, handler: SuuntoWebhookHandler, live_response: dict
+    ) -> None:
+        connection = self._connection()
+        before = connection.last_synced_at
+        handler.suunto_workouts.get_workout_detail.return_value = live_response
+
+        payload = {"type": "WORKOUT_CREATED", "username": self.USERNAME, "workout": {"workoutKey": WORKOUT_KEY}}
+        result = handler.process_payload(db, payload, TRACE_ID)
+        db.refresh(connection)
+
+        assert result["status"] == "saved"
+        assert connection.last_synced_at > before
+
+
 class TestProcessWorkoutPayloadShapes:
     """Verify `_process_workout` handles both single-dict and list `payload` shapes."""
 
@@ -315,6 +385,21 @@ class TestProcessWorkoutPayloadShapes:
         handler.suunto_workouts.get_workout_detail.assert_not_called()
         handler.suunto_workouts.process_push_activity.assert_not_called()
 
+    def test_a_constraint_violation_other_than_a_duplicate_is_not_swallowed(
+        self,
+        handler: SuuntoWebhookHandler,
+        webhook_payload: dict,
+        live_response: dict,
+    ) -> None:
+        """A NULL in a NOT NULL column is our bug, not a workout we already have."""
+        handler.suunto_workouts.get_workout_detail.return_value = live_response
+        handler.suunto_workouts.process_push_activity.side_effect = IntegrityError(
+            statement="INSERT INTO event_record ...", params={}, orig=NotNullViolation("null value in column")
+        )
+
+        with pytest.raises(IntegrityError):
+            handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
+
     def test_duplicate_workout_returns_ignored_status(
         self,
         handler: SuuntoWebhookHandler,
@@ -327,7 +412,7 @@ class TestProcessWorkoutPayloadShapes:
         handler.suunto_workouts.process_push_activity.side_effect = IntegrityError(
             statement="INSERT INTO event_record ...",
             params={},
-            orig=Exception("duplicate key value violates unique constraint ix_event_record_source_time"),
+            orig=UniqueViolation("duplicate key value violates unique constraint ix_event_record_source_time"),
         )
 
         result = handler._process_workout(db, uuid4(), webhook_payload, TRACE_ID)

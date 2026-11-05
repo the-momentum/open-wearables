@@ -4,7 +4,6 @@ totals, ``get`` for its hypnogram). Continuous metrics become ``SeriesSample``
 samples; sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
 """
 
-import logging
 from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -55,10 +54,9 @@ from app.services.providers.withings.handlers.rpc_client import (
 )
 from app.services.providers.withings.handlers.timezone import local_day_start, zone_offset_at
 from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger, is_expected_error
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class _Night(NamedTuple):
@@ -115,7 +113,7 @@ def _daily_total_instants(timezones: dict[date_type, str | None]) -> set[datetim
     """Where ``save_activity`` stores each day's totals; a slice on one would upsert the total away."""
     instants: set[datetime] = set()
     for day, zone_name in timezones.items():
-        day_start, _ = local_day_start(day, zone_name, logger, action="intraday_day_start_invalid")
+        day_start, _ = local_day_start(day, zone_name, action="intraday_day_start_invalid")
         instants.add(day_start)
     return instants
 
@@ -149,9 +147,7 @@ class Withings247Data(Base247DataTemplate):
             try:
                 parsed = WithingsMeasureGroup.model_validate(group)
             except ValidationError as e:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Skipping unparseable Withings measure group",
                     provider=self.provider_name,
                     action="measure_group_validation_failed",
@@ -173,7 +169,6 @@ class Withings247Data(Base247DataTemplate):
         zone_offset = zone_offset_at(
             group.timezone or default_timezone,
             ts,
-            logger,
             action="measure_timezone_invalid",
             user_id=str(user_id),
         )
@@ -241,9 +236,7 @@ class Withings247Data(Base247DataTemplate):
             try:
                 activity = WithingsActivity.model_validate(row)
             except ValidationError as e:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Skipping unparseable Withings activity row",
                     provider=self.provider_name,
                     action="activity_row_validation_failed",
@@ -252,7 +245,12 @@ class Withings247Data(Base247DataTemplate):
                 )
                 continue
             if activity.brand == _EXTERNAL_BRAND:
-                logger.debug("Skipping externally sourced Withings activity for %s", activity.date)
+                logger.debug(
+                    "Skipping externally sourced Withings activity",
+                    provider=self.provider_name,
+                    user_id=str(user_id),
+                    date=activity.date.isoformat(),
+                )
                 continue
             activities.append(activity)
         return activities
@@ -268,7 +266,6 @@ class Withings247Data(Base247DataTemplate):
             ts, zone_offset = local_day_start(
                 activity.date,
                 activity.timezone,
-                logger,
                 action="activity_timezone_invalid",
                 user_id=str(user_id),
             )
@@ -375,9 +372,7 @@ class Withings247Data(Base247DataTemplate):
             try:
                 recorded_at = datetime.fromtimestamp(int(epoch), tz=timezone.utc)
             except (TypeError, ValueError):
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Skipping Withings intraday slice keyed by an unreadable epoch",
                     provider=self.provider_name,
                     action="intraday_epoch_invalid",
@@ -388,9 +383,7 @@ class Withings247Data(Base247DataTemplate):
             try:
                 activity_slice = WithingsIntradayActivity.model_validate(row)
             except ValidationError as e:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Skipping unparseable Withings intraday slice",
                     provider=self.provider_name,
                     action="intraday_slice_validation_failed",
@@ -407,7 +400,6 @@ class Withings247Data(Base247DataTemplate):
                 zone_offset_at(
                     zone_name,
                     recorded_at,
-                    logger,
                     action="intraday_timezone_invalid",
                     user_id=str(user_id),
                 )
@@ -451,7 +443,7 @@ class Withings247Data(Base247DataTemplate):
         timezones = self._day_timezones(rows, user_id)
         series: dict[str, Any] = {}
         for day, zone_name in sorted(timezones.items()):
-            day_start, _ = local_day_start(day, zone_name, logger, action="intraday_day_start_invalid")
+            day_start, _ = local_day_start(day, zone_name, action="intraday_day_start_invalid")
             try:
                 series.update(
                     paginate_mapping(
@@ -472,13 +464,12 @@ class Withings247Data(Base247DataTemplate):
             except Exception as e:
                 if not series:
                     raise
-                log_structured(
-                    logger,
-                    "warning",
-                    f"Returning partial Withings intraday activity due to error: {e}",
+                logger.warning(
+                    "Returning partial intraday activity due to error",
                     provider=self.provider_name,
                     action="withings_api_partial_data",
                     user_id=str(user_id),
+                    error=str(e),
                 )
                 break
         samples = self.normalize_intraday_activity(series, user_id, user_connection_id, timezones)
@@ -535,12 +526,12 @@ class Withings247Data(Base247DataTemplate):
                     samples.extend(night_samples)
             except Exception as e:
                 db.rollback()
-                log_and_capture_error(
-                    e,
-                    logger,
+                logger.warning(
                     "Skipping unparseable Withings sleep row",
-                    level="warning",
-                    extra={"provider": "withings", "user_id": str(user_id)},
+                    exc_info=e,
+                    alert=not is_expected_error(e),
+                    provider="withings",
+                    user_id=str(user_id),
                 )
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
@@ -585,11 +576,10 @@ class Withings247Data(Base247DataTemplate):
                 )
             except Exception as e:
                 # HRV is paid-pack and a free plan may refuse the fields; the stages must survive
-                # that. A throttle or lost grant would fail without them too, so only 502 retries.
-                if data_fields and isinstance(e, WithingsAPIError) and e.status_code == 502:
-                    log_structured(
-                        logger,
-                        "warning",
+                # that. A throttle or lost grant would fail without them too, so only a plain
+                # envelope error retries.
+                if data_fields and isinstance(e, WithingsAPIError):
+                    logger.warning(
                         "Withings sleep series failed with the HRV fields; retrying without them",
                         provider="withings",
                         user_id=str(user_id),
@@ -597,12 +587,12 @@ class Withings247Data(Base247DataTemplate):
                     )
                     data_fields = ""
                     continue
-                log_and_capture_error(
-                    e,
-                    logger,
+                logger.warning(
                     "Withings sleep series fetch failed",
-                    level="warning",
-                    extra={"provider": "withings", "user_id": str(user_id)},
+                    exc_info=e,
+                    alert=not is_expected_error(e),
+                    provider="withings",
+                    user_id=str(user_id),
                 )
                 break
 
@@ -650,9 +640,7 @@ class Withings247Data(Base247DataTemplate):
                 break
             cursor = next_night
         else:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Withings sleep series walk ran out of requests; later nights keep no stages or HRV",
                 provider="withings",
                 user_id=str(user_id),
@@ -717,7 +705,6 @@ class Withings247Data(Base247DataTemplate):
         zone_offset = zone_offset_at(
             summary.timezone,
             end_dt,
-            logger,
             action="sleep_timezone_invalid",
             user_id=str(user_id),
             sleep_id=summary.id,
@@ -783,19 +770,13 @@ class Withings247Data(Base247DataTemplate):
             )
         except Exception as e:
             db.rollback()
-            log_and_capture_error(
-                e,
-                logger,
-                "Withings sleep save error",
-                extra={"provider": "withings", "user_id": str(user_id)},
-            )
+            logger.error("Withings sleep save error", exc_info=e, provider="withings", user_id=str(user_id))
             return None
 
         # One offset fits the whole night unless it crosses a DST change.
         start_offset = zone_offset_at(
             summary.timezone,
             start_dt,
-            logger,
             action="sleep_timezone_invalid",
             user_id=str(user_id),
             sleep_id=summary.id,
@@ -819,7 +800,6 @@ class Withings247Data(Base247DataTemplate):
                 else zone_offset_at(
                     summary.timezone,
                     recorded_at,
-                    logger,
                     action="sleep_timezone_invalid",
                     user_id=str(user_id),
                     sleep_id=summary.id,

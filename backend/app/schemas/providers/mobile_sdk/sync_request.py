@@ -134,6 +134,37 @@ class WorkoutSegment(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class WorkoutRoutePoint(BaseModel):
+    """One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored."""
+
+    # NaN / Infinity fail validation, so the point is dropped instead of stored.
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    timestamp: datetime | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    altitudeM: float | None = None
+
+
+class WorkoutSample(BaseModel):
+    """One per-sample measurement recorded during a workout (heart rate, speed, cadence, power)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    timestamp: datetime | None = None
+    type: str | None = None
+    value: float | None = None
+    unit: str | None = None
+
+
+_WORKOUT_ITEM_MODELS: dict[str | None, type[BaseModel]] = {
+    "route": WorkoutRoutePoint,
+    "samples": WorkoutSample,
+    "segments": WorkoutSegment,
+    "laps": WorkoutLap,
+}
+
+
 class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
@@ -147,28 +178,27 @@ class Workout(BaseModel):
     title: str | None = None
     notes: str | None = None
     values: list[WorkoutStatistic] | None = None
-
+    route: list[WorkoutRoutePoint] | None = None
+    samples: list[WorkoutSample] | None = None
     segments: list[WorkoutSegment] | None = None
     laps: list[WorkoutLap] | None = None
 
-    @field_validator("segments", "laps", mode="before")
+    @field_validator("route", "samples", "segments", "laps", mode="before")
     @classmethod
-    def _drop_invalid_items(cls, value: Any, info: ValidationInfo) -> Any:
-        """Skip a malformed lap or segment instead of failing the whole workout."""
-        if not isinstance(value, list):
-            return value
-        model = WorkoutLap if info.field_name == "laps" else WorkoutSegment
-        kept = []
-        for item in value:
+    def _drop_invalid_items(cls, items: Any, info: ValidationInfo) -> Any:
+        """A malformed item is dropped on its own instead of failing the workout."""
+        if not isinstance(items, list):
+            return items
+        model = _WORKOUT_ITEM_MODELS[info.field_name]
+        valid = []
+        for item in items:
             try:
-                kept.append(model.model_validate(item))
+                valid.append(model.model_validate(item))
             except ValidationError:
                 continue
-        return kept
+        return valid
 
     # everything below is unused for now
-    route: list[dict[str, Any]] | None = None
-    samples: list[dict[str, Any]] | None = None
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 

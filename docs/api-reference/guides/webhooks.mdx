@@ -275,7 +275,7 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 | `user_disconnected` | The connection was disconnected via the API. |
 | `sdk_sign_out` | The user signed out of the mobile app; the SDK reported it with its own token. |
 | `refresh_failed` | The OAuth refresh token was rejected by the provider. |
-| `deregistration` | The user deregistered on the provider side (Garmin). |
+| `deregistration` | The user deregistered on the provider side (Garmin) or deauthorized the app (Strava). A Strava request that hits the dead grant before the deauthorization event is processed revokes the connection with `refresh_failed` instead. |
 
 ```json
 {
@@ -373,7 +373,7 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 ```
 
 <Note>
-  `sleep_duration_seconds` is the time actually asleep (excludes awake periods within the session); `duration_seconds` is the total time-in-bed span. Both `source.source` (the third-party writer app, e.g. HealthKit/Health Connect) and `sleep_stage_intervals` are `null`/omitted when the provider or ingestion path did not report them. Likewise, a stage's minutes in `stages` are `null` when the source did not measure that stage, and `stages` itself is `null` when no stage is reported. Unlike every other field in this example, `sleep_stage_intervals` above is **not** shown in full — see the note before the code block.
+  `sleep_duration_seconds` is the time actually asleep (excludes awake periods within the session); `duration_seconds` is the session's span from `start_time` to `end_time`, awake time included. Both `source.source` (the third-party writer app, e.g. HealthKit/Health Connect) and `sleep_stage_intervals` are `null`/omitted when the provider or ingestion path did not report them. Likewise, a stage's minutes in `stages` are `null` when the source did not measure that stage, and `stages` itself is `null` when no stage is reported. Unlike every other field in this example, `sleep_stage_intervals` above is **not** shown in full — see the note before the code block.
 </Note>
 
 ### `meal.created`

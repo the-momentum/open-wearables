@@ -1,10 +1,11 @@
-from datetime import datetime
-from logging import Logger, getLogger
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from app.config import settings
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.data_source_repository import DataSourceRepository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import ProviderName, SdkConnectionOutcome
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
@@ -13,19 +14,19 @@ from app.services.outgoing_webhooks.events import on_connection_created, on_conn
 from app.services.providers.api_client import get_valid_token
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ResourceNotFoundError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class UserConnectionService(
     AppService[UserConnectionRepository, UserConnection, UserConnectionCreate, UserConnectionUpdate],
 ):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=UserConnectionRepository,
             model=UserConnection,
-            log=log,
             **kwargs,
         )
         self.data_source_crud = DataSourceRepository()
@@ -45,12 +46,10 @@ class UserConnectionService(
             ],
         )
 
-    @handle_exceptions
     def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
         """Get all connections for a user."""
         return self.crud.get_by_user_id(db_session, user_id)
 
-    @handle_exceptions
     def get_connection(self, db_session: DbSession, user_id: UUID, provider: str) -> UserConnection | None:
         """Get a user's connection for one provider, or None if there is none."""
         return self.crud.get_by_user_and_provider(db_session, user_id, provider)
@@ -79,10 +78,8 @@ class UserConnectionService(
 
         connected_at = connection.created_at if outcome == SdkConnectionOutcome.CREATED else connection.updated_at
 
-        log_structured(
-            self.logger,
-            "info",
-            f"SDK connection {outcome}",
+        logger.info(
+            "SDK connection state changed",
             action="sdk_connection_state_change",
             outcome=str(outcome),
             provider=provider,
@@ -99,7 +96,6 @@ class UserConnectionService(
         )
         return connection
 
-    @handle_exceptions
     def disconnect(
         self,
         db_session: DbSession,
@@ -121,9 +117,7 @@ class UserConnectionService(
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
             connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
-            log_structured(
-                self.logger,
-                "info",
+            logger.info(
                 "Connection revoked",
                 action="connection_revoked",
                 reason=reason,
@@ -146,7 +140,6 @@ class UserConnectionService(
         if not connection:
             raise ResourceNotFoundError("connection", user_id)
 
-    @handle_exceptions
     def purge_provider_data(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate | None = None
     ) -> int:
@@ -159,20 +152,45 @@ class UserConnectionService(
         """
         self.disconnect(db_session, user_id, provider, oauth=oauth)
         deleted = self.data_source_crud.delete_user_provider_data(db_session, user_id, ProviderName(provider))
-        self.logger.info("Purged %s data sources for user %s from provider %s", deleted, user_id, provider)
+        logger.info("Purged provider data sources", provider=provider, user_id=str(user_id), deleted_count=deleted)
         return deleted
 
-    @handle_exceptions
-    def stamp_last_synced_at(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
+    def stamp_last_synced_at(self, db_session: DbSession, user_id: UUID, provider: str) -> datetime | None:
         """Stamp last_synced_at=now on the user's connection for the given provider.
 
         Used after OAuth completion so the first periodic sync uses the connection
         timestamp as its live-sync cursor and won't attempt to pull all historical data.
-        No-op if the connection does not exist.
+        No-op if the connection does not exist. Returns the value it replaced.
         """
         connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
-        if connection:
-            self.crud.update_last_synced_at(db_session, connection)
+        if not connection:
+            return None
+        previous = connection.last_synced_at
+        self.crud.update_last_synced_at(db_session, connection)
+        return previous
+
+    def reconnect_gap_start(
+        self, db_session: DbSession, user_id: UUID, provider: str, last_synced_at: datetime | None
+    ) -> datetime | None:
+        """Where the gap a reconnect has to backfill starts, or None when the full window is needed.
+
+        Without held data (first connect, purged, or the first backfill never wrote) it is the full window.
+        """
+        if last_synced_at is None or not data_type_coverage_repository.exists_for_provider(
+            db_session, user_id, provider
+        ):
+            return None
+        return last_synced_at
+
+    def historical_start_on_connect(
+        self, db_session: DbSession, user_id: UUID, provider: str, last_synced_at: datetime | None, days: int
+    ) -> datetime:
+        """Start of the on-connect pull: the gap since the last sync on a reconnect, else `days` back."""
+        full_window = datetime.now(timezone.utc) - timedelta(days=days)
+        gap_start = self.reconnect_gap_start(db_session, user_id, provider, last_synced_at)
+        if gap_start is None:
+            return full_window
+        return max(gap_start - (settings.pull_sync_lookback or timedelta()), full_window)
 
     def deregister_from_provider(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate
@@ -188,34 +206,26 @@ class UserConnectionService(
             return
 
         try:
-            access_token = get_valid_token(db_session, user_id, provider, self.crud, oauth)
+            # The disconnect revokes the connection itself; revoking here first would skip its webhook
+            access_token = get_valid_token(db_session, user_id, provider, self.crud, oauth, revoke_on_failure=False)
             oauth.deregister_user(
                 access_token,
                 provider_user_id=connection.provider_user_id,
             )
-            log_structured(
-                self.logger,
-                "info",
+            logger.info(
                 "Deregistered user from provider API",
                 provider=provider,
                 task="deregister_user",
                 user_id=str(user_id),
             )
         except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to deregister user from provider API: {e}",
+            logger.error(
+                "Failed to deregister user from provider API",
+                exc_info=e,
                 provider=provider,
                 task="deregister_user",
                 user_id=str(user_id),
             )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to deregister user {user_id} from {provider} API: {e}",
-                extra={"user_id": str(user_id), "provider": provider},
-            )
 
 
-user_connection_service = UserConnectionService(log=getLogger(__name__))
+user_connection_service = UserConnectionService()

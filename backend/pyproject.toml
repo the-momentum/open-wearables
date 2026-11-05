@@ -1,6 +1,6 @@
 [project]
 name = "open-wearables"
-version = "0.10.0"
+version = "0.11.0"
 description = ""
 requires-python = ">=3.14"
 dependencies = [
@@ -14,7 +14,7 @@ dependencies = [
     "celery>=5.6.3",
     "flower>=2.2.0",
     "redis>=8.1.0",
-    "sentry-sdk[fastapi]>=2.72.0",
+    "sentry-sdk[fastapi]>=2.73.0",
     "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
@@ -36,7 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 # OpenTelemetry log export, used only with OTEL_ENABLED=true. The published image includes it.
 otel = [
-    "fastapi[opentelemetry]>=0.143.1",
+    "fastapi[opentelemetry]>=0.162.0",
     "opentelemetry-sdk>=1.45.0",
     "opentelemetry-exporter-otlp-proto-http>=1.45.1",
     "opentelemetry-instrumentation-logging>=0.66b0",
@@ -78,6 +78,8 @@ select = [
     "N",     # pep8-naming
     "E",     # pycodestyle errors
     "W",     # pycodestyle warnings
+    "G00",   # flake8-logging-format: no formatting in log messages, see AGENTS.md "Logging"
+    "TID251", # banned-api: app code logs through get_logger, see AGENTS.md "Logging"
 ]
 ignore = [
     "ANN002", # missing-type-args
@@ -87,8 +89,15 @@ ignore = [
     "RET503", # implicit-return
     "COM812", # trailing-comma (conflicts with ruff format)
 ]
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# A stdlib logger under app.* never reaches Sentry: the integration ignores those loggers.
+"logging.getLogger".msg = "use app.utils.structured_logging.get_logger"
+
 [tool.ruff.lint.per-file-ignores]
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
+# Logging setup itself, and third-party loggers configured at startup.
+"app/{main,utils/structured_logging,utils/logging_setup,integrations/otel,integrations/celery/core}.py" = ["TID251"]
+"{tests,scripts,migrations}/**" = ["TID251"]
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
 

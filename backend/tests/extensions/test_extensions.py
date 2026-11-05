@@ -292,7 +292,9 @@ class TestDiscovery:
         self, installed: Callable[..., None], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         reported: list[Exception] = []
-        monkeypatch.setattr(extensions, "log_and_capture_error", lambda exc, *args, **kwargs: reported.append(exc))
+        monkeypatch.setattr(
+            extensions.logger, "error", lambda *args, exc_info=None, **kwargs: exc_info and reported.append(exc_info)
+        )
         installed(FakeEntryPoint("broken", _broken))
 
         get_extensions()

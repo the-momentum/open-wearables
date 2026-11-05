@@ -2,14 +2,15 @@ import contextlib
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from logging import getLogger
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
+from redis.exceptions import LockError
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
+from app.constants.devices_map import is_apple_own_source
 from app.constants.series_types.sdk import (
     SleepPhase,
     get_apple_sleep_phase,
@@ -29,6 +30,7 @@ from app.schemas.providers.mobile_sdk import (
     SLEEP_START_STATES,
     SleepState,
     SleepStateStage,
+    SyncRequestData,
 )
 from app.schemas.providers.mobile_sdk import (
     SyncRequest as SDKSyncRequest,
@@ -36,10 +38,14 @@ from app.schemas.providers.mobile_sdk import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.sdk.device_resolution import extract_device_ids, extract_device_info, extract_device_type
+from app.utils.dates import as_utc
 from app.utils.sleep_stages import measured_stages
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
+
+# Seconds before a sleep the lock kept out is tried again, growing with each attempt.
+SLEEP_RETRY_SECONDS = 30
 
 _STAGE_TO_METRIC: dict[str, str] = {
     "awake": "awake_seconds",
@@ -63,7 +69,12 @@ def _extract_sleep_score(values: list[dict[str, Any]] | None) -> float | None:
 
 
 def key(user_id: str) -> str:
-    """Generate a key for the sleep state."""
+    """Generate a key for the user's open sleep sessions, one hash field per source."""
+    return f"sleep:sessions:{user_id}"
+
+
+def legacy_key(user_id: str) -> str:
+    """Single per-user session written before sessions were split by source."""
     return f"sleep:active:{user_id}"
 
 
@@ -72,35 +83,72 @@ def active_users_key() -> str:
     return "sleep:active_users"
 
 
-def load_sleep_state(user_id: str) -> SleepState | None:
-    """Load the sleep state from Redis."""
-    sleep_state_key = key(user_id)
-    state = get_redis_client().get(sleep_state_key)
-    if not state:
-        return None
+def session_field(provider: str | None, source_app_id: str | None) -> str:
+    """Hash field of a writer's session, so third-party apps (Oura via HealthKit) don't join the Watch's.
+
+    Apple's own sources share one session: the iPhone's in-bed sample belongs to the Watch's night.
+    """
+    writer = "apple" if is_apple_own_source(source_app_id) else source_app_id or ""
+    return f"{provider}:{writer}"
+
+
+def _state_field(state: SleepState) -> str:
+    return session_field(state.provider, state.source_app_id)
+
+
+def _parse_sleep_state(user_id: str, state: str | bytes) -> SleepState | None:
     try:
         if isinstance(state, bytes):
             state = state.decode("utf-8")
         return SleepState.model_validate_json(state)
     except Exception as e:
-        logger.error(f"Failed to parse sleep state for user {user_id}: {e}")
+        logger.error("Failed to parse sleep state", exc_info=e, user_id=user_id)
         try:
             raw = json.loads(state)
             return SleepState.model_validate(raw)
         except Exception as fallback_e:
-            logger.error(f"Legacy state migration failed for user {user_id}: {fallback_e}; session will be dropped")
+            logger.error("Legacy state migration failed; session will be dropped", exc_info=fallback_e, user_id=user_id)
             return None
 
 
+def load_sleep_states(user_id: str) -> dict[str, SleepState]:
+    """Load the user's open sleep sessions from Redis, keyed by source field."""
+    redis_client = get_redis_client()
+    legacy = redis_client.get(legacy_key(user_id))
+    if legacy and (legacy_state := _parse_sleep_state(user_id, legacy)):
+        redis_client.hsetnx(key(user_id), _state_field(legacy_state), legacy_state.model_dump_json())
+        redis_client.expire(key(user_id), settings.redis_sleep_ttl_seconds)
+    if legacy:
+        redis_client.delete(legacy_key(user_id))
+
+    states: dict[str, SleepState] = {}
+    for field, raw in cast(dict[str, str], redis_client.hgetall(key(user_id))).items():
+        if state := _parse_sleep_state(user_id, raw):
+            states[field] = state
+    return states
+
+
 def save_sleep_state(user_id: str, state: SleepState) -> None:
-    get_redis_client().set(key(user_id), state.model_dump_json())
+    get_redis_client().hset(key(user_id), _state_field(state), state.model_dump_json())
     get_redis_client().expire(key(user_id), settings.redis_sleep_ttl_seconds)
     get_redis_client().sadd(active_users_key(), user_id)
 
 
-def delete_sleep_state(user_id: str) -> None:
-    get_redis_client().delete(key(user_id))
-    get_redis_client().srem(active_users_key(), user_id)
+def delete_sleep_state(user_id: str, state: SleepState) -> None:
+    get_redis_client().hdel(key(user_id), _state_field(state))
+    if not get_redis_client().exists(key(user_id)):
+        get_redis_client().srem(active_users_key(), user_id)
+
+
+def is_ready_to_finish(state: SleepState, now: datetime) -> bool:
+    """True after the end gap, or for a session with Apple Watch sleep once its writer's uploads go quiet."""
+    if now - as_utc(state.end_time) >= timedelta(minutes=settings.sleep_end_gap_minutes):
+        return True
+    return (
+        state.has_apple_watch_sleep
+        and state.last_received_at is not None
+        and now - as_utc(state.last_received_at) >= timedelta(minutes=settings.sleep_upload_quiet_minutes)
+    )
 
 
 def _create_new_sleep_state(
@@ -194,6 +242,8 @@ def _apply_transition(
         state.zone_offset = zone_offset
     if device_type and not state.device_type and (source_name or "unknown") == state.source_name:
         state.device_type = device_type
+    if device_type == DeviceType.WATCH and is_apple_own_source(source_app_id):
+        state.has_apple_watch_sleep = True
 
     duration_seconds = (end_time - start_time).total_seconds()
 
@@ -255,11 +305,11 @@ def handle_sleep_data(
     (e.g. from a bulk historical upload) accumulate stages into the same session instead
     of overwriting each other's state.
 
-    Stale detection uses ``end_time`` (the last sleep-sample timestamp).  When a bulk
-    historical upload finalizes a session whose ``end_time`` is in the past, the new
-    session is merged with any adjacent record already in the database, so consecutive
-    payloads within the same night are combined into a single session rather than being
-    stored as separate fragments.
+    Stale detection uses ``end_time`` (the last sleep-sample timestamp), and for a session
+    with Apple Watch sleep also ``last_received_at``.  When a bulk historical upload
+    finalizes a session whose ``end_time`` is in the past, the new session is merged with
+    any adjacent record already in the database, so consecutive payloads within the same
+    night are combined into a single session rather than being stored as separate fragments.
 
     Args:
         db_session: Database session for persisting finalized sleep records
@@ -269,6 +319,7 @@ def handle_sleep_data(
     Flow:
         - Acquire a per-user Redis lock to prevent concurrent state corruption
         - Deduplicate incoming data based on start/end/stage/source
+        - Sessions are kept per provider and writer app, so overlapping writers never share one
         - If no active session exists: Create new session in Redis (only for valid start states)
         - If active session exists: Check gap between new sample and the session window
           * Gap > 2 hours: Finalize existing session, start new one
@@ -281,10 +332,9 @@ def handle_sleep_data(
     try:
         acquired = lock.acquire()
         if not acquired:
-            logger.warning("Could not acquire sleep processing lock for user %s; skipping batch", user_id)
-            return
+            raise LockError(f"Could not acquire sleep processing lock for user {user_id}")
 
-        current_state = load_sleep_state(user_id)
+        states = load_sleep_states(user_id)
         provider = request.provider
 
         # Deduplicate and sort
@@ -304,10 +354,11 @@ def handle_sleep_data(
                 seen.add(key_tuple)
                 unique_data.append(item)
 
+        received_fields: set[str] = set()
         for sjson in unique_data:
             # Extract device info
-            device_model, software_version, original_source_name = extract_device_info(sjson.source)
-            device_type = extract_device_type(sjson.source)
+            device_model, software_version, original_source_name = extract_device_info(sjson.source, provider)
+            device_type = extract_device_type(sjson.source, provider)
             device_id, source_app_id, device_manufacturer = extract_device_ids(sjson.source)
 
             sleep_phase = get_apple_sleep_phase(sjson.stage)
@@ -315,6 +366,8 @@ def handle_sleep_data(
             if sleep_phase is None:
                 continue
 
+            field = session_field(provider, source_app_id)
+            current_state = states.get(field)
             if not current_state:
                 if sleep_phase not in SLEEP_START_STATES:
                     continue
@@ -351,13 +404,18 @@ def handle_sleep_data(
                 device_manufacturer,
             )
 
+            states[field] = current_state
+            received_fields.add(field)
+
             sleep_score = _extract_sleep_score(sjson.values)
-            # The state is per user, so it may belong to another provider's open session
-            if sleep_score is not None and current_state.provider == provider:
+            if sleep_score is not None:
                 current_state.sleep_score = sleep_score
 
         # Persist the accumulated state to Redis only once after processing the entire batch
-        if current_state:
+        now = datetime.now(timezone.utc)
+        for field, current_state in states.items():
+            if field in received_fields:
+                current_state.last_received_at = now
             save_sleep_state(user_id, current_state)
 
         # Finalise synchronously if the session is already stale.  Historical
@@ -365,11 +423,8 @@ def handle_sleep_data(
         # finish_sleep now merges the result with any adjacent record already in
         # the DB — so each payload extends the growing record rather than
         # creating a separate session.
-        if current_state:
-            session_end = current_state.end_time
-            if session_end.tzinfo is None:
-                session_end = session_end.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - session_end >= timedelta(minutes=settings.sleep_end_gap_minutes):
+        for current_state in states.values():
+            if is_ready_to_finish(current_state, now):
                 finish_sleep(db_session, user_id, current_state)
 
     finally:
@@ -379,6 +434,26 @@ def handle_sleep_data(
     # Dispatch the stale-sleep task so sessions that have gone quiet (including
     # other users' sessions) are finalised promptly without waiting for the next beat.
     celery_app.send_task(CeleryTask.FINALIZE_STALE_SLEEPS)
+
+
+def save_sleep(db_session: DbSession, request: SDKSyncRequest, user_id: str) -> bool:
+    """Save the request's sleep now, or, while another batch of the user holds the sleep lock, in a task that
+    retries it; True when saved now. The lock is per user, so waiting for it is what a busy export needs."""
+    try:
+        handle_sleep_data(db_session, request, user_id)
+        return True
+    except LockError:
+        sleep_only = request.model_copy(update={"data": SyncRequestData(sleep=request.data.sleep)})
+        celery_app.send_task(
+            CeleryTask.SAVE_SDK_SLEEP, args=[sleep_only.model_dump_json(), user_id], countdown=SLEEP_RETRY_SECONDS
+        )
+        logger.warning(
+            "Sleep lock busy; sleep saved by a retrying task",
+            provider=request.provider,
+            user_id=user_id,
+            sleep_count=len(request.data.sleep),
+        )
+        return False
 
 
 def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[SleepStage]]:
@@ -515,6 +590,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         settings.sleep_end_gap_minutes,
         source=source_for_lookup,
         provider=state.provider,
+        source_app_id=state.source_app_id,
     )
 
     if adjacent is not None:
@@ -592,12 +668,10 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         _save_provider_sleep_score(db_session, user_id, state, created_or_existing_record, start_time)
         # Delete from Redis only after a successful DB write so a transient error
         # keeps the session available for the next periodic finalization attempt.
-        delete_sleep_state(user_id)
+        delete_sleep_state(user_id, state)
     except Exception as e:
-        log_structured(
-            logger,
-            "error",
-            f"Error saving sleep record {sleep_record.id} for user {user_id}: {e}",
+        logger.error(
+            "Error saving sleep record",
             provider=state.provider or "unknown",
             action="sleep_record_save_error",
             user_id=user_id,

@@ -20,11 +20,15 @@ from app.utils.config_utils import (
     FernetDecryptorField,
     LogFormat,
     LogLevel,
+    derive_secret,
     parse_duration,
 )
 
 # Public in .env.example and the docs, so an account still using it is open to anyone.
 DEFAULT_ADMIN_PASSWORD = "your-secure-password"
+
+# SECRET_KEY signs every JWT (HS256); the old .env.example default is shorter, so it fails too
+MIN_SECRET_KEY_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -32,6 +36,8 @@ class Settings(BaseSettings):
         env_file=str(Path(__file__).parent.parent / "config" / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        # A rejected SECRET_KEY must not end up in the container logs
+        hide_input_in_errors=True,
         # default env_file solution search .env every time BaseSettings is instantiated
         # dotenv search .env when module is imported, without usecwd it starts from the file it was called
     )
@@ -57,10 +63,10 @@ class Settings(BaseSettings):
     log_error_response_body_max_per_minute: int = 60  # cap logged bodies/min
 
     # LOGGING SETTINGS
-    # legacy: JSON from log_structured, plain text from stdlib loggers (the output before
+    # legacy: JSON from the app logger, plain text from other loggers (the output before
     # LOG_FORMAT existed). json: every line JSON. text: every line human-readable.
     log_format: LogFormat = LogFormat.LEGACY
-    # None keeps the per-logger defaults (stdlib INFO, log_structured unfiltered).
+    # None keeps the per-logger defaults (INFO for the app and the root logger).
     log_level: LogLevel | None = None
     # Export logs over OTLP/HTTP as well (needs the `otel` extra). Endpoint, headers and
     # resource come from the standard OTEL_* variables; OTEL_SDK_DISABLED=true also turns it off.
@@ -88,7 +94,8 @@ class Settings(BaseSettings):
     GIT_SHA: str | None = None
 
     # AUTH SETTINGS
-    secret_key: str
+    # Empty by default so a missing key gets the length check's message instead of "Field required"
+    secret_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     token_lifetime: int = 3600
@@ -113,10 +120,15 @@ class Settings(BaseSettings):
 
     # Time between sleep phases to conclude end of sleep session
     sleep_end_gap_minutes: int = 120  # 2 hours
+    # Time without uploads to conclude end of Apple Watch sleep session
+    sleep_upload_quiet_minutes: int = 15
+
+    # Share of a sleep or workout a better-ranked source's sessions must cover for per-session selection to drop it
+    session_duplicate_overlap: float = Field(default=0.5, gt=0, le=1)
 
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
-    sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+    sleep_sync_interval_seconds: int = 300  # Default: 5 minutes (300 seconds)
     # Re-fetch a trailing window on each *live* pull sync so late provider revisions
     # (e.g. Oura finalising a day's step count after we already moved past it) are
     # picked up. Disabled by default. Set via a compact duration string: "2d", "20h",
@@ -135,7 +147,8 @@ class Settings(BaseSettings):
     linked_sync_pull_lease_seconds: int = Field(120, ge=30, le=3600)
 
     # Whether to ingest per-second workout samples (speed, cadence, power, GPS, etc.) into
-    # series_sample on workout webhook arrival. Significantly increases DB storage.
+    # series_sample on workout webhook arrival, and the route/samples of mobile SDK workouts.
+    # Significantly increases DB storage.
     # Per-provider granularity will be added via ProviderSetting in a future release.
     ingest_workout_samples: bool = False
 
@@ -232,6 +245,9 @@ class Settings(BaseSettings):
     strava_webhook_signature_tolerance_seconds: int = Field(300, ge=0)
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
+    # Delayed stream re-fetch when the webhook beats stream processing; delay triples per attempt.
+    strava_stream_retry_max_attempts: int = Field(3, ge=0)
+    strava_stream_retry_base_delay_seconds: int = Field(300, gt=0)
 
     # ULTRAHUMAN OAUTH SETTINGS
     ultrahuman_client_id: str | None = None
@@ -319,6 +335,21 @@ class Settings(BaseSettings):
     # /settings/archival endpoints and the daily archival task.
     data_lifecycle_enabled: bool = True
 
+    # RECONCILE (merged days, stored by the 15-minute rollup)
+    # Whether the rollup also stores a user's sources' movement series merged per day (source_selection=reconcile).
+    # Off, reconcile reads merge every day on the fly, up to reconcile_on_the_fly_max_days a page.
+    reconcile_enabled: bool = False
+    # How far back from today the rollup stores merged days; older days are merged when a read asks for them.
+    reconcile_stored_days: int = Field(default=30, ge=0)
+    # The most days one page of a reconcile read merges on the fly; pages are shortened to it, and only a period
+    # needing more on its own is refused (400). 31 fits a month.
+    reconcile_on_the_fly_max_days: int = Field(default=31, ge=1, le=90)
+    # Seconds a rollup run spends merging, after and on top of its own budget; kept under the task's soft limit.
+    reconcile_seconds_per_run: int = Field(default=30, ge=0, le=50)
+    # Seconds past each edge of a better-ranked device's sample that still count as covered by it, so two apps
+    # reading one sensor in windows a few seconds apart merge as one stream instead of leaking duplicate steps.
+    reconcile_edge_tolerance_seconds: int = Field(default=60, ge=0, le=300)
+
     # RAW PAYLOAD STORAGE
     raw_payload_storage: str = "disabled"  # disabled | log | s3
     raw_payload_max_size_bytes: int = 10 * 1024 * 1024  # 10 MB
@@ -395,8 +426,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def derive_strava_webhook_verify_token(self) -> "Settings":
+        # Strava receives this token, so it must not be SECRET_KEY itself
         if self.strava_webhook_verify_token is None or self.strava_webhook_verify_token.get_secret_value() == "":
-            self.strava_webhook_verify_token = SecretStr(self.secret_key)
+            self.strava_webhook_verify_token = SecretStr(derive_secret(self.secret_key, "strava-webhook-verify-token"))
         return self
 
     @model_validator(mode="after")
@@ -413,6 +445,16 @@ class Settings(BaseSettings):
         if self.google_webhook_secret is None or self.google_webhook_secret.get_secret_value() == "":
             self.google_webhook_secret = SecretStr(self.secret_key)
         return self
+
+    @field_validator("secret_key", mode="after")
+    @classmethod
+    def reject_short_secret_key(cls, v: str) -> str:
+        if len(v) < MIN_SECRET_KEY_LENGTH:
+            problem = "is not set" if not v else f"must be at least {MIN_SECRET_KEY_LENGTH} characters"
+            raise ValueError(
+                f"SECRET_KEY {problem}. Run `make init` to generate one, or set it with `openssl rand -hex 32`."
+            )
+        return v
 
     @field_validator("cors_origins", mode="after")
     @classmethod

@@ -1,10 +1,8 @@
 """API endpoints for data lifecycle / archival settings.
 
-Admin-only endpoints to switch the nightly rollup of samples into daily and per-session
-aggregates, and to set when old samples are permanently deleted.
+Admin-only endpoints to switch the rollup of samples into daily and per-session aggregates, start the
+history's rollup, and set when old samples are permanently deleted.
 """
-
-from logging import getLogger
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -14,8 +12,6 @@ from app.integrations.celery.tasks.archival_task import run_daily_archival
 from app.schemas.utils import ArchivalSettingUpdate, ArchivalSettingWithEstimate
 from app.services import DeveloperDep
 from app.services.archival_service import archival_service
-
-logger = getLogger(__name__)
 
 
 def _require_data_lifecycle_enabled(_developer: DeveloperDep) -> None:
@@ -45,9 +41,10 @@ def get_archival_settings(
     "/settings/archival",
     summary="Update data lifecycle settings",
     description=(
-        "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) "
-        "and delete_after_days (when old samples are permanently removed, rolled up first). "
-        "Set delete_after_days to null to keep samples indefinitely."
+        "Configure rollup_enabled (rollup of changed days into daily and per-session aggregates every 15 minutes), "
+        "history_rollup_enabled (the same for the days before, once, in the background: hours on a large instance; "
+        "needs rollup_enabled) and delete_after_days (when old samples are permanently removed, rolled up first). "
+        "Set delete_after_days to null to keep samples indefinitely. A field left out keeps its saved value."
     ),
 )
 def update_archival_settings(
