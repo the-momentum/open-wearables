@@ -9,6 +9,8 @@ on:
       - "backend/**"
       - "frontend/**"
       - "docs/openapi.json"
+      # make init; its tests run with the backend tests
+      - "scripts/**"
   pull_request:
     paths: *paths
 
@@ -31,6 +33,7 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              - 'scripts/**'
             frontend:
               - 'frontend/**'
             mcp:
@@ -104,7 +107,7 @@ jobs:
       - name: Check docs/openapi.json is up to date
         working-directory: backend
         env:
-          SECRET_KEY: ci-only-secret-key
+          SECRET_KEY: placeholder-not-a-real-secret-key-for-tooling
         run: uv run python scripts/export_openapi.py --check
 
   backend-test:
@@ -133,7 +136,7 @@ jobs:
       ENV: test
       TEST_DATABASE_URL: postgresql+psycopg://open-wearables:open-wearables@localhost:5432/open_wearables_test
       TEST_REDIS_URL: redis://localhost:6379/0
-      SECRET_KEY: test-secret-key-for-ci
+      SECRET_KEY: test-secret-key-for-ci-at-least-32-chars
       MASTER_KEY: dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk=
     steps:
       - uses: actions/checkout@v4

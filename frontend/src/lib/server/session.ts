@@ -1,5 +1,6 @@
 import type { Cookies } from '@sveltejs/kit';
 import {
+	ApiError,
 	refreshTokens,
 	revokeToken,
 	type Developer,
@@ -69,7 +70,7 @@ function store(cookies: Cookies, session: Session): void {
 	});
 }
 
-const clear = (cookies: Cookies) => cookies.delete(SESSION_COOKIE, { path: '/' });
+export const clearSession = (cookies: Cookies) => cookies.delete(SESSION_COOKIE, { path: '/' });
 
 export function createSession(cookies: Cookies, tokens: TokenResponse, developer: Developer): void {
 	store(cookies, sessionFromTokens(tokens, developer));
@@ -111,8 +112,19 @@ export function rotate(refreshToken: string): Promise<TokenResponse> {
  * should treat the user as signed out.
  */
 export async function validAccessToken(cookies: Cookies, session: Session): Promise<string | null> {
-	if (!needsRefresh(session)) return session.accessToken;
-	if (!session.refreshToken) return null;
+	return needsRefresh(session) ? renewSession(cookies, session) : session.accessToken;
+}
+
+/**
+ * Refreshes whether or not it is due: the API can refuse a token that has not
+ * expired, after a secret rotates or on another stack's database. Null, with
+ * the session cleared, once the API refuses the refresh; an outage is rethrown.
+ */
+export async function renewSession(cookies: Cookies, session: Session): Promise<string | null> {
+	if (!session.refreshToken) {
+		clearSession(cookies);
+		return null;
+	}
 
 	try {
 		const renewed = sessionFromTokens(await rotate(session.refreshToken), session.developer);
@@ -120,14 +132,15 @@ export async function validAccessToken(cookies: Cookies, session: Session): Prom
 		if (session.passwordChange) renewed.passwordChange = session.passwordChange;
 		store(cookies, renewed);
 		return renewed.accessToken;
-	} catch {
-		clear(cookies);
+	} catch (error) {
+		if (!(error instanceof ApiError && error.status < 500)) throw error;
+		clearSession(cookies);
 		return null;
 	}
 }
 
 export async function destroySession(cookies: Cookies): Promise<void> {
 	const existing = readSession(cookies);
-	clear(cookies);
+	clearSession(cookies);
 	if (existing?.refreshToken) await revokeToken(existing.refreshToken);
 }

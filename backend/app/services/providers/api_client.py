@@ -160,8 +160,10 @@ def _note_auth_success(db: DbSession, user_id: UUID, provider_name: str) -> None
         seen.add((user_id, provider_name))
 
 
-def _note_auth_failure(db: DbSession, user_id: UUID, provider_name: str, oauth: BaseOAuthTemplate) -> None:
-    """Revoke the grant and raise ReauthRequiredError once it has failed without a success for DEAD_GRANT_AFTER."""
+def _note_auth_failure(
+    db: DbSession, user_id: UUID, provider_name: str, oauth: BaseOAuthTemplate, *, revoke_on_failure: bool = True
+) -> None:
+    """Raise ReauthRequiredError once the grant has failed for DEAD_GRANT_AFTER, revoking it unless the caller does."""
     db.info.setdefault(_AUTH_OK_KEY, set()).discard((user_id, provider_name))
     redis_client = get_redis_client()
     key = _failing_since_key(provider_name, user_id)
@@ -170,7 +172,8 @@ def _note_auth_failure(db: DbSession, user_id: UUID, provider_name: str, oauth: 
     if now - float(redis_client.get(key) or now) < DEAD_GRANT_AFTER.total_seconds():
         return
     redis_client.delete(key)
-    oauth.revoke_connection(db, user_id, reason="auth_failing")
+    if revoke_on_failure:
+        oauth.revoke_connection(db, user_id, reason="auth_failing")
     raise ReauthRequiredError(
         provider_name, user_id, f"{provider_name} rejected every request for a day; reconnection required"
     )
@@ -190,12 +193,15 @@ def _reload_token_after_401(
     connection_repo: UserConnectionRepository,
     oauth: BaseOAuthTemplate,
     rejected_token: str,
+    *,
+    revoke_on_failure: bool = True,
 ) -> str | None:
     """A token to retry with after the provider rejected one, or None when there is none.
 
     Another worker may have refreshed the connection since, which voids the old token at some
     providers. Otherwise the token is refreshed early: a grant the user revoked at the provider
-    rejects its refresh token as well, which revokes the connection and raises ReauthRequiredError.
+    rejects its refresh token as well, which raises ReauthRequiredError and, unless
+    ``revoke_on_failure`` is False, revokes the connection.
     """
     invalidate_cached_token(db, user_id, provider_name)
     cache_key = (user_id, provider_name)
@@ -209,7 +215,9 @@ def _reload_token_after_401(
         # Without a refresh token the grant can't be told apart from an endpoint the user didn't consent to
         if not connection.refresh_token:
             return None
-        token_response = oauth.refresh_access_token(db, user_id, connection.refresh_token)
+        token_response = oauth.refresh_access_token(
+            db, user_id, connection.refresh_token, revoke_on_failure=revoke_on_failure
+        )
         return _cache_token(db, cache_key, token_response.access_token, connection.token_expires_at)
 
 
@@ -229,6 +237,7 @@ def make_authenticated_request(
     expect_json: bool = True,
     http2: bool = False,
     check_body_errors: bool = True,
+    revoke_on_failure: bool = True,
 ) -> Any:
     """Make authenticated request to provider API.
 
@@ -256,6 +265,9 @@ def make_authenticated_request(
         check_body_errors: Raise when a 200 body carries an ``error`` or a non-200 ``code``
             (default True). Set to False for providers whose envelope carries its own
             status, e.g. Withings, so the caller can tell a throttle from a failure.
+        revoke_on_failure: Revoke the connection when the grant turns out to be dead (default
+            True). Set to False when the caller revokes it itself with a more specific reason;
+            ReauthRequiredError is raised either way.
 
     Returns:
         Any: API response JSON, or dict with status_code if expect_json=False
@@ -269,7 +281,9 @@ def make_authenticated_request(
         raise ValueError("form_data and json_data are mutually exclusive")
 
     # Get valid token (will auto-refresh if needed)
-    access_token = get_valid_token(db, user_id, provider_name, connection_repo, oauth)
+    access_token = get_valid_token(
+        db, user_id, provider_name, connection_repo, oauth, revoke_on_failure=revoke_on_failure
+    )
 
     # Prepare headers
     request_headers = {
@@ -374,13 +388,19 @@ def make_authenticated_request(
             if e.response.status_code == 401 and not token_reloaded and attempt < MAX_RETRIES:
                 token_reloaded = True
                 if new_token := _reload_token_after_401(
-                    db, user_id, provider_name, connection_repo, oauth, access_token
+                    db,
+                    user_id,
+                    provider_name,
+                    connection_repo,
+                    oauth,
+                    access_token,
+                    revoke_on_failure=revoke_on_failure,
                 ):
                     access_token = new_token
                     request_headers["Authorization"] = f"Bearer {access_token}"
                     continue
             if e.response.status_code in (401, 403):
-                _note_auth_failure(db, user_id, provider_name, oauth)
+                _note_auth_failure(db, user_id, provider_name, oauth, revoke_on_failure=revoke_on_failure)
 
             logger.error(
                 "API error",

@@ -579,3 +579,88 @@ class TestHealthScoreRepositoryBulkCreateKeepingHighest:
         written = repo.bulk_create_keeping_highest(db, [])
 
         assert (written.inserted, written.updated) == (0, 0)
+
+
+class TestProviderSleepScoreOfAReSentNight:
+    """A provider sleep score sits at its night's end, which a re-sent night moves: one score per night stays."""
+
+    START = datetime(2026, 3, 1, 22, tzinfo=timezone.utc)
+
+    def _night(self, end_hour: int) -> tuple[Any, Any]:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.WHOOP.value, source="whoop")
+        record = EventRecordFactory(
+            data_source=source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self.START,
+            end_datetime=self.START + timedelta(hours=end_hour),
+        )
+        return user, record
+
+    def _score(self, user: Any, at: datetime, value: int) -> HealthScoreCreate:
+        return HealthScoreCreate(
+            id=uuid4(),
+            user_id=user.id,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.SLEEP,
+            value=value,
+            recorded_at=at,
+        )
+
+    def _write(self, db: Session, user: Any, at: datetime, value: int) -> None:
+        HealthScoreRepository(HealthScore).bulk_create(db, [self._score(user, at, value)])
+
+    def _scores(self, db: Session, user: Any) -> list[tuple[datetime, int]]:
+        rows = db.query(HealthScore).filter(HealthScore.user_id == user.id).order_by(HealthScore.recorded_at)
+        return [(row.recorded_at, int(row.value)) for row in rows]
+
+    def test_an_extended_night_replaces_its_earlier_score(self, db: Session) -> None:
+        user, record = self._night(8)
+        self._write(db, user, self.START + timedelta(hours=8), 80)
+        record.end_datetime = self.START + timedelta(hours=9)
+        db.flush()
+
+        self._write(db, user, self.START + timedelta(hours=9), 85)
+
+        assert self._scores(db, user) == [(self.START + timedelta(hours=9), 85)]
+
+    def test_a_night_re_sent_with_the_same_end_refreshes_its_score(self, db: Session) -> None:
+        user, _ = self._night(8)
+        self._write(db, user, self.START + timedelta(hours=8), 80)
+
+        self._write(db, user, self.START + timedelta(hours=8), 82)
+
+        assert self._scores(db, user) == [(self.START + timedelta(hours=8), 82)]
+
+    def test_a_score_left_at_the_nights_start_gives_way(self, db: Session) -> None:
+        user, _ = self._night(8)
+        self._write(db, user, self.START, 70)
+
+        self._write(db, user, self.START + timedelta(hours=8), 80)
+
+        assert self._scores(db, user) == [(self.START + timedelta(hours=8), 80)]
+
+    def test_an_earlier_version_in_the_same_batch_gives_way(self, db: Session) -> None:
+        user, _ = self._night(9)
+
+        HealthScoreRepository(HealthScore).bulk_create(
+            db,
+            [
+                self._score(user, self.START + timedelta(hours=8), 80),
+                self._score(user, self.START + timedelta(hours=9), 85),
+            ],
+        )
+
+        assert self._scores(db, user) == [(self.START + timedelta(hours=9), 85)]
+
+    def test_other_nights_and_internal_scores_stay(self, db: Session) -> None:
+        user, _ = self._night(8)
+        HealthScoreFactory(
+            user_id=user.id, provider=ProviderName.INTERNAL, category=HealthScoreCategory.SLEEP, recorded_at=self.START
+        )
+        self._write(db, user, self.START - timedelta(days=1), 60)
+
+        self._write(db, user, self.START + timedelta(hours=8), 80)
+
+        assert len(self._scores(db, user)) == 3

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
-from app.config import settings
+from app.config import Settings, settings
 from app.database import BaseDbModel, _get_db_dependency
 from app.integrations.redis_client import get_redis_client
 from app.main import api
@@ -35,6 +35,10 @@ from tests import factories
 
 # An unserializable or clashing log attribute fails the test instead of being printed with str().
 strict_attributes(True)
+
+# OW_IGNORE_ENV_FILE (tests/__init__.py) covers the global settings only. Tests that build
+# their own Settings(...) must not read a developer's config/.env either.
+Settings.model_config["env_file"] = None
 
 
 @pytest.fixture(scope="session")

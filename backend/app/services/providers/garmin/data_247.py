@@ -247,11 +247,12 @@ class Garmin247Data(Base247DataTemplate):
         if sleep_score is None and sleep_qualifier is None:
             return None
 
-        start_time_str = normalized_sleep.get("start_time")
-        if not start_time_str:
+        # The wake-up, so the score belongs to the day the user wakes up
+        end_time_str = normalized_sleep.get("end_time")
+        if not end_time_str:
             return None
         try:
-            recorded_at = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+            recorded_at = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             return None
 
@@ -263,6 +264,7 @@ class Garmin247Data(Base247DataTemplate):
             value=sleep_score,
             qualifier=sleep_qualifier,
             recorded_at=recorded_at,
+            zone_offset=normalized_sleep.get("zone_offset"),
             components=sleep_score_components,
         )
 
@@ -959,6 +961,38 @@ class Garmin247Data(Base247DataTemplate):
                     zone_offset=zone_offset,
                     value=Decimal(str(muscle_mass_grams)) / 1000,  # Convert to kg
                     series_type=SeriesType.skeletal_muscle_mass,
+                    external_id=summary_id,
+                )
+            )
+
+        # Bone mass (convert grams to kg)
+        bone_mass_grams = raw_body_comp.get("boneMassInGrams")
+        if bone_mass_grams:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    zone_offset=zone_offset,
+                    value=Decimal(str(bone_mass_grams)) / 1000,  # Convert to kg
+                    series_type=SeriesType.bone_mass,
+                    external_id=summary_id,
+                )
+            )
+
+        # Body water percentage
+        body_water = raw_body_comp.get("bodyWaterInPercent")
+        if body_water:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    zone_offset=zone_offset,
+                    value=Decimal(str(body_water)),
+                    series_type=SeriesType.body_water_percentage,
                     external_id=summary_id,
                 )
             )

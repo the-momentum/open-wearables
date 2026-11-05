@@ -157,13 +157,15 @@ The defaults in `.env.example` are development values. Override at least these f
 |----------|--------|
 | `ENVIRONMENT` | `production` (required on any server reachable from the internet: other values accept the default admin password) |
 | `DB_PASSWORD` | a strong database password |
-| `SECRET_KEY` | a long random secret, used to sign tokens |
+| `SECRET_KEY` | a random secret of at least 32 characters, used to sign tokens, e.g. `openssl rand -hex 32` (the backend does not start without it) |
 | `ADMIN_PASSWORD` | password for the admin account seeded on first start (required: with `ENVIRONMENT=production` the seed and the login refuse the default; if the account whose email matches `ADMIN_EMAIL` still has the default, its password is changed to this value at startup) |
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |
 | `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
 | `VITE_API_URL` | URL of the API as reached from the browser |
 | `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
+
+Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again and update the secret in the Suunto portal.
 
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 

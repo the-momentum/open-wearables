@@ -1,5 +1,5 @@
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import sentry_sdk
 from sentry_sdk.integrations.celery import CeleryIntegration
@@ -11,6 +11,7 @@ from app.config import settings
 from app.utils.exceptions import ProviderError, is_provider_state_error
 from app.utils.logging_setup import APP_LOGGER
 from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import CALLBACK_TOKEN_PARAM, redact_callback_url
 
 if TYPE_CHECKING:
     from sentry_sdk._types import Event, Hint
@@ -33,9 +34,21 @@ PII_DENYLIST = [
     "phone",
     "phone_number",
     "address",
+]
+
+# Credentials masked in both modes, on top of the SDK defaults. The SDK only strips
+# standard headers (authorization, cookie, x-api-key) and matches key names exactly,
+# so our own API key header needs listing.
+CREDENTIAL_DENYLIST = [
+    "x-open-wearables-api-key",
     "client_secret",
     "code_verifier",
     "id_token",
+    "access_token",
+    "refresh_token",
+    # Raw query string of outgoing httpx requests in breadcrumbs
+    # and spans (the path stays in "url")
+    "http.query",
 ]
 
 # Pydantic renders the offending raw value into the error string, e.g.
@@ -50,17 +63,28 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _SQL_PARAMETERS = re.compile(r"\[parameters: .*$", re.MULTILINE)
 _PG_DETAIL = re.compile(r"DETAIL:.*$", re.MULTILINE)
 _QUERY_VALUE = re.compile(r"=[^&]*")
+# Path params rendered into a repr in frame locals, e.g. path_params={'callback_token': '...'}.
+_CALLBACK_TOKEN_REPR = re.compile(rf"""(['"]{CALLBACK_TOKEN_PARAM}['"]\s*:\s*['"])[^'"]*""")
 
 _scrubber = EventScrubber(
-    denylist=DEFAULT_DENYLIST + PII_DENYLIST,
+    denylist=DEFAULT_DENYLIST + CREDENTIAL_DENYLIST + [CALLBACK_TOKEN_PARAM] + PII_DENYLIST,
     pii_denylist=DEFAULT_PII_DENYLIST,
     recursive=True,
 )
 # With SENTRY_SEND_SENSITIVE_DATA, credentials (tokens, secrets, cookies) are still masked.
 # "headers" covers raw ASGI scopes in frame locals (a Starlette Request is a mapping over its
 # scope), whose byte-string headers carry Authorization / API keys. Request headers themselves
-# are scrubbed per header by the SDK, so they stay visible.
-_credentials_scrubber = EventScrubber(denylist=[*DEFAULT_DENYLIST, "headers"], recursive=True)
+# are scrubbed per header (SDK defaults plus CREDENTIAL_DENYLIST), so the rest stay visible.
+# Credentials that arrive in requests: OAuth callback and invitation codes, webhook verification
+# tokens (Oura, Strava; Withings sends "token", in the SDK defaults), the webhook callback path
+# token. Also local names in frames.
+_INCOMING_CREDENTIALS = ["code", "verification_token", "hub.verify_token", CALLBACK_TOKEN_PARAM]
+# "query_string" covers the same scopes, whose raw query can carry those.
+_credentials_scrubber = EventScrubber(
+    denylist=[*DEFAULT_DENYLIST, *CREDENTIAL_DENYLIST, *_INCOMING_CREDENTIALS, "headers", "query_string"],
+    recursive=True,
+)
+_QUERY_CREDENTIALS = frozenset(key.lower() for key in _credentials_scrubber.denylist)
 
 
 def _scrub_text(value: Any) -> Any:
@@ -111,12 +135,38 @@ def _route_upstream_error(event: "Event", hint: "Hint") -> "Event | None":
     return event
 
 
+def _mask_query_credentials(query_string: str) -> str:
+    # The SDK hands over the query already decoded, so an encoded "&" in a credential splits it:
+    # a query holding one is masked whole.
+    keys = (part.partition("=")[0].lower() for part in query_string.split("&"))
+    return FILTERED if any(key in _QUERY_CREDENTIALS for key in keys) else query_string
+
+
+def _redact_callback_tokens(value: Any) -> Any:
+    if isinstance(value, str):
+        return _CALLBACK_TOKEN_REPR.sub(rf"\1{FILTERED}", redact_callback_url(value))
+    if isinstance(value, dict):
+        return {k: _redact_callback_tokens(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_callback_tokens(v) for v in value]
+    return value
+
+
+def _redact_webhook_callback_tokens(event: "Event", hint: "Hint") -> "Event":
+    """The callback token is a credential in every mode; it reaches URLs, ASGI scopes and reprs alike."""
+    return cast("Event", _redact_callback_tokens(event))
+
+
 def _before_send_sensitive(event: "Event", hint: "Hint") -> "Event | None":
-    """Credentials stay masked in the app log context too; EventScrubber skips contexts."""
+    """Credentials stay masked in the app log context and the query string too; EventScrubber skips both."""
     if _route_upstream_error(event, hint) is None:
         return None
+    event = _redact_webhook_callback_tokens(event, hint)
     if "contexts" in event:
         event["contexts"] = _mask_keys(event["contexts"], _credentials_scrubber.denylist)
+    request = event.get("request") or {}
+    if isinstance(query_string := request.get("query_string"), str):
+        request["query_string"] = _mask_query_credentials(query_string)
     return event
 
 
@@ -124,6 +174,7 @@ def before_send(event: "Event", hint: "Hint") -> "Event | None":
     """Filter free text that the key-based scrubber can't see."""
     if _route_upstream_error(event, hint) is None:
         return None
+    event = _redact_webhook_callback_tokens(event, hint)
     # `contexts` is where app log events carry their message and attributes - EventScrubber skips it.
     for key in ("message", "logentry", "contexts", "extra"):
         if key in event:
@@ -179,6 +230,6 @@ def init_sentry() -> None:
         event_scrubber=_credentials_scrubber if sensitive else _scrubber,
         before_send=_before_send_sensitive if sensitive else before_send,
         # Sampled transactions carry the request (query string) too but skip before_send.
-        before_send_transaction=None if sensitive else before_send,
+        before_send_transaction=_before_send_sensitive if sensitive else before_send,
         integrations=integrations,
     )

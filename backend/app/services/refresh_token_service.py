@@ -153,14 +153,12 @@ class RefreshTokenService:
         Raises:
             AuthenticationError: If the refresh token is invalid or revoked
         """
-        token = self.repo.get_valid_token(db_session, refresh_token_str)
+        token = self.repo.claim_valid_token(db_session, refresh_token_str)
         if not token:
             raise AuthenticationError("Invalid or revoked refresh token")
 
-        # Revoke the old refresh token (rotation)
-        self.repo.revoke_token(db_session, token)
-
-        # Generate new access token and refresh token based on token type
+        # Storing the new refresh token commits the old one's revocation with it, so a failure
+        # before that leaves the old token usable
         if token.token_type == TokenType.SDK:
             access_token, new_refresh_token = self.issue_sdk_tokens(
                 db_session,
@@ -200,11 +198,11 @@ class RefreshTokenService:
         Raises:
             NotFoundError: If the refresh token is not found
         """
-        token = self.repo.get_valid_token(db_session, refresh_token_str)
+        token = self.repo.claim_valid_token(db_session, refresh_token_str)
         if not token:
             raise NotFoundError("Refresh token not found")
 
-        self.repo.revoke_token(db_session, token)
+        db_session.commit()
         logger.debug(
             "Revoked refresh token",
             token_type=str(token.token_type),

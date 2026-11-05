@@ -954,6 +954,34 @@ class DataPointSeriesRepository(
             return func.avg(self.model.value)
         return case(*branches, else_=func.avg(self.model.value))
 
+    def has_samples_in_range(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        source: str,
+        device_model: str | None,
+        series_types: Iterable[SeriesType],
+        start_datetime: datetime,
+        end_datetime: datetime,
+    ) -> bool:
+        """Whether a sample of `series_types` from `source` and `device_model` exists for the user in [start, end).
+
+        The types bound the (source, type, time) index to the window; without them it reads the source's history.
+        """
+        query = (
+            db_session.query(self.model.id)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.source == source,
+                DataSource.device_model.is_(None) if device_model is None else DataSource.device_model == device_model,
+                self.model.series_type_definition_id.in_([get_series_type_id(t) for t in series_types]),
+                self.model.recorded_at >= start_datetime,
+                self.model.recorded_at < end_datetime,
+            )
+        )
+        return bool(db_session.query(query.exists()).scalar())
+
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
         return db_session.query(func.count(self.model.id)).scalar() or 0

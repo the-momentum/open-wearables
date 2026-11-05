@@ -18,6 +18,9 @@ The easiest way to get started is using Docker Compose:
 git clone https://github.com/the-momentum/open-wearables.git
 cd open-wearables
 
+# Create the .env files and generate SECRET_KEY
+make init
+
 # Start all services with hot-reload (recommended for development)
 make watch
 
@@ -63,8 +66,8 @@ cd backend
 # Create virtual environment and install dependencies
 uv sync
 
-# Copy environment file
-cp config/.env.example config/.env
+# Create the .env files and generate their secrets
+make -C .. init
 
 # Run database migrations
 uv run alembic upgrade head
@@ -81,8 +84,7 @@ cd frontend
 # Install dependencies
 bun install
 
-# Copy environment file (VITE_API_URL)
-cp .env.example .env
+# .env (VITE_API_URL) was created by `make init` in the backend setup above
 
 # Start development server on http://localhost:3000
 bun run dev
@@ -90,10 +92,12 @@ bun run dev
 
 ## Environment Variables
 
-Copy the example environment files and configure as needed:
+`make init` creates the environment files from their examples and generates `SECRET_KEY`; running it again keeps the key:
 
 - Backend: `backend/config/.env.example` -> `backend/config/.env`
 - Frontend: `frontend/.env.example` -> `frontend/.env`
+
+The backend does not start while `SECRET_KEY` is empty or shorter than 32 characters.
 
 ## Development Patterns
 

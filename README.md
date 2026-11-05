@@ -70,11 +70,11 @@ Run Open Wearables locally with Docker in a few minutes.
 git clone https://github.com/the-momentum/open-wearables.git
 cd open-wearables
 
-cp ./backend/config/.env.example ./backend/config/.env
-cp ./frontend/.env.example ./frontend/.env
-
+make init
 docker compose up -d
 ```
+
+`make init` creates both `.env` files from their examples and generates `SECRET_KEY`. Without `make`, copy them yourself and set `SECRET_KEY` to the output of `openssl rand -hex 32` (at least 32 characters, or the backend does not start).
 
 - **Developer portal:** http://localhost:3000. Create API keys and add provider credentials here.
 - **API docs (Swagger):** http://localhost:8000/docs
