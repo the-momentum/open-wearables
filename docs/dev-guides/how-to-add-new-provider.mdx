@@ -819,6 +819,15 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
 - `_verify_token(expected, provided)` — for plain shared-secret header/query-param verification
 </Info>
 
+<Info>
+If your provider does not sign its requests, or signs them with a key you cannot get, authenticate them with a random secret in the callback path, as Strava does:
+- in the handler, set `requires_callback_token = True`; the token is derived from `SECRET_KEY` per provider
+- in the webhook service, register `callback_url("<provider>")` from `app/utils/webhook_callback.py`, and pass every callback URL you log or return through `redact_callback_url`
+- a provider already registered without a token needs a one-off re-registration on upgrade, as `backend/scripts/data_migrations/register_strava_token_callback.py` does for Strava
+
+The unified router serves `/providers/{provider}/webhooks/{callback_token}`, and `BaseWebhookHandler.authenticate_callback` rejects every POST, GET and HEAD whose token is missing or wrong with `401`.
+</Info>
+
 ### Wire the handler into your strategy
 
 ```python

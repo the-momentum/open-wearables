@@ -7,6 +7,7 @@ and the /api/v1/sns/notification endpoint its uploads are announced on.
 
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from httpx import Response
@@ -96,6 +97,83 @@ class TestXMLImportEndpoint:
         # Assert
         assert response.status_code == 422
 
+    def test_generate_presigned_url_unknown_user(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        response = client.post(
+            f"/api/v1/users/{uuid4()}/import/apple/xml/s3",
+            headers=headers,
+            json={"filename": "export.xml"},
+        )
+
+        assert response.status_code == 404
+        mock_external_apis["s3"].generate_presigned_post.assert_not_called()
+
+    def test_generate_presigned_url_rejects_non_uuid_user_id(self, client: TestClient, db: Session) -> None:
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        response = client.post(
+            "/api/v1/users/not-a-uuid/import/apple/xml/s3",
+            headers=headers,
+            json={"filename": "export.xml"},
+        )
+
+        assert response.status_code == 422
+
+
+_SERVICE = "app.services.providers.apple.apple_xml.direct_upload_service"
+
+
+class TestXMLDirectImportEndpoint:
+    URL = "/api/v1/users/{user_id}/import/apple/xml/direct"
+
+    def test_queues_import_for_existing_user(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+            delay.return_value.id = "task-id"
+            response = client.post(
+                self.URL.format(user_id=user.id),
+                headers=headers,
+                files={"file": ("export.xml", b"<HealthData/>", "application/xml")},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "processing", "task_id": "task-id", "user_id": str(user.id)}
+        delay.assert_called_once_with(file_contents=b"<HealthData/>", filename="export.xml", user_id=str(user.id))
+
+    def test_unknown_user_is_not_queued(self, client: TestClient, db: Session) -> None:
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+            response = client.post(
+                self.URL.format(user_id=uuid4()),
+                headers=headers,
+                files={"file": ("export.xml", b"<HealthData/>", "application/xml")},
+            )
+
+        assert response.status_code == 404
+        delay.assert_not_called()
+
+    def test_rejects_non_uuid_user_id(self, client: TestClient, db: Session) -> None:
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+            response = client.post(
+                self.URL.format(user_id="not-a-uuid"),
+                headers=headers,
+                files={"file": ("export.xml", b"<HealthData/>", "application/xml")},
+            )
+
+        assert response.status_code == 422
+        delay.assert_not_called()
+
 
 class TestSNSNotificationEndpoint:
     """Test suite for the SNS notification endpoint."""
@@ -121,7 +199,6 @@ class TestSNSNotificationEndpoint:
         assert "secret-marker" not in response.text
 
 
-_SERVICE = "app.services.providers.apple.apple_xml.direct_upload_service"
 _MIB = 1024 * 1024
 _XML = b"<HealthData></HealthData>"
 

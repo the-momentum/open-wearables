@@ -11,7 +11,6 @@ import logging
 
 from celery import Task, shared_task
 
-from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
@@ -20,6 +19,7 @@ from app.schemas.enums import ProviderName
 from app.schemas.responses.incoming_webhooks import WebhookSubscriptionStatus
 from app.services.providers.factory import ProviderFactory
 from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import provider_webhook_url
 
 logger = get_logger(__name__)
 
@@ -62,8 +62,7 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
                 raise RuntimeError(f"{provider} webhook deregistration failed for {errors} of {len(results)}")
             return {"provider": provider, "deleted": deleted, "errors": errors}
 
-        callback_url = f"{settings.api_base_url}{settings.api_v1}/providers/{provider}/webhooks"
-        results = asyncio.run(strategy.webhook_service.register_subscriptions(callback_url))
+        results = asyncio.run(strategy.webhook_service.register_subscriptions(provider_webhook_url(provider)))
         created = sum(1 for result in results if result.get("status") == "created")
         skipped = sum(1 for result in results if result.get("status") == "skipped")
         errors = sum(1 for result in results if result.get("status") == "error")

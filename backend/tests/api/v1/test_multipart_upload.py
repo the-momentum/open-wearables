@@ -1,6 +1,7 @@
 """Tests for the Apple XML S3/MinIO multipart upload endpoints."""
 
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -50,6 +51,30 @@ class TestCreateMultipart:
             json={"filename": "export.xml", "file_size": 1024},  # below 5 MiB minimum
         )
         assert response.status_code == 422
+
+    def test_create_unknown_user(
+        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
+    ) -> None:
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+        response = client.post(
+            BASE.format(user_id=uuid4()) + "/create",
+            headers=headers,
+            json={"filename": "export.xml", "file_size": 200 * 1024 * 1024},
+        )
+        assert response.status_code == 404
+        mock_external_apis["s3"].create_multipart_upload.assert_not_called()
+
+    def test_create_rejects_non_uuid_user_id(
+        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
+    ) -> None:
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+        response = client.post(
+            BASE.format(user_id="not-a-uuid") + "/create",
+            headers=headers,
+            json={"filename": "export.xml", "file_size": 200 * 1024 * 1024},
+        )
+        assert response.status_code == 422
+        mock_external_apis["s3"].create_multipart_upload.assert_not_called()
 
 
 class TestSignMultipart:
@@ -196,3 +221,53 @@ class TestAbortMultipart:
         assert response.status_code == 200
         assert response.json() == {"status": "aborted", "key": key}
         mock_external_apis["s3"].abort_multipart_upload.assert_called_once()
+
+
+class TestUserIdPath:
+    @pytest.mark.parametrize(
+        ("endpoint", "payload"),
+        [
+            ("sign", {"key": "not-a-uuid/raw/x.xml", "upload_id": "u", "part_numbers": [1]}),
+            (
+                "complete",
+                {"key": "not-a-uuid/raw/x.xml", "upload_id": "u", "parts": [{"part_number": 1, "etag": "e1"}]},
+            ),
+            ("abort", {"key": "not-a-uuid/raw/x.xml", "upload_id": "u"}),
+        ],
+    )
+    def test_rejects_non_uuid_user_id(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+        endpoint: str,
+        payload: dict,
+    ) -> None:
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+        response = client.post(BASE.format(user_id="not-a-uuid") + f"/{endpoint}", headers=headers, json=payload)
+
+        assert response.status_code == 422
+        assert mock_external_apis["s3"].method_calls == []
+
+    def test_uppercase_user_id_maps_to_the_same_key(
+        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
+    ) -> None:
+        user = UserFactory()
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+        upper_id = str(user.id).upper()
+
+        created = client.post(
+            BASE.format(user_id=upper_id) + "/create",
+            headers=headers,
+            json={"filename": "export.xml", "file_size": 200 * 1024 * 1024},
+        )
+        assert created.status_code == 201
+        key = created.json()["key"]
+        assert key.startswith(f"{user.id}/raw/")
+
+        signed = client.post(
+            BASE.format(user_id=upper_id) + "/sign",
+            headers=headers,
+            json={"key": key, "upload_id": "test-upload-id", "part_numbers": [1]},
+        )
+        assert signed.status_code == 200

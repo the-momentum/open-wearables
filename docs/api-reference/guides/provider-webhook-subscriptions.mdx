@@ -35,7 +35,7 @@ Supported `{provider}` values: `polar`, `oura`, `strava`. Withings subscriptions
 |----------|------------------|---------------------|--------|
 | **Polar** | 1 per app | Polar sends a `PING` event to the URL; must return `200 OK` | `signature_secret_key` returned once on creation — auto-saved to DB |
 | **Oura** | 1 per data type | GET challenge with `verification_token` query param | Client secret used for HMAC verification |
-| **Strava** | 1 per app | GET `hub.challenge` echo | `STRAVA_WEBHOOK_VERIFY_TOKEN` env var |
+| **Strava** | 1 per app | GET `hub.challenge` echo | Secret path segment in the callback URL, derived from `SECRET_KEY` |
 | **Withings** | 1 per user and notification category | HEAD reachability probe | `WITHINGS_WEBHOOK_TOKEN` query parameter |
 
 <Warning>
@@ -100,7 +100,7 @@ curl "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions" 
         {
           "id": 12345,
           "application_id": 67890,
-          "callback_url": "https://yourapp.com/api/v1/providers/strava/webhooks",
+          "callback_url": "https://yourapp.com/api/v1/providers/strava/webhooks/redacted",
           "created_at": "2026-01-01T00:00:00Z",
           "updated_at": "2026-01-01T00:00:00Z"
         }
@@ -115,7 +115,7 @@ curl "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions" 
 ### Register subscriptions
 
 Creates a new subscription (or updates an existing one if the URL changed).
-Pass `callback_url` as a query parameter.
+Pass `callback_url` as a query parameter. It is optional and defaults to `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions?callback_url=https://yourapp.com/api/v1/providers/{provider}/webhooks" \
@@ -128,7 +128,11 @@ Provider-specific behaviour:
 |----------|--------------------------|-------------------------------------|------------------------------------------|
 | **Polar** | Creates webhook; Polar POSTs a `PING` to verify. `signature_secret_key` auto-saved to DB. | Returns `skipped` | Updates URL via `PATCH`; Polar PINGs the new URL |
 | **Oura** | Creates one subscription per data type | Returns `skipped` per already-registered type | Creates new subscriptions for missing types |
-| **Strava** | Registers subscription; Strava sends a GET challenge that must echo back `hub.challenge` | Returns `skipped` | — |
+| **Strava** | Registers subscription; Strava sends a GET challenge that must echo back `hub.challenge` | Returns `skipped` | Deletes the old subscription and creates a new one |
+
+<Note>
+  **Strava**: `callback_url` is ignored. Open Wearables always registers `{API_BASE_URL}/api/v1/providers/strava/webhooks/{callback token}`, with the token derived from `SECRET_KEY`. The token is shown as `redacted` when you list subscriptions. Call this again after a new `SECRET_KEY` or `API_BASE_URL`: it replaces the subscription with one on the new URL.
+</Note>
 
 <Note>
   **Polar**: the `signature_secret_key` is returned by Polar exactly once, on creation. Open Wearables saves it automatically to the `provider_settings` table (`webhook_secret` column). If you need to rotate it, delete and recreate the webhook.
@@ -260,8 +264,11 @@ These endpoints receive the actual event notifications from providers. They are 
 | `POST` | `/api/v1/providers/{provider}/webhooks` | Receives incoming event payloads. Verifies the provider signature, parses the event, and dispatches a background sync task. |
 | `GET` | `/api/v1/providers/{provider}/webhooks` | Handles subscription verification challenges (Oura `verification_token`, Strava `hub.challenge`). |
 | `HEAD` | `/api/v1/providers/{provider}/webhooks` | Handles callback reachability probes (Withings). |
+| `POST`, `GET`, `HEAD` | `/api/v1/providers/{provider}/webhooks/{callback_token}` | The same, for providers whose callback URL carries a secret token (Strava). |
 
-The callback URL you register with a provider must point to `POST /api/v1/providers/{provider}/webhooks`. For local development, use [ngrok](/dev-guides/ngrok-setup) to expose that endpoint publicly.
+The callback URL you register with a provider must point to `POST /api/v1/providers/{provider}/webhooks`, or to `POST /api/v1/providers/{provider}/webhooks/{callback_token}` for providers that use a callback token (Strava). For local development, use [ngrok](/dev-guides/ngrok-setup) to expose that endpoint publicly.
+
+Strava signs its events with a key it does not share, so Open Wearables authenticates them with a secret in the callback path instead, derived from `SECRET_KEY`; it registers `/api/v1/providers/strava/webhooks/<secret>`. A Strava request to `/api/v1/providers/strava/webhooks` without the secret, or with a wrong one, is rejected with `401`, the subscription handshake included. A provider that does not use a callback token answers `404` on `/webhooks/{callback_token}`.
 
 Withings recommends adding a random shared secret to the exact callback URL. Set `WITHINGS_WEBHOOK_TOKEN` to a value generated with `openssl rand -hex 32`; Open Wearables registers `?token=<secret>` and validates it on notification POSTs and reachability HEAD probes. See the [Withings notification security guidance](https://developer.withings.com/developer-guide/v3/integration-guide/public-health-data-api/data-api/notifications/notification-overview/).
 
