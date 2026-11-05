@@ -335,7 +335,8 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         Returns the samples saved, or None when Strava has no streams for the workout (yet).
         """
-        if not settings.ingest_workout_samples:
+        # A manual activity never has streams: Strava answers 404 on every sync that re-covers it.
+        if not settings.ingest_workout_samples or activity.manual:
             return 0
         # Stored streams aren't fetched again; an activity cropped in Strava keeps its earlier ones.
         if self._has_stored_streams(db, user_id, activity, record):
@@ -488,8 +489,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             event_record_service.create_detail(db, detail_for_record)
         created_ids.append(created_record.id)
         # The webhook often beats Strava's stream processing and the pull won't re-cover it, so retry later.
-        # A manual activity never gets streams.
-        if self._ingest_workout_streams(db, activity, user_id, record) is None and not activity.manual:
+        if self._ingest_workout_streams(db, activity, user_id, record) is None:
             if stream_retry_attempt <= settings.strava_stream_retry_max_attempts:
                 schedule_stream_retry(str(user_id), str(activity.id), attempt=stream_retry_attempt)
             else:

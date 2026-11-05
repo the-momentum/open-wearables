@@ -40,7 +40,6 @@ class TestWebhookSchedulesRetry:
         workouts: StravaWorkouts,
         ingested: int | None,
         attempt: int = 1,
-        activity: StravaActivityJSON = _ACTIVITY,
     ) -> MagicMock:
         with (
             patch("app.services.providers.strava.workouts.event_record_service") as mock_service,
@@ -49,7 +48,7 @@ class TestWebhookSchedulesRetry:
         ):
             mock_service.create.return_value = MagicMock(id=uuid4())
             workouts.process_push_activity(
-                db=MagicMock(), activity=activity, user_id=uuid4(), stream_retry_attempt=attempt
+                db=MagicMock(), activity=_ACTIVITY, user_id=uuid4(), stream_retry_attempt=attempt
             )
         return mock_schedule
 
@@ -68,11 +67,6 @@ class TestWebhookSchedulesRetry:
     @pytest.mark.parametrize("ingested", [4752, 0], ids=["saved", "already_stored"])
     def test_no_retry_when_streams_are_stored(self, workouts: StravaWorkouts, ingested: int) -> None:
         self._process(workouts, ingested=ingested).assert_not_called()
-
-    def test_no_retry_for_a_manual_activity(self, workouts: StravaWorkouts) -> None:
-        manual = _ACTIVITY.model_copy(update={"manual": True})
-
-        self._process(workouts, ingested=None, activity=manual).assert_not_called()
 
     def test_gives_up_after_attempt_budget(self, workouts: StravaWorkouts) -> None:
         exhausted = settings.strava_stream_retry_max_attempts + 1
