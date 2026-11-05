@@ -217,7 +217,7 @@ class SensorBio247Data(Base247DataTemplate):
 
         Sensor Bio does not expose an explicit nap flag. Multiple sessions on the
         same day are returned as separate entries; they are stored with ``is_nap=False``
-        and ``create_or_merge_sleep`` flags the naps (``app.services.sleep_naps``).
+        and ``save_sleep_data`` re-flags the day's naps after the write (``app.services.sleep_naps``).
         """
         parsed = self._parse(raw_sleep, SleepRecord, "sleep", user_id)
         if parsed is None:
@@ -308,6 +308,7 @@ class SensorBio247Data(Base247DataTemplate):
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type=EventCategory.SLEEP)
+            event_record_service.reclassify_sleep_naps_after_write(db, user_id, created_record)
             return True
         except Exception as e:
             logger.error(
