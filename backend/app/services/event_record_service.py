@@ -309,7 +309,7 @@ class EventRecordService(
         self,
         db_session: DbSession,
         user_id: UUID,
-        data_source_id: UUID | None,
+        data_source_id: UUID,
         wake_dates: set[date] | None,
     ) -> int:
         """Re-flag a data source's naps around the given local wake dates (its whole history for None).
@@ -317,8 +317,6 @@ class EventRecordService(
         A session that became or stopped being a nap is rescored with its day. The caller commits.
         Returns how many flags changed.
         """
-        if data_source_id is None:
-            return 0
         changes = reclassify_naps(db_session, data_source_id, wake_dates)
         if changes:
             # Per day: the score query caps its rows from the window's start, so far-apart days would lose scores
@@ -326,21 +324,15 @@ class EventRecordService(
                 self._recompute_sleep_scores(db_session, user_id, {wake_date})
         return len(changes)
 
-    def reclassify_sleep_naps_around(self, db_session: DbSession, user_id: UUID, record: EventRecord) -> int:
-        """Re-flag the naps of a sleep record's data source around its local wake date. The caller commits."""
-        return self.reclassify_sleep_naps(
-            db_session, user_id, record.data_source_id, {local_date(record.end_datetime, record.zone_offset)}
-        )
-
     def reclassify_sleep_naps_after_write(self, db_session: DbSession, user_id: UUID, record: EventRecord) -> bool:
         """Re-flag the naps around a stored sleep session and commit; True when a flag changed.
 
         A night that arrives after a nap makes it one. On failure the session keeps the flag it was stored with,
         and the next write on its days re-flags them.
         """
-        record_id = record.id
+        record_id, wake_date = record.id, local_date(record.end_datetime, record.zone_offset)
         try:
-            if self.reclassify_sleep_naps_around(db_session, user_id, record):
+            if self.reclassify_sleep_naps(db_session, user_id, record.data_source_id, {wake_date}):
                 db_session.commit()
                 return True
         except Exception:

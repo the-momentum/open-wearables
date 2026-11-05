@@ -634,7 +634,7 @@ class TestCreateOrMergeSleep:
         db.expire_all()
         assert db.get(SleepDetails, nap.id).is_nap is True
 
-    def test_a_nap_without_a_zone_offset_is_not_flagged(self, db: Session) -> None:
+    def test_a_nap_without_a_zone_offset_is_flagged_far_from_the_night(self, db: Session) -> None:
         # Sensor Bio sleep comes without a zone offset
         data_source = DataSourceFactory(provider=ProviderName.SENSORBIO, source="sensorbio")
         night = self._record(data_source, self._dt(22, day=20), self._dt(6), zone_offset=None)
@@ -648,7 +648,7 @@ class TestCreateOrMergeSleep:
         )
 
         db.expire_all()
-        assert db.get(SleepDetails, nap.id).is_nap is False
+        assert db.get(SleepDetails, nap.id).is_nap is True
 
     def test_a_provider_nap_flag_is_kept(self, db: Session) -> None:
         data_source = DataSourceFactory(provider=ProviderName.GARMIN, source="garmin")
@@ -725,7 +725,7 @@ class TestCreateOrMergeSleep:
         night = self._record(data_source, self._dt(22, day=20), self._dt(6))
 
         with (
-            patch.object(event_record_service, "reclassify_sleep_naps_around", side_effect=RuntimeError("boom")),
+            patch.object(event_record_service, "reclassify_sleep_naps", side_effect=RuntimeError("boom")),
             patch("app.services.event_record_service.on_sleep_created") as mock_sleep,
         ):
             event_record_service.create_or_merge_sleep(

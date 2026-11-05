@@ -2,7 +2,8 @@
 
 A nap is a sleep of 15 min to under 3 h that starts between 06:00 and 20:00 local time and is more than the
 merge gap away from the main sleep (the longest) of its day and of the next day. Days are local wake dates,
-as in the sleep summary. Sleep without a zone offset is never a nap, as its local start time isn't known.
+as in the sleep summary. Sleep without a zone offset has no known start hour, so it has to be more than 4 h
+from those main sleeps instead.
 """
 
 from collections import defaultdict
@@ -35,6 +36,9 @@ NAP_MIN_SLEEP = timedelta(minutes=15)
 NAP_MAX_SLEEP = timedelta(hours=3)
 # Sleep that starts at night belongs to a night, even when it's short
 NAP_START_HOURS = range(6, 20)
+# Without a zone offset the start hour isn't known, so a nap has to be further from the night than its longest
+# awakenings (insomnia, segmented sleep) last
+NAP_GAP_WITHOUT_ZONE = timedelta(hours=4)
 
 
 @dataclass(frozen=True)
@@ -51,11 +55,12 @@ class SleepWindow:
 
     @property
     def could_be_nap(self) -> bool:
-        # Read in UTC, a night far from UTC starts in the daytime
-        if self.zone_offset is None:
+        if not NAP_MIN_SLEEP <= self.asleep < NAP_MAX_SLEEP:
             return False
-        local_start = self.start.astimezone(iso_to_timezone(self.zone_offset))
-        return NAP_MIN_SLEEP <= self.asleep < NAP_MAX_SLEEP and local_start.hour in NAP_START_HOURS
+        if self.zone_offset is None:
+            # Read in UTC, a night far from UTC would start in the daytime; find_naps keeps it further from the night
+            return True
+        return self.start.astimezone(iso_to_timezone(self.zone_offset)).hour in NAP_START_HOURS
 
 
 def _gap(a: SleepWindow, b: SleepWindow) -> timedelta:
@@ -69,18 +74,15 @@ def find_naps(sessions: Sequence[SleepWindow]) -> set[UUID]:
         by_day[session.wake_date].append(session)
     # A day's main sleep is its longest, the earlier one on a tie
     mains = {day: min(group, key=lambda s: (-s.asleep, s.start)) for day, group in by_day.items()}
-    limit = timedelta(minutes=settings.sleep_end_gap_minutes)
+    merge_gap = timedelta(minutes=settings.sleep_end_gap_minutes)
     naps: set[UUID] = set()
     for day, group in by_day.items():
         # Sleep within the merge gap of a night belongs to it, an early start of the next night included
         nights = [main for main in (mains[day], mains.get(day + timedelta(days=1))) if main is not None]
-        naps.update(
-            session.id
-            for session in group
-            if session is not mains[day]
-            and session.could_be_nap
-            and all(_gap(session, night) > limit for night in nights)
-        )
+        for session in group:
+            limit = merge_gap if session.zone_offset is not None else max(merge_gap, NAP_GAP_WITHOUT_ZONE)
+            if session is not mains[day] and session.could_be_nap and all(_gap(session, n) > limit for n in nights):
+                naps.add(session.id)
     return naps
 
 

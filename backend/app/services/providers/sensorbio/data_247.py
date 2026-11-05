@@ -216,9 +216,8 @@ class SensorBio247Data(Base247DataTemplate):
         ``_from_epoch_seconds`` to match observed response values.
 
         Sensor Bio does not expose an explicit nap flag. Multiple sessions on the
-        same day are returned as separate entries; they are stored with ``is_nap=False``.
-        ``app.services.sleep_naps`` only flags naps of sleep with a zone offset, which
-        these records don't carry yet (the API's ``tz_offset`` isn't stored).
+        same day are returned as separate entries; they are stored with ``is_nap=False``
+        and ``create_or_merge_sleep`` flags the naps (``app.services.sleep_naps``).
         """
         parsed = self._parse(raw_sleep, SleepRecord, "sleep", user_id)
         if parsed is None:

@@ -119,12 +119,27 @@ class TestFindNaps:
 
         assert find_naps([night, nap]) == {nap.id}
 
-    def test_a_session_without_a_zone_offset_is_never_a_nap(self) -> None:
-        # The second half of a night at +12:00, 04:30-06:30, reads as 16:30-18:30 in UTC
+    def test_without_a_zone_offset_sleep_close_to_the_night_is_not_a_nap(self) -> None:
+        # The second half of a night at +12:00, 04:30-06:30, reads as 16:30-18:30 in UTC, 3 h after the first
         night = _session("2026-03-23T09:00", "2026-03-23T13:30", 250, zone=None)
         second_half = _session("2026-03-23T16:30", "2026-03-23T18:30", 110, zone=None)
 
         assert find_naps([night, second_half]) == set()
+
+    def test_without_a_zone_offset_a_nap_is_more_than_four_hours_from_the_night(self) -> None:
+        night = _session(*NIGHT, zone=None)
+        at_four_hours = _session("2026-03-23T11:00", "2026-03-23T12:00", 60, zone=None)
+        after_four_hours = _session("2026-03-23T11:01", "2026-03-23T12:00", 59, zone=None)
+
+        assert find_naps([night, at_four_hours]) == set()
+        assert find_naps([night, after_four_hours]) == {after_four_hours.id}
+
+    def test_without_a_zone_offset_the_issue_nap_is_a_nap(self) -> None:
+        # #938: a 16 min nap that Garmin Connect wrote to Apple Health, which gives no zone offset
+        night = _session("2026-04-17T22:22", "2026-04-18T04:35", 372, zone=None)
+        nap = _session("2026-04-18T13:48", "2026-04-18T14:04", 16, zone=None)
+
+        assert find_naps([night, nap]) == {nap.id}
 
     def test_a_nap_more_than_two_hours_before_the_next_night_is_a_nap(self) -> None:
         night = _session(*NIGHT)
