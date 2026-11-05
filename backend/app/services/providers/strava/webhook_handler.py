@@ -6,9 +6,10 @@ GET /activities/{id}.
 
 Authenticity
 ------------
-  X-Strava-Signature can't be verified (Strava doesn't expose its signing key), so only its
-  timestamp is checked, against replays. A delete or a deauthorization is confirmed in the
-  Strava API with the athlete's token before anything is removed.
+  Strava's signing key isn't exposed, so requests are authenticated by the callback token in
+  the path, which only Strava learns at subscription time. X-Strava-Signature's timestamp is
+  still checked against replays, and a delete or a deauthorization is confirmed in the Strava
+  API before anything is removed, so a leaked callback URL cannot remove data.
 
 Challenge verification
 -----------------------
@@ -66,6 +67,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Strava notify-only events."""
 
     user_id_field = "owner_id"
+    requires_callback_token = True
 
     def __init__(self, workouts: StravaWorkouts) -> None:
         super().__init__("strava")
