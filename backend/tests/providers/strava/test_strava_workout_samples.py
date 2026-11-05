@@ -244,6 +244,21 @@ class TestFlagGuard:
         assert count == 0
 
 
+class TestManualActivity:
+    def test_manual_activity_makes_no_request(self, strava_workouts: StravaWorkouts, db: Session) -> None:
+        manual = _SAMPLE_ACTIVITY.model_copy(update={"manual": True})
+        with (
+            patch("app.services.providers.strava.workouts.settings", ingest_workout_samples=True),
+            patch.object(strava_workouts, "_has_stored_streams") as mock_probe,
+            patch.object(strava_workouts, "_make_api_request") as mock_api,
+        ):
+            count = strava_workouts._ingest_workout_streams(db, manual, uuid4(), MagicMock())
+
+        mock_probe.assert_not_called()
+        mock_api.assert_not_called()
+        assert count == 0
+
+
 class TestIngestionWiring:
     """Integration-level tests for the wiring in _ingest_workout_streams."""
 
