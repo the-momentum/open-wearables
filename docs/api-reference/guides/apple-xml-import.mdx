@@ -21,7 +21,7 @@ Import complete Apple Health data exports via XML files using one of these metho
 
 ## Authentication
 
-All endpoints require authentication via Bearer token (user login) or API key.
+All endpoints require a developer's Bearer token (the developer portal login below) or an API key. Both act for the whole deployment and can import data for any user, so call these endpoints from your backend, never from a user's device. See [Credentials](/developer-portal/settings/credentials#api-keys).
 
 ```bash
 # Login to get access token
@@ -126,7 +126,7 @@ const presignedData = await response.json();
 </CodeGroup>
 
 <ParamField path="user_id" type="string" required>
-  The ID of the user to import data for
+  The UUID of the user to import data for. An ID that is not a UUID returns `422`, and an unknown user returns `404`.
 </ParamField>
 
 <ParamField body="filename" type="string" default="">
@@ -164,6 +164,15 @@ const presignedData = await response.json();
   "status": 401,
   "detail": "Could not validate credentials",
   "code": "UNAUTHORIZED"
+}
+```
+
+```json 404 User not found
+{
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+  "code": "NOT_FOUND"
 }
 ```
 </ResponseExample>
@@ -415,10 +424,12 @@ from `GET /api/v1/users/{user_id}/sync/runs` for 24 hours.
 
 | Endpoint | Success | Common errors |
 |----------|---------|---------------|
-| `multipart/create` | `201 Created` | `401` invalid auth, `422` invalid file metadata, `503` storage not configured |
+| `multipart/create` | `201 Created` | `401` invalid auth, `404` unknown user, `422` invalid file metadata, `503` storage not configured |
 | `multipart/sign` | `200 OK` | `403` foreign object key, `422` invalid part numbers, `502` signing failure |
 | `multipart/complete` | `202 Accepted` in `client` mode; `200 OK` in `sns` mode | `400` parts/ETags do not match, `404` upload missing, `503` storage or queue unavailable |
 | `multipart/abort` | `200 OK` (also when already absent) | `403` foreign object key, `502` storage failure |
+
+Every endpoint also returns `422` when `user_id` in the path is not a UUID.
 
 <ResponseExample>
 ```json 400 Parts mismatch

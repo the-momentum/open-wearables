@@ -1,10 +1,12 @@
 import json
 from json import JSONDecodeError
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, status
 from pydantic import ValidationError
 
 from app.config import settings
+from app.database import DbSession
 from app.integrations.celery.tasks.process_aws_upload_task import complete_and_process_aws_upload
 from app.schemas.providers.apple.apple_xml import (
     MultipartAbortRequest,
@@ -20,7 +22,7 @@ from app.schemas.providers.apple.apple_xml import (
     SNSNotification,
 )
 from app.schemas.responses.upload import UploadDataResponse
-from app.services import ApiKeyDep
+from app.services import ApiKeyDep, user_service
 from app.services.providers.apple.apple_xml.aws_service import require_bucket_name
 from app.services.providers.apple.apple_xml.direct_upload_service import (
     direct_upload_limit,
@@ -35,29 +37,39 @@ from app.utils.problem import problem_doc
 
 router = APIRouter()
 
+# Checked when an import starts. For S3 uploads a missing user fails before the file is
+# uploaded, and the S3 worker checks again before importing. For direct uploads the file
+# has already been received, so the check only keeps it out of the queue.
+_USER_NOT_FOUND = problem_doc(404, "User not found", "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.")
 
-@router.post("/users/{user_id}/import/apple/xml/s3")
+
+@router.post("/users/{user_id}/import/apple/xml/s3", responses={**_USER_NOT_FOUND})
 def import_xml_presigned_url(
-    user_id: str,
+    user_id: UUID,
     request: PresignedURLRequest,
+    db: DbSession,
     _api_key: ApiKeyDep,
 ) -> PresignedURLResponse:
     """Generate presigned URL for XML file upload and trigger processing task."""
-    return presigned_url_service.create_presigned_url(user_id, request)
+    user_service.get(db, user_id, raise_404=True)
+    return presigned_url_service.create_presigned_url(str(user_id), request)
 
 
 @router.post(
     "/users/{user_id}/import/apple/xml/s3/multipart/create",
     status_code=status.HTTP_201_CREATED,
+    responses={**_USER_NOT_FOUND},
 )
 def create_multipart_upload(
-    user_id: str,
+    user_id: UUID,
     request: MultipartCreateRequest,
+    db: DbSession,
     _api_key: ApiKeyDep,
 ) -> MultipartCreateResponse:
     """Start a multipart upload for a (potentially very large) XML file to S3/MinIO."""
+    user_service.get(db, user_id, raise_404=True)
     return multipart_upload_service.create_upload(
-        user_id=user_id,
+        user_id=str(user_id),
         filename=request.filename,
         content_type=request.content_type,
         file_size=request.file_size,
@@ -68,13 +80,13 @@ def create_multipart_upload(
     "/users/{user_id}/import/apple/xml/s3/multipart/sign",
 )
 def sign_multipart_parts(
-    user_id: str,
+    user_id: UUID,
     request: MultipartSignRequest,
     _api_key: ApiKeyDep,
 ) -> MultipartSignResponse:
     """Presign upload URLs for a batch of parts of an in-progress multipart upload."""
     return multipart_upload_service.sign_upload_parts(
-        user_id=user_id,
+        user_id=str(user_id),
         key=request.key,
         upload_id=request.upload_id,
         part_numbers=request.part_numbers,
@@ -87,7 +99,7 @@ def sign_multipart_parts(
     status_code=status.HTTP_202_ACCEPTED,
 )
 def complete_multipart_upload(
-    user_id: str,
+    user_id: UUID,
     request: MultipartCompleteRequest,
     response: Response,
     _api_key: ApiKeyDep,
@@ -99,7 +111,7 @@ def complete_multipart_upload(
     """
     if settings.apple_xml_upload_completion_mode == "client":
         bucket_name = multipart_upload_service.validate_completion_request(
-            user_id,
+            str(user_id),
             request.key,
             request.upload_id,
             request.parts,
@@ -110,7 +122,7 @@ def complete_multipart_upload(
                 object_key=request.key,
                 upload_id=request.upload_id,
                 parts=[part.model_dump() for part in request.parts],
-                user_id=user_id,
+                user_id=str(user_id),
             )
         except Exception as e:
             # The object has deliberately not been finalized yet, so callers can safely
@@ -128,7 +140,7 @@ def complete_multipart_upload(
         )
 
     key = multipart_upload_service.complete_upload(
-        user_id=user_id,
+        user_id=str(user_id),
         key=request.key,
         upload_id=request.upload_id,
         parts=request.parts,
@@ -148,18 +160,19 @@ def complete_multipart_upload(
     "/users/{user_id}/import/apple/xml/s3/multipart/abort",
 )
 def abort_multipart_upload(
-    user_id: str,
+    user_id: UUID,
     request: MultipartAbortRequest,
     _api_key: ApiKeyDep,
 ) -> MultipartAbortResponse:
     """Abort an incomplete multipart upload and discard its parts."""
-    multipart_upload_service.abort_upload(user_id=user_id, key=request.key, upload_id=request.upload_id)
+    multipart_upload_service.abort_upload(user_id=str(user_id), key=request.key, upload_id=request.upload_id)
     return MultipartAbortResponse(status="aborted", key=request.key)
 
 
 @router.post(
     "/users/{user_id}/import/apple/xml/direct",
     responses={
+        **_USER_NOT_FOUND,
         **problem_doc(
             413,
             f"File is over {mib(direct_upload_limit())} MiB",
@@ -174,18 +187,20 @@ def abort_multipart_upload(
     ),
 )
 def import_xml_file(
-    user_id: str,
+    user_id: UUID,
     file: UploadFile,
+    db: DbSession,
     _api_key: ApiKeyDep,
 ) -> dict[str, str]:
     """Queue a small XML upload for import."""
+    user_service.get(db, user_id, raise_404=True)
     # Starlette's multipart parser always sets the size of the spooled file.
-    task_id = direct_upload_service.queue_import(user_id, file.file, file.size or 0, file.filename or "upload.xml")
+    task_id = direct_upload_service.queue_import(str(user_id), file.file, file.size or 0, file.filename or "upload.xml")
 
     return {
         "status": "processing",
         "task_id": task_id,
-        "user_id": user_id,
+        "user_id": str(user_id),
     }
 
 
