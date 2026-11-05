@@ -1,9 +1,13 @@
 import json
 import math
+from collections.abc import Callable, Coroutine
 from json import JSONDecodeError
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, status
+from fastapi.routing import APIRoute
 from pydantic import ValidationError
+from starlette.types import Message, Receive
 
 from app.config import settings
 from app.integrations.celery.tasks.process_aws_upload_task import complete_and_process_aws_upload
@@ -50,15 +54,81 @@ def _mib(size: int, *, round_up: bool) -> str:
     return f"{(math.ceil(tenths) if round_up else math.floor(tenths)) / 10:g}"
 
 
-def _too_large_detail(file_size: int, limit: int) -> str:
-    size = _mib(file_size, round_up=True)
+def _too_large_detail(file_size: int, limit: int, *, exact: bool = True) -> str:
+    """With ``exact`` False, ``file_size`` is only a lower bound and the message says "over" the limit."""
     # Multipart rejects files over the product-wide limit too, so only point there when it would accept the file.
     if file_size > MAX_FILE_SIZE:
-        return f"File is {size} MiB, XML import accepts up to {_mib(MAX_FILE_SIZE, round_up=False)} MiB."
+        max_size = _mib(MAX_FILE_SIZE, round_up=False)
+        size = _mib(file_size, round_up=True) if exact else f"over {max_size}"
+        return f"File is {size} MiB, XML import accepts up to {max_size} MiB."
+    max_size = _mib(limit, round_up=False)
+    size = _mib(file_size, round_up=True) if exact else f"over {max_size}"
     return (
-        f"File is {size} MiB, direct upload accepts up to {_mib(limit, round_up=False)} MiB. "
+        f"File is {size} MiB, direct upload accepts up to {max_size} MiB. "
         f"Use the multipart upload ({_MULTIPART_CREATE_PATH}) for larger files."
     )
+
+
+# Room for the multipart framing around the file: the boundaries and the part headers with the filename.
+_MULTIPART_OVERHEAD = 64 * 1024
+
+
+def _too_large(file_size: int, limit: int, *, exact: bool = True) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+        detail=_too_large_detail(file_size, limit, exact=exact),
+    )
+
+
+def _limited_receive(request: Request, limit: int) -> Receive:
+    """The request's receive channel, raising 413 once the body outgrows the file limit."""
+    max_body = limit + _MULTIPART_OVERHEAD
+    # Fast path for clients that declare the size: reject before reading any of the body.
+    content_length = request.headers.get("content-length", "")
+    if content_length.isdigit() and int(content_length) > max_body:
+        raise _too_large(int(content_length) - _MULTIPART_OVERHEAD, limit, exact=False)
+
+    receive = request.receive
+    received = 0
+
+    async def receive_within_limit() -> Message:
+        nonlocal received
+        message = await receive()
+        if message["type"] == "http.request":
+            received += len(message.get("body", b""))
+            if received > max_body:
+                raise _too_large(received - _MULTIPART_OVERHEAD, limit, exact=False)
+        return message
+
+    return receive_within_limit
+
+
+class _DirectUploadRoute(APIRoute):
+    """Stops parsing and spooling an oversized direct upload while it streams in.
+
+    FastAPI parses the multipart form, spooling the file to disk, before the endpoint and
+    its dependencies (the API key check included) run, so a size check in the endpoint
+    only comes after the whole body is on disk. This route counts the body bytes as they
+    arrive and answers 413 at the limit plus the multipart framing; the endpoint still
+    checks the exact file size.
+
+    The connection stays open, so whatever the client keeps sending after the 413 is read
+    and discarded without touching the disk. Closing it instead would make clients that
+    send the whole body before reading the response (e.g. requests) see a connection
+    reset rather than the 413.
+    """
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def handler_within_limit(request: Request) -> Response:
+            receive = _limited_receive(request, _direct_upload_limit())
+            return await handler(Request(request.scope, receive))
+
+        return handler_within_limit
+
+
+_direct_router = APIRouter(route_class=_DirectUploadRoute)
 
 
 @router.post("/users/{user_id}/import/apple/xml/s3")
@@ -182,13 +252,14 @@ def abort_multipart_upload(
     return MultipartAbortResponse(status="aborted", key=request.key)
 
 
-@router.post(
+@_direct_router.post(
     "/users/{user_id}/import/apple/xml/direct",
     responses={
         **problem_doc(
             413,
             f"File is over {_mib(_direct_upload_limit(), round_up=False)} MiB",
-            _too_large_detail(1024 * _MIB, _direct_upload_limit()),
+            # Clients that declare the body size are rejected before the upload, when only "over" is known.
+            _too_large_detail(1024 * _MIB, _direct_upload_limit(), exact=False),
         ),
         **problem_doc(503, "Task queue unavailable", "Unable to queue XML processing"),
     },
@@ -208,7 +279,7 @@ def import_xml_file(
     file_size = file.size or 0
     limit = _direct_upload_limit()
     if file_size > limit:
-        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large_detail(file_size, limit))
+        raise _too_large(file_size, limit)
 
     file_contents = file.file.read()
     filename = file.filename or "upload.xml"
@@ -233,6 +304,9 @@ def import_xml_file(
         "task_id": task.id,
         "user_id": user_id,
     }
+
+
+router.include_router(_direct_router)
 
 
 @router.post("/sns/notification", status_code=status.HTTP_202_ACCEPTED)

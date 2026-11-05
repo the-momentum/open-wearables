@@ -5,13 +5,17 @@ Tests the /api/v1/users/{user_id}/import/apple/xml endpoints for XML import
 and the /api/v1/sns/notification endpoint its uploads are announced on.
 """
 
-from unittest.mock import MagicMock, patch
+from collections.abc import Iterator
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 from httpx import Response
 from kombu.exceptions import OperationalError
 from sqlalchemy.orm import Session
 
+from app.api.routes.v1.import_xml import _limited_receive
 from tests.factories import ApiKeyFactory, UserFactory
 from tests.utils import api_key_headers
 
@@ -183,16 +187,67 @@ class TestDirectXMLUpload:
             patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
             patch(f"{_ROUTE}.process_xml_upload"),
         ):
-            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 200 * 1024))
+            response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 60 * 1024))
 
         assert response.status_code == 413
         assert response.json()["detail"] == (
-            "File is 3.2 MiB, direct upload accepts up to 3 MiB. "
+            "File is 3.1 MiB, direct upload accepts up to 3 MiB. "
             "Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) "
             "for larger files."
         )
 
-    def test_413_message_skips_multipart_for_file_over_product_limit(self, client: TestClient, db: Session) -> None:
+    def test_rejects_declared_oversized_body_before_parsing_it(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        with (
+            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+            patch("starlette.requests.Request.form", new_callable=AsyncMock) as mock_form,
+        ):
+            response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
+
+        assert response.status_code == 413
+        assert response.headers["content-type"] == "application/problem+json"
+        assert response.json()["detail"] == (
+            "File is over 3 MiB, direct upload accepts up to 3 MiB. "
+            "Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) "
+            "for larger files."
+        )
+        mock_form.assert_not_called()
+        mock_task.delay.assert_not_called()
+
+    def test_rejects_undeclared_oversized_body(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        boundary = "test-boundary"
+
+        def body() -> Iterator[bytes]:
+            # A generator makes httpx send the body chunked, without Content-Length.
+            yield (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="export.xml"\r\n'
+                "Content-Type: application/xml\r\n\r\n"
+            ).encode()
+            for _ in range(4):
+                yield b"x" * _MIB
+            yield f"\r\n--{boundary}--\r\n".encode()
+
+        with (
+            patch(f"{_ROUTE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
+            patch(f"{_ROUTE}.process_xml_upload") as mock_task,
+        ):
+            response = client.post(
+                f"/api/v1/users/{user.id}/import/apple/xml/direct",
+                headers={
+                    **api_key_headers(ApiKeyFactory().plain_key),
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                },
+                content=body(),
+            )
+
+        assert response.status_code == 413
+        assert response.json()["detail"].startswith("File is over 3 MiB, direct upload accepts up to 3 MiB.")
+        mock_task.delay.assert_not_called()
+
+    def test_declared_body_over_product_limit_skips_multipart(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
 
         with (
@@ -203,7 +258,7 @@ class TestDirectXMLUpload:
             response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
 
         assert response.status_code == 413
-        assert response.json()["detail"] == "File is 4 MiB, XML import accepts up to 3 MiB."
+        assert response.json()["detail"] == "File is over 3 MiB, XML import accepts up to 3 MiB."
 
     def test_413_message_skips_multipart_when_product_limit_is_below_direct_limit(
         self, client: TestClient, db: Session
@@ -247,3 +302,50 @@ class TestDirectXMLUpload:
         assert response.json()["detail"] == "Unable to queue XML processing"
         mock_logger.error.assert_called_once()
         assert mock_logger.error.call_args.kwargs["action"] == "xml_direct_upload_queue_failed"
+
+
+class TestLimitedReceive:
+    """The body counter stops reading as soon as the limit is crossed."""
+
+    @staticmethod
+    def _request(chunks: list[bytes], headers: list[tuple[bytes, bytes]] | None = None) -> tuple[Request, list[int]]:
+        consumed = [0]
+
+        async def receive() -> dict:
+            consumed[0] += 1
+            body = chunks[consumed[0] - 1]
+            return {"type": "http.request", "body": body, "more_body": consumed[0] < len(chunks)}
+
+        return Request({"type": "http", "headers": headers or []}, receive), consumed
+
+    async def test_raises_on_the_chunk_that_crosses_the_limit(self) -> None:
+        with patch(f"{_ROUTE}._MULTIPART_OVERHEAD", 10):
+            request, consumed = self._request([b"x" * 60, b"x" * 60, b"x" * 60])
+            receive = _limited_receive(request, 100)
+
+            await receive()
+            with pytest.raises(HTTPException) as exc_info:
+                await receive()
+
+        assert exc_info.value.status_code == 413
+        assert consumed[0] == 2
+
+    async def test_passes_a_body_within_the_limit_plus_framing(self) -> None:
+        with patch(f"{_ROUTE}._MULTIPART_OVERHEAD", 10):
+            request, _ = self._request([b"x" * 60, b"x" * 50])
+            receive = _limited_receive(request, 100)
+
+            first = await receive()
+            second = await receive()
+
+        assert (len(first["body"]), len(second["body"])) == (60, 50)
+        assert second["more_body"] is False
+
+    def test_rejects_declared_length_before_reading(self) -> None:
+        with patch(f"{_ROUTE}._MULTIPART_OVERHEAD", 10):
+            request, consumed = self._request([b"x"], headers=[(b"content-length", b"111")])
+            with pytest.raises(HTTPException) as exc_info:
+                _limited_receive(request, 100)
+
+        assert exc_info.value.status_code == 413
+        assert consumed[0] == 0

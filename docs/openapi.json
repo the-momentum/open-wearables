@@ -7357,7 +7357,7 @@
                 "example": {
                   "title": "Content Too Large",
                   "status": 413,
-                  "detail": "File is 1024 MiB, direct upload accepts up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
+                  "detail": "File is over 200 MiB, direct upload accepts up to 200 MiB. Use the multipart upload (POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create) for larger files.",
                   "code": "CONTENT_TOO_LARGE"
                 }
               }
