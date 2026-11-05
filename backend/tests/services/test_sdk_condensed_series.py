@@ -22,9 +22,11 @@ def _sample(
     window: int | None = 600,
     app_id: str | None = APPLE_WATCH_APP_ID,
     value: str = "15",
+    external_id: str | None = "SERIES",
 ) -> TimeSeriesSampleCreate:
     return TimeSeriesSampleCreate(
         id=uuid4(),
+        external_id=external_id,
         user_id=uuid4(),
         source_app_id=app_id,
         recorded_at=NOW - timedelta(days=days_ago),
@@ -51,8 +53,14 @@ class TestIsCandidate:
     @pytest.mark.parametrize("count", [None, 4])
     @pytest.mark.parametrize(
         "sample",
-        [_sample(window=None), _sample(app_id="com.ouraring.oura"), _sample(app_id=None), _sample(days_ago=29)],
-        ids=["no window", "third-party app", "no app", "recent"],
+        [
+            _sample(window=None),
+            _sample(app_id="com.ouraring.oura"),
+            _sample(app_id=None),
+            _sample(days_ago=29),
+            _sample(external_id=None),
+        ],
+        ids=["no window", "third-party app", "no app", "recent", "no record id"],
     )
     def test_no_other_sample_is_whatever_the_count(self, sample: TimeSeriesSampleCreate, count: int | None) -> None:
         assert not is_candidate(sample, count, NOW)

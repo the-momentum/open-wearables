@@ -49,6 +49,9 @@ def is_candidate(sample: TimeSeriesSampleCreate, count: int | None, now: datetim
     """Whether a sample may be a condensed series, so worth a lookup."""
     if not sample.window_seconds or not is_apple_own_source(sample.source_app_id):
         return False
+    # Without an id the lookup can't leave out the sample's own stored row, so a re-send would cover itself
+    if not sample.external_id:
+        return False
     if as_utc(sample.recorded_at) >= now - MIN_CONDENSED_AGE:
         return False
     if count is not None:
