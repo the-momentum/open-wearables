@@ -19811,6 +19811,7 @@
           "is_nap": {
             "type": "boolean",
             "title": "Is Nap",
+            "description": "Whether the session is a nap: from the provider when it flags naps, else derived by Open Wearables (see Data types)",
             "default": false
           },
           "is_final": {
