@@ -719,6 +719,75 @@ class TestAppleSDKImportEdgeCases:
         assert details.distance is None
         assert details.energy_burned is None
 
+    def test_import_pool_swim_laps_as_segments(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """HealthKit lap events of a pool swim are stored as `length` segments in the FIT shape."""
+        user = UserFactory()
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {
+                "workouts": [
+                    {
+                        "id": "CCCC1111-2222-3333-4444-555566667777",
+                        "type": "swimming",
+                        "startDate": "2026-09-01T06:00:00Z",
+                        "endDate": "2026-09-01T06:05:00Z",
+                        "values": [{"type": "distance", "unit": "m", "value": 100}],
+                        "laps": [
+                            {
+                                "type": "lap",
+                                "startDate": "2026-09-01T06:00:00Z",
+                                "endDate": "2026-09-01T06:01:00Z",
+                                "distanceM": 50,
+                                "strokeStyle": "freestyle",
+                                "strokeCount": 22,
+                                "swolf": 82,
+                            },
+                            {
+                                "type": "lap",
+                                "startDate": "2026-09-01T06:02:00Z",
+                                "endDate": "2026-09-01T06:03:15Z",
+                                "distanceM": 50,
+                                "metadata": {"HKSwimmingStrokeStyle": "4", "HKSWOLFScore": "93"},
+                            },
+                        ],
+                    }
+                ],
+            },
+        }
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["workouts_saved"] == 1
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+        assert details.segments == [
+            {
+                "kind": "length",
+                "index": 0,
+                "start_time": "2026-09-01T06:00:00+00:00",
+                "elapsed_seconds": 60.0,
+                "swim_stroke": "freestyle",
+                "total_strokes": 22.0,
+                "swolf": 82.0,
+                "avg_speed": 0.83,
+                "length_type": "active",
+            },
+            {
+                "kind": "length",
+                "index": 1,
+                "start_time": "2026-09-01T06:02:00+00:00",
+                "elapsed_seconds": 75.0,
+                "swim_stroke": "breaststroke",
+                "swolf": 93.0,
+                "avg_speed": 0.67,
+                "length_type": "active",
+            },
+        ]
+
     def test_import_workout_without_energy_statistic_leaves_calories_unset(
         self,
         db: Session,
