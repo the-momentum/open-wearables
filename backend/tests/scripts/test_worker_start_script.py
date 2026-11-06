@@ -2,8 +2,8 @@
 
 The script runs two Celery workers in one container. A fake `uv` on PATH stands in for
 both, so the tests cover the shell logic only: signal forwarding, which worker decides
-the exit status, waiting for a worker that takes time to shut down, and that one
-worker's failure does not stop the other.
+the exit status, waiting for a worker that takes time to shut down, that one worker
+exiting on its own stops the other and the container, and the I/O worker's concurrency.
 """
 
 import contextlib
@@ -44,6 +44,7 @@ on_term() {
 }
 trap on_term TERM
 echo "$role pid $$" >> "$EVENTS_LOG"
+echo "$role args $*" >> "$EVENTS_LOG"
 echo "$role started" >> "$EVENTS_LOG"
 
 exit_now_var="EXIT_NOW_$role"
@@ -180,13 +181,31 @@ def test_cpu_worker_exit_stops_the_io_worker_and_the_container(run_worker_script
     assert "io stopped" in _events(events_log)
 
 
-def test_io_worker_crash_keeps_the_container_running(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXIT_NOW_io="1")
-    _wait_for(events_log, "io exited", "cpu started")
+@pytest.mark.parametrize("io_status", [1, 137])
+def test_io_worker_exit_stops_the_cpu_worker_and_the_container(run_worker_script: Callable, io_status: int) -> None:
+    """A dead I/O worker used to leave the container up with only the xml_sync queue consumed."""
+    process, events_log = run_worker_script(EXIT_NOW_io=str(io_status), EXIT_DELAY="0.5", SHUTDOWN_DELAY_cpu="0.5")
+    _wait_for(events_log, "io started", "cpu started")
 
-    time.sleep(0.5)
-    assert process.poll() is None
-
-    process.send_signal(signal.SIGTERM)
-    assert process.wait(timeout=_TIMEOUT_S) == 0
+    assert process.wait(timeout=_TIMEOUT_S) == io_status
     assert "cpu got TERM" in _events(events_log)
+    assert "cpu stopped" in _events(events_log)
+
+
+def _worker_args(events_log: Path, role: str) -> str:
+    _wait_for(events_log, f"{role} started")
+    [args] = [event for event in _events(events_log) if event.startswith(f"{role} args ")]
+    return args
+
+
+def test_io_worker_concurrency_follows_the_env_var(run_worker_script: Callable) -> None:
+    _, events_log = run_worker_script(IO_WORKER_CONCURRENCY="3")
+
+    assert "--concurrency=3" in _worker_args(events_log, "io").split()
+    assert "--concurrency=2" in _worker_args(events_log, "cpu").split()
+
+
+def test_io_worker_concurrency_is_left_to_celery_by_default(run_worker_script: Callable) -> None:
+    _, events_log = run_worker_script(IO_WORKER_CONCURRENCY="")
+
+    assert "--concurrency" not in _worker_args(events_log, "io")

@@ -4,7 +4,9 @@ set -e -x
 scripts/start/install_extensions.sh
 
 echo "Starting I/O worker..."
-uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q default,sdk_sync,garmin_sync,webhook_sync -n io@%h &
+# Without --concurrency the thread pool is sized to the host's CPU count. Set
+# IO_WORKER_CONCURRENCY to make it the same wherever the image runs.
+uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads ${IO_WORKER_CONCURRENCY:+--concurrency=$IO_WORKER_CONCURRENCY} -Q default,sdk_sync,garmin_sync,webhook_sync -n io@%h &
 io_pid=$!
 
 echo "Starting CPU worker..."
@@ -18,7 +20,8 @@ cpu_pid=$!
 # the workers if it is forwarded. Without it both are SIGKILLed after the grace period
 # and tasks in flight are cut off instead of finishing (Celery warm shutdown).
 signalled=0
-trap 'signalled=1; kill -TERM "$io_pid" "$cpu_pid" 2>/dev/null || true' TERM INT
+stopping=0
+trap 'stopping=1; signalled=1; kill -TERM "$io_pid" "$cpu_pid" 2>/dev/null || true' TERM INT
 
 # set -e would exit on the first non-zero `wait` and skip waiting for the other worker.
 set +e
@@ -50,10 +53,33 @@ wait_for_exit() {
     return "$result"
 }
 
-# The container lives as long as the CPU worker, as before.
-wait_for_exit "$cpu_pid"
+# The container lives as long as both workers. If one exits on its own (a crash, or
+# killed for memory), the other is stopped and the container exits with the first one's
+# status, so the orchestrator can restart it instead of reporting a container that no
+# longer runs half its queues as healthy. Bash 3.2 (macOS, where the tests run too) has
+# no `wait -n`, so the workers are polled; the trap interrupts the `wait` on the sleep.
+# Tracing is turned off first, or every poll would end up in the container log.
+set +x
+while [ "$stopping" = 0 ] && kill -0 "$io_pid" 2>/dev/null && kill -0 "$cpu_pid" 2>/dev/null; do
+    sleep 1 &
+    wait $!
+done
+
+if [ "$stopping" = 1 ]; then
+    # Stopped from outside: the exit status comes from the CPU worker, as before.
+    first_pid=$cpu_pid
+    other_pid=$io_pid
+elif kill -0 "$cpu_pid" 2>/dev/null; then
+    first_pid=$io_pid
+    other_pid=$cpu_pid
+else
+    first_pid=$cpu_pid
+    other_pid=$io_pid
+fi
+
+wait_for_exit "$first_pid"
 status=$?
 
-kill -TERM "$io_pid" 2>/dev/null
-wait_for_exit "$io_pid"
+kill -TERM "$other_pid" 2>/dev/null
+wait_for_exit "$other_pid"
 exit "$status"
