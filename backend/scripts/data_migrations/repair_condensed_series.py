@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Repair the HealthKit condensed series stored before the SDK import dropped them (#1983).
+"""Queue the repair of the HealthKit condensed series stored before the SDK import dropped them (#1983).
 
-The why and the decision rules are in app/services/sdk/condensed_series.py; this applies them to stored rows.
+The why and the decision rules are in app/services/sdk/condensed_series.py. The repair_condensed_series Celery task
+applies them to the rows with a window (stored since #1931) inside the user's Apple workouts older than
+MIN_CONDENSED_AGE: it restores the original a series overwrote, or deletes the series, and queues the changed days
+for the rollup, a few minutes at a time, so startup does not wait for it. Queued at every startup until the task
+records it as done (data_migration).
 
-Reads the rows with a window (stored since #1931) inside the user's Apple workouts older than MIN_CONDENSED_AGE.
-A restored original gets no window and no external id: a re-run skips it, and the series sent again counts it as
-covered and is dropped at ingest. Each data source is committed on its own and its days are queued for the
-rollup. Runs once per instance (data_migration); a re-run changes nothing.
-
-data_type_coverage is not narrowed: a deleted row starts within one window of the 2+ samples it covers, so the
-span is at most one window early.
+--dry-run counts the rows the repair would change, here and without writing.
 
 Known limits: a series stays when the user's workouts never reached OW, when it covers only part of its stored
 originals or, for heart rate, only other series, or when an old pod stores it during a rolling deploy after the run;
@@ -21,177 +19,66 @@ Usage (inside Docker):
 """
 
 import argparse
-import time
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
-from typing import Any, get_args
-from uuid import UUID
+from datetime import datetime, timezone
+from typing import get_args
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.constants.devices_map.device_types import APPLE_SOURCE_APP_PREFIX
-from app.database import engine
-from app.integrations.rollup_queue import mark_dirty_days
-from app.repositories.data_point_series_repository import StoredWindow
-from app.schemas.enums import EventCategory, ProviderName, get_series_type_from_id, get_series_type_id
-from app.services.data_migration_service import data_migration_service
-from app.services.sdk.condensed_series import CONDENSED_TYPES, MIN_CONDENSED_AGE, Repair, repair_action
-from app.services.timeseries_service import timeseries_service
-from app.utils.dates import local_date
-from app.utils.structured_logging import get_logger
-
-logger = get_logger("app.scripts.repair_condensed_series")
-
-PROGRESS_SECONDS = 30
-LOOKUP_CHUNK = 2000
-
-# A sync writing the same samples holds their rows; behind one, a statement fails and the next start
-# retries instead of holding the startup
-_LOCK_TIMEOUT = text("SET lock_timeout = '10s'")
-# The planner's cost estimates for the per-workout lookups are far too high, so JIT would compile every execution
-_NO_JIT = text("SET jit = off")
-_SOURCES = text("SELECT id, user_id, source_app_id FROM data_source WHERE source_app_id LIKE :prefix ORDER BY id")
-# The source's windowed rows inside the user's Apple workouts, each span once (a workout is often stored twice).
-# OFFSET 0 bounds each lookup by its span; flattened, the planner scans the source. 1-minute margin: a series may
-# start just before its workout. The lookup excludes the row by external id, which every SDK series has.
-_SERIES = text("""
-    SELECT series.*
-    FROM (
-        SELECT DISTINCT er.start_datetime, er.end_datetime
-        FROM data_source wds
-        JOIN event_record er ON er.data_source_id = wds.id
-        WHERE wds.user_id = :user_id AND wds.provider = :provider
-          AND er.category = :category AND er.start_datetime < :before
-    ) w
-    CROSS JOIN LATERAL (
-        SELECT s.id, s.series_type_definition_id, s.recorded_at, s.zone_offset, s.value, s.window_seconds,
-            s.external_id
-        FROM series_sample s
-        WHERE s.data_source_id = :source_id
-          AND s.series_type_definition_id = ANY(:types)
-          AND s.recorded_at >= w.start_datetime - interval '1 minute'
-          AND s.recorded_at < LEAST(w.end_datetime, :before)
-          AND s.window_seconds IS NOT NULL
-          AND s.external_id IS NOT NULL
-        OFFSET 0
-    ) series
-""")
-_RESTORE = text("UPDATE series_sample SET value = :value, window_seconds = NULL, external_id = NULL WHERE id = :id")
-_DELETE = text("DELETE FROM series_sample WHERE id = ANY(:ids)")
+from app.database import SessionLocal
+from app.integrations.celery.core import create_celery
+from app.integrations.celery.tasks.repair_condensed_series_task import (
+    MIGRATION,
+    bound_statements,
+    repair_condensed_series,
+)
+from app.models import DataSource
+from app.repositories.data_migration_repository import DataMigrationRepository
+from app.repositories.data_source_repository import DataSourceRepository
+from app.services.sdk.condensed_series import MIN_CONDENSED_AGE, Repair, repair_source
 
 
-def repair_condensed_series(db: Session, *, dry_run: bool, now: datetime | None = None) -> Counter[str]:
-    """Repairs and commits one data source at a time (nothing on a dry run). Returns the rows by action, and the
-    sources that failed under "failed"; a failed source is rolled back and left for the next run."""
-    params = {
-        "types": sorted(get_series_type_id(series_type) for series_type in CONDENSED_TYPES),
-        "before": (now or datetime.now(timezone.utc)) - MIN_CONDENSED_AGE,
-        "provider": ProviderName.APPLE.value,
-        "category": EventCategory.WORKOUT.value,
-    }
+def count_repairs(db: Session, now: datetime | None = None) -> Counter[tuple[str, Repair]]:
+    """The rows the task would repair, by type and action; writes nothing."""
+    before = (now or datetime.now(timezone.utc)) - MIN_CONDENSED_AGE
+    sources = DataSourceRepository(DataSource)
     by_type: Counter[tuple[str, Repair]] = Counter()
-    failed = 0
-    sources = db.execute(_SOURCES, {"prefix": f"{APPLE_SOURCE_APP_PREFIX}%"}).all()
-    last_progress = time.monotonic()
-    for index, (source_id, user_id, app_id) in enumerate(sources, start=1):
-        if time.monotonic() - last_progress >= PROGRESS_SECONDS:
-            last_progress = time.monotonic()
-            print(f"Repairing condensed series: {index}/{len(sources)} sources, {dict(_by_action(by_type))} so far...")
-        try:
-            by_type.update(_repair_source(db, source_id, user_id, app_id, params, dry_run))
-        except Exception as e:
-            db.rollback()
-            failed += 1
-            logger.error(
-                "Failed to repair condensed series of a data source", exc_info=e, data_source_id=str(source_id)
-            )
-    done = _by_action(by_type)
-    verb = "Would repair" if dry_run else "Repaired"
-    for type_name in sorted({name for name, _ in by_type}):
-        counts = ", ".join(f"{by_type[(type_name, action)]} {action}" for action in get_args(Repair))
-        print(f"  {type_name}: {counts}")
-    print(
-        f"{verb} condensed series: {done['restored']} restored, {done['deleted']} deleted; "
-        f"{done['kept']} left as they are."
-    )
-    if failed:
-        done["failed"] = failed
-        print(f"{failed} data sources failed and stay for the next run.")
-    if dry_run:
-        print("\nDry run — no changes made.")
-    return done
-
-
-def _by_action(by_type: Counter[tuple[str, Repair]]) -> Counter[str]:
-    done: Counter[str] = Counter()
-    for (_, action), rows in by_type.items():
-        done[action] += rows
-    return done
-
-
-def _repair_source(
-    db: Session, source_id: UUID, user_id: UUID, app_id: str, params: dict[str, Any], dry_run: bool
-) -> Counter[tuple[str, Repair]]:
-    """One source's counts, merged into the totals only once it is committed (or, on a dry run, read)."""
-    by_type: Counter[tuple[str, Repair]] = Counter()
-    restored: list[dict[str, UUID | Decimal]] = []
-    deleted: list[UUID] = []
-    days: set[date] = set()
-    rows = db.execute(_SERIES, {**params, "source_id": source_id, "user_id": user_id}).all()
-    candidates = list({row.id: row for row in rows}.values())  # a row inside two overlapping workouts comes twice
-    for start in range(0, len(candidates), LOOKUP_CHUNK):
-        chunk = candidates[start : start + LOOKUP_CHUNK]
-        windows = [
-            StoredWindow(
-                source_app_id=app_id,
-                series_type_definition_id=row.series_type_definition_id,
-                start=row.recorded_at,
-                end=row.recorded_at + timedelta(seconds=row.window_seconds),
-                external_id=row.external_id,
-            )
-            for row in chunk
-        ]
-        for row, coverage in zip(chunk, timeseries_service.stored_in_windows(db, user_id, windows), strict=True):
-            series_type = get_series_type_from_id(row.series_type_definition_id)
-            if (action := repair_action(series_type, row.value, coverage)) is None:
-                continue
-            repair, value = action
-            by_type[(series_type.value, repair)] += 1
-            if repair == "kept":
-                continue
-            if value is not None:
-                restored.append({"id": row.id, "value": value})
-            else:
-                deleted.append(row.id)
-            days.add(local_date(row.recorded_at, row.zone_offset))
-    if dry_run or not days:
-        return by_type
-    if restored:
-        db.execute(_RESTORE, restored)
-    if deleted:
-        db.execute(_DELETE, {"ids": deleted})
-    mark_dirty_days(db, [(source_id, day) for day in days])
-    db.commit()
+    after = None
+    while batch := sources.apple_app_sources(db, after, 100):
+        for source_id, user_id, app_id in batch:
+            by_type.update(repair_source(db, source_id, user_id, app_id, before, dry_run=True))
+            after = source_id
     return by_type
 
 
-def _migrate(db: Session, dry_run: bool) -> bool:
-    done = repair_condensed_series(db, dry_run=dry_run)
-    return not dry_run and not done["failed"]
+def _print_dry_run(by_type: Counter[tuple[str, Repair]]) -> None:
+    done: Counter[str] = Counter()
+    for (_, action), rows in by_type.items():
+        done[action] += rows
+    for type_name in sorted({name for name, _ in by_type}):
+        print(f"  {type_name}: " + ", ".join(f"{by_type[(type_name, a)]} {a}" for a in get_args(Repair)))
+    print(
+        f"Would repair condensed series: {done['restored']} restored, {done['deleted']} deleted; "
+        f"{done['kept']} left as they are.\n\nDry run: no changes made."
+    )
 
 
 def main(dry_run: bool) -> None:
-    with engine.connect() as connection, Session(bind=connection) as db:
-        db.execute(_LOCK_TIMEOUT)
-        db.execute(_NO_JIT)
-        db.commit()  # a rollback after a failed source would otherwise revert these settings
-        data_migration_service.run(db, "repair_condensed_series", lambda: _migrate(db, dry_run), dry_run=dry_run)
+    with SessionLocal() as db:
+        if dry_run:
+            bound_statements(db)
+            _print_dry_run(count_repairs(db))
+            return
+        if DataMigrationRepository().is_completed(db, MIGRATION):
+            print(f"{MIGRATION}: already completed, skipping.")
+            return
+    # Outside the app, the Celery app is not configured yet: without this .delay() goes to the default broker.
+    create_celery()
+    repair_condensed_series.delay()
+    print(f"{MIGRATION}: queued.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Preview affected rows without modifying data")
-    args = parser.parse_args()
-    main(dry_run=args.dry_run)
+    parser.add_argument("--dry-run", action="store_true", help="Count the rows that would change without writing")
+    main(dry_run=parser.parse_args().dry_run)

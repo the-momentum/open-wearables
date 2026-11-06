@@ -7,18 +7,21 @@ A series kept over only part of its originals still overwrites the one stored at
 
 from collections import Counter
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from app.constants.devices_map import is_apple_own_source
 from app.database import DbSession
-from app.repositories.data_point_series_repository import Coverage, StoredWindow
-from app.schemas.enums import AggregationMethod, SeriesType, get_series_type_id
+from app.integrations.rollup_queue import mark_dirty_days
+from app.models import SeriesSample
+from app.repositories.data_point_series_repository import Coverage, DataPointSeriesRepository, StoredWindow
+from app.schemas.enums import AggregationMethod, SeriesType, get_series_type_from_id, get_series_type_id
 from app.schemas.enums.aggregation_method import get_aggregation_method
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import as_utc
+from app.utils.dates import as_utc, local_date
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -41,6 +44,10 @@ _MIN_COVERED = 2
 _SUM_TOLERANCE = Decimal("0.01")
 # Above this, what a stored series has over the samples it covers is the original it replaced; less is rounding
 _REPLACED_MIN = Decimal("0.001")
+# Stored series checked per lookup by the repair
+_REPAIR_CHUNK = 2000
+
+_series = DataPointSeriesRepository(SeriesSample)
 
 Repair = Literal["restored", "deleted", "kept"]
 
@@ -135,3 +142,54 @@ def _window(sample: TimeSeriesSampleCreate) -> StoredWindow:
         end=start + timedelta(seconds=sample.window_seconds or 0),
         external_id=sample.external_id,
     )
+
+
+def repair_source(
+    db_session: DbSession, source_id: UUID, user_id: UUID, app_id: str, before: datetime, *, dry_run: bool = False
+) -> Counter[tuple[str, Repair]]:
+    """Repair the series a data source stored inside its user's Apple workouts started before ``before`` and queue
+    the changed days for the rollup; returns the rows by type and action. Writes nothing on a dry run; the caller
+    commits.
+
+    A restored original gets no window and no external id: a later run skips it, and the series sent again counts
+    it as covered and is dropped at ingest. data_type_coverage is not narrowed: a deleted row starts within one
+    window of the 2+ samples it covers, so the span is at most one window early.
+    """
+    by_type: Counter[tuple[str, Repair]] = Counter()
+    restored: list[tuple[UUID, Decimal]] = []
+    deleted: list[UUID] = []
+    days: set[date] = set()
+    type_ids = {get_series_type_id(series_type) for series_type in CONDENSED_TYPES}
+    rows = _series.windowed_in_apple_workouts(db_session, source_id, user_id, type_ids, before)
+    for start in range(0, len(rows), _REPAIR_CHUNK):
+        chunk = rows[start : start + _REPAIR_CHUNK]
+        windows = [
+            StoredWindow(
+                source_app_id=app_id,
+                series_type_definition_id=row.series_type_definition_id,
+                start=row.recorded_at,
+                end=row.recorded_at + timedelta(seconds=row.window_seconds),
+                external_id=row.external_id,
+            )
+            for row in chunk
+        ]
+        for row, coverage in zip(
+            chunk, timeseries_service.stored_in_windows(db_session, user_id, windows), strict=True
+        ):
+            series_type = get_series_type_from_id(row.series_type_definition_id)
+            if (action := repair_action(series_type, row.value, coverage)) is None:
+                continue
+            repair, value = action
+            by_type[(series_type.value, repair)] += 1
+            if repair == "kept":
+                continue
+            if value is not None:
+                restored.append((row.id, value))
+            else:
+                deleted.append(row.id)
+            days.add(local_date(row.recorded_at, row.zone_offset))
+    if days and not dry_run:
+        _series.restore_replaced(db_session, restored)
+        _series.delete_ids(db_session, deleted)
+        mark_dirty_days(db_session, [(source_id, day) for day in days])
+    return by_type

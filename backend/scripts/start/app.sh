@@ -204,11 +204,11 @@ uv run python scripts/data_migrations/classify_sleep_naps.py \
     || echo "Warning: sleep nap classification not queued — will retry on next startup."
 
 # TODO: Remove this after ~2027-05-01 once all deployments have migrated.
-# Restores the HealthKit samples a condensed series replaced and deletes the series stored over
-# their originals. Runs once per instance (data_migration).
-echo 'Running HealthKit condensed series repair...'
+# Queues the repair of the HealthKit condensed series stored over their originals: it runs in Celery,
+# restores the samples a series replaced and deletes the rest. Queued until done (data_migration).
+echo 'Queueing HealthKit condensed series repair...'
 uv run python scripts/data_migrations/repair_condensed_series.py \
-    || echo "Warning: HealthKit condensed series repair failed — will retry on next startup."
+    || echo "Warning: HealthKit condensed series repair not queued — will retry on next startup."
 
 # Initialize archival settings
 echo 'Initializing archival settings...'

@@ -21,6 +21,7 @@ from sqlalchemy import (
     case,
     cast,
     column,
+    delete,
     func,
     literal,
     literal_column,
@@ -68,6 +69,7 @@ from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
     ComputedBy,
+    EventCategory,
     PeriodKind,
     ProviderName,
     Resolution,
@@ -285,6 +287,49 @@ _STORED_IN_WINDOWS = text("""
 """)
 
 
+class WindowedSample(NamedTuple):
+    """A stored sample with a window, as the condensed series repair reads it."""
+
+    id: UUID
+    series_type_definition_id: int
+    recorded_at: datetime
+    zone_offset: str | None
+    value: Decimal
+    window_seconds: int
+    external_id: str
+
+
+# The source's windowed rows inside the user's Apple workouts, each span once (a workout is often stored twice).
+# OFFSET 0 bounds each lookup by its span; flattened, the planner scans the source. 1-minute margin: a series may
+# start just before its workout. The repair leaves the row out of its own lookup by external id, which every SDK
+# series has.
+_WINDOWED_IN_WORKOUTS = text("""
+    SELECT series.*
+    FROM (
+        SELECT DISTINCT er.start_datetime, er.end_datetime
+        FROM data_source wds
+        JOIN event_record er ON er.data_source_id = wds.id
+        WHERE wds.user_id = :user_id AND wds.provider = :provider
+          AND er.category = :category AND er.start_datetime < :before
+    ) w
+    CROSS JOIN LATERAL (
+        SELECT s.id, s.series_type_definition_id, s.recorded_at, s.zone_offset, s.value, s.window_seconds,
+            s.external_id
+        FROM series_sample s
+        WHERE s.data_source_id = :source_id
+          AND s.series_type_definition_id = ANY(:types)
+          AND s.recorded_at >= w.start_datetime - interval '1 minute'
+          AND s.recorded_at < LEAST(w.end_datetime, :before)
+          AND s.window_seconds IS NOT NULL
+          AND s.external_id IS NOT NULL
+        OFFSET 0
+    ) series
+""")
+_RESTORE_REPLACED = text(
+    "UPDATE series_sample SET value = :value, window_seconds = NULL, external_id = NULL WHERE id = :id"
+)
+
+
 class LatestValue(NamedTuple):
     """A series' latest reading and the source it came from."""
 
@@ -423,6 +468,34 @@ class DataPointSeriesRepository(
             },
         ).all()
         return [Coverage(row.covered, row.instants, row.total, row.largest) for row in rows]
+
+    def windowed_in_apple_workouts(
+        self, db_session: DbSession, source_id: UUID, user_id: UUID, type_ids: Collection[int], before: datetime
+    ) -> list[WindowedSample]:
+        """The source's samples of these types with a window and an external id, inside the user's Apple workouts
+        that started before ``before``; each once."""
+        rows = db_session.execute(
+            _WINDOWED_IN_WORKOUTS,
+            {
+                "source_id": source_id,
+                "user_id": user_id,
+                "types": sorted(type_ids),
+                "before": before,
+                "provider": ProviderName.APPLE.value,
+                "category": EventCategory.WORKOUT.value,
+            },
+        ).all()
+        # A row inside two overlapping workouts comes twice
+        return list({row.id: WindowedSample(*row) for row in rows}.values())
+
+    def restore_replaced(self, db_session: DbSession, replaced: Collection[tuple[UUID, Decimal]]) -> None:
+        """Turn each row back into the sample it replaced: that value, with no window and no external id."""
+        if replaced:
+            db_session.execute(_RESTORE_REPLACED, [{"id": row_id, "value": value} for row_id, value in replaced])
+
+    def delete_ids(self, db_session: DbSession, ids: Collection[UUID]) -> None:
+        if ids:
+            db_session.execute(delete(SeriesSample).where(SeriesSample.id.in_(list(ids))))
 
     @staticmethod
     def _with_live_sessions(
