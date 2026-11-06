@@ -1,5 +1,6 @@
 """Provider tokens are read both encrypted and plaintext, and written encrypted once the wait after the upgrade ends."""
 
+import time
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
@@ -8,7 +9,7 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy import Engine, create_engine, event, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
@@ -128,6 +129,18 @@ class TestUserConnectionTokens:
         loaded = load(db, connection.id)
 
         assert (loaded.access_token, loaded.refresh_token) == ("access-secret", "refresh-secret")
+
+    def test_reading_one_token_loads_both_in_one_query(self, db: Session) -> None:
+        connection = UserConnectionFactory()
+        db.flush()
+        loaded = load(db, connection.id)
+        statements: list[str] = []
+        event.listen(db.connection(), "before_cursor_execute", lambda *args: statements.append(args[2]))
+
+        _ = loaded.access_token
+        _ = loaded.refresh_token
+
+        assert len([sql for sql in statements if "user_connection" in sql]) == 1
 
     @pytest.mark.parametrize("upgraded", [None, BEFORE_ENCRYPTION], ids=["no_marker", "before_the_wait_ends"])
     def test_tokens_are_written_plaintext_until_encryption_starts(
@@ -253,6 +266,15 @@ class TestWriteSchedule:
         assert read_encryption_start(db.connection()) is None
         assert token_encryption.write_schedule.encrypt_writes() is False
 
+    def test_table_dropped_after_the_existence_check_is_no_marker(self, db: Session) -> None:
+        # A downgrade drops it while the marker query waits for its lock
+        db.execute(text("DROP TABLE provider_token_encryption"))
+
+        with patch.object(token_encryption, "_MARKER_TABLE_EXISTS", text("SELECT true")):
+            assert read_encryption_start(db.connection()) is None
+        # The caller's transaction goes on
+        assert db.execute(text("SELECT 1")).scalar_one() == 1
+
     def test_writes_switch_to_encrypted_when_the_wait_ends_without_another_lookup(self, db: Session) -> None:
         upgraded_ago(db, ENCRYPTION_DELAY - timedelta(minutes=30))
         schedule = token_encryption.write_schedule
@@ -362,3 +384,23 @@ class TestMarkerLookupConnection:
             )
 
         assert load_encryption_start_for_real() == upgraded_at + ENCRYPTION_DELAY
+
+    def test_gives_up_on_a_locked_table_and_writes_plaintext(self, db: Session, marker_engine: Engine) -> None:
+        # A downgrade holds the table locked while it decrypts: token writes must not wait for it
+        schedule = token_encryption.write_schedule
+        with (
+            marker_engine.connect() as downgrade,
+            patch.object(token_encryption, "_load_encryption_start", load_encryption_start_for_real),
+            patch.object(token_encryption, "_MARKER_LOOKUP_TIMEOUT_SECONDS", 1),
+            patch.object(token_encryption, "logger") as logger,
+        ):
+            downgrade.execute(text("LOCK TABLE provider_token_encryption IN ACCESS EXCLUSIVE MODE"))
+            started = time.monotonic()
+
+            assert schedule.encrypt_writes() is False
+
+            assert time.monotonic() - started < 3
+            downgrade.rollback()
+
+        logger.error.assert_called_once()
+        assert logger.error.call_args.kwargs["alert"] is True

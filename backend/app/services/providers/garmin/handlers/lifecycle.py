@@ -14,6 +14,7 @@ from app.schemas.auth import ConnectionStatus
 from app.services.outgoing_webhooks.events import on_connection_revoked
 from app.services.providers.api_client import get_valid_token, invalidate_cached_token
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.utils.exceptions import TokenDecryptionError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -43,6 +44,9 @@ def _current_grant_is_active(
             db, connection.user_id, "garmin", connection_repo, oauth, revoke_on_failure=False
         )
         return oauth.get_user_id(access_token) == garmin_user_id
+    except TokenDecryptionError:
+        # Our SECRET_KEY, not the grant: never a reason to revoke (the caller skips the entry)
+        raise
     except Exception as e:
         logger.info(
             "Garmin did not confirm an active grant for deregistration ping",
@@ -143,7 +147,23 @@ def process_deregistrations(
         if connection.status == ConnectionStatus.REVOKED:
             continue
 
-        if _current_grant_is_active(db, connection_repo, oauth, connection, garmin_user_id, trace_id):
+        try:
+            grant_active = _current_grant_is_active(db, connection_repo, oauth, connection, garmin_user_id, trace_id)
+        except TokenDecryptionError as e:
+            # The grant can't be checked without the token, and a wrong SECRET_KEY must not revoke a connection
+            # that may be active; the other entries of the ping still go ahead
+            logger.error(
+                "Could not check Garmin grant for deregistration ping, connection left as it is",
+                provider="garmin",
+                trace_id=trace_id,
+                garmin_user_id=garmin_user_id,
+                user_id=str(connection.user_id),
+                exc_info=e,
+            )
+            results["errors"].append(f"Token of Garmin user {garmin_user_id} can't be decrypted")
+            continue
+
+        if grant_active:
             logger.info(
                 "Ignored stale Garmin deregistration ping, current grant is active",
                 provider="garmin",

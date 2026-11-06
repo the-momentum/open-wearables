@@ -93,6 +93,48 @@ class TestEncryptSweep:
         assert (result.updated, result.interrupted) == (1, True)
         assert sum(is_encrypted(raw_tokens(db, connection_id)[0]) for connection_id in ids) == 1
 
+    def test_skips_the_scan_for_an_hour_after_a_clean_run(self, db: Session) -> None:
+        upgraded_ago(db, AFTER_ENCRYPTION)
+        connection_id = plaintext_connection(db)
+        assert provider_token_encryption_service.run(db).updated == 1  # changed something: no clean flag yet
+        assert provider_token_encryption_service.run(db).skipped is False  # scans, finds nothing: sets the flag
+
+        # A plaintext token written now (a process with another SECRET_KEY) waits for the flag to expire
+        store_raw_tokens(db, connection_id, "late-access", None)
+        with patch.object(
+            provider_token_encryption_service.repo,
+            "find_batch",
+            wraps=provider_token_encryption_service.repo.find_batch,
+        ) as find_batch:
+            result = provider_token_encryption_service.run(db)
+
+        assert result.skipped is True
+        find_batch.assert_not_called()
+        assert raw_tokens(db, connection_id) == ("late-access", None)
+
+    def test_without_the_marker_it_never_skips(self, db: Session) -> None:
+        # After a downgrade: a stale process can still write an encrypted token, decrypted on the next run
+        assert provider_token_encryption_service.run(db).skipped is False
+        connection_id = encrypted_connection(db)
+
+        result = provider_token_encryption_service.run(db)
+
+        assert (result.skipped, result.updated) == (False, 1)
+        assert raw_tokens(db, connection_id) == ("access-secret", "refresh-secret")
+
+    def test_clean_flag_of_the_other_sweep_does_not_skip(self, db: Session) -> None:
+        # Clean before encryption started; once it starts, the encrypt sweep runs right away
+        upgraded_ago(db, BEFORE_ENCRYPTION)
+        assert provider_token_encryption_service.run(db).sweep is TokenSweep.DECRYPT
+        db.execute(text("DELETE FROM provider_token_encryption"))
+        upgraded_ago(db, AFTER_ENCRYPTION)
+        connection_id = plaintext_connection(db)
+
+        result = provider_token_encryption_service.run(db)
+
+        assert (result.sweep, result.skipped, result.updated) == (TokenSweep.ENCRYPT, False, 1)
+        assert is_encrypted(raw_tokens(db, connection_id)[0])
+
     def test_second_run_changes_nothing(self, db: Session) -> None:
         upgraded_ago(db, AFTER_ENCRYPTION)
         connection_id = plaintext_connection(db)
@@ -145,6 +187,17 @@ class TestEncryptSweep:
 
         assert (result.updated, result.changed_meanwhile) == (0, 1)
         assert raw_tokens(db, connection_id) == ("refreshed-access", "refreshed-refresh")
+
+    def test_marker_dropped_mid_lookup_still_decrypts(self, db: Session) -> None:
+        # A downgrade drops the table between the existence check and the query: no marker, and the run goes on
+        connection_id = encrypted_connection(db)
+        db.execute(text("DROP TABLE provider_token_encryption"))
+
+        with patch("app.utils.token_encryption._MARKER_TABLE_EXISTS", text("SELECT true")):
+            result = provider_token_encryption_service.run(db)
+
+        assert (result.sweep, result.updated) == (TokenSweep.DECRYPT, 1)
+        assert raw_tokens(db, connection_id) == ("access-secret", "refresh-secret")
 
     def test_unreadable_marker_changes_nothing(self, db: Session) -> None:
         upgraded_ago(db, AFTER_ENCRYPTION)

@@ -19,7 +19,9 @@ from functools import cache
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
+from psycopg.errors import UndefinedTable
 from sqlalchemy import Connection, Dialect, Engine, Text, create_engine, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.pool import NullPool
 from sqlalchemy.types import TypeDecorator
 
@@ -93,7 +95,15 @@ def read_encryption_start(connection: Connection) -> datetime | None:
     """
     if not connection.execute(_MARKER_TABLE_EXISTS).scalar():
         return None
-    marker = connection.execute(_MARKER).one_or_none()
+    try:
+        # In a savepoint, so a failure here doesn't abort the caller's transaction
+        with connection.begin_nested():
+            marker = connection.execute(_MARKER).one_or_none()
+    except ProgrammingError as exc:
+        # A downgrade dropped the table after the check above, while this waited for its lock: no marker
+        if isinstance(exc.orig, UndefinedTable):
+            return None
+        raise
     if marker is None:
         return None
     if not hmac.compare_digest(marker.key_check, key_fingerprint(settings.secret_key)):
