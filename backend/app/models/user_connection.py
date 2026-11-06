@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Index
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, PrimaryKey, encrypted_text, str_64
@@ -37,9 +37,11 @@ class UserConnection(BaseDbModel):
     provider_user_id: Mapped[str | None]
     provider_username: Mapped[str | None]
 
-    # OAuth tokens (optional for SDK-based providers like Apple)
-    access_token: Mapped[encrypted_text | None]
-    refresh_token: Mapped[encrypted_text | None]
+    # OAuth tokens (optional for SDK-based providers like Apple). Deferred: they are decrypted on first access, so a
+    # token that doesn't decrypt (another SECRET_KEY) fails only what needs it, not every query loading the row, such
+    # as listing, reconnecting or disconnecting the connection
+    access_token: Mapped[encrypted_text | None] = mapped_column(deferred=True)
+    refresh_token: Mapped[encrypted_text | None] = mapped_column(deferred=True)
     token_expires_at: Mapped[datetime | None]
     scope: Mapped[str | None]
 

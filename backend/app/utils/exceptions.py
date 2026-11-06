@@ -183,6 +183,14 @@ class TokenDecryptionError(ConfigurationError):
     """
 
 
+class SecretKeyMismatchError(ConfigurationError):
+    """This process' SECRET_KEY isn't the one the provider tokens are encrypted with here.
+
+    Its fingerprint differs from the one the migration stored. Such a process must not encrypt a token: no other
+    process could decrypt it.
+    """
+
+
 def unknown_provider(value: str, loc: tuple[str, ...], allowed: Iterable[str]) -> RequestValidationError:
     """An unknown provider slug, answered like a ``ProviderName`` parameter FastAPI validated: a 422
     ``VALIDATION_ERROR`` pointing at ``loc``, so a typo gets one code whatever the route."""

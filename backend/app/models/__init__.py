@@ -17,6 +17,7 @@ from .menstrual_cycle_details import MenstrualCycleDetails
 from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
+from .provider_token_encryption import ProviderTokenEncryption
 from .refresh_token import RefreshToken
 from .series_aggregate import SeriesAggregate
 from .series_sample import SeriesSample
@@ -50,6 +51,7 @@ __all__ = [
     "Invitation",
     "ProviderPriority",
     "ProviderSetting",
+    "ProviderTokenEncryption",
     "RefreshToken",
     "User",
     "UserConnection",

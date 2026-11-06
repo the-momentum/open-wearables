@@ -34,6 +34,7 @@ from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import complete_and_process_aws_upload, process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
+from .provider_token_encryption_task import apply_provider_token_encryption
 from .provider_webhooks_task import reconcile_provider_webhooks
 from .refresh_dashboard_stats_task import refresh_dashboard_total_data_points
 from .renew_oura_webhooks_task import renew_oura_webhooks
@@ -68,6 +69,7 @@ __all__ = [
     "fill_missing_resilience_scores",
     # Other tasks
     "dispatch_extension_events",
+    "apply_provider_token_encryption",
     "close_stale_sync_runs",
     "finalize_stale_sleeps",
     "process_sdk_upload",

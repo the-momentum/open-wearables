@@ -247,6 +247,13 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        # Encrypts the stored provider tokens once the wait after the upgrade is over (decrypts any before that)
+        "apply-provider-token-encryption": {
+            "task": CeleryTask.APPLY_PROVIDER_TOKEN_ENCRYPTION,
+            "schedule": crontab(minute="*/5"),
+            "args": (),
+            "kwargs": {},
+        },
         "renew-oura-webhooks-monthly": {
             "task": CeleryTask.RENEW_OURA_WEBHOOKS,
             "schedule": crontab(day_of_month=1, hour=0, minute=0),  # 1st of each month at 00:00 UTC

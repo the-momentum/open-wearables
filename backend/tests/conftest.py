@@ -30,6 +30,7 @@ from app.integrations.redis_client import get_redis_client
 from app.main import api
 from app.models import SeriesTypeDefinition
 from app.schemas.enums import SERIES_TYPE_DEFINITIONS
+from app.utils import token_encryption
 from app.utils.structured_logging import strict_attributes
 from tests import factories
 
@@ -141,6 +142,17 @@ def set_factory_session(db: Session) -> Generator[None, None, None]:
     for name, obj in vars(factories).items():
         if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
             obj._meta.sqlalchemy_session = None
+
+
+@pytest.fixture(autouse=True)
+def provider_token_write_schedule(db: Session) -> Generator[None, None, None]:
+    """Token writes go by the encryption marker in the test transaction (none: plaintext), read afresh per test."""
+    with patch.object(
+        token_encryption, "_load_encryption_start", lambda: token_encryption.read_encryption_start(db.connection())
+    ):
+        token_encryption.write_schedule.reset()
+        yield
+    token_encryption.write_schedule.reset()
 
 
 @pytest.fixture

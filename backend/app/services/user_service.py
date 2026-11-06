@@ -89,9 +89,10 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         provider_factory = ProviderFactory()
         connections = list(user_connection_service.get_connections_by_user(db_session, user.id))
         for connection in connections:
-            if not connection.access_token:
-                continue
             try:
+                # Inside the try: a token that doesn't decrypt (another SECRET_KEY) must not block deleting the user
+                if not connection.access_token:
+                    continue
                 strategy = provider_factory.get_provider(connection.provider)
                 if oauth := strategy.oauth:
                     user_connection_service.deregister_from_provider(db_session, user.id, connection.provider, oauth)

@@ -69,7 +69,7 @@ The integration follows the standard OAuth 2.0 authorization code flow:
 2. User grants consent in the Sensor Bio app
 3. Sensor Bio redirects back with an authorization code
 4. Open Wearables exchanges the code for `access_token` + `refresh_token`
-5. Tokens are stored encrypted per-user and refreshed automatically on expiry
+5. Tokens are stored per user, encrypted with a key derived from `SECRET_KEY` (see [Provider token encryption](/deployment/docker#provider-token-encryption)), and refreshed automatically on expiry
 
 ## Data sync
 
