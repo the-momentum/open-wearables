@@ -165,7 +165,7 @@ The defaults in `.env.example` are development values. Override at least these f
 | `VITE_API_URL` | URL of the API as reached from the browser |
 | `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 
-Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again and update the secret in the Suunto portal.
+Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again, update the secret in the Suunto portal, and set the new Garmin webhook URL for every data type in the Garmin portal (see [Garmin API Integration](/providers/garmin-api-integration)).
 
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 

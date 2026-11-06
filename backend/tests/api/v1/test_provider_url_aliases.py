@@ -1,15 +1,13 @@
 """Google keeps POSTing to the webhook endpoint it has registered, so that path still
 resolves. Nothing else accepts the pre-split slug."""
 
-from unittest.mock import patch
-
 import pytest
-from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 from app.config import settings
 from app.constants.provider_urls import from_url_slug
 from app.schemas.enums import ProviderName
+from app.utils.webhook_callback import callback_token
 from tests.factories import ApiKeyFactory
 
 
@@ -80,9 +78,8 @@ class TestWebhookRoute:
 
     def test_get_challenge_without_provider_support_is_501(self, client: TestClient, api_v1_prefix: str) -> None:
         """Garmin has a webhook handler but no GET subscription verification."""
-        token = "3f9c1e7a5b2d4c8e9a0b1c2d3e4f5a6b"
-        with patch.object(settings, "garmin_webhook_token", SecretStr(token)):
-            response = client.get(f"{api_v1_prefix}/providers/garmin/webhooks/{token}")
+        token = callback_token("garmin").get_secret_value()
+        response = client.get(f"{api_v1_prefix}/providers/garmin/webhooks/{token}")
         assert response.status_code == 501
         assert "does not support webhook subscription verification" in response.json()["detail"]
 

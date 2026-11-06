@@ -14383,7 +14383,7 @@
           "System: Provider Webhooks (Deprecated)"
         ],
         "summary": "Garmin Webhook Ping Compat",
-        "description": "Deprecated: POST /api/v1/garmin/webhooks/ping. Always rejected with 401.\n\nUse POST /api/v1/providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} instead.",
+        "description": "Deprecated: POST /api/v1/garmin/webhooks/ping. Always rejected with 401.\n\nUse POST /api/v1/providers/garmin/webhooks/{callback token} instead; print the full\nURL with `uv run python scripts/garmin_webhook_url.py` on the server.",
         "operationId": "garmin_webhook_ping_compat_api_v1_garmin_webhooks_ping_post",
         "responses": {
           "200": {
@@ -14428,7 +14428,7 @@
           "System: Provider Webhooks (Deprecated)"
         ],
         "summary": "Garmin Webhook Push Compat",
-        "description": "Deprecated: POST /api/v1/garmin/webhooks/push. Always rejected with 401.\n\nUse POST /api/v1/providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} instead.",
+        "description": "Deprecated: POST /api/v1/garmin/webhooks/push. Always rejected with 401.\n\nUse POST /api/v1/providers/garmin/webhooks/{callback token} instead; print the full\nURL with `uv run python scripts/garmin_webhook_url.py` on the server.",
         "operationId": "garmin_webhook_push_compat_api_v1_garmin_webhooks_push_post",
         "responses": {
           "200": {

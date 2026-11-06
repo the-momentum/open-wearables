@@ -1,6 +1,6 @@
 """Tests for Garmin webhook HTTP contract layer.
 
-Garmin webhooks are accepted only on the callback URL that carries GARMIN_WEBHOOK_TOKEN:
+Garmin webhooks are accepted only on the callback URL that carries the callback token:
 Garmin does not sign its notifications, and the garmin-client-id header it sends is
 public. The endpoint immediately returns {"status": "accepted"} and enqueues all
 processing to the process_push Celery task. Processing logic is tested in
@@ -12,33 +12,29 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
-from app.main import api
-from app.services.providers.garmin.webhook_handler import check_webhook_token_configured
+from app.services.providers.garmin.webhook_handler import webhook_url_hint
+from app.utils.webhook_callback import callback_token
 
-TOKEN = "3f9c1e7a5b2d4c8e9a0b1c2d3e4f5a6b"
+TOKEN = callback_token("garmin").get_secret_value()
 BASE = "/api/v1/providers/garmin/webhooks"
 PUSH_ENDPOINT = f"{BASE}/{TOKEN}"
 LEGACY_PUSH_ENDPOINT = "/api/v1/garmin/webhooks/push"
 LEGACY_PING_ENDPOINT = "/api/v1/garmin/webhooks/ping"
 WEBHOOK_HANDLER = "app.services.providers.garmin.webhook_handler"
-URL_HINT = f"{BASE}/<GARMIN_WEBHOOK_TOKEN>"
+URL_HINT = f"{BASE}/<callback token> (print it with `uv run python scripts/garmin_webhook_url.py` on the server)"
 
 VALID_CLIENT_ID = "test-client-id"
 HEADERS = {"garmin-client-id": VALID_CLIENT_ID}
 
 
 @pytest.fixture(autouse=True)
-def _configure_garmin() -> Generator[None, None, None]:
-    """Pin the Garmin client id and webhook token so the checks are deterministic."""
-    with (
-        patch.object(settings, "garmin_client_id", VALID_CLIENT_ID),
-        patch.object(settings, "garmin_webhook_token", SecretStr(TOKEN)),
-    ):
+def _configure_garmin_client_id() -> Generator[None, None, None]:
+    """Pin the configured Garmin client id so header comparisons are deterministic."""
+    with patch.object(settings, "garmin_client_id", VALID_CLIENT_ID):
         yield
 
 
@@ -73,17 +69,17 @@ class TestGarminWebhookCallbackToken:
         assert response.status_code == 401
         celery.send_task.assert_not_called()
 
-    def test_every_notification_is_rejected_while_the_token_is_unset(
-        self, client: TestClient, celery: MagicMock
-    ) -> None:
-        with patch.object(settings, "garmin_webhook_token", None):
-            responses = [
-                client.post(path, headers=HEADERS, json={"dailies": []})
-                for path in (BASE, PUSH_ENDPOINT, LEGACY_PUSH_ENDPOINT)
-            ]
+    def test_a_new_secret_key_changes_the_token(self, client: TestClient, celery: MagicMock) -> None:
+        """Rotating SECRET_KEY is how the token is rotated: the old URL stops working."""
+        with patch.object(settings, "secret_key", "x" * 64):
+            new_token = callback_token("garmin").get_secret_value()
+            old_url = client.post(PUSH_ENDPOINT, headers=HEADERS, json={"dailies": []})
+            new_url = client.post(f"{BASE}/{new_token}", headers=HEADERS, json={"dailies": []})
 
-        assert [r.status_code for r in responses] == [401, 401, 401]
-        celery.send_task.assert_not_called()
+        assert new_token != TOKEN
+        assert old_url.status_code == 401
+        assert new_url.status_code == 200
+        assert celery.send_task.call_count == 1
 
     def test_token_is_checked_before_the_body(self, client: TestClient) -> None:
         response = client.post(BASE, content=b"not json", headers={**HEADERS, "Content-Type": "application/json"})
@@ -219,6 +215,7 @@ class TestGarminDeprecatedRoutes:
 
         assert response.status_code == 401
         assert URL_HINT in response.json()["detail"]
+        assert TOKEN not in response.text
         celery.send_task.assert_not_called()
         logger.error.assert_called_once()
         assert logger.error.call_args.kwargs["webhook_url"].endswith(URL_HINT)
@@ -227,7 +224,7 @@ class TestGarminDeprecatedRoutes:
     def test_legacy_route_without_our_client_id_logs_only_a_warning(
         self, client: TestClient, celery: MagicMock
     ) -> None:
-        """A scanner hitting the old path is no reason to page anyone."""
+        """A scanner hitting the old path is no reason to log an error."""
         with (
             patch(f"{WEBHOOK_HANDLER}.logger") as handler_logger,
             patch("app.api.routes.v1.deprecated_webhooks.logger") as route_logger,
@@ -243,12 +240,12 @@ class TestGarminRejectedUrlReport:
     """Garmin itself turned away on the unified route is an error with the URL to set."""
 
     @pytest.mark.parametrize(
-        "path",
-        [BASE, f"{BASE}/{TOKEN[:-1]}x"],
+        ("path", "logged_path"),
+        [(BASE, BASE), (f"{BASE}/{TOKEN[:-1]}x", f"{BASE}/redacted")],
         ids=["tokenless-canonical-url", "stale-token"],
     )
     def test_our_garmin_app_without_the_token_is_an_error(
-        self, client: TestClient, celery: MagicMock, path: str
+        self, client: TestClient, celery: MagicMock, path: str, logged_path: str
     ) -> None:
         with patch(f"{WEBHOOK_HANDLER}.logger") as logger:
             response = client.post(path, headers=HEADERS, json={"dailies": []})
@@ -256,15 +253,15 @@ class TestGarminRejectedUrlReport:
         assert response.status_code == 401
         logger.error.assert_called_once()
         assert logger.error.call_args.kwargs["webhook_url"].endswith(URL_HINT)
-        assert logger.error.call_args.kwargs["path"] in (BASE, f"{BASE}/redacted")
+        assert logger.error.call_args.kwargs["path"] == logged_path
         assert TOKEN[:-1] not in str(logger.error.call_args)
 
-    def test_unset_token_is_an_error_for_our_garmin_app(self, client: TestClient, celery: MagicMock) -> None:
-        with patch.object(settings, "garmin_webhook_token", None), patch(f"{WEBHOOK_HANDLER}.logger") as logger:
+    def test_our_garmin_app_on_the_token_url_is_not_an_error(self, client: TestClient, celery: MagicMock) -> None:
+        with patch(f"{WEBHOOK_HANDLER}.logger") as logger:
             response = client.post(PUSH_ENDPOINT, headers=HEADERS, json={"dailies": []})
 
-        assert response.status_code == 401
-        logger.error.assert_called_once()
+        assert response.status_code == 200
+        logger.error.assert_not_called()
 
     @pytest.mark.parametrize("headers", [{}, {"garmin-client-id": "attacker-invented"}], ids=["none", "other"])
     def test_other_callers_are_not_an_error(
@@ -277,41 +274,6 @@ class TestGarminRejectedUrlReport:
         logger.error.assert_not_called()
 
 
-class TestStartupCheck:
-    """Garmin delivers everything by push, so a missing token stops all Garmin data."""
-
-    @pytest.mark.parametrize("token", [None, SecretStr("")], ids=["unset", "empty-as-in-env-example"])
-    def test_missing_token_is_a_warning_when_garmin_credentials_are_set(self, token: SecretStr | None) -> None:
-        """Only a warning: .env.example ships placeholder Garmin credentials."""
-        with (
-            patch.object(settings, "garmin_client_secret", SecretStr("client-secret")),
-            patch.object(settings, "garmin_webhook_token", token),
-            patch(f"{WEBHOOK_HANDLER}.logger") as logger,
-        ):
-            check_webhook_token_configured()
-
-        logger.warning.assert_called_once()
-        logger.error.assert_not_called()
-        assert "GARMIN_WEBHOOK_TOKEN is not set" in logger.warning.call_args.args[0]
-        assert "alert" not in logger.warning.call_args.kwargs
-
-    @pytest.mark.parametrize(
-        ("client_secret", "token"),
-        [(SecretStr("client-secret"), SecretStr(TOKEN)), (None, None), (SecretStr(""), None)],
-        ids=["token-set", "garmin-not-configured", "empty-client-secret"],
-    )
-    def test_nothing_is_logged_otherwise(self, client_secret: SecretStr | None, token: SecretStr | None) -> None:
-        with (
-            patch.object(settings, "garmin_client_secret", client_secret),
-            patch.object(settings, "garmin_webhook_token", token),
-            patch(f"{WEBHOOK_HANDLER}.logger") as logger,
-        ):
-            check_webhook_token_configured()
-
-        logger.warning.assert_not_called()
-
-    def test_runs_at_application_startup(self) -> None:
-        with patch("app.main.check_garmin_webhook_token_configured") as check, TestClient(api):
-            pass
-
-        check.assert_called_once()
+def test_url_hint_never_carries_the_token() -> None:
+    assert TOKEN not in webhook_url_hint()
+    assert webhook_url_hint().endswith(URL_HINT)

@@ -203,8 +203,6 @@ class Settings(BaseSettings):
     garmin_client_secret: SecretStr | None = None
     garmin_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     garmin_default_scope: str = ""  # Scope is managed at app creation in Garmin Developer Portal
-    # Random secret in the webhook callback path; Garmin webhooks are rejected while unset.
-    garmin_webhook_token: SecretStr | None = None
 
     # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None

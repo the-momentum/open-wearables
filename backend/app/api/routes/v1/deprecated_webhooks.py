@@ -34,7 +34,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Garmin — canonical path changed from /garmin/webhooks/{ping,push}
 #          to /providers/garmin/webhooks in commit e458cdeb, and to
-#          /providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} for ENG-1895.
+#          /providers/garmin/webhooks/{callback token} for ENG-1895.
 # ---------------------------------------------------------------------------
 
 
@@ -60,7 +60,8 @@ def _reject_garmin_legacy_route(request: Request) -> NoReturn:
 def garmin_webhook_ping_compat(request: Request) -> dict:
     """Deprecated: POST /api/v1/garmin/webhooks/ping. Always rejected with 401.
 
-    Use POST /api/v1/providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} instead.
+    Use POST /api/v1/providers/garmin/webhooks/{callback token} instead; print the full
+    URL with `uv run python scripts/garmin_webhook_url.py` on the server.
     """
     _reject_garmin_legacy_route(request)
 
@@ -69,7 +70,8 @@ def garmin_webhook_ping_compat(request: Request) -> dict:
 def garmin_webhook_push_compat(request: Request) -> dict:
     """Deprecated: POST /api/v1/garmin/webhooks/push. Always rejected with 401.
 
-    Use POST /api/v1/providers/garmin/webhooks/{GARMIN_WEBHOOK_TOKEN} instead.
+    Use POST /api/v1/providers/garmin/webhooks/{callback token} instead; print the full
+    URL with `uv run python scripts/garmin_webhook_url.py` on the server.
     """
     _reject_garmin_legacy_route(request)
 
