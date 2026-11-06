@@ -71,6 +71,13 @@ logger = get_logger(__name__)
 
 _T = TypeVar("_T", bound=BaseModel)
 
+# A Polar night's external_id is its date behind this prefix
+_SLEEP_ID_PREFIX = "sleep-"
+
+
+def _sleep_external_id(night: date | str) -> str:
+    return f"{_SLEEP_ID_PREFIX}{night}"
+
 
 def _expand_repeated_steps(points: list[tuple[datetime, int]], interval: timedelta) -> dict[datetime, int]:
     """Polar omits a sample repeating the previous count, so a longer gap after a non-zero one holds repeats."""
@@ -170,10 +177,6 @@ class Polar247Data(Base247DataTemplate):
         nights = (response or {}).get("available", [])
         return {date.fromisoformat(night["date"]) for night in nights if night.get("date")}
 
-    @staticmethod
-    def _sleep_external_id(night: date) -> str:
-        return f"sleep-{night.isoformat()}"
-
     def get_sleep_data(
         self,
         db: DbSession,
@@ -190,9 +193,9 @@ class Polar247Data(Base247DataTemplate):
         late_dates = available_dates - date_range
         if late_dates:
             stored = event_record_service.crud.get_by_external_ids(
-                db, user_id, [self._sleep_external_id(d) for d in late_dates], provider=ProviderName.POLAR
+                db, user_id, [_sleep_external_id(d) for d in late_dates], provider=ProviderName.POLAR
             )
-            late_dates = {d for d in late_dates if self._sleep_external_id(d) not in stored}
+            late_dates = {d for d in late_dates if _sleep_external_id(d) not in stored}
         sleep_data = []
         for d in sorted(date_range.intersection(available_dates) | late_dates):
             response = self._make_api_request(db, user_id, f"/v3/users/sleep/{d.isoformat()}")
@@ -299,7 +302,7 @@ class Polar247Data(Base247DataTemplate):
                 start_datetime=start_dt,
                 end_datetime=end_dt,
                 zone_offset=offset_of(start_dt),
-                external_id=f"sleep-{parsed.date}",
+                external_id=_sleep_external_id(parsed.date),
                 provider=ProviderName.POLAR,
                 user_id=user_id,
             )
@@ -1098,10 +1101,12 @@ class Polar247Data(Base247DataTemplate):
             if raw.get("date") and raw["date"] not in known and (raw.get("hrv_samples") or raw.get("breathing_samples"))
         }
         stored = event_record_service.crud.get_by_external_ids(
-            db, user_id, (f"sleep-{d}" for d in dates), provider=ProviderName.POLAR
+            db, user_id, (_sleep_external_id(d) for d in dates), provider=ProviderName.POLAR
         )
         return {
-            external_id.removeprefix("sleep-"): record.start_datetime.astimezone(iso_to_timezone(record.zone_offset))
+            external_id.removeprefix(_SLEEP_ID_PREFIX): record.start_datetime.astimezone(
+                iso_to_timezone(record.zone_offset)
+            )
             for external_id, record in stored.items()
             if record.zone_offset
         }
@@ -1126,7 +1131,7 @@ class Polar247Data(Base247DataTemplate):
 
         for record, detail, score, hr in normalized:
             if sleep_starts is not None and record.external_id:
-                sleep_starts[record.external_id.removeprefix("sleep-")] = record.start_datetime
+                sleep_starts[record.external_id.removeprefix(_SLEEP_ID_PREFIX)] = record.start_datetime
             try:
                 self._claim_night_stored_without_id(db, user_id, record)
                 stored = event_record_service.create_or_merge_sleep(
