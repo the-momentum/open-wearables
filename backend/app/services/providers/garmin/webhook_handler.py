@@ -96,7 +96,8 @@ def report_rejected_webhook_url(request: Request) -> bool:
     A request carrying our ``garmin-client-id`` but no valid token is most likely
     Garmin itself, still set up with an old URL (or ``SECRET_KEY`` was rotated),
     and no Garmin data arrives until the operator fixes it. The client id is
-    public, so a scanner can send it too, but scanners rarely do.
+    public, so anyone can send it too: the message says what was seen, not that
+    Garmin is broken, so that a flood of such requests does not look like an outage.
 
     Returns:
         ``True`` when the error was logged, ``False`` (nothing logged) for any
@@ -106,9 +107,11 @@ def report_rejected_webhook_url(request: Request) -> bool:
     if not expected or request.headers.get("garmin-client-id") != expected:
         return False
     logger.error(
-        "Garmin webhook rejected: its URL does not carry the current callback token, so no Garmin data arrives. "
-        "In the Garmin portal (https://apis.garmin.com/tools/endpoints), set webhook_url as the callback URL of "
-        "every data type, Deregistrations and User Permissions included",
+        "Rejected a Garmin webhook with our client ID but without the current callback token. If Garmin data "
+        "stopped arriving, set webhook_url as the callback URL of every data type in the Garmin portal "
+        "(https://apis.garmin.com/tools/endpoints), Deregistrations and User Permissions included. The client ID "
+        "is public, so others can send it too: check client_host before acting, and do not rotate SECRET_KEY "
+        "because of this alone",
         provider="garmin",
         action="garmin_webhook_url_rejected",
         webhook_url=webhook_url_hint(),

@@ -221,7 +221,7 @@ GARMIN_CLIENT_SECRET=your_client_secret_here
     4. Change the URL of every data type to the one the script printed.
     5. Turn **On Hold** off for every data type. Garmin resumes delivery, including the queued notifications, within about 2 minutes.
 
-    If a notification is rejected anyway, Garmin retries it with backoff, usually for long enough to fix the URLs, but only **On Hold** guarantees that nothing is lost. Until then, the backend logs an error with the URL to set (the token shown as a placeholder) and the command that prints it, for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token.
+    If a notification is rejected anyway, Garmin retries it with backoff, usually for long enough to fix the URLs, but only **On Hold** guarantees that nothing is lost. Until then, the backend logs an error with the URL to set (the token shown as a placeholder) and the command that prints it, for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token. The client ID is public, so others can trigger this error too. Check `client_host` before acting on it, and don't rotate `SECRET_KEY` because of it alone.
     </Warning>
   </Step>
   <Step title="Rotate the webhook URL">

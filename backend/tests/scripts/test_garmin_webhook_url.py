@@ -37,6 +37,8 @@ def test_prints_the_callback_url_alone_on_stdout(capsys: pytest.CaptureFixture[s
         "https://192.168.1.20",
         "https://[::1]",
         "https://host.docker.internal",
+        "https://api.example.com/",
+        "https://example.com/open-wearables",
     ],
 )
 def test_warns_when_api_base_url_cannot_reach_garmin(base_url: str, capsys: pytest.CaptureFixture[str]) -> None:

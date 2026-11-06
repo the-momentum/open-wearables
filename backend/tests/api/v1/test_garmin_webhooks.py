@@ -273,6 +273,24 @@ class TestGarminRejectedUrlReport:
         assert response.status_code == 401
         logger.error.assert_not_called()
 
+    def test_nothing_is_an_error_while_the_client_id_is_unset(self, client: TestClient, celery: MagicMock) -> None:
+        with patch.object(settings, "garmin_client_id", None), patch(f"{WEBHOOK_HANDLER}.logger") as logger:
+            response = client.post(BASE, headers=HEADERS, json={})
+
+        assert response.status_code == 401
+        logger.error.assert_not_called()
+
+    @pytest.mark.parametrize("method", ["get", "head"])
+    def test_get_and_head_from_our_garmin_app_without_the_token_are_an_error(
+        self, client: TestClient, method: str
+    ) -> None:
+        with patch(f"{WEBHOOK_HANDLER}.logger") as logger:
+            response = getattr(client, method)(BASE, headers=HEADERS)
+
+        assert response.status_code == 401
+        logger.error.assert_called_once()
+        assert logger.error.call_args.kwargs["webhook_url"].endswith(URL_HINT)
+
 
 def test_url_hint_never_carries_the_token() -> None:
     assert TOKEN not in webhook_url_hint()
