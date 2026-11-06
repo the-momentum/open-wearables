@@ -35,8 +35,9 @@ def _not_public_ip(host: str) -> bool:
 def _reachable_by_garmin(base_url: str) -> bool:
     """Garmin sends only to HTTPS on the standard port (Health API, Endpoint Configuration).
 
-    The URL is API_BASE_URL with the route appended, so a path in API_BASE_URL, even a
-    trailing slash (``//api/...``), yields a URL that matches no route.
+    The URL is API_BASE_URL with the route appended, so anything after the host in
+    API_BASE_URL (a path, even a trailing slash, a query or a fragment) yields a URL whose
+    path matches no route.
     """
     base = urlsplit(base_url)
     host = base.hostname or ""
@@ -45,9 +46,10 @@ def _reachable_by_garmin(base_url: str) -> bool:
     except ValueError:  # not a number
         return False
     return (
-        base.scheme == "https"
+        bool(host)
+        and base.scheme == "https"
         and port in (None, 443)
-        and not base.path
+        and base_url == f"{base.scheme}://{base.netloc}"
         and host not in _LOCAL_HOSTS
         and not _not_public_ip(host)
     )
@@ -57,8 +59,8 @@ def main() -> None:
     if not _reachable_by_garmin(settings.api_base_url):
         print(
             f"Warning: API_BASE_URL is {settings.api_base_url!r}. Garmin sends only to a public HTTPS URL on "
-            "the standard port, and API_BASE_URL must have no path or trailing slash; run this where the backend "
-            "runs, with its API_BASE_URL.",
+            "the standard port, and API_BASE_URL must end with the host or port, with no path, trailing slash, "
+            "query or fragment; run this where the backend runs, with its API_BASE_URL.",
             file=sys.stderr,
         )
     print(

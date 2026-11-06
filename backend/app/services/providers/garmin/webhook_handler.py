@@ -108,11 +108,12 @@ def report_rejected_webhook_url(request: Request) -> bool:
     if not expected or request.headers.get("garmin-client-id") != expected:
         return False
     logger.error(
-        "Rejected a Garmin webhook with our client ID but without the current callback token. If Garmin data "
-        "stopped arriving, set webhook_url as the callback URL of every data type in the Garmin portal "
-        "(https://apis.garmin.com/tools/endpoints), Deregistrations and User Permissions included. The client ID "
-        "is public, so others can send it too: before acting, check that new Garmin data has really stopped "
-        "arriving, and do not rotate SECRET_KEY because of this alone",
+        "Rejected a Garmin webhook with our client ID but without the current callback token. If data of any "
+        "type stopped arriving, set webhook_url as the callback URL of every data type in the Garmin portal "
+        "(https://apis.garmin.com/tools/endpoints), Deregistrations and User Permissions included. The URL is "
+        "set per data type, so one type can stop while the others still arrive. The client ID is public, so "
+        "others can send it too: before acting, check whether new data of some type has stopped arriving or "
+        "a data type in the portal has another URL, and do not rotate SECRET_KEY because of this alone",
         provider="garmin",
         action="garmin_webhook_url_rejected",
         webhook_url=webhook_url_hint(),
