@@ -1,6 +1,6 @@
 import contextlib
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import NamedTuple, cast
 from uuid import UUID, uuid4
 
@@ -10,12 +10,12 @@ from sqlalchemy.dialects.postgresql import insert
 from app.constants.devices_map import infer_device_type, is_host_model
 from app.constants.sdk_providers import SDK_PROVIDERS
 from app.database import DbSession
-from app.models import DataSource, HealthScore, ProviderPriority
+from app.models import DataSource, EventRecord, HealthScore, ProviderPriority
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
 from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
-from app.schemas.enums import DeviceType, ProviderName
+from app.schemas.enums import DeviceType, EventCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.model_crud.data_priority import DataSourceCreate, DataSourceUpdate
 
@@ -466,6 +466,20 @@ class DataSourceRepository(
             return {}
         resolved = self._resolve_many(db_session, provider, requests, user_connection_id)
         return {identity: resolved[key].id for identity, key in normalized.items()}
+
+    def sleep_sources(
+        self, db_session: DbSession, providers: Iterable[ProviderName], after: UUID | None, limit: int
+    ) -> list[tuple[UUID, UUID]]:
+        """(id, user id) of the providers' data sources that hold sleep, by id after ``after``."""
+        has_sleep = (
+            select(EventRecord.id)
+            .where(EventRecord.data_source_id == self.model.id, EventRecord.category == EventCategory.SLEEP)
+            .exists()
+        )
+        query = select(self.model.id, self.model.user_id).where(self.model.provider.in_(list(providers)), has_sleep)
+        if after is not None:
+            query = query.where(self.model.id > after)
+        return [(row.id, row.user_id) for row in db_session.execute(query.order_by(self.model.id).limit(limit))]
 
     def get_user_data_sources(
         self,

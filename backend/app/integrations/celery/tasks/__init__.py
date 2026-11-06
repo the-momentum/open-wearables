@@ -11,6 +11,7 @@ from app.services.providers.garmin.backfill_state import (
 from .aggregate_backfill_task import run_aggregate_backfill
 from .archival_task import roll_up_queued_days, run_daily_archival
 from .backfill_data_type_coverage_task import backfill_data_type_coverage
+from .classify_sleep_naps_task import classify_sleep_naps
 from .close_stale_sync_runs_task import close_stale_sync_runs
 from .delete_user_webhook_payloads_task import delete_user_webhook_payloads
 from .emit_webhook_event_task import emit_webhook_event
@@ -70,6 +71,7 @@ __all__ = [
     # Other tasks
     "dispatch_extension_events",
     "apply_provider_token_encryption",
+    "classify_sleep_naps",
     "close_stale_sync_runs",
     "finalize_stale_sleeps",
     "process_sdk_upload",

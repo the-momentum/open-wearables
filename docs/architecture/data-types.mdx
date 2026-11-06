@@ -306,6 +306,21 @@ stored before this behavior was introduced may still show `0` for stages the pro
 report. In the daily sleep summary
 (`/summaries/sleep`), `stages` itself is `null` when no stage is reported.
 
+A sleep session's `is_nap` comes from the provider when it flags naps (Garmin, Oura, Whoop, Suunto,
+Google Health). Apple, Samsung and Health Connect (through the mobile SDK), Sensor Bio, Ultrahuman
+and Withings don't, so Open Wearables flags their naps. Per day (the local date a session ends on),
+the session with the most time asleep is the main sleep, and another session is a nap when it:
+
+- has 15 minutes to under 3 hours of sleep,
+- starts between 06:00 and 20:00 local time,
+- is more than 2 hours from the main sleep of its day and of the next day.
+
+Sleep without a zone offset (Sensor Bio, Ultrahuman, and some sleep other apps write to Apple
+Health) has no start hour to check, so it has to be more than 4 hours from those main sleeps
+instead. Polar keeps one sleep per date, so its sessions are never naps. The flag can change when a
+later upload brings the day's night, and a change sends no webhook. `sleep.created` from the mobile
+SDK and Sensor Bio is sent before the flag is set, so it carries `is_nap: false`.
+
 Some providers send a night before it's over and extend it later, so a sleep session's
 `is_final` says whether more of it is still expected. Sessions from the mobile SDK are final at
 once. A Garmin night is final once Garmin's validation is final, else 12 hours after it ends; a

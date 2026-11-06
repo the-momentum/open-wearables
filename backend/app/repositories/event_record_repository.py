@@ -25,7 +25,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Query, selectinload
+from sqlalchemy.orm import Query, defer, selectinload
 
 from app.config import settings
 from app.constants.devices_map.device_types import APPLE_SOURCE_APP_PREFIX, is_apple_own_source
@@ -1561,6 +1561,35 @@ class EventRecordRepository(
             .all()
         )
         return [(event_record, sleep_details) for event_record, sleep_details in rows]
+
+    def get_source_sleep_records(
+        self,
+        db_session: DbSession,
+        data_source_id: UUID,
+        ends_from: datetime | None = None,
+        ends_before: datetime | None = None,
+    ) -> list[tuple[EventRecord, SleepDetails | None]]:
+        """A data source's sleep records with their details, those ending in [ends_from, ends_before) when given.
+        Stage timelines aren't loaded. Flushes first, so the caller's pending sessions count."""
+        db_session.flush()
+        query = (
+            db_session.query(EventRecord, SleepDetails)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .options(defer(SleepDetails.sleep_stages))
+            .filter(EventRecord.data_source_id == data_source_id, EventRecord.category == EventCategory.SLEEP)
+            .order_by(EventRecord.start_datetime)
+        )
+        if ends_from is not None:
+            query = query.filter(EventRecord.end_datetime >= ends_from)
+        if ends_before is not None:
+            query = query.filter(EventRecord.end_datetime < ends_before)
+        return [(record, details) for record, details in query.all()]
+
+    def set_nap_flags(self, db_session: DbSession, flags: list[tuple[SleepDetails, bool]]) -> None:
+        """Set the nap flag of each sleep details row and flush."""
+        for details, is_nap in flags:
+            details.is_nap = is_nap
+        db_session.flush()
 
 
 def local_days(source_id: UUID, start: datetime, end: datetime, zone_offset: str | None) -> list[tuple[UUID, date]]:
