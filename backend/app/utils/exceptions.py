@@ -175,6 +175,22 @@ class ConfigurationError(AppError):
     code = "CONFIGURATION_ERROR"
 
 
+class TokenDecryptionError(ConfigurationError):
+    """A stored provider token doesn't decrypt: SECRET_KEY differs from the one it was encrypted with.
+
+    Not a sign the connection is dead: it must not be revoked or have its tokens cleared, since the right
+    SECRET_KEY brings it back.
+    """
+
+
+class SecretKeyMismatchError(ConfigurationError):
+    """This process' SECRET_KEY isn't the one the provider tokens are encrypted with here.
+
+    Its fingerprint differs from the one the migration stored. Such a process must not encrypt a token: no other
+    process could decrypt it.
+    """
+
+
 def unknown_provider(value: str, loc: tuple[str, ...], allowed: Iterable[str]) -> RequestValidationError:
     """An unknown provider slug, answered like a ``ProviderName`` parameter FastAPI validated: a 422
     ``VALIDATION_ERROR`` pointing at ``loc``, so a typo gets one code whatever the route."""
