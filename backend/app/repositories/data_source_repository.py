@@ -8,6 +8,7 @@ from sqlalchemy import CursorResult, and_, delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.constants.devices_map import infer_device_type, is_host_model
+from app.constants.devices_map.device_types import APPLE_SOURCE_APP_PREFIX
 from app.constants.sdk_providers import SDK_PROVIDERS
 from app.database import DbSession
 from app.models import DataSource, EventRecord, HealthScore, ProviderPriority
@@ -480,6 +481,16 @@ class DataSourceRepository(
         if after is not None:
             query = query.where(self.model.id > after)
         return [(row.id, row.user_id) for row in db_session.execute(query.order_by(self.model.id).limit(limit))]
+
+    def apple_app_sources(self, db_session: DbSession, after: UUID | None, limit: int) -> list[tuple[UUID, UUID, str]]:
+        """(id, user id, source app id) of the data sources Apple's own apps wrote, by id after ``after``."""
+        query = select(self.model.id, self.model.user_id, self.model.source_app_id).where(
+            self.model.source_app_id.like(f"{APPLE_SOURCE_APP_PREFIX}%")
+        )
+        if after is not None:
+            query = query.where(self.model.id > after)
+        rows = db_session.execute(query.order_by(self.model.id).limit(limit))
+        return [(row.id, row.user_id, row.source_app_id) for row in rows]
 
     def get_user_data_sources(
         self,

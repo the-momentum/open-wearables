@@ -56,6 +56,7 @@ from app.utils.dates import window_seconds
 from app.utils.structured_logging import get_logger
 from app.utils.units import BloodGlucoseUnit, EnergyUnit, UnitConverter, VolumeUnit
 
+from .condensed_series import drop_condensed_series
 from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from .sleep_service import save_sleep
 from .workout_segments import build_workout_segments
@@ -669,6 +670,10 @@ class ImportService:
 
         # Process time series samples (records)
         samples = self._build_statistic_bundles(records, request.provider, user_id, request.sdkVersion)
+        # A series HealthKit condensed from samples already stored would count them twice
+        samples = drop_condensed_series(
+            db_session, samples, {r.id: r.count for r in records if r.id and r.count is not None}
+        )
         if samples:
             counts = self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)

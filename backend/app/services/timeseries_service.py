@@ -14,7 +14,7 @@ from app.database import DbSession
 from app.integrations import rollup_queue
 from app.models import DataSource, SeriesAggregate, SeriesSample
 from app.repositories import ArchivalSettingRepository, DataPointSeriesRepository
-from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
+from app.repositories.data_point_series_repository import AggregatedSample, Coverage, StoredWindow, WriteCounts
 from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import SampleDay, SeriesAggregateRepository, StaleDays
 from app.repositories.series_reconcile_repository import RECONCILED_SERIES, SeriesReconcileRepository
@@ -301,6 +301,12 @@ class TimeSeriesService(
         return self.crud.has_samples_in_range(
             db_session, user_id, source, device_model, series_types, start_datetime, end_datetime
         )
+
+    def stored_in_windows(
+        self, db_session: DbSession, user_id: UUID, windows: Sequence[StoredWindow]
+    ) -> list[Coverage]:
+        """Per window, what the user's stored samples of its type and writer app cover."""
+        return self.crud.stored_in_windows(db_session, user_id, windows)
 
     @staticmethod
     def _emit_timeseries_webhooks(

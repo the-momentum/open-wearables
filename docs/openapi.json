@@ -8368,6 +8368,18 @@
                               ],
                               "title": "Unit"
                             },
+                            "count": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "description": "HKQuantitySample.count. Above 1 for a quantity series, e.g. one HealthKit condensed from older samples.",
+                              "title": "Count"
+                            },
                             "metadata": {
                               "anyOf": [
                                 {
