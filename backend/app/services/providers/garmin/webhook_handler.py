@@ -16,9 +16,10 @@ Authenticity
   Garmin has no API for its endpoint configuration, so the operator prints the
   URL with ``scripts/garmin_webhook_url.py`` and sets it by hand in the Garmin
   portal, separately for every data type. ``BaseWebhookHandler.authenticate_callback``
-  checks the token on every request, so the deprecated
-  ``/garmin/webhooks/{ping,push}`` routes, which carry no token, are always
-  rejected. When a rejected request carries our ``garmin-client-id``,
+  checks the token on every request to the unified router. The deprecated
+  ``/garmin/webhooks/{ping,push}`` routes cannot carry the token, so they reject
+  every request themselves (see ``deprecated_webhooks.py``). When a rejected
+  request carries our ``garmin-client-id``,
   ``report_rejected_webhook_url`` logs an error that tells the operator to set
   the URL in the portal.
 
@@ -110,8 +111,8 @@ def report_rejected_webhook_url(request: Request) -> bool:
         "Rejected a Garmin webhook with our client ID but without the current callback token. If Garmin data "
         "stopped arriving, set webhook_url as the callback URL of every data type in the Garmin portal "
         "(https://apis.garmin.com/tools/endpoints), Deregistrations and User Permissions included. The client ID "
-        "is public, so others can send it too: check client_host before acting, and do not rotate SECRET_KEY "
-        "because of this alone",
+        "is public, so others can send it too: before acting, check that new Garmin data has really stopped "
+        "arriving, and do not rotate SECRET_KEY because of this alone",
         provider="garmin",
         action="garmin_webhook_url_rejected",
         webhook_url=webhook_url_hint(),
