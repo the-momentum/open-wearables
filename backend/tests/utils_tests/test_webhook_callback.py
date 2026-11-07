@@ -54,6 +54,10 @@ def test_token_matching(expected: SecretStr | None, provided: str | None, matche
             f"/api/v1/providers/strava/webhooks/{TOKEN}?hub.mode=subscribe",
             "/api/v1/providers/strava/webhooks/redacted?hub.mode=subscribe",
         ),
+        (
+            f"https://api.example.com/api/v1/providers/garmin/webhooks/{TOKEN}",
+            "https://api.example.com/api/v1/providers/garmin/webhooks/redacted",
+        ),
         ("/api/v1/providers/strava/webhooks", "/api/v1/providers/strava/webhooks"),
         ("/api/v1/providers/strava/webhooks/subscriptions", "/api/v1/providers/strava/webhooks/subscriptions"),
         (

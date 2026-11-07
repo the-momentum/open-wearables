@@ -94,7 +94,7 @@ Why might ngrok be needed for the OAuth flow? Because Garmin's OAuth callback re
     
     1. Expose your backend: `ngrok http 8000`
     2. Configure the webhook URL in your provider settings:
-       - Garmin: Use `https://abc123.ngrok-free.app/api/v1/garmin/webhooks/push`
+       - Garmin: With `API_BASE_URL=https://abc123.ngrok-free.app`, print the URL with `uv run python scripts/garmin_webhook_url.py` (in `backend/`) or `docker compose exec app uv run python scripts/garmin_webhook_url.py`, and set it for every data type. It looks like `https://abc123.ngrok-free.app/api/v1/providers/garmin/webhooks/<callback token>`, with a secret token derived from `SECRET_KEY`. Without the token, Open Wearables rejects Garmin notifications with `401`
        - Other providers: Similar pattern
   </Accordion>
   

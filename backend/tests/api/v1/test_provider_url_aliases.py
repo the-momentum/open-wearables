@@ -7,6 +7,7 @@ from starlette.testclient import TestClient
 from app.config import settings
 from app.constants.provider_urls import from_url_slug
 from app.schemas.enums import ProviderName
+from app.utils.webhook_callback import callback_token
 from tests.factories import ApiKeyFactory
 
 
@@ -77,7 +78,8 @@ class TestWebhookRoute:
 
     def test_get_challenge_without_provider_support_is_501(self, client: TestClient, api_v1_prefix: str) -> None:
         """Garmin has a webhook handler but no GET subscription verification."""
-        response = client.get(f"{api_v1_prefix}/providers/garmin/webhooks")
+        token = callback_token("garmin").get_secret_value()
+        response = client.get(f"{api_v1_prefix}/providers/garmin/webhooks/{token}")
         assert response.status_code == 501
         assert "does not support webhook subscription verification" in response.json()["detail"]
 

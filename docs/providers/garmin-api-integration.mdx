@@ -53,7 +53,7 @@ Garmin describes both business tiers as intended for organizations (company, uni
 
 - **App credentials**: Client ID + Client Secret
 - **API Tools configured**:
-  - Endpoints enabled
+  - Endpoints enabled, all pointing at your instance's webhook URL (it carries a secret token, see below)
   - Data types + OAuth scopes selected
 - **Partner verification passed** (to request production access later)
 - **Production credentials** (only after Garmin approves your evaluation app for production use)
@@ -127,21 +127,39 @@ Garmin describes both business tiers as intended for organizations (company, uni
     Garmin’s API Tools are configured per app. To access them, log in with that app’s **Client ID** + **Client Secret**.
 
     **Enable endpoints**
+    - Print your webhook URL on the server where Open Wearables runs. Its last path segment is a secret token derived from `SECRET_KEY`, which is not shown anywhere else:
+
+    <CodeGroup>
+    ```bash Docker
+    docker compose exec app uv run python scripts/garmin_webhook_url.py
+    ```
+
+    ```bash Local (from backend/)
+    uv run python scripts/garmin_webhook_url.py
+    ```
+    </CodeGroup>
+
+    With the repository's `docker-compose.yml`, `make garmin_webhook_url` runs the Docker command for you. The script needs only `SECRET_KEY` and `API_BASE_URL` from your backend configuration, so you can run it before adding the Garmin credentials. It prints the URL alone on stdout:
+
+    ```
+    https://<your-domain>/api/v1/providers/garmin/webhooks/<callback token>
+    ```
+
+    For local development with ngrok, set `API_BASE_URL` to your ngrok URL (`https://<your-ngrok-id>.ngrok-free.app`) before you run it.
+
     - Open [API Endpoints](https://apis.garmin.com/tools/endpoints)
-    - For **every** endpoint, set the URL to your Open Wearables webhook push endpoint:
-
-    ```
-    https://<your-domain>/api/v1/garmin/webhooks/push
-    ```
-
-    For local development with ngrok:
-    ```
-    https://<your-ngrok-id>.ngrok-free.app/api/v1/garmin/webhooks/push
-    ```
-
+    - For **every** endpoint, set the URL to the one the script printed
     - Set delivery type to **push** (dropdown on the right)
     - Check **enabled** for each endpoint you want to activate
-    - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint
+    - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint. That includes **Deregistrations** and **User Permissions**
+
+    <Note>
+    Garmin does not sign its notifications, and the `garmin-client-id` header it sends is public: your client ID appears in every OAuth authorization URL. The token in the URL path is what proves that a notification comes from Garmin. Open Wearables rejects every Garmin notification with `401` when the token in the path is missing or wrong. A new `SECRET_KEY` or `API_BASE_URL` changes the URL: run the script again and update every endpoint (see the **Rotate the webhook URL** step below).
+    </Note>
+
+    <Warning>
+    Treat the webhook URL like a password. Anyone who knows it can send health data or account deregistrations in Garmin's name. Open Wearables masks the token in its logs and in Sentry, but your reverse proxy's access logs record full request paths. If the URL leaks, rotate `SECRET_KEY` (see the **Rotate the webhook URL** step below).
+    </Warning>
 
     **Which endpoints to enable:**
 
@@ -191,7 +209,35 @@ GARMIN_CLIENT_SECRET=your_client_secret_here
     <Note>
     If you later move from evaluation to production, you’ll update these credentials to the production ones.
     </Note>
-  </Step> 
+
+    <Warning>
+    **Upgrading an instance that already receives Garmin data?** Older versions accepted Garmin notifications at `/api/v1/providers/garmin/webhooks` and at the deprecated `/api/v1/garmin/webhooks/push` and `/api/v1/garmin/webhooks/ping`, authenticated only by the public client ID. Open Wearables now rejects every notification sent to those URLs with `401`. There is nothing to configure, but you have to change the URL of **every** data type in [API Endpoints](https://apis.garmin.com/tools/endpoints), **Deregistrations** and **User Permissions** included, to the one the script prints.
+
+    To upgrade without losing data, pause delivery in the Garmin portal while you switch:
+
+    1. In [API Endpoints](https://apis.garmin.com/tools/endpoints), turn **On Hold** on for **every** data type, **Deregistrations** and **User Permissions** included. It is a setting per data type, not per app. Garmin queues their notifications for up to 7 days instead of sending them.
+    2. Deploy the new version (backend and Celery workers).
+    3. Print the webhook URL with `docker compose exec app uv run python scripts/garmin_webhook_url.py` (or `uv run python scripts/garmin_webhook_url.py` in `backend/`).
+    4. Change the URL of every data type to the one the script printed.
+    5. Turn **On Hold** off for every data type. Garmin resumes delivery, including the queued notifications, within about 2 minutes.
+
+    If a notification is rejected anyway, Garmin retries it with backoff, usually for long enough to fix the URLs, but only **On Hold** guarantees that nothing is lost. Until then, the backend logs an error with the URL to set (the token shown as a placeholder) and the command that prints it, for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token. The client ID is public, so others can trigger this error too. The URL is set per data type, so one type can stop while the others still arrive. Before acting on the error, check whether new data of some type has stopped arriving or a data type in the portal has another URL, and don't rotate `SECRET_KEY` because of it alone.
+    </Warning>
+  </Step>
+  <Step title="Rotate the webhook URL">
+    The token in the webhook URL is derived from `SECRET_KEY`, so rotating it means rotating `SECRET_KEY`. Do it if the webhook URL may have leaked. The URL also changes with `API_BASE_URL`; follow the same steps when you change it.
+
+    1. In [API Endpoints](https://apis.garmin.com/tools/endpoints), turn **On Hold** on for every data type, **Deregistrations** and **User Permissions** included.
+    2. Set a new `SECRET_KEY` (`openssl rand -hex 32`) and restart the backend and Celery workers. From now on, notifications sent to the old URL are rejected with `401`.
+    3. Print the new URL with the script and set it for every data type, **Deregistrations** and **User Permissions** included.
+    4. Turn **On Hold** off for every data type.
+
+    Garmin queues notifications while **On Hold** is on, so none are lost during the rotation.
+
+    <Warning>
+    A new `SECRET_KEY` affects more than Garmin. It invalidates issued access tokens (refresh tokens stay valid, so sessions renew) and changes the other webhook secrets derived from it: Strava's callback URL (register its subscription again, see the [Strava guide](/providers/strava-api-integration)), and the Google Health, Oura and Suunto secrets unless those are set explicitly. Those providers need their subscriptions or portal settings updated too.
+    </Warning>
+  </Step>
   <Step title="Go to production (partner verification + production access)">
     Evaluation apps are for internal development. To go production, Garmin requires partner verification:
 

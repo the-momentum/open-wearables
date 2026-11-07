@@ -1,0 +1,71 @@
+"""Print the callback URL to set for every data type in the Garmin portal.
+
+Run it where the backend runs, so that it sees the same SECRET_KEY and API_BASE_URL:
+
+    cd backend && uv run python scripts/garmin_webhook_url.py
+    docker compose exec app uv run python scripts/garmin_webhook_url.py
+
+The URL goes to stdout and the instructions to stderr, so `$(...)` captures the URL alone.
+The URL carries a secret token (see app/services/providers/garmin/webhook_handler.py),
+so treat it like a password.
+"""
+
+import sys
+from ipaddress import ip_address
+from urllib.parse import urlsplit
+
+from app.config import settings
+from app.utils.webhook_callback import callback_url
+
+PORTAL_URL = "https://apis.garmin.com/tools/endpoints"
+_LOCAL_HOSTS = {"localhost", "host.docker.internal"}
+
+
+def _not_public_ip(host: str) -> bool:
+    try:
+        return not ip_address(host).is_global
+    except ValueError:  # a host name, not an IP
+        return False
+
+
+def _reachable_by_garmin(base_url: str) -> bool:
+    """Garmin sends only to HTTPS on the standard port (Health API, Endpoint Configuration).
+
+    The URL is API_BASE_URL with the route appended, so anything after the host in
+    API_BASE_URL (a path, even a trailing slash, a query or a fragment) yields a URL whose
+    path matches no route.
+    """
+    base = urlsplit(base_url)
+    host = base.hostname or ""
+    try:
+        port = base.port
+    except ValueError:  # not a number
+        return False
+    return (
+        bool(host)
+        and base.scheme == "https"
+        and port in (None, 443)
+        and base_url == f"{base.scheme}://{base.netloc}"
+        and host not in _LOCAL_HOSTS
+        and not _not_public_ip(host)
+    )
+
+
+def main() -> None:
+    if not _reachable_by_garmin(settings.api_base_url):
+        print(
+            f"Warning: API_BASE_URL is {settings.api_base_url!r}. Garmin sends only to a public HTTPS URL on "
+            "the standard port, and API_BASE_URL must end with the host or port, with no path, trailing slash, "
+            "query or fragment; run this where the backend runs, with its API_BASE_URL.",
+            file=sys.stderr,
+        )
+    print(
+        f"Set this URL for every data type in the Garmin portal ({PORTAL_URL}), "
+        "Deregistrations and User Permissions included:",
+        file=sys.stderr,
+    )
+    print(callback_url("garmin"))
+
+
+if __name__ == "__main__":
+    main()

@@ -20,10 +20,11 @@ The per-provider webhook handlers (to be implemented under
 2. Parsing and validating the payload schema.
 3. Dispatching to the appropriate service method.
 
-Existing provider-specific routes (``/garmin/webhooks``, ``/oura/webhooks``)
-are intentionally kept in place while individual handlers are migrated.  Once a
-provider's ``BaseWebhookHandler`` is implemented and wired into its strategy,
-traffic can be cut over to this router.
+The legacy ``/oura/webhooks`` routes are kept in place while individual
+handlers are migrated.  Once a provider's ``BaseWebhookHandler`` is implemented
+and wired into its strategy, traffic can be cut over to this router.  The
+legacy ``/garmin/webhooks/{ping,push}`` routes cannot carry Garmin's callback
+token, so they always answer ``401`` (see ``deprecated_webhooks.py``).
 """
 
 from typing import Annotated

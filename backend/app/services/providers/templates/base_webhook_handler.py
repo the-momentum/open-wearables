@@ -136,7 +136,8 @@ class BaseWebhookHandler(ABC):
           (``X-Hub-Signature-256``), Suunto
         * **Plain token comparison** – Strava (``hub.verify_token`` query
           param), some Polar endpoints
-        * **Shared-secret header** – Garmin (``Authorization`` header token)
+        * **Public identifier header** – Garmin (``garmin-client-id``), a
+          noise filter only (``requires_callback_token``)
         * **Asymmetric / webhook secret** – future providers
 
         Use the shared helpers ``_verify_hmac_sha256`` and ``_verify_token``
@@ -333,8 +334,8 @@ class BaseWebhookHandler(ABC):
         """Constant-time plain-token comparison.
 
         Suitable for providers that use a shared-secret token without
-        any request-body signing (e.g. Strava ``hub.verify_token``,
-        Garmin ``Authorization`` header).
+        any request-body signing (e.g. Strava ``hub.verify_token``), and for
+        Garmin's public ``garmin-client-id`` header.
 
         Args:
             expected_token: Token value from settings (ground truth).
