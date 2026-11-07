@@ -1,17 +1,13 @@
 """Print the callback URL to set for every data type in the Garmin portal.
 
-Garmin does not sign its notifications, so Open Wearables accepts them only on a URL
-that carries a secret token derived from SECRET_KEY. Garmin has no API for its endpoint
-configuration: the operator pastes this URL by hand into
-https://apis.garmin.com/tools/endpoints, for every data type. Run it where the backend
-runs, so that it sees the same SECRET_KEY and API_BASE_URL:
+Run it where the backend runs, so that it sees the same SECRET_KEY and API_BASE_URL:
 
     cd backend && uv run python scripts/garmin_webhook_url.py
     docker compose exec app uv run python scripts/garmin_webhook_url.py
 
 The URL goes to stdout and the instructions to stderr, so `$(...)` captures the URL alone.
-Treat the URL like a password. It changes with SECRET_KEY or API_BASE_URL; run the script
-again after changing either and update every data type in the Garmin portal.
+The URL carries a secret token (see app/services/providers/garmin/webhook_handler.py),
+so treat it like a password.
 """
 
 import sys

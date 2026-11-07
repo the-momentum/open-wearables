@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
-from app.services.providers.garmin.webhook_handler import webhook_url_hint
+from app.services.providers.garmin.webhook_handler import DOCS_URL, webhook_url_hint
 from app.utils.webhook_callback import callback_token
 
 TOKEN = callback_token("garmin").get_secret_value()
@@ -219,6 +219,7 @@ class TestGarminDeprecatedRoutes:
         celery.send_task.assert_not_called()
         logger.error.assert_called_once()
         assert logger.error.call_args.kwargs["webhook_url"].endswith(URL_HINT)
+        assert logger.error.call_args.kwargs["docs"] == DOCS_URL
         assert TOKEN not in str(logger.error.call_args)
 
     def test_legacy_route_without_our_client_id_logs_only_a_warning(

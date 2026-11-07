@@ -7,10 +7,8 @@ New integrations must use:
   POST /api/v1/providers/{provider}/webhooks
 
 Migration status:
-  Garmin  — was in production; old URLs kept, but every request to them is
-            rejected with 401, since its callback URL must carry a secret token
-            (POST /api/v1/providers/garmin/webhooks/{token}). The rejection is
-            logged with a hint to update the URLs in the Garmin portal.
+  Garmin  — was in production; old URLs kept, but they reject every request
+            with 401 (see ``_reject_garmin_legacy_route``).
   Oura    — was not in production; old paths kept for completeness only.
   Strava  — was not in production; old paths removed, since its callback URL
             must carry a secret token (POST /api/v1/providers/strava/webhooks/{token}).
@@ -33,18 +31,13 @@ router = APIRouter()
 
 # ---------------------------------------------------------------------------
 # Garmin — canonical path changed from /garmin/webhooks/{ping,push}
-#          to /providers/garmin/webhooks in commit e458cdeb, and to
-#          /providers/garmin/webhooks/{callback token} for ENG-1895.
+#          to /providers/garmin/webhooks in commit e458cdeb, and then to
+#          /providers/garmin/webhooks/{callback token}.
 # ---------------------------------------------------------------------------
 
 
 def _reject_garmin_legacy_route(request: Request) -> NoReturn:
-    """These paths cannot carry the callback token, so no request to them is authenticated.
-
-    A request with our ``garmin-client-id`` header is most likely Garmin itself, still
-    set up with the old URL: ``report_rejected_webhook_url`` logs it as an error.
-    Anything else is logged as a warning.
-    """
+    """These paths cannot carry the callback token, so every request to them is rejected."""
     if not report_rejected_webhook_url(request):
         logger.warning(
             "Request to a deprecated Garmin webhook URL rejected",
