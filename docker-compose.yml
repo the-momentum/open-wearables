@@ -87,6 +87,7 @@ services:
         - action: sync
           path: ./backend/scripts
           target: /root_project/scripts
+    restart: on-failure
 
   celery-beat:
     container_name: celery-beat__open-wearables
