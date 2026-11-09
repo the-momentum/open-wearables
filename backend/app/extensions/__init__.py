@@ -6,12 +6,12 @@ An extension registers an ``OWExtension`` subclass in its pyproject.toml:
     my_extension = "my_extension.extension:MyExtension"
 
 This module is the supported surface for extensions, with ``app.extensions.migrations`` for
-their database tables. Everything else in ``app`` can be imported too, but may change between
-releases - pin ``requires_core`` accordingly.
+their database tables and ``app.extensions.webhooks`` for their webhook events. Everything else in ``app`` can
+be imported too, but may change between releases - pin ``requires_core`` accordingly.
 """
 
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
@@ -19,6 +19,7 @@ from functools import cache
 from importlib import import_module
 from importlib.metadata import entry_points
 from importlib.util import find_spec
+from types import MappingProxyType
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, params
@@ -28,12 +29,15 @@ from app import __version__ as core_version
 from app.constants.celery_tasks import CeleryQueue
 from app.database import engine
 from app.extensions import events, migrations
+from app.schemas.webhooks.event_types import WebhookEventType
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
 ENTRY_POINT_GROUP = "open_wearables.extensions"
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
+# A webhook event type: dotted lowercase segments, e.g. "agent.reply.completed"
+_EVENT_TYPE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
 
 # The fields Celery documents for a beat_schedule entry; beat fails to start on an unknown one.
 _BEAT_ENTRY_FIELDS = frozenset({"task", "schedule", "args", "kwargs", "options", "relative"})
@@ -67,6 +71,12 @@ class OWExtension:
 
     def event_handlers(self) -> dict[str, str]:
         """Celery task queued with ``user_id`` per event, e.g. ``{"sync.completed": "my_ext.tasks.recompute"}``."""
+        return {}
+
+    def webhook_event_types(self) -> dict[str, str]:
+        """Webhook event types the extension emits, name -> description, registered in Svix next to the core's. A name
+        starts with ``<name>.``, e.g. ``{"my_extension.thing.created": "A thing was created."}``; emit them with
+        ``app.extensions.webhooks.emit``."""
         return {}
 
 
@@ -242,6 +252,43 @@ def collect_celery_queues() -> tuple[str, ...]:
     return tuple(queues)
 
 
+@cache
+def collect_webhook_event_types() -> Mapping[str, str]:
+    """Name -> description of the active extensions' webhook event types. A name outside the extension's ``<name>.``
+    namespace or taken by the core, or a description that isn't a string, is skipped. Cached with the extensions, so a
+    misdeclared type is logged once."""
+    core = {evt.value for evt in WebhookEventType}
+    types: dict[str, str] = {}
+    for ext in get_active_extensions():
+        try:
+            declared = dict(ext.webhook_event_types())
+        except Exception as exc:
+            logger.error(
+                "Extension webhook_event_types() failed, its events are not registered",
+                exc_info=exc,
+                extension=ext.name,
+            )
+            continue
+        for name, description in declared.items():
+            if not isinstance(name, str) or not _EVENT_TYPE.fullmatch(name) or not name.startswith(f"{ext.name}."):
+                error = f"event type {name!r} is not a dotted lowercase name starting with {ext.name + '.'!r}"
+            elif name in core:
+                error = f"{name!r} is a core event type"
+            elif not isinstance(description, str):
+                error = f"invalid description for {name!r}"
+            else:
+                types[name] = description
+                continue
+            logger.error(
+                "Extension webhook event type skipped",
+                action="extension_webhook_event_type_skipped",
+                extension=ext.name,
+                event_type=str(name),
+                reason=error,
+            )
+    return MappingProxyType(types)
+
+
 def _beat_entry_error(key: str, entry: Any, reserved: Collection[str], scheduled: Collection[str]) -> str | None:
     if key in reserved or key in scheduled:
         return "key already taken"
@@ -294,6 +341,7 @@ __all__ = [
     "collect_beat_schedule",
     "collect_celery_queues",
     "collect_event_handlers",
+    "collect_webhook_event_types",
     "get_active_extensions",
     "get_extensions",
     "mount_routers",

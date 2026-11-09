@@ -16,6 +16,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from svix.api import EndpointOut, MessageAttemptListByEndpointOptions, MessageListOptions, MessageStatus
 
+from app.extensions import collect_webhook_event_types
 from app.schemas.webhooks.endpoints import (
     EndpointCreateRequest,
     EndpointResponse,
@@ -108,7 +109,7 @@ def get_endpoint_secret(endpoint_id: str, app_id: SvixAppId) -> EndpointSecretRe
 
 @router.get("/event-types")
 def list_event_types() -> list[EventTypeResponse]:
-    return [
+    core = [
         EventTypeResponse(
             name=evt.value,
             description=EVENT_TYPE_DESCRIPTIONS.get(evt, ""),
@@ -116,6 +117,11 @@ def list_event_types() -> list[EventTypeResponse]:
         )
         for evt in WebhookEventType
     ]
+    extension = [
+        EventTypeResponse(name=name, description=description, child_events=None)
+        for name, description in collect_webhook_event_types().items()
+    ]
+    return core + extension
 
 
 @router.get("/messages", response_model=PaginatedResponse[WebhookMessageResponse])

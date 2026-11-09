@@ -27,6 +27,7 @@ from app.extensions import (
     collect_beat_schedule,
     collect_celery_queues,
     collect_event_handlers,
+    collect_webhook_event_types,
     events,
     get_active_extensions,
     get_extensions,
@@ -201,6 +202,36 @@ class OtherQueuesExtension(OWExtension):
     celery_queues: list[str] = field(default_factory=lambda: ["queues_long", "other_long"])
 
 
+@dataclass
+class EventsExtension(OWExtension):
+    name: str = "events"
+
+    def webhook_event_types(self) -> dict[str, str]:
+        return {
+            "events.thing.created": "A thing was created.",
+            "other.thing.created": "Outside the extension's namespace.",
+            "events.Bad Name": "Not a dotted lowercase name.",
+            "events.thing.failed": 42,  # not a description
+        }
+
+
+@dataclass
+class CoreEventExtension(OWExtension):
+    # Named so that a core event type falls inside its namespace
+    name: str = "workout"
+
+    def webhook_event_types(self) -> dict[str, str]:
+        return {"workout.created": "Takes the core's name.", "workout.rated": "Its own."}
+
+
+@dataclass
+class FailingEventsExtension(OWExtension):
+    name: str = "failing_events"
+
+    def webhook_event_types(self) -> dict[str, str]:
+        raise RuntimeError("boom")
+
+
 class FakeEntryPoint:
     def __init__(self, name: str, target: Callable[[], Any]) -> None:
         self.name = name
@@ -217,9 +248,12 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., None]]:
     def install(*eps: FakeEntryPoint) -> None:
         monkeypatch.setattr(extensions, "entry_points", lambda group: list(eps))
         get_extensions.cache_clear()
+        collect_webhook_event_types.cache_clear()
 
+    collect_webhook_event_types.cache_clear()
     yield install
     get_extensions.cache_clear()
+    collect_webhook_event_types.cache_clear()
     events.register({})
 
 
@@ -447,6 +481,23 @@ class TestCeleryQueues:
         assert {"default", "xml_sync", "queues_long"} <= queues
 
 
+class TestWebhookEventTypes:
+    def test_declared_event_types_are_collected(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("events", EventsExtension))
+
+        assert collect_webhook_event_types() == {"events.thing.created": "A thing was created."}
+
+    def test_core_event_types_are_skipped(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("workout", CoreEventExtension))
+
+        assert collect_webhook_event_types() == {"workout.rated": "Its own."}
+
+    def test_a_failing_hook_costs_only_its_own_types(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("failing_events", FailingEventsExtension), FakeEntryPoint("events", EventsExtension))
+
+        assert collect_webhook_event_types() == {"events.thing.created": "A thing was created."}
+
+
 class TestDefaults:
     def test_base_extension_contributes_nothing(self) -> None:
         ext = OWExtension()
@@ -456,6 +507,7 @@ class TestDefaults:
         assert ext.celery_task_packages == []
         assert ext.celery_queues == []
         assert ext.event_handlers() == {}
+        assert ext.webhook_event_types() == {}
 
 
 _REVISION = """

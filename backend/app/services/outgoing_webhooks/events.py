@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from celery import current_app as celery_app
+from kombu.exceptions import EncodeError
 
 from app.constants.celery_tasks import CeleryTask
 from app.constants.devices_map import resolve_device_name
@@ -60,6 +61,9 @@ def _dispatch(
             args=[event_type, payload],
             kwargs={"channels": channels, "idempotency_key": idempotency_key},
         )
+    except EncodeError as e:
+        # A payload that isn't JSON is a bug in the emitter, not an outage: don't log it as one
+        logger.error("Webhook event payload can't be serialized", event_type=event_type, exc_info=e)
     except Exception as e:
         logger.warning("Could not enqueue webhook event", event_type=event_type, exc_info=e)
 
@@ -446,6 +450,18 @@ def on_sync_completed(
         },
         idempotency_key=f"sync.completed.{run_id}",
         channels=[f"user.{user_id}"],
+    )
+
+
+def on_extension_event(
+    event_type: str, data: dict[str, Any], *, user_id: UUID | None, idempotency_key: str | None
+) -> None:
+    """An extension's own event; app.extensions.webhooks.emit checks that the extension declares it."""
+    _dispatch(
+        event_type,
+        {"type": event_type, "data": {**data, "user_id": str(user_id)} if user_id else data},
+        channels=[f"user.{user_id}"] if user_id else None,
+        idempotency_key=_safe_key(idempotency_key) if idempotency_key else None,
     )
 
 

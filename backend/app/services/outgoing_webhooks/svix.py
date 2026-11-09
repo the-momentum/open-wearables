@@ -42,6 +42,7 @@ from svix.api.errors.http_error import HttpError
 
 from app.config import settings
 from app.constants.webhooks.test_payloads import get_test_payload
+from app.extensions import collect_webhook_event_types
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
 from app.utils.structured_logging import get_logger
 
@@ -134,7 +135,7 @@ def is_enabled() -> bool:
 
 
 def register_event_types() -> bool:
-    """Sync every WebhookEventType into Svix: create the missing, update the changed (idempotent).
+    """Sync every core and extension event type into Svix: create the missing, update the changed (idempotent).
 
     Returns:
         True if the sync completed with no failures (or nothing needed to run). False if
@@ -161,27 +162,30 @@ def register_event_types() -> bool:
         logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).", error=str(e))
         return False
 
+    wanted = {evt.value: EVENT_TYPE_DESCRIPTIONS.get(evt, "") for evt in WebhookEventType}
+    # Extensions' types after the core's; their names can't clash (collect_webhook_event_types)
+    wanted |= collect_webhook_event_types()
+
     all_ok = True
-    for evt in WebhookEventType:
-        description = EVENT_TYPE_DESCRIPTIONS.get(evt, "")
-        current = existing.get(evt.value)
+    for name, description in wanted.items():
+        current = existing.get(name)
         if current is None:
             try:
-                _client.event_type.create(EventTypeIn(name=evt.value, description=description))
-                logger.info("Registered event type", event_type=evt.value)
+                _client.event_type.create(EventTypeIn(name=name, description=description))
+                logger.info("Registered event type", event_type=name)
             except Exception:
                 # Deemed missing but create failed (archived/race) — update so it is never left unregistered.
                 try:
-                    _client.event_type.patch(evt.value, EventTypePatch(description=description))
+                    _client.event_type.patch(name, EventTypePatch(description=description))
                 except Exception as e:
-                    logger.error("Failed to register/update event type", exc_info=e, event_type=evt.value)
+                    logger.error("Failed to register/update event type", exc_info=e, event_type=name)
                     all_ok = False
         elif current != description:
             try:
-                _client.event_type.patch(evt.value, EventTypePatch(description=description))
-                logger.info("Updated event type description", event_type=evt.value)
+                _client.event_type.patch(name, EventTypePatch(description=description))
+                logger.info("Updated event type description", event_type=name)
             except Exception as e:
-                logger.error("Failed to update event type", exc_info=e, event_type=evt.value)
+                logger.error("Failed to update event type", exc_info=e, event_type=name)
                 all_ok = False
 
     return all_ok
