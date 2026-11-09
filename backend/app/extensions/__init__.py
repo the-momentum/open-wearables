@@ -25,6 +25,7 @@ from fastapi import APIRouter, FastAPI, params
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from app import __version__ as core_version
+from app.constants.celery_tasks import CeleryQueue
 from app.database import engine
 from app.extensions import events, migrations
 from app.utils.structured_logging import get_logger
@@ -49,6 +50,9 @@ class OWExtension:
     celery_task_packages: list[str] = field(default_factory=list)
     # Alembic script location of the extension's own history, e.g. "my_extension:migrations".
     migrations: str = ""
+    # Celery queues the extension routes its own tasks to. The core's worker container runs one more worker on them
+    # (scripts/start/worker.sh), so long tasks neither wait behind the core's syncs nor hold them up.
+    celery_queues: list[str] = field(default_factory=list)
 
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
         return {}
@@ -213,6 +217,31 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
     return {event: tuple(tasks) for event, tasks in handlers.items()}
 
 
+def collect_celery_queues() -> tuple[str, ...]:
+    """The queues the active extensions declare, each once. A name that isn't a lowercase identifier, or that is one of
+    the core's queues, is skipped: the core's workers already read those."""
+    core_queues = {queue.value for queue in CeleryQueue}
+    queues: list[str] = []
+    for ext in get_active_extensions():
+        for queue in ext.celery_queues:
+            if not isinstance(queue, str) or not _NAME.fullmatch(queue):
+                error = f"invalid queue name {queue!r}"
+            elif queue in core_queues:
+                error = f"{queue!r} is a core queue"
+            else:
+                if queue not in queues:
+                    queues.append(queue)
+                continue
+            logger.error(
+                "Extension queue skipped",
+                action="extension_queue_skipped",
+                extension=ext.name,
+                queue=str(queue),
+                reason=error,
+            )
+    return tuple(queues)
+
+
 def _beat_entry_error(key: str, entry: Any, reserved: Collection[str], scheduled: Collection[str]) -> str | None:
     if key in reserved or key in scheduled:
         return "key already taken"
@@ -263,6 +292,7 @@ __all__ = [
     "LoadedExtension",
     "OWExtension",
     "collect_beat_schedule",
+    "collect_celery_queues",
     "collect_event_handlers",
     "get_active_extensions",
     "get_extensions",

@@ -25,6 +25,7 @@ from app.extensions import (
     LoadedExtension,
     OWExtension,
     collect_beat_schedule,
+    collect_celery_queues,
     collect_event_handlers,
     events,
     get_active_extensions,
@@ -186,6 +187,18 @@ def _extension_with_tasks(package: str) -> type[OWExtension]:
 
 def _broken() -> OWExtension:
     raise ImportError("missing dependency")
+
+
+@dataclass
+class QueuesExtension(OWExtension):
+    name: str = "queues"
+    celery_queues: list[str] = field(default_factory=lambda: ["queues_long", "Bad-Name", "default", "queues_long"])
+
+
+@dataclass
+class OtherQueuesExtension(OWExtension):
+    name: str = "other_queues"
+    celery_queues: list[str] = field(default_factory=lambda: ["queues_long", "other_long"])
 
 
 class FakeEntryPoint:
@@ -412,6 +425,28 @@ class TestBeatSchedule:
         assert list(collect_beat_schedule()) == ["seconds", "timedelta", "crontab"]
 
 
+class TestCeleryQueues:
+    def test_each_queue_is_collected_once(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("queues", QueuesExtension), FakeEntryPoint("other_queues", OtherQueuesExtension))
+
+        assert collect_celery_queues() == ("queues_long", "other_long")
+
+    def test_invalid_and_core_queue_names_are_skipped(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("queues", QueuesExtension))
+
+        queues = collect_celery_queues()
+
+        assert "Bad-Name" not in queues
+        assert "default" not in queues
+
+    def test_celery_declares_the_extension_queues(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("queues", QueuesExtension))
+
+        queues = set(create_celery().conf.task_queues)
+
+        assert {"default", "xml_sync", "queues_long"} <= queues
+
+
 class TestDefaults:
     def test_base_extension_contributes_nothing(self) -> None:
         ext = OWExtension()
@@ -419,6 +454,7 @@ class TestDefaults:
         assert ext.beat_schedule() == {}
         assert ext.routers() == []
         assert ext.celery_task_packages == []
+        assert ext.celery_queues == []
         assert ext.event_handlers() == {}
 
 
