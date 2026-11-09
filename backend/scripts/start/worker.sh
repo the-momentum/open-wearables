@@ -3,6 +3,16 @@ set -e -x
 
 scripts/start/install_extensions.sh
 
+# On a fresh database app.sh may still be migrating the core; an extension's migrations need its tables.
+# Capped, then the lookup below says why an extension is disabled.
+for _ in $(seq 1 60); do
+    uv run alembic current 2>/dev/null | grep -q '(head)' && break
+    sleep "${SCHEMA_POLL_SECONDS:-2}"
+done
+
+# Queues the active extensions route their own tasks to (OWExtension.celery_queues); a third worker runs them below.
+extension_queues=$(uv run python scripts/start/extension_queues.py | sed -n 's/^EXTENSION_QUEUES=//p')
+
 echo "Starting I/O worker..."
 uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q default,sdk_sync,garmin_sync,webhook_sync -n io@%h &
 io_pid=$!
@@ -14,13 +24,23 @@ echo "Starting CPU worker..."
 uv run celery -A app.main:celery_app worker --loglevel=info --pool=prefork --concurrency=2 --prefetch-multiplier=1 --disable-prefetch -Q xml_sync -n cpu@%h &
 cpu_pid=$!
 
+ext_pid=""
+if [ -n "$extension_queues" ]; then
+    echo "Starting extension worker..."
+    # Extension tasks can run for minutes (an LLM reply): a thread pool of their own keeps them off the I/O worker.
+    # With prefetch disabled the worker fetches a task only when a thread is free, so a second worker container
+    # takes its share and a stop waits only for the replies in progress.
+    uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads --concurrency="${EXTENSION_WORKER_CONCURRENCY:-4}" --prefetch-multiplier=1 --disable-prefetch -Q "$extension_queues" -n ext@%h &
+    ext_pid=$!
+fi
+
 # This shell is PID 1 in the container, so a SIGTERM from `docker stop` only reaches
-# the workers if it is forwarded. Without it both are SIGKILLed after the grace period
+# the workers if it is forwarded. Without it all are SIGKILLed after the grace period
 # and tasks in flight are cut off instead of finishing (Celery warm shutdown).
 signalled=0
-trap 'signalled=1; kill -TERM "$io_pid" "$cpu_pid" 2>/dev/null || true' TERM INT
+trap 'signalled=1; kill -TERM "$io_pid" "$cpu_pid" ${ext_pid:+"$ext_pid"} 2>/dev/null || true' TERM INT
 
-# set -e would exit on the first non-zero `wait` and skip waiting for the other worker.
+# set -e would exit on the first non-zero `wait` and skip waiting for the other workers.
 set +e
 
 # `wait` returns early whenever a trapped signal arrives (a second `docker stop`, Ctrl+C);
@@ -54,6 +74,9 @@ wait_for_exit() {
 wait_for_exit "$cpu_pid"
 status=$?
 
-kill -TERM "$io_pid" 2>/dev/null
+kill -TERM "$io_pid" ${ext_pid:+"$ext_pid"} 2>/dev/null
 wait_for_exit "$io_pid"
+if [ -n "$ext_pid" ]; then
+    wait_for_exit "$ext_pid"
+fi
 exit "$status"

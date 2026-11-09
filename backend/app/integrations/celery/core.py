@@ -86,7 +86,7 @@ _worker_service_name = "open-wearables-worker"
 
 
 def _worker_service_name_for(hostname: str | None) -> str:
-    # scripts/start/worker.sh names its workers io@%h and cpu@%h.
+    # scripts/start/worker.sh names its workers io@%h, cpu@%h and ext@%h.
     prefix = (hostname or "").split("@", 1)[0]
     return f"open-wearables-worker-{prefix}" if prefix and prefix != "celery" else "open-wearables-worker"
 
