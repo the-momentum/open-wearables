@@ -344,7 +344,7 @@ Besides timeseries and workouts, the API returns these record types:
 | `/summaries/body` | Current snapshot: latest slow-changing values (weight, body fat, ...), vitals averaged over `average_period` days, and readings from the last `latest_window_hours` |
 | `/health-scores` | Provider and Open Wearables scores |
 
-Health scores use these categories: `sleep`, `recovery`, `readiness`, `activity`, `stress`, `resilience`, `body_battery`, `strain`. See [Health Scores](/scores/health-scores) for how each one is sourced.
+Health scores use these categories: `sleep`, `recovery`, `readiness`, `activity`, `previous_day_activity`, `stress`, `resilience`, `body_battery`, `strain`. `previous_day_activity` is the activity of the day before, recorded on the day after it. See [Health Scores](/scores/health-scores) for how each one is sourced.
 
 ---
 
