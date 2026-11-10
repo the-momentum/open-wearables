@@ -1,8 +1,4 @@
-"""TCP keepalive options for broker connections must use this platform's option numbers.
-
-With the Linux ints hard-coded, redis-py's setsockopt failed with ENOPROTOOPT on macOS and
-the worker could never reach the broker.
-"""
+"""TCP keepalive options for broker connections must use this platform's option numbers."""
 
 import socket
 from types import SimpleNamespace

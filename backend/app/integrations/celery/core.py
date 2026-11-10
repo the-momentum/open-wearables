@@ -163,8 +163,7 @@ def _tcp_keepalive_options() -> dict[int, int]:
     """Broker keepalive timings, keyed by this platform's TCP socket-option numbers.
 
     The numbers differ per OS: Linux has TCP_KEEPIDLE=4, TCP_KEEPINTVL=5, TCP_KEEPCNT=6,
-    while macOS calls the idle option TCP_KEEPALIVE and numbers them 0x10, 0x101, 0x102.
-    Hard-coding the Linux ints fails every broker connection on macOS with ENOPROTOOPT,
+    while macOS calls the idle option TCP_KEEPALIVE and numbers them 0x10, 0x101, 0x102,
     so the numbers come from the socket module and options it lacks are left out.
     """
     idle = getattr(socket, "TCP_KEEPIDLE", getattr(socket, "TCP_KEEPALIVE", None))
