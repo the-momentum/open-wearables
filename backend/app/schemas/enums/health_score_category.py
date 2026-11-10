@@ -6,8 +6,6 @@ class HealthScoreCategory(StrEnum):
     RECOVERY = "recovery"
     READINESS = "readiness"
     ACTIVITY = "activity"
-    # The activity of the day before, recorded on the day after it: a category of its own, so a client never shows it as
-    # the same activity as a provider's score of that day
     PREVIOUS_DAY_ACTIVITY = "previous_day_activity"
     STRESS = "stress"
     RESILIENCE = "resilience"
