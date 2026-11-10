@@ -43,6 +43,13 @@ class EventRecord(BaseDbModel):
             unique=True,
             postgresql_where=text(f"category = '{EventCategory.MEAL}'"),
         ),
+        Index(
+            "ix_event_record_workout_source_external_id",
+            "data_source_id",
+            "external_id",
+            unique=True,
+            postgresql_where=text(f"category = '{EventCategory.WORKOUT}' AND external_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[PrimaryKey[UUID]]

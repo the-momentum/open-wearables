@@ -199,7 +199,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             end_datetime=end_date,
             zone_offset=zone_offset,
             id=workout_id,
-            external_id=str(raw_workout.workoutId),
+            external_id=raw_workout.workoutKey,
             source=self.provider_name,  # Provider name for mapping (e.g., "suunto")
             user_id=user_id,
         )

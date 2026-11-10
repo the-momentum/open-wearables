@@ -185,6 +185,26 @@ class EventRecordRepository(
             .one_or_none()
         )
 
+    def _fetch_workout_by_external_id(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord | None:
+        """The one stored workout of this user and provider carrying the creator's external_id, across its sources."""
+        if creator.category != EventCategory.WORKOUT or not creator.external_id or not creator.user_id:
+            return None
+        source_ids = select(DataSource.id).where(
+            DataSource.user_id == creator.user_id,
+            DataSource.provider == self.data_source_repo.provider_of(creator).value,
+        )
+        matches = (
+            db_session.query(self.model)
+            .filter(
+                self.model.data_source_id.in_(source_ids.scalar_subquery()),
+                self.model.category == EventCategory.WORKOUT,
+                self.model.external_id == creator.external_id,
+            )
+            .limit(2)
+            .all()
+        )
+        return matches[0] if len(matches) == 1 else None
+
     def get_by_external_ids(
         self, db_session: DbSession, user_id: UUID, external_ids: Iterable[str], provider: str | None = None
     ) -> dict[str, EventRecord]:
@@ -282,6 +302,8 @@ class EventRecordRepository(
         return len(deleted)
 
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
+        if existing := self._fetch_workout_by_external_id(db_session, creator):
+            return existing
         data_source_id, provider, creation = self._build_creation(db_session, creator)
         try:
             db_session.add(creation)
@@ -295,7 +317,9 @@ class EventRecordRepository(
             return creation
         except IntegrityError:
             db_session.rollback()
-            if existing := self._fetch_existing(db_session, data_source_id, creation):
+            if existing := self._fetch_workout_by_external_id(db_session, creator) or self._fetch_existing(
+                db_session, data_source_id, creation
+            ):
                 return existing
             raise
 
@@ -362,20 +386,13 @@ class EventRecordRepository(
         if not values_list:
             return []
 
-        # Batch insert with ON CONFLICT DO NOTHING
+        # Batch insert with ON CONFLICT DO NOTHING; untargeted so the workout external_id index is skipped too
         # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
         chunk_size = 6_500
         inserted_ids: set[UUID] = set()
         for i in range(0, len(values_list), chunk_size):
             chunk = values_list[i : i + chunk_size]
-            stmt = (
-                insert(self.model)
-                .values(chunk)
-                .on_conflict_do_nothing(
-                    index_elements=["data_source_id", "start_datetime", "end_datetime"],
-                    index_where=text(f"category <> '{EventCategory.MEAL}'"),
-                )
-            )
+            stmt = insert(self.model).values(chunk).on_conflict_do_nothing()
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
 

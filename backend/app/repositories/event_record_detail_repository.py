@@ -77,27 +77,13 @@ class EventRecordDetailRepository(
         creator: EventRecordDetailCreate,
         detail_type: DetailType = EventCategory.WORKOUT,
     ) -> EventRecordDetail:
-        """Create a detail record using the appropriate polymorphic model.
-
-        Idempotent on record_id: returns the existing row on duplicate insert.
-        """
-        detail = self._build_detail(creator, detail_type)
-        try:
-            db_session.add(detail)
-            db_session.commit()
-            db_session.refresh(detail)
-        except IntegrityError as exc:
-            db_session.rollback()
-            # record_id is the only unique index here; FK and other violations are real errors
-            if not (
-                isinstance(exc.orig, UniqueViolation)
-                and (detail := self.get_by_record_id(db_session, creator.record_id, detail_type))
-            ):
-                raise
-        # After the commit, so a duplicate's rollback does not take the statistics with it: the stored
-        # detail keeps its row and the aggregate merges what this write carries.
+        """Create a detail record using the appropriate polymorphic model, or refresh the stored one."""
+        # exclude_none keeps column defaults on insert; on conflict, a missing value keeps the stored one
+        self._upsert(db_session, [self._row(creator, detail_type, exclude_none=True)], detail_type)
         self._mirror_workout_stats(db_session, [creator], detail_type)
         db_session.commit()
+        detail = self.get_by_record_id(db_session, creator.record_id, detail_type)
+        assert detail is not None
         return detail
 
     def create_and_flush(
@@ -136,26 +122,27 @@ class EventRecordDetailRepository(
         """Bulk create detail records using batch insert."""
         if not creators:
             return
+        self._upsert(db_session, [self._row(creator, detail_type) for creator in creators], detail_type)
+        self._mirror_workout_stats(db_session, creators, detail_type)
+        # NOTE: Caller should commit - allows batching multiple operations
 
+    @staticmethod
+    def _table(detail_type: DetailType) -> Table:
         model = DETAIL_MODELS.get(detail_type)
         if model is None:
             raise ValueError(f"Unknown detail type: {detail_type}")
+        return cast(Table, model.__table__)
 
-        child_table = cast(Table, model.__table__)
-        valid_columns = set(child_table.columns.keys())
+    def _row(self, creator: EventRecordDetailCreate, detail_type: DetailType, exclude_none: bool = False) -> dict:
+        valid_columns = set(self._table(detail_type).columns.keys())
+        data = creator.model_dump(exclude_none=exclude_none)
+        if detail_type == EventCategory.SLEEP and data.get("sleep_stages"):
+            data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
+        return {k: v for k, v in data.items() if k in valid_columns}
 
-        child_values = []
-        for creator in creators:
-            data = creator.model_dump()
-            if detail_type == EventCategory.SLEEP and data.get("sleep_stages"):
-                data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
-            filtered_data = {k: v for k, v in data.items() if k in valid_columns}
-            child_values.append(filtered_data)
-
-        if not child_values:
-            return
-
-        child_stmt = insert(child_table).values(child_values)
+    def _upsert(self, db_session: DbSession, rows: list[dict], detail_type: DetailType) -> None:
+        child_table = self._table(detail_type)
+        child_stmt = insert(child_table).values(rows)
         # record_id is the conflict key; created_at is an immutable audit column and
         # must not be reset to now() when an existing row is re-synced. A value this write does not
         # carry keeps the stored one, as the mirrored aggregate row does: Garmin sends a workout's
@@ -163,13 +150,14 @@ class EventRecordDetailRepository(
         immutable_on_upsert = {"record_id", "created_at"}
         update_dict = {
             col_name: func.coalesce(child_stmt.excluded[col_name], child_table.c[col_name])
-            for col_name in valid_columns
+            for col_name in rows[0]
             if col_name not in immutable_on_upsert
         }
-        child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
+        if update_dict:
+            child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
+        else:
+            child_stmt = child_stmt.on_conflict_do_nothing(index_elements=["record_id"])
         db_session.execute(child_stmt)
-        self._mirror_workout_stats(db_session, creators, detail_type)
-        # NOTE: Caller should commit - allows batching multiple operations
 
     def get_by_record_id(
         self,
