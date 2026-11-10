@@ -6,6 +6,7 @@ class HealthScoreCategory(StrEnum):
     RECOVERY = "recovery"
     READINESS = "readiness"
     ACTIVITY = "activity"
+    PREVIOUS_DAY_ACTIVITY = "previous_day_activity"
     STRESS = "stress"
     RESILIENCE = "resilience"
     BODY_BATTERY = "body_battery"
