@@ -6,7 +6,8 @@ class HealthScoreCategory(StrEnum):
     RECOVERY = "recovery"
     READINESS = "readiness"
     ACTIVITY = "activity"
-    # The activity of the day before, recorded on the day after it, so it never sits beside a same-day activity score
+    # The activity of the day before, recorded on the day after it: a category of its own, so a client never shows it as
+    # the same activity as a provider's score of that day
     PREVIOUS_DAY_ACTIVITY = "previous_day_activity"
     STRESS = "stress"
     RESILIENCE = "resilience"
@@ -18,5 +19,4 @@ class HealthScoreCategory(StrEnum):
 # Only categories with a meaningful clarification need an entry; others default to "".
 HEALTH_SCORE_DESCRIPTION_BY_ENUM: dict[HealthScoreCategory, str] = {
     HealthScoreCategory.BODY_BATTERY: "Daily peak body battery value",
-    HealthScoreCategory.PREVIOUS_DAY_ACTIVITY: "Activity of the day before, recorded on the day after it",
 }

@@ -44,25 +44,30 @@ class TestHealthScoreServiceGetScores:
         assert total == 1
         assert results[0].category == HealthScoreCategory.SLEEP
 
-    def test_previous_day_activity_is_a_category_of_its_own(self, db: Session) -> None:
-        """A previous day's activity, recorded on the day after, never stands in for a provider's activity score."""
+    def test_get_scores_with_filters_tells_previous_day_activity_from_activity(self, db: Session) -> None:
         user = UserFactory()
-        oura = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        data_source = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
         day = datetime(2026, 11, 10, tzinfo=timezone.utc)
         HealthScoreFactory(
-            data_source=oura, provider=ProviderName.OURA, category=HealthScoreCategory.ACTIVITY, recorded_at=day
+            data_source=data_source, provider=ProviderName.OURA, category=HealthScoreCategory.ACTIVITY, recorded_at=day
         )
         HealthScoreFactory(
-            data_source=oura,
+            data_source=data_source,
             provider=ProviderName.INTERNAL,
             category=HealthScoreCategory.PREVIOUS_DAY_ACTIVITY,
             recorded_at=day,
         )
 
-        results, total = health_score_service.get_scores_with_filters(db, user.id, HealthScoreQueryParams())
+        for category, provider in (
+            (HealthScoreCategory.PREVIOUS_DAY_ACTIVITY, ProviderName.INTERNAL),
+            (HealthScoreCategory.ACTIVITY, ProviderName.OURA),
+        ):
+            results, total = health_score_service.get_scores_with_filters(
+                db, user.id, HealthScoreQueryParams(category=category)
+            )
 
-        assert total == 2
-        assert {score.category for score in results} == {"activity", "previous_day_activity"}
+            assert total == 1
+            assert (results[0].category, results[0].provider) == (category, provider)
 
     def test_get_scores_with_filters_empty(self, db: Session) -> None:
         user = UserFactory()
