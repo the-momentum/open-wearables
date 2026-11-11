@@ -2,7 +2,7 @@
 Unit tests for refresh token repository.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -86,6 +86,83 @@ class TestRefreshTokenRepository:
 
         # Assert
         assert result is None
+
+    def test_claim_valid_token_developer_token_expired(self, db: Session) -> None:
+        """claim_valid_token should return None if developer token created_at exceeds developer_max_age."""
+        # Arrange
+        developer = DeveloperFactory()
+        token = RefreshToken(
+            id="rt-expireddevtoken1234567890123",
+            token_type=TokenType.DEVELOPER,
+            user_id=None,
+            origin=None,
+            developer_id=developer.id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=31),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        db.add(token)
+        db.commit()
+
+        # Act
+        result = refresh_token_repository.claim_valid_token(
+            db, token.id, developer_max_age=timedelta(days=30)
+        )
+
+        # Assert
+        assert result is None
+
+    def test_claim_valid_token_developer_token_within_lifetime(self, db: Session) -> None:
+        """claim_valid_token should return token if developer token is within developer_max_age."""
+        # Arrange
+        developer = DeveloperFactory()
+        token = RefreshToken(
+            id="rt-validdevtoken123456789012345",
+            token_type=TokenType.DEVELOPER,
+            user_id=None,
+            origin=None,
+            developer_id=developer.id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=29),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        db.add(token)
+        db.commit()
+
+        # Act
+        result = refresh_token_repository.claim_valid_token(
+            db, token.id, developer_max_age=timedelta(days=30)
+        )
+
+        # Assert
+        assert result is not None
+        assert result.id == token.id
+
+    def test_claim_valid_token_sdk_token_ignores_developer_max_age(self, db: Session) -> None:
+        """claim_valid_token should not expire SDK tokens based on developer_max_age."""
+        # Arrange
+        user = UserFactory()
+        token = RefreshToken(
+            id="rt-oldsdktoken12345678901234567",
+            token_type=TokenType.SDK,
+            user_id=user.id,
+            origin=SDKTokenOrigin.ADMIN,
+            developer_id=None,
+            created_at=datetime.now(timezone.utc) - timedelta(days=60),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        db.add(token)
+        db.commit()
+
+        # Act
+        result = refresh_token_repository.claim_valid_token(
+            db, token.id, developer_max_age=timedelta(days=30)
+        )
+
+        # Assert
+        assert result is not None
+        assert result.id == token.id
 
     def test_get_by_user_id(self, db: Session) -> None:
         """get_by_user_id should return all non-revoked tokens for a user."""

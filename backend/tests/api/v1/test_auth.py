@@ -18,8 +18,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.config import DEFAULT_ADMIN_PASSWORD, settings
+from app.models import RefreshToken
 from app.schemas.model_crud.user_management import DeveloperUpdate
-from app.services import developer_service
+from app.services import developer_service, refresh_token_service
 from app.utils.config_utils import EnvironmentType
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
@@ -181,6 +182,27 @@ class TestLogout:
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Successfully logged out"
+
+    def test_logout_with_refresh_token_revokes_it(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test logout with refresh token payload revokes the token server-side."""
+        # Arrange
+        developer = DeveloperFactory(email="test_logout_rt@example.com", password="test123")
+        headers = developer_auth_headers(developer.id)
+        token_id = refresh_token_service.create_developer_refresh_token(db, developer.id)
+
+        # Act
+        response = client.post(
+            f"{api_v1_prefix}/auth/logout",
+            headers=headers,
+            json={"refresh_token": token_id},
+        )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["message"] == "Successfully logged out"
+        db_token = db.get(RefreshToken, token_id)
+        assert db_token is not None
+        assert db_token.revoked_at is not None
 
     def test_logout_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test logout fails without authentication."""

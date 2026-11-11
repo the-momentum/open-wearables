@@ -5,10 +5,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config import DEFAULT_ADMIN_PASSWORD, settings
 from app.database import DbSession
-from app.schemas.auth import PasswordChangePrompt, TokenResponse
+from app.schemas.auth import PasswordChangePrompt, RefreshTokenRequest, TokenResponse
 from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.config_utils import EnvironmentType
+from app.utils.exceptions import NotFoundError
 from app.utils.problem import problem_doc
 from app.utils.security import create_access_token, verify_password
 from app.utils.structured_logging import get_logger
@@ -83,8 +84,17 @@ def login(
 
 
 @router.post("/logout")
-def logout(_developer: DeveloperDep):
-    """Logout developer (token invalidation should be handled client-side)."""
+def logout(
+    _developer: DeveloperDep,
+    db: DbSession,
+    payload: RefreshTokenRequest | None = None,
+):
+    """Logout developer. If a refresh token is provided, invalidate it server-side."""
+    if payload and payload.refresh_token:
+        try:
+            refresh_token_service.revoke_token(db, payload.refresh_token)
+        except NotFoundError:
+            pass
     return {"message": "Successfully logged out"}
 
 
