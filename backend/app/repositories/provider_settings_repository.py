@@ -41,11 +41,12 @@ class ProviderSettingsRepository:
                 data_granularity=data_granularity,
             )
             .on_conflict_do_update(index_elements=["provider"], set_=update_fields)
-            .returning(ProviderSetting)
         )
-        setting = db.execute(stmt).scalar_one()
+        db.execute(stmt)
         db.commit()
-        return setting
+        # Read back with a select, not RETURNING: RETURNING the entity would read the deferred webhook_secret too,
+        # and a secret that doesn't decrypt would fail the settings update
+        return db.execute(select(ProviderSetting).where(ProviderSetting.provider == provider)).scalar_one()
 
     def get_data_granularity(self, db: DbSession, provider: str) -> DataGranularity | None:
         """Return the configured granularity for a provider, or None if unset.
@@ -92,9 +93,13 @@ class ProviderSettingsRepository:
 
     def get_webhook_secret(self, db: DbSession, provider: ProviderName) -> str | None:
         """Return the stored webhook signing secret for a provider, or None."""
-        stmt = select(ProviderSetting).where(ProviderSetting.provider == provider)
-        setting = db.execute(stmt).scalar_one_or_none()
-        return setting.webhook_secret if setting else None
+        stmt = select(ProviderSetting.webhook_secret).where(ProviderSetting.provider == provider)
+        return db.execute(stmt).scalar_one_or_none()
+
+    def has_webhook_secret(self, db: DbSession, provider: ProviderName) -> bool:
+        """Whether a webhook signing secret is stored for the provider, without decrypting it."""
+        stmt = select(ProviderSetting.webhook_secret.is_not(None)).where(ProviderSetting.provider == provider)
+        return bool(db.execute(stmt).scalar_one_or_none())
 
     def save_webhook_secret(self, db: DbSession, provider: ProviderName, secret: str) -> None:
         """Persist a webhook signing secret for a provider (upsert — won't touch other fields)."""

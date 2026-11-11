@@ -1,4 +1,5 @@
-"""Provider tokens as stored in ``user_connection``, and the marker that schedules their encryption."""
+"""Provider secrets as stored (tokens in ``user_connection``, webhook secrets in ``provider_settings``), and the marker
+that schedules their encryption."""
 
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -14,8 +15,10 @@ OTHER_SECRET_KEY = "b" * 64
 # encrypted by an earlier release (and the migration's own copy of this code) depend on
 PINNED_SECRET_KEY = "k" * 64
 PINNED_ENCRYPTED = (
-    "enc:v1:gAAAAABq7OWc0wodjZXooIzqXJDJ1NnUHDmPL7u336xfyRobMLZc643zGPIHUPWpdsd3TeSHFyezVwE-a7DH1H8BmNh9a2-gvQ=="
+    "\u00a7enc:v1:gAAAAABq7OWc0wodjZXooIzqXJDJ1NnUHDmPL7u336xfyRobMLZc643zGPIHUPWpdsd3TeSHFyezVwE-a7DH1H8BmNh9a2-gvQ=="
 )
+# A value a later release could store: the mark, then a format version this one doesn't know
+LATER_FORMAT = "\u00a7enc:v2:not-for-this-release"
 
 # Either side of the wait between the upgrade and encrypted writes
 BEFORE_ENCRYPTION = ENCRYPTION_DELAY - timedelta(hours=1)
@@ -47,3 +50,22 @@ def upgraded_ago(db: Session, age: timedelta, secret_key: str | None = None) -> 
         {"at": datetime.now(timezone.utc) - age, "key_check": key_fingerprint(secret_key or settings.secret_key)},
     )
     write_schedule.reset()
+
+
+def raw_webhook_secret(db: Session, provider: str) -> str | None:
+    """The provider's webhook secret as stored, bypassing the model's decryption."""
+    return db.execute(
+        text("SELECT webhook_secret FROM provider_settings WHERE provider = :provider"), {"provider": provider}
+    ).scalar_one()
+
+
+def store_raw_webhook_secret(db: Session, provider: str, secret: str | None) -> None:
+    """Write the provider's webhook secret as given (creating its settings row), bypassing the model's encryption."""
+    db.execute(
+        text(
+            "INSERT INTO provider_settings (provider, is_enabled, webhook_secret) VALUES (:provider, true, :secret) "
+            "ON CONFLICT (provider) DO UPDATE SET webhook_secret = :secret"
+        ),
+        {"provider": provider, "secret": secret},
+    )
+    db.expire_all()

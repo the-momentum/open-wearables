@@ -1,32 +1,28 @@
-"""Brings the stored provider tokens in line with the encryption schedule (``app.utils.token_encryption``).
+"""Brings the stored provider secrets (OAuth tokens, webhook secrets) in line with the encryption schedule
+(``app.utils.token_encryption``).
 
-Once encryption started, plaintext tokens are encrypted. Before that, and without the marker, any encrypted ones
-are decrypted: a process that read the marker before a downgrade dropped it can still have encrypted a token, and
-an earlier release would revoke that connection. The rows are updated as stored, past the model's EncryptedText,
-and only while they still hold what was read, so a token refreshed in the meantime is never overwritten.
+Once encryption started, plaintext values are encrypted; before that (or without the marker, after a downgrade)
+encrypted ones are decrypted. A row is updated only while it still holds what was read, so a refresh wins.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from uuid import UUID
 
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
-from app.repositories.provider_token_encryption_repository import ProviderTokenEncryptionRepository
+from app.repositories.provider_token_encryption_repository import SECRET_COLUMNS, ProviderTokenEncryptionRepository
 from app.utils.exceptions import TokenDecryptionError
 from app.utils.token_encryption import (
-    ENCRYPTED_PREFIX,
+    ENCRYPTED_MARK,
     decrypt_token,
     encrypt_token,
     encryption_started,
-    read_encryption_start,
 )
 
 BATCH_SIZE = 500
-# After a run that found nothing to change, the same sweep skips the scan for this long. The scan reads every stored
-# token (no index serves it, and long tokens are TOASTed), and once the backlog is done nothing new is due: a sweep of
-# the other kind (when encryption starts) has its own flag and runs right away. Without the marker it never skips.
+# After a run that found nothing, the same sweep skips its scan for this long. Only while the marker exists: after a
+# downgrade a process can still write ciphertext for a minute, and the next run must decrypt it.
 CLEAN_SKIP_SECONDS = 3600
 
 
@@ -43,7 +39,7 @@ def _clean_key(sweep: TokenSweep) -> str:
 class TokenSweepResult:
     sweep: TokenSweep
     updated: int = 0
-    # Refreshed between the read and the update: left as they are, picked up on the next run if still due
+    # Rows written between the read and the update: left as they are, picked up on the next run if still due
     changed_meanwhile: int = 0
     # Encrypted with another SECRET_KEY: left as they are
     undecryptable: int = 0
@@ -53,8 +49,13 @@ class TokenSweepResult:
     skipped: bool = False
 
 
+def _sweep_for(start: datetime | None) -> TokenSweep:
+    return TokenSweep.ENCRYPT if encryption_started(start) else TokenSweep.DECRYPT
+
+
 def _encrypt(value: str | None) -> str | None:
-    return value if value is None or value.startswith(ENCRYPTED_PREFIX) else encrypt_token(value)
+    # A value in a later release's format is left to that release, never encrypted twice
+    return value if value is None or value.startswith(ENCRYPTED_MARK) else encrypt_token(value)
 
 
 def _decrypt(value: str | None) -> str | None:
@@ -65,48 +66,45 @@ class ProviderTokenEncryptionService:
     def __init__(self) -> None:
         self.repo = ProviderTokenEncryptionRepository()
 
-    def sweep_due(self, db: DbSession) -> TokenSweep:
-        """Raises when the marker can't be read or was written with another SECRET_KEY: then nothing is changed."""
-        return TokenSweep.ENCRYPT if encryption_started(self._encryption_start(db)) else TokenSweep.DECRYPT
-
-    def _encryption_start(self, db: DbSession) -> datetime | None:
-        return read_encryption_start(db.connection())
-
     def run(self, db: DbSession, batch_size: int = BATCH_SIZE) -> TokenSweepResult:
-        """Encrypt or decrypt the stored tokens, as the schedule says, committing each batch."""
-        sweep = self.sweep_due(db)
+        """Encrypt or decrypt the stored secrets, as the schedule says, committing each batch.
+
+        Raises when the marker can't be read or was written with another SECRET_KEY: then nothing is changed.
+        """
+        start = self.repo.get_encryption_start(db)
+        sweep = _sweep_for(start)
         result = TokenSweepResult(sweep)
         redis_client = get_redis_client()
-        if redis_client.exists(_clean_key(sweep)):
+        # Without the marker, not even a flag set before the downgrade (CLEAN_SKIP_SECONDS)
+        if start is not None and redis_client.exists(_clean_key(sweep)):
             result.skipped = True
             return result
         convert = _encrypt if sweep is TokenSweep.ENCRYPT else _decrypt
         scanned = 0
-        after_id: UUID | None = None
-        while rows := self.repo.find_batch(
-            db, encrypted=sweep is TokenSweep.DECRYPT, after_id=after_id, limit=batch_size
-        ):
-            # Checked again before every batch: each commit releases the marker, and a downgrade that drops it
-            # meanwhile must not be followed by more encrypted tokens
-            if after_id is not None and self.sweep_due(db) is not sweep:
-                result.interrupted = True
-                break
-            scanned += len(rows)
-            for connection_id, access_token, refresh_token in rows:
-                try:
-                    replacement = (convert(access_token), convert(refresh_token))
-                except TokenDecryptionError:
-                    result.undecryptable += 1
-                    continue
-                if self.repo.replace_tokens(db, connection_id, (access_token, refresh_token), replacement):
-                    result.updated += 1
-                else:
-                    result.changed_meanwhile += 1
-            db.commit()
-            after_id = rows[-1].connection_id
-        # Not without the marker (after a downgrade): a process that read it before can still write an encrypted
-        # token, and it must be decrypted on the next run, not an hour later
-        if not scanned and not result.interrupted and self._encryption_start(db) is not None:
+        for columns in SECRET_COLUMNS:
+            after_key = None
+            while rows := self.repo.find_batch(
+                db, columns, encrypted=sweep is TokenSweep.DECRYPT, after_key=after_key, limit=batch_size
+            ):
+                # Each commit releases the marker: a downgrade may have dropped it since
+                if scanned and _sweep_for(self.repo.get_encryption_start(db)) is not sweep:
+                    result.interrupted = True
+                    return result
+                scanned += len(rows)
+                for key, stored in rows:
+                    try:
+                        replacement = tuple(convert(value) for value in stored)
+                    except TokenDecryptionError:
+                        result.undecryptable += 1
+                        continue
+                    if self.repo.replace_values(db, columns, key, stored, replacement):
+                        result.updated += 1
+                    else:
+                        result.changed_meanwhile += 1
+                db.commit()
+                after_key = rows[-1].key
+        # Without the marker, no flag (CLEAN_SKIP_SECONDS)
+        if not scanned and self.repo.get_encryption_start(db) is not None:
             redis_client.set(_clean_key(sweep), 1, ex=CLEAN_SKIP_SECONDS)
         return result
 

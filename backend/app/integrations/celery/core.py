@@ -254,7 +254,7 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
-        # Encrypts the stored provider tokens once the wait after the upgrade is over (decrypts any before that)
+        # Encrypts the stored provider secrets once the wait after the upgrade is over (decrypts any before that)
         "apply-provider-token-encryption": {
             "task": CeleryTask.APPLY_PROVIDER_TOKEN_ENCRYPTION,
             "schedule": crontab(minute="*/5"),

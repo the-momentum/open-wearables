@@ -35,7 +35,12 @@ def init_provider_settings() -> None:
                 print(f"  ⚠ {provider_name}: enabled but OAuth client ID or secret is not set")
             if not strategy.capabilities.webhook_inbound_secret:
                 continue
-            if setting and setting.live_sync_mode == LiveSyncMode.WEBHOOK and not setting.webhook_secret:
+            # Checked without decrypting it: a secret that doesn't decrypt must not stop the API from starting
+            if (
+                setting
+                and setting.live_sync_mode == LiveSyncMode.WEBHOOK
+                and not repo.has_webhook_secret(db, ProviderName(provider_name))
+            ):
                 print(f"  ⚠ {provider_name}: webhook mode active but no inbound secret stored — re-register to fix")
 
 

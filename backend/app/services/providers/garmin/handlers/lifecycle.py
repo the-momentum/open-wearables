@@ -150,8 +150,7 @@ def process_deregistrations(
         try:
             grant_active = _current_grant_is_active(db, connection_repo, oauth, connection, garmin_user_id, trace_id)
         except TokenDecryptionError as e:
-            # The grant can't be checked without the token, and a wrong SECRET_KEY must not revoke a connection
-            # that may be active; the other entries of the ping still go ahead
+            # A wrong SECRET_KEY must not revoke a grant that may be active; the other entries still go ahead
             logger.error(
                 "Could not check Garmin grant for deregistration ping, connection left as it is",
                 provider="garmin",

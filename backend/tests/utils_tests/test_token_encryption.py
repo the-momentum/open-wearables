@@ -1,7 +1,8 @@
-"""Provider tokens are read both encrypted and plaintext, and written encrypted once the wait after the upgrade ends."""
+"""Provider secrets are read encrypted or plaintext, and written encrypted once the wait after the upgrade ends."""
 
 import time
 from collections.abc import Iterator
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import MagicMock, patch
@@ -14,15 +15,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from app.config import settings
-from app.models import User, UserConnection
+from app.models import ProviderTokenEncryption, User, UserConnection
 from app.repositories import UserConnectionRepository
-from app.schemas.auth import ConnectionStatus
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth import ConnectionStatus, LiveSyncMode
+from app.schemas.enums.provider import ProviderName
 from app.services.providers.api_client import get_valid_token
+from app.services.providers.polar.webhook_handler import PolarWebhookHandler
 from app.services.user_connection_service import user_connection_service
 from app.services.user_service import user_service
 from app.utils import token_encryption
 from app.utils.exceptions import SecretKeyMismatchError, TokenDecryptionError
 from app.utils.token_encryption import (
+    ENCRYPTED_MARK,
     ENCRYPTED_PREFIX,
     ENCRYPTION_DELAY,
     decrypt_token,
@@ -30,16 +35,20 @@ from app.utils.token_encryption import (
     key_fingerprint,
     read_encryption_start,
 )
+from scripts.init_provider_settings import init_provider_settings
 from tests.factories import ApiKeyFactory, UserConnectionFactory
 from tests.utils import api_key_headers
 from tests.utils.provider_tokens import (
     AFTER_ENCRYPTION,
     BEFORE_ENCRYPTION,
+    LATER_FORMAT,
     OTHER_SECRET_KEY,
     PINNED_ENCRYPTED,
     PINNED_SECRET_KEY,
     raw_tokens,
+    raw_webhook_secret,
     store_raw_tokens,
+    store_raw_webhook_secret,
     upgraded_ago,
 )
 
@@ -78,8 +87,25 @@ class TestTokenEncryption:
         assert "access-secret" not in encrypted
         assert decrypt_token(encrypted) == "access-secret"
 
-    def test_plaintext_token_is_returned_as_it_is(self) -> None:
-        assert decrypt_token("access-secret") == "access-secret"
+    @pytest.mark.parametrize(
+        "token",
+        ["access-secret", "enc:v1:access-secret", "".join(map(chr, range(0x20, 0x7F)))],
+        ids=["plain", "ascii_lookalike_of_the_prefix", "every_vschar"],
+    )
+    def test_plaintext_token_is_returned_as_it_is(self, token: str) -> None:
+        assert decrypt_token(token) == token
+
+    def test_mark_is_outside_the_characters_of_an_oauth_token(self) -> None:
+        # RFC 6749 appendix A: access and refresh tokens are 1*VSCHAR, %x20-7E
+        assert not "\x20" <= ENCRYPTED_MARK <= "\x7e"
+        assert ENCRYPTED_PREFIX.startswith(ENCRYPTED_MARK)
+
+    def test_later_format_is_never_taken_for_a_token(self) -> None:
+        with pytest.raises(TokenDecryptionError) as exc_info:
+            decrypt_token(LATER_FORMAT)
+
+        assert "later Open Wearables release" in exc_info.value.detail
+        assert exc_info.value.status_code == 503
 
     def test_value_encrypted_by_an_earlier_release_still_decrypts(self) -> None:
         with patch.object(settings, "secret_key", PINNED_SECRET_KEY):
@@ -193,6 +219,36 @@ class TestUserConnectionTokens:
         with pytest.raises(TokenDecryptionError):
             _ = loaded.access_token
 
+    def test_repr_neither_loads_nor_shows_the_tokens(
+        self, db: Session, encrypted_with_other_key: ConnectionIds
+    ) -> None:
+        # Unloaded: left out, so a repr in a log doesn't fail on a token that doesn't decrypt, or on a detached instance
+        loaded = load(db, encrypted_with_other_key.id)
+        db.expunge(loaded)
+
+        assert "access_token" not in repr(loaded)
+        assert str(loaded.id) in repr(loaded)
+
+    def test_repr_after_a_commit_keeps_the_other_columns(
+        self, db: Session, encrypted_with_other_key: ConnectionIds
+    ) -> None:
+        loaded = load(db, encrypted_with_other_key.id)
+        db.commit()  # expires every attribute
+
+        assert str(encrypted_with_other_key.id) in repr(loaded)
+        assert "status=" in repr(loaded)
+        assert "access_token" not in repr(loaded)
+
+    def test_repr_masks_loaded_tokens(self, db: Session) -> None:
+        connection = UserConnectionFactory()
+        store_raw_tokens(db, connection.id, "access-secret", None)
+        loaded = load(db, connection.id)
+        _ = loaded.access_token
+
+        assert "access-secret" not in repr(loaded)
+        assert "access_token=***" in repr(loaded)
+        assert "refresh_token=None" in repr(loaded)
+
 
 class TestWrongSecretKeyKeepsTheConnection:
     """A token that doesn't decrypt is a deployment error: the connection is neither used, revoked nor cleared."""
@@ -249,6 +305,16 @@ class TestWrongSecretKeyKeepsTheConnection:
         assert db.get(User, encrypted_with_other_key.user_id) is None
 
 
+def test_marker_lookup_matches_the_model() -> None:
+    # The lookup has its own copy of the table (the models' mappings import token_encryption): it must not drift
+    model = ProviderTokenEncryption.__table__
+
+    assert token_encryption._marker_table.name == model.name
+    assert {(c.name, type(c.type)) for c in token_encryption._marker_table.c} == {
+        (c.name, type(c.type)) for c in model.c
+    }
+
+
 class TestWriteSchedule:
     """When this process starts writing tokens encrypted: read from the marker, at most once a minute."""
 
@@ -270,7 +336,7 @@ class TestWriteSchedule:
         # A downgrade drops it while the marker query waits for its lock
         db.execute(text("DROP TABLE provider_token_encryption"))
 
-        with patch.object(token_encryption, "_MARKER_TABLE_EXISTS", text("SELECT true")):
+        with patch("app.utils.token_encryption._MARKER_TABLE_EXISTS", text("SELECT true")):
             assert read_encryption_start(db.connection()) is None
         # The caller's transaction goes on
         assert db.execute(text("SELECT 1")).scalar_one() == 1
@@ -404,3 +470,83 @@ class TestMarkerLookupConnection:
 
         logger.error.assert_called_once()
         assert logger.error.call_args.kwargs["alert"] is True
+
+
+class TestWebhookSecret:
+    """Polar's webhook signing secret in ``provider_settings`` follows the same schedule as the tokens."""
+
+    @pytest.mark.parametrize("upgraded", [None, BEFORE_ENCRYPTION], ids=["no_marker", "before_the_wait_ends"])
+    def test_written_plaintext_until_encryption_starts(self, db: Session, upgraded: timedelta | None) -> None:
+        if upgraded is not None:
+            upgraded_ago(db, upgraded)
+
+        ProviderSettingsRepository().save_webhook_secret(db, ProviderName.POLAR, "polar-secret")
+
+        assert raw_webhook_secret(db, "polar") == "polar-secret"
+
+    def test_written_encrypted_once_encryption_started(self, db: Session) -> None:
+        upgraded_ago(db, AFTER_ENCRYPTION)
+        repo = ProviderSettingsRepository()
+
+        repo.save_webhook_secret(db, ProviderName.POLAR, "polar-secret")  # inserts the settings row
+        inserted = raw_webhook_secret(db, "polar")
+        repo.save_webhook_secret(db, ProviderName.POLAR, "new-polar-secret")  # updates it on conflict
+        updated = raw_webhook_secret(db, "polar")
+
+        assert (inserted or "").startswith(ENCRYPTED_PREFIX)
+        assert (updated or "").startswith(ENCRYPTED_PREFIX)
+        assert decrypt_token(inserted or "") == "polar-secret"
+        db.expire_all()
+        assert repo.get_webhook_secret(db, ProviderName.POLAR) == "new-polar-secret"
+
+    def test_settings_still_load_when_the_secret_does_not_decrypt(self, db: Session) -> None:
+        with patch.object(settings, "secret_key", OTHER_SECRET_KEY):
+            store_raw_webhook_secret(db, "polar", encrypt_token("polar-secret"))
+        repo = ProviderSettingsRepository()
+
+        assert repo.get_all(db)["polar"].is_enabled is True
+        with pytest.raises(TokenDecryptionError):
+            repo.get_webhook_secret(db, ProviderName.POLAR)
+
+    def test_settings_still_update_when_the_secret_does_not_decrypt(self, db: Session) -> None:
+        with patch.object(settings, "secret_key", OTHER_SECRET_KEY):
+            store_raw_webhook_secret(db, "polar", encrypt_token("polar-secret"))
+
+        setting = ProviderSettingsRepository().upsert(db, "polar", is_enabled=False)
+
+        assert setting.is_enabled is False
+        assert (raw_webhook_secret(db, "polar") or "").startswith(ENCRYPTED_PREFIX)
+
+    @pytest.mark.parametrize(
+        ("stored", "expected"), [(None, False), ("polar-secret", True), ("encrypted-elsewhere", True)]
+    )
+    def test_has_webhook_secret_does_not_decrypt(self, db: Session, stored: str | None, expected: bool) -> None:
+        if stored == "encrypted-elsewhere":
+            with patch.object(settings, "secret_key", OTHER_SECRET_KEY):
+                stored = encrypt_token("polar-secret")
+        store_raw_webhook_secret(db, "polar", stored)
+
+        assert ProviderSettingsRepository().has_webhook_secret(db, ProviderName.POLAR) is expected
+
+    def test_api_startup_does_not_decrypt_the_secret(self, db: Session, capsys: pytest.CaptureFixture[str]) -> None:
+        # init_provider_settings runs at the app container's start (set -e): it must not stop the API
+        with patch.object(settings, "secret_key", OTHER_SECRET_KEY):
+            store_raw_webhook_secret(db, "polar", encrypt_token("polar-secret"))
+        ProviderSettingsRepository().upsert(db, "polar", is_enabled=True, live_sync_mode=LiveSyncMode.WEBHOOK)
+
+        with patch("scripts.init_provider_settings.SessionLocal", return_value=nullcontext(db)):
+            init_provider_settings()
+
+        assert "polar: webhook mode active but no inbound secret" not in capsys.readouterr().out
+
+    def test_polar_webhook_fails_on_configuration_not_on_its_signature(self, db: Session) -> None:
+        # A ConfigurationError (503, Polar retries), not an invalid signature (401)
+        with patch.object(settings, "secret_key", OTHER_SECRET_KEY):
+            store_raw_webhook_secret(db, "polar", encrypt_token("polar-secret"))
+        request = MagicMock(headers={"Polar-Webhook-Signature": "signature"})
+
+        with (
+            patch("app.services.providers.polar.webhook_handler.SessionLocal", return_value=nullcontext(db)),
+            pytest.raises(TokenDecryptionError),
+        ):
+            PolarWebhookHandler().verify_signature(request, b"{}")

@@ -1,4 +1,4 @@
-"""The migration that schedules provider token encryption, and the downgrade that decrypts every token.
+"""The migration that schedules provider secret encryption, and the downgrade that decrypts every secret.
 
 The test database is built from the models, so upgrade() and downgrade() run directly on the test connection.
 """
@@ -18,27 +18,42 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.utils.token_encryption import ENCRYPTION_DELAY, encrypt_token, key_fingerprint, read_encryption_start
+from app.database import BaseDbModel
+from app.repositories.provider_token_encryption_repository import SECRET_COLUMNS
+from app.utils.token_encryption import (
+    ENCRYPTION_DELAY,
+    EncryptedText,
+    encrypt_token,
+    key_fingerprint,
+    read_encryption_start,
+)
 from tests.factories import UserConnectionFactory
 from tests.utils.provider_tokens import (
     AFTER_ENCRYPTION,
+    LATER_FORMAT,
     OTHER_SECRET_KEY,
     PINNED_ENCRYPTED,
     PINNED_SECRET_KEY,
     raw_tokens,
+    raw_webhook_secret,
     store_raw_tokens,
+    store_raw_webhook_secret,
     upgraded_ago,
 )
 
-_SPEC = importlib.util.spec_from_file_location(
-    "provider_token_encryption_migration",
-    Path(__file__).resolve().parents[2]
-    / "migrations/versions/2026_11_05_2130-7045b6620672_provider_token_encryption.py",
-)
-assert _SPEC is not None
-assert _SPEC.loader is not None
-migration = cast(ModuleType, importlib.util.module_from_spec(_SPEC))
-_SPEC.loader.exec_module(migration)
+_VERSIONS = Path(__file__).resolve().parents[2] / "migrations/versions"
+
+
+def _load_migration(path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = cast(ModuleType, importlib.util.module_from_spec(spec))
+    spec.loader.exec_module(module)
+    return module
+
+
+migration = _load_migration(_VERSIONS / "2026_11_05_2130-7045b6620672_provider_token_encryption.py")
 
 Step = Callable[[Callable[[], None]], None]
 
@@ -87,6 +102,14 @@ class TestUpgrade:
 
 
 class TestDowngrade:
+    def test_decrypts_the_webhook_secret(self, db: Session, run: Step) -> None:
+        upgraded_ago(db, AFTER_ENCRYPTION)
+        store_raw_webhook_secret(db, "polar", encrypt_token("polar-secret"))
+
+        run(migration.downgrade)
+
+        assert raw_webhook_secret(db, "polar") == "polar-secret"
+
     def test_decrypts_every_token_and_drops_the_marker(self, db: Session, run: Step) -> None:
         upgraded_ago(db, AFTER_ENCRYPTION)
         encrypted = [connection_with(db, encrypt_token(f"access-{i}"), encrypt_token(f"refresh-{i}")) for i in range(3)]
@@ -152,8 +175,23 @@ class TestDowngrade:
         ):
             run(migration.downgrade)
 
-        assert "secret" not in str(exc_info.value).replace("SECRET_KEY", "")
+        assert "access-secret" not in str(exc_info.value)
+        assert "refresh-secret" not in str(exc_info.value)
         assert raw_tokens(db, connection_id) == stored
+        assert marker_table_exists(db)
+
+    def test_later_format_fails_and_changes_nothing(self, db: Session, run: Step) -> None:
+        upgraded_ago(db, AFTER_ENCRYPTION)
+        encrypted = connection_with(db, encrypt_token("access-secret"), None)
+        later = connection_with(db, LATER_FORMAT, None)
+        stored = raw_tokens(db, encrypted)
+
+        # A savepoint stands in for the migration's transaction, which the error rolls back
+        with pytest.raises(RuntimeError, match="later release"), db.begin_nested():
+            run(migration.downgrade)
+
+        assert raw_tokens(db, encrypted) == stored
+        assert raw_tokens(db, later) == (LATER_FORMAT, None)
         assert marker_table_exists(db)
 
     def test_upgrade_after_a_downgrade_restarts_the_wait(self, db: Session, run: Step) -> None:
@@ -165,3 +203,32 @@ class TestDowngrade:
         start = read_encryption_start(db.connection())
         assert start is not None
         assert start == db.execute(text("SELECT now()")).scalar_one() + ENCRYPTION_DELAY
+
+
+def test_every_encrypted_column_is_swept_and_downgraded() -> None:
+    """A column stored with EncryptedText that the sweep or every downgrade misses would stay encrypted after a
+    downgrade, and an earlier release would take its ciphertext for the value. A later column is decrypted by the
+    downgrade of the migration that starts encrypting it, never by editing a released one."""
+    models = {
+        (column.table.name, next(iter(column.table.primary_key)).name, column.name)
+        for table in BaseDbModel.metadata.tables.values()
+        for column in table.columns
+        if isinstance(column.type, EncryptedText)
+    }
+    swept = {
+        (columns.table.name, columns.key.name, value.name) for columns in SECRET_COLUMNS for value in columns.values
+    }
+    downgraded = {
+        (table, key, value)
+        for path in sorted(_VERSIONS.glob("*.py"))
+        if "_SECRET_COLUMNS" in path.read_text()
+        for table, key, *values in _load_migration(path)._SECRET_COLUMNS
+        for value in values
+    }
+
+    assert models == swept == downgraded
+    # Released: its downgrade runs after those of later migrations, which may drop their columns first
+    assert migration._SECRET_COLUMNS == (
+        ("user_connection", "id", "access_token", "refresh_token"),
+        ("provider_settings", "provider", "webhook_secret"),
+    )

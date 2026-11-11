@@ -1,7 +1,7 @@
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
-from app.mappings import PrimaryKey, str_64
+from app.mappings import PrimaryKey, encrypted_text, str_64
 from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import DataGranularity
 
@@ -14,5 +14,6 @@ class ProviderSetting(BaseDbModel):
     provider: Mapped[PrimaryKey[str_64]]
     is_enabled: Mapped[bool]
     live_sync_mode: Mapped[LiveSyncMode | None]
-    webhook_secret: Mapped[str | None]
+    # Deferred, decrypted on access: a secret that doesn't decrypt fails only webhook verification, not the settings
+    webhook_secret: Mapped[encrypted_text | None] = mapped_column(deferred=True)
     data_granularity: Mapped[DataGranularity | None]

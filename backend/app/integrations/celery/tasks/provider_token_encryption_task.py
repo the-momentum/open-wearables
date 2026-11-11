@@ -2,6 +2,7 @@ from celery import shared_task
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
+from app.integrations import redis_lock
 from app.integrations.redis_client import get_redis_client
 from app.services.provider_token_encryption_service import TokenSweep, provider_token_encryption_service
 from app.utils.exceptions import SecretKeyMismatchError
@@ -11,6 +12,9 @@ logger = get_logger(__name__)
 
 # The task runs every 5 minutes: a problem that persists alerts once an hour, and is logged as a warning in between
 ALERT_INTERVAL_SECONDS = 3600
+_LOCK_KEY = "provider_token_encryption:lock"
+# Longer than a run takes; a run that outlives it is still safe (updates apply only to rows unchanged since read)
+_LOCK_TTL_SECONDS = 1800
 
 
 def _alert_due(action: str) -> bool:
@@ -27,21 +31,26 @@ def _report(message: str, action: str, **fields: object) -> None:
 
 @shared_task(name=CeleryTask.APPLY_PROVIDER_TOKEN_ENCRYPTION, ignore_result=True)
 def apply_provider_token_encryption() -> None:
-    """Encrypt the stored provider tokens once encryption started, decrypt any encrypted early.
+    """Encrypt the stored provider secrets once encryption started, decrypt any encrypted early.
 
-    Scheduled by beat; a run with nothing to change only reads. See ``provider_token_encryption_service``.
+    Scheduled by beat, one run at a time; a run with nothing to change only reads.
     """
-    with SessionLocal() as db:
-        try:
+    token = redis_lock.acquire(_LOCK_KEY, _LOCK_TTL_SECONDS)
+    if token is None:
+        return
+    try:
+        with SessionLocal() as db:
             result = provider_token_encryption_service.run(db)
-        except SecretKeyMismatchError as exc:
-            # Neither encrypts nor decrypts: with another key it would leave tokens no other process can read
-            _report(exc.detail, "provider_token_encryption_key_mismatch")
-            return
+    except SecretKeyMismatchError as exc:
+        # Neither encrypts nor decrypts: with another key it would leave tokens no other process can read
+        _report(exc.detail, "provider_token_encryption_key_mismatch")
+        return
+    finally:
+        redis_lock.release(_LOCK_KEY, token)
 
     if result.updated or result.changed_meanwhile or result.interrupted:
         logger.info(
-            "Provider tokens encrypted" if result.sweep is TokenSweep.ENCRYPT else "Provider tokens decrypted",
+            "Provider secrets encrypted" if result.sweep is TokenSweep.ENCRYPT else "Provider secrets decrypted",
             action="provider_token_encryption_sweep",
             sweep=result.sweep.value,
             updated=result.updated,
@@ -50,7 +59,7 @@ def apply_provider_token_encryption() -> None:
         )
     if result.undecryptable:
         _report(
-            "Provider tokens can't be decrypted with the configured SECRET_KEY",
+            "Provider secrets can't be decrypted with the configured SECRET_KEY",
             "provider_token_encryption_undecryptable",
             sweep=result.sweep.value,
             undecryptable=result.undecryptable,

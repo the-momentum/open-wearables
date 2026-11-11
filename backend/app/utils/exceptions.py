@@ -176,19 +176,14 @@ class ConfigurationError(AppError):
 
 
 class TokenDecryptionError(ConfigurationError):
-    """A stored provider token doesn't decrypt: SECRET_KEY differs from the one it was encrypted with.
+    """A stored provider secret doesn't decrypt (another SECRET_KEY or a later release's format).
 
-    Not a sign the connection is dead: it must not be revoked or have its tokens cleared, since the right
-    SECRET_KEY brings it back.
+    Never a reason to revoke the connection or clear its tokens: the right SECRET_KEY (or release) brings it back.
     """
 
 
 class SecretKeyMismatchError(ConfigurationError):
-    """This process' SECRET_KEY isn't the one the provider tokens are encrypted with here.
-
-    Its fingerprint differs from the one the migration stored. Such a process must not encrypt a token: no other
-    process could decrypt it.
-    """
+    """This process' SECRET_KEY isn't the one the migration recorded, so it must not encrypt provider secrets."""
 
 
 def unknown_provider(value: str, loc: tuple[str, ...], allowed: Iterable[str]) -> RequestValidationError:

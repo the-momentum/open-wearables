@@ -6,12 +6,8 @@ from app.mappings import PrimaryKey
 
 
 class ProviderTokenEncryption(BaseDbModel):
-    """When the release that encrypts provider tokens reached this database.
-
-    Singleton table, written only by its migration: created_at (from BaseDbModel) is when the upgrade ran, and
-    provider tokens are written encrypted from ``ENCRYPTION_DELAY`` after it (``app.utils.token_encryption``).
-    Without the row they stay plaintext. The migration's downgrade decrypts the tokens and drops the table.
-    """
+    """Singleton written by its migration: provider secrets are encrypted from created_at + ``ENCRYPTION_DELAY``
+    (``app.utils.token_encryption``); without the row they stay plaintext."""
 
     __tablename__ = "provider_token_encryption"
     __table_args__ = (CheckConstraint("id = 1", name="ck_provider_token_encryption_singleton"),)

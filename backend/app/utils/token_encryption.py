@@ -1,13 +1,8 @@
-"""Provider OAuth tokens in ``user_connection``, encrypted with a key derived from SECRET_KEY.
+"""Provider secrets (OAuth tokens, webhook secrets) encrypted with a key derived from SECRET_KEY.
 
-A value is encrypted when it carries ``ENCRYPTED_PREFIX``, plaintext otherwise. Reads handle both. Writes stay
-plaintext until ``ENCRYPTION_DELAY`` after the upgrade to this release (the ``provider_token_encryption`` row its
-migration writes). A replica, worker or beat still on an earlier release can't decrypt a token: it would send the
-ciphertext to the provider, get a 401 and revoke the connection for good. The delay leaves a rolling update, a
-component updated after the others or a rollback to the earlier release time to finish while every token is
-still plaintext. Once it is over, writes are encrypted and a beat task (``provider_token_encryption_service``)
-encrypts the rows already there. Going back to an earlier release after that takes the migration's downgrade first,
-which decrypts every token.
+Values starting with ``ENCRYPTED_MARK`` are encrypted, others plaintext; reads handle both. Writes stay plaintext for
+``ENCRYPTION_DELAY`` after the migration: an earlier release would send a ciphertext to the provider and revoke the
+connection, so it has that long to be updated or rolled back.
 """
 
 import hmac
@@ -16,11 +11,12 @@ import time
 from base64 import urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from functools import cache
-from typing import Any
+from typing import Any, NamedTuple
 
 from cryptography.fernet import Fernet, InvalidToken
 from psycopg.errors import UndefinedTable
-from sqlalchemy import Connection, Dialect, Engine, Text, create_engine, text
+from sqlalchemy import Connection, DateTime, Dialect, Engine, Integer, Text, column, create_engine, func, select, text
+from sqlalchemy import table as table_clause
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.pool import NullPool
 from sqlalchemy.types import TypeDecorator
@@ -32,22 +28,19 @@ from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
-# Marks an encrypted value; a value without it is a plaintext token
-ENCRYPTED_PREFIX = "enc:v1:"
+# Starts every value stored encrypted, whatever the format. RFC 6749 (appendix A.12, A.17) allows only printable ASCII
+# (VSCHAR) in access and refresh tokens, and Polar's webhook secret is a UUID, so no plaintext value starts with it.
+ENCRYPTED_MARK = "\u00a7"  # "§"
+# This release's format (Fernet). A later one changes the version and is refused, never taken for plaintext.
+ENCRYPTED_PREFIX = f"{ENCRYPTED_MARK}enc:v1:"
 KEY_PURPOSE = "provider-token-encryption"
-# The marker stores the fingerprint of the SECRET_KEY the API applied the migration with: a process with another key
-# doesn't encrypt, so the tokens never end up encrypted with two keys
+# For the SECRET_KEY fingerprint in the marker: a process with another key doesn't encrypt, so no two keys get mixed
 KEY_CHECK_PURPOSE = "provider-token-key-check"
-# From the upgrade to this release until tokens are written encrypted
+# From the upgrade to this release until secrets are written encrypted
 ENCRYPTION_DELAY = timedelta(days=7)
-# How long a process goes by the marker it read. It bounds how long a process keeps encrypting writes after the
-# migration's downgrade dropped the marker.
+# How long a process trusts the marker it read, so how long it may keep encrypting after a downgrade
 MARKER_CHECK_INTERVAL_SECONDS = 60.0
 _MARKER_LOOKUP_TIMEOUT_SECONDS = 5
-
-# to_regclass first: a database the migration hasn't reached (or was downgraded from) has no table, which is no error
-_MARKER_TABLE_EXISTS = text("SELECT to_regclass('provider_token_encryption') IS NOT NULL")
-_MARKER = text("SELECT created_at, key_check FROM provider_token_encryption WHERE id = 1")
 
 
 @cache
@@ -66,20 +59,25 @@ def encrypt_token(value: str) -> str:
 
 
 def decrypt_token(value: str) -> str:
-    """The token in ``value``: decrypted if it carries the prefix, as it is if it's a plaintext one.
+    """The token in ``value``: decrypted if it carries the mark, as it is if it's a plaintext one.
 
-    A prefixed value that doesn't decrypt raises: it is never passed on as a token, or the provider would reject
-    it and the connection would be revoked.
+    A marked value that doesn't decrypt, or is in a later release's format, raises: it is never passed on as a
+    token, or the provider would reject it and the connection would be revoked.
     """
-    if not value.startswith(ENCRYPTED_PREFIX):
+    if not value.startswith(ENCRYPTED_MARK):
         return value
+    if not value.startswith(ENCRYPTED_PREFIX):
+        raise TokenDecryptionError(
+            "A provider secret is stored in a format of a later Open Wearables release, which this one can't read. "
+            "Run that release, or downgrade the database with it first."
+        )
     try:
         return _fernet(settings.secret_key).decrypt(value.removeprefix(ENCRYPTED_PREFIX)).decode()
     # ValueError: base64 rejects non-ASCII before Fernet can turn it into InvalidToken
     except (InvalidToken, ValueError):
         raise TokenDecryptionError(
-            "A provider token can't be decrypted with the configured SECRET_KEY. "
-            "The API, worker and beat must all run with the SECRET_KEY the token was encrypted with."
+            "A provider secret can't be decrypted with the configured SECRET_KEY. "
+            "The API, worker and beat must all run with the SECRET_KEY it was encrypted with."
         ) from None
 
 
@@ -87,30 +85,56 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def read_encryption_start(connection: Connection) -> datetime | None:
-    """When tokens start being written encrypted here, or None without the marker: plaintext for now.
+# The marker table (model ``ProviderTokenEncryption``), read without the model: the models' mappings import this module
+_marker_table = table_clause(
+    "provider_token_encryption",
+    column("id", Integer),
+    column("created_at", DateTime(timezone=True)),
+    column("key_check", Text),
+)
+# A database the migration hasn't reached (or was downgraded from) has no table, which is no error
+_MARKER_TABLE_EXISTS = select(func.to_regclass(_marker_table.name).is_not(None))
+_MARKER = select(_marker_table.c.created_at, _marker_table.c.key_check).where(_marker_table.c.id == 1)
 
-    Raises when the marker can't be read, and SecretKeyMismatchError when this process' SECRET_KEY isn't the one the
-    marker was written with.
-    """
+
+class EncryptionMarker(NamedTuple):
+    created_at: datetime
+    key_check: str
+
+
+def read_marker(connection: Connection) -> EncryptionMarker | None:
+    """The row the migration wrote, or None without it (or without its table)."""
     if not connection.execute(_MARKER_TABLE_EXISTS).scalar():
         return None
     try:
         # In a savepoint, so a failure here doesn't abort the caller's transaction
         with connection.begin_nested():
-            marker = connection.execute(_MARKER).one_or_none()
+            row = connection.execute(_MARKER).one_or_none()
     except ProgrammingError as exc:
-        # A downgrade dropped the table after the check above, while this waited for its lock: no marker
+        # A downgrade dropped the table after the check above, while this waited for its lock
         if isinstance(exc.orig, UndefinedTable):
             return None
         raise
+    return None if row is None else EncryptionMarker(*row)
+
+
+def read_encryption_start(connection: Connection) -> datetime | None:
+    """``encryption_start`` of the marker in the database; raises when it can't be read."""
+    return encryption_start(read_marker(connection))
+
+
+def encryption_start(marker: EncryptionMarker | None) -> datetime | None:
+    """When tokens start being written encrypted, or None without the marker: plaintext for now.
+
+    Raises SecretKeyMismatchError when this process' SECRET_KEY isn't the one the marker was written with.
+    """
     if marker is None:
         return None
     if not hmac.compare_digest(marker.key_check, key_fingerprint(settings.secret_key)):
         raise SecretKeyMismatchError(
             "This process' SECRET_KEY differs from the one the API had when it applied the database migrations. "
             "The API, worker and beat must all run with the same SECRET_KEY; until then this process doesn't "
-            "encrypt provider tokens."
+            "encrypt provider secrets."
         )
     return marker.created_at + ENCRYPTION_DELAY
 
@@ -135,12 +159,8 @@ def _load_encryption_start() -> datetime | None:
 
 
 class _WriteSchedule:
-    """Whether this process writes tokens encrypted, from the marker it reads at most once a minute.
-
-    It keeps the start time rather than the answer, so writes switch to encrypted on time without another lookup.
-    Anything uncertain (no marker, a failed lookup, a lookup running in another thread, a SECRET_KEY other than the
-    marker's) writes plaintext, which every release and every process reads.
-    """
+    """Whether writes are encrypted, from the marker re-read every MARKER_CHECK_INTERVAL_SECONDS. Anything uncertain
+    (no marker, failed lookup, another SECRET_KEY) means plaintext."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -180,7 +200,7 @@ class _WriteSchedule:
                 # Alerts once until a lookup succeeds again: a lookup that keeps failing means encryption never starts
                 if not self._lookup_failing:
                     logger.error(
-                        "Could not read when provider token encryption starts, writing tokens plaintext",
+                        "Could not read when provider secret encryption starts, writing secrets plaintext",
                         action="provider_token_encryption_marker_unreadable",
                         exc_info=exc,
                         alert=True,
@@ -203,9 +223,10 @@ write_schedule = _WriteSchedule()
 
 
 class EncryptedText(TypeDecorator[str]):
-    """A ``Text`` column holding a provider token, decrypted on read and encrypted on write once encryption started.
+    """A provider secret column: decrypted on read, encrypted on write once encryption started.
 
-    Ciphertexts differ on every write, so the column can't be compared with a token in SQL.
+    Ciphertexts differ on every write, so don't compare it with a value in SQL. The sweep finds it by this type; a new
+    one needs a migration whose downgrade decrypts it (in its own ``_SECRET_COLUMNS``), never an edit of a released one.
     """
 
     impl = Text

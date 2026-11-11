@@ -37,9 +37,8 @@ class UserConnection(BaseDbModel):
     provider_user_id: Mapped[str | None]
     provider_username: Mapped[str | None]
 
-    # OAuth tokens (optional for SDK-based providers like Apple). Deferred: they are decrypted on first access, so a
-    # token that doesn't decrypt (another SECRET_KEY) fails only what needs it, not every query loading the row, such
-    # as listing, reconnecting or disconnecting the connection. One group: reading either loads both in one query.
+    # OAuth tokens (optional for SDK-based providers like Apple). Deferred, decrypted on access: a token that doesn't
+    # decrypt fails only what needs it, not listing or disconnecting. One group: either loads both in one query.
     access_token: Mapped[encrypted_text | None] = mapped_column(deferred=True, deferred_group="tokens")
     refresh_token: Mapped[encrypted_text | None] = mapped_column(deferred=True, deferred_group="tokens")
     token_expires_at: Mapped[datetime | None]

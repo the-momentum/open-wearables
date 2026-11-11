@@ -157,7 +157,7 @@ The defaults in `.env.example` are development values. Override at least these f
 |----------|--------|
 | `ENVIRONMENT` | `production` (required on any server reachable from the internet: other values accept the default admin password) |
 | `DB_PASSWORD` | a strong database password |
-| `SECRET_KEY` | a random secret of at least 32 characters, used to sign tokens and to encrypt the stored provider tokens, e.g. `openssl rand -hex 32` (the backend does not start without it). The `app`, `celery-worker` and `celery-beat` containers must have the same value |
+| `SECRET_KEY` | a random secret of at least 32 characters, used to sign tokens and to encrypt the stored provider tokens and webhook secrets, e.g. `openssl rand -hex 32` (the backend does not start without it). The `app`, `celery-worker` and `celery-beat` containers must have the same value |
 | `ADMIN_PASSWORD` | password for the admin account seeded on first start (required: with `ENVIRONMENT=production` the seed and the login refuse the default; if the account whose email matches `ADMIN_EMAIL` still has the default, its password is changed to this value at startup) |
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |
@@ -166,7 +166,7 @@ The defaults in `.env.example` are development values. Override at least these f
 | `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 
 Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again and update the secret in the Suunto portal.
-It also stops every provider connection from working until the previous `SECRET_KEY` is back: their stored tokens no longer decrypt (see [Provider token encryption](#provider-token-encryption)).
+It also stops every provider connection from working until the previous `SECRET_KEY` is back: their stored tokens no longer decrypt, and Polar webhooks are rejected (see [Provider token encryption](#provider-token-encryption)).
 
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 
@@ -210,12 +210,24 @@ To add Flower, run another backend container with `command: scripts/start/flower
 
 ## Provider token encryption
 
-Open Wearables stores the OAuth tokens of provider connections (Garmin, Oura, Whoop, ...) encrypted, with a key derived from `SECRET_KEY`. There is nothing to configure, but two rules follow from it:
+Open Wearables stores the OAuth tokens of provider connections (Garmin, Oura, Whoop, ...) and the Polar webhook signing secret encrypted, with a key derived from `SECRET_KEY`. There is nothing to configure, but two rules follow from it:
 
 - **The API, worker and beat must run with the same `SECRET_KEY`.** When the migrations are applied (by the `app` container at startup, or by whatever job you run `alembic upgrade` from), a fingerprint of that process' key is recorded (it doesn't reveal the key), so that process needs the same `SECRET_KEY` too. A worker or beat with a different key never encrypts a token: it writes tokens as plaintext and logs an error saying its `SECRET_KEY` differs from the API's. It still cannot decrypt the tokens the others encrypted, so its syncs of those connections fail until its key is fixed.
-- **Changing `SECRET_KEY` breaks every provider connection** whose token is already encrypted, until the previous key is restored: the API answers `503` with code `CONFIGURATION_ERROR` where it needs them, and syncs fail. The connections are not revoked and their tokens are kept, so restoring the previous key brings them all back. Users do not need to connect again. Until then, tokens are written as plaintext.
+- **Changing `SECRET_KEY` breaks every provider connection** whose token is already encrypted, until the previous key is restored: the API answers `503` with code `CONFIGURATION_ERROR` where it needs them, and syncs fail. The connections are not revoked and their tokens are kept, so restoring the previous key brings them all back. Users do not need to connect again. Incoming Polar webhooks are answered with `503` too (Polar retries them). Until then, tokens are written as plaintext.
 
 Changing `SECRET_KEY` after the upgrade also stops the encryption: the new key's fingerprint differs from the recorded one, so every process writes tokens as plaintext and logs an error about it. Keep the key you upgraded with.
+
+If you have to change it (for example because it leaked), move the encryption to the new key:
+
+1. Stop `app`, `celery-worker` and `celery-beat`.
+2. With the **previous** `SECRET_KEY`, downgrade the database to the migration before the encryption. It decrypts every stored token and drops the recorded fingerprint:
+
+   ```bash
+   docker compose run --rm -e SECRET_KEY=<previous key> app uv run alembic downgrade 3f6b9c2d8e41
+   ```
+
+   Within 7 days of the upgrade no token is encrypted yet, so the downgrade also works with the new key.
+3. Set the new `SECRET_KEY` for all three containers and start them. The `app` container applies the migration again, which records the new key, and encryption starts 7 days later.
 
 ### Upgrading to the first release with encryption
 
@@ -235,17 +247,24 @@ An earlier release's `app` container stops at startup when the database has migr
 docker compose run --rm app uv run alembic downgrade <revision>
 ```
 
-- **Within 7 days of the upgrade** the tokens are still plaintext. Downgrade and switch the images in the usual way; the order doesn't matter.
-- **After 7 days**, the downgrade also decrypts every stored token, so the earlier release can read them again. Stop `app`, `celery-worker` and `celery-beat` first, run the downgrade, then start the earlier images. Run it with the same `SECRET_KEY` as the containers: with another key it fails and changes nothing. If you can't stop them, keep the newer `celery-beat` and `celery-worker` running after the downgrade (beat schedules the job, the worker runs it): containers of the newer release can still write an encrypted token for up to a minute after it, and the job decrypts such tokens every 5 minutes. Before starting any container of the earlier release, check that no encrypted token is left:
+**Within 7 days of the upgrade** the tokens are still plaintext: downgrade and switch the images in the usual way, in any order.
 
-  ```sql
-  SELECT count(*) FROM user_connection
-  WHERE access_token LIKE 'enc:v1:%' OR refresh_token LIKE 'enc:v1:%';
-  ```
+**After 7 days** the downgrade also decrypts every stored token, so the earlier release can read them:
 
-  Start the earlier release only when it returns `0`. A newer `app` container that restarts meanwhile applies the migration again (tokens stay plaintext for another 7 days), so run the downgrade again before starting the earlier `app`.
+1. Stop `app`, `celery-worker` and `celery-beat`.
+2. Run the downgrade above, with the same `SECRET_KEY` as the containers (with another key it fails and changes nothing).
+3. Check that no encrypted token is left:
 
-Never start a worker or API of 0.11 or earlier against a database whose tokens are encrypted without running the downgrade first: it can revoke the connections it syncs.
+   ```sql
+   SELECT (SELECT count(*) FROM user_connection WHERE access_token LIKE '§%' OR refresh_token LIKE '§%')
+        + (SELECT count(*) FROM provider_settings WHERE webhook_secret LIKE '§%');
+   ```
+
+4. Start the earlier images only when it returns `0`.
+
+If you can't stop the containers, run the downgrade while they run and keep the newer `celery-beat` and `celery-worker` up afterwards: newer containers can still write an encrypted token for up to a minute, and the job they run decrypts it within 5 minutes. Wait for the query to return `0`. A newer `app` that restarts meanwhile applies the migration again, so then run the downgrade again.
+
+Never start a worker or API of 0.11 or earlier against a database with encrypted tokens: it can revoke the connections it syncs.
 
 ## Logs
 
