@@ -137,6 +137,17 @@ When working on documentation in the `docs/` directory:
 - **ParamField** - For API parameters, **ResponseField** - For API responses
 - **Expandable** - For nested object properties or hierarchical information
 
+## Fork agent skills
+
+Fork-specific playbooks live in `.agents/skills/`. Before starting work, check
+there for a skill that matches the request, and follow its `SKILL.md`.
+
+- **Supporting a new provider.** Read and follow
+  `.agents/skills/support-new-provider/SKILL.md` before any request to support,
+  add, integrate or review a wearable or health-data provider that upstream does
+  not ship (e.g. "support COROS in our open wearables fork"), and during every
+  upstream sync (rule 9 below).
+
 ## Fork-wins rules (upstream sync guardrails)
 
 This repo is the `frontbacklabs/open-wearables` fork of `the-momentum/open-wearables`,
@@ -184,3 +195,15 @@ with a fork rule, gate or adapt the feature rather than dropping the rule.
    ingest that fills it (`providers/oura/data_247.py`, `coverage.py`), and the
    event-record merge logic that preserves it. Upstream has no equivalent field —
    keep it through merges rather than resolving conflicts toward upstream's shape.
+9. **Fork-only providers.** Providers listed in
+   `.agents/skills/support-new-provider/fork-providers.json` exist only in the fork.
+   An upstream sync must not overwrite, drop or break anything they need: their
+   owned files, every shared-file line marked `fork-provider: <slug>`, and their
+   `buildspec.yml` wiring. Keep our lines in conflicts (never take a shared file
+   wholesale with `--theirs`), and adapt the provider to upstream API changes
+   instead of dropping it. **The one exception:** once the upstream ref being
+   merged natively supports the provider (a `ProviderName` member plus a
+   strategy or factory case), upstream's implementation replaces ours. Run
+   `python3 .agents/skills/support-new-provider/scripts/fork_providers.py verify`
+   before and after every upstream merge. The preserve and adoption procedures are
+   in `.agents/skills/support-new-provider/references/upstream-sync.md`.
