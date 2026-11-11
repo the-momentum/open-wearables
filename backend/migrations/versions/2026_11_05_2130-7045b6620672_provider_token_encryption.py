@@ -19,8 +19,6 @@ import sqlalchemy as sa
 from alembic import op
 from cryptography.fernet import Fernet, InvalidToken
 
-from app.config import settings
-
 # revision identifiers, used by Alembic.
 revision: str = "7045b6620672"
 down_revision: Union[str, None] = "3f6b9c2d8e41"
@@ -55,7 +53,7 @@ def upgrade() -> None:
     )
     op.execute(
         sa.text("INSERT INTO provider_token_encryption (id, key_check) VALUES (1, :key_check)").bindparams(
-            key_check=hmac.new(settings.secret_key.encode(), KEY_CHECK_PURPOSE, sha256).hexdigest()
+            key_check=hmac.new(_secret_key(), KEY_CHECK_PURPOSE, sha256).hexdigest()
         )
     )
 
@@ -68,8 +66,15 @@ def downgrade() -> None:
     _decrypt_all(op.get_bind())
 
 
+def _secret_key() -> bytes:
+    # Imported here, so loading the migration chain (alembic heads, scripts/check_migrations.py) needs no settings
+    from app.config import settings
+
+    return settings.secret_key.encode()
+
+
 def _fernet() -> Fernet:
-    return Fernet(urlsafe_b64encode(hmac.new(settings.secret_key.encode(), KEY_PURPOSE, sha256).digest()))
+    return Fernet(urlsafe_b64encode(hmac.new(_secret_key(), KEY_PURPOSE, sha256).digest()))
 
 
 def _decrypt(fernet: Fernet, value: str | None) -> str | None:
