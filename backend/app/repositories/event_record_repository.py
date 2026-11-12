@@ -185,24 +185,36 @@ class EventRecordRepository(
             .one_or_none()
         )
 
-    def _fetch_workout_by_external_id(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord | None:
-        """The newest stored workout of this user and provider with the creator's external_id, across its sources."""
-        if creator.category != EventCategory.WORKOUT or not creator.external_id or not creator.user_id:
-            return None
+    def _fetch_workouts_by_external_id(
+        self, db_session: DbSession, creators: list[EventRecordCreate]
+    ) -> dict[UUID, EventRecord]:
+        """Creator id -> newest stored workout of its user and provider with its external_id, in one query."""
+        keys = {
+            (creator.user_id, self.data_source_repo.provider_of(creator).value, creator.external_id): creator.id
+            for creator in creators
+            if creator.category == EventCategory.WORKOUT and creator.external_id and creator.user_id
+        }
+        if not keys:
+            return {}
         source_ids = select(DataSource.id).where(
-            DataSource.user_id == creator.user_id,
-            DataSource.provider == self.data_source_repo.provider_of(creator).value,
+            DataSource.user_id.in_({user_id for user_id, _, _ in keys}),
+            DataSource.provider.in_({provider for _, provider, _ in keys}),
         )
-        return (
-            db_session.query(self.model)
+        rows = (
+            db_session.query(self.model, DataSource.user_id, DataSource.provider)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
                 self.model.data_source_id.in_(source_ids.scalar_subquery()),
                 self.model.category == EventCategory.WORKOUT,
-                self.model.external_id == creator.external_id,
+                self.model.external_id.in_({external_id for _, _, external_id in keys}),
             )
             .order_by(self.model.created_at.desc())
-            .first()
         )
+        found: dict[UUID, EventRecord] = {}
+        for record, user_id, provider in rows:
+            if creator_id := keys.get((user_id, provider, record.external_id)):
+                found.setdefault(creator_id, record)
+        return found
 
     def _refresh_from(self, db_session: DbSession, record: EventRecord, creator: EventRecordCreate) -> EventRecord:
         """Update a stored workout to the newest delivery's times and type.
@@ -237,7 +249,6 @@ class EventRecordRepository(
                 *local_days(record.data_source_id, record.start_datetime, record.end_datetime, record.zone_offset),
             ],
         )
-        db_session.commit()
         return record
 
     def get_by_external_ids(
@@ -337,8 +348,10 @@ class EventRecordRepository(
         return len(deleted)
 
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        if existing := self._fetch_workout_by_external_id(db_session, creator):
-            return self._refresh_from(db_session, existing, creator)
+        if existing := self._fetch_workouts_by_external_id(db_session, [creator]).get(creator.id):
+            record = self._refresh_from(db_session, existing, creator)
+            db_session.commit()
+            return record
         data_source_id, provider, creation = self._build_creation(db_session, creator)
         try:
             db_session.add(creation)
@@ -352,9 +365,9 @@ class EventRecordRepository(
             return creation
         except IntegrityError:
             db_session.rollback()
-            if existing := self._fetch_workout_by_external_id(db_session, creator) or self._fetch_existing(
-                db_session, data_source_id, creation
-            ):
+            if existing := self._fetch_workouts_by_external_id(db_session, [creator]).get(
+                creator.id
+            ) or self._fetch_existing(db_session, data_source_id, creation):
                 return existing
             raise
 
@@ -412,14 +425,23 @@ class EventRecordRepository(
         self,
         db_session: DbSession,
         creators: list[EventRecordCreate],
-    ) -> list[UUID]:
-        """Insert non-meal records, skipping existing ones. Meals go through bulk_upsert_meals."""
-        if not creators:
-            return []
+    ) -> dict[UUID, UUID]:
+        """Insert non-meal records, skipping existing ones. Meals go through bulk_upsert_meals.
 
-        values_list = self._resolve_values(db_session, creators)
+        Returns creator id -> stored record id, for the records inserted and the workouts matched on external_id.
+        """
+        if not creators:
+            return {}
+
+        # Workouts already stored under their external_id take the newest delivery instead of inserting
+        creators_by_id = {creator.id: creator for creator in creators}
+        stored = {
+            creator_id: self._refresh_from(db_session, record, creators_by_id[creator_id]).id
+            for creator_id, record in self._fetch_workouts_by_external_id(db_session, creators).items()
+        }
+        values_list = self._resolve_values(db_session, [c for c in creators if c.id not in stored])
         if not values_list:
-            return []
+            return stored
 
         # Batch insert with ON CONFLICT DO NOTHING
         # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
@@ -454,7 +476,7 @@ class EventRecordRepository(
         )
         # NOTE: Caller should commit - allows batching multiple operations
 
-        return list(inserted_ids)
+        return stored | {record_id: record_id for record_id in inserted_ids}
 
     @staticmethod
     def _record_coverage(db_session: DbSession, records: list[tuple[EventRecordCreate, ProviderName]]) -> None:

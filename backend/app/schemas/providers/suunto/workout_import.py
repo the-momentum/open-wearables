@@ -99,7 +99,7 @@ _ExtensionT = TypeVar("_ExtensionT", PauseMarkerExtension, SummaryExtension)
 class WorkoutJSON(BaseModel):
     """Suunto workout data from API."""
 
-    # workoutId is always 0; workoutKey is the real id
+    # workoutId is 0 on the detail endpoint; workoutKey is the id every endpoint shares
     workoutId: int
     workoutKey: str
     activityId: int

@@ -634,22 +634,25 @@ class ImportService:
         if workout_bundles:
             workout_records = [record for record, _, _ in workout_bundles]
             details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
-            # Bulk create records - returns only IDs that were actually inserted
-            inserted_ids = self.event_record_service.bulk_create(db_session, workout_records)
+            stored = self.event_record_service.bulk_create(db_session, workout_records)
             db_session.flush()
 
-            # A workout already stored keeps its own id, so its statistics cannot point at the new one.
-            inserted = set(inserted_ids)
-            time_series_samples = [
-                sample
-                if sample.session is None or sample.session.record_id in inserted
-                else sample.model_copy(update={"session": None})
-                for _, _, samples in workout_bundles
-                for sample in samples
-            ]
+            # A workout matched on external_id keeps its stored id; statistics and details point at it
+            time_series_samples = []
+            for _, _, samples in workout_bundles:
+                for sample in samples:
+                    if sample.session is not None:
+                        stored_id = stored.get(sample.session.record_id)
+                        session = sample.session.model_copy(update={"record_id": stored_id}) if stored_id else None
+                        sample = sample.model_copy(update={"session": session})
+                    time_series_samples.append(sample)
 
-            # Filter details to only those records that were actually inserted (avoid FK violation)
-            details_to_insert = [details_by_id[rid] for rid in inserted_ids if rid in details_by_id]
+            details_to_insert = [
+                details_by_id[rid].model_copy(update={"record_id": stored_id})
+                for rid, stored_id in stored.items()
+                if rid in details_by_id
+            ]
+            inserted_ids = [rid for rid, stored_id in stored.items() if rid == stored_id]
 
             # Bulk create details (requires event_record to exist due to FK)
             if details_to_insert:

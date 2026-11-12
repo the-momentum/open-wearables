@@ -1111,7 +1111,7 @@ class TestGarmin247Data:
         sleep2 = {**sample_sleep, "summaryId": "sleep_456"}
 
         # Make bulk_create return the actual record IDs that were passed in
-        mock_bulk_create.side_effect = lambda db_session, records: [r.id for r in records]
+        mock_bulk_create.side_effect = lambda db_session, records: {r.id: r.id for r in records}
 
         count = garmin_247.process_items_batch(db, user.id, "sleeps", [sample_sleep, sleep2])
 
@@ -1187,7 +1187,7 @@ class TestGarmin247Data:
                 }
             ],
         }
-        mock_bulk_create.side_effect = lambda db_session, records: [r.id for r in records]
+        mock_bulk_create.side_effect = lambda db_session, records: {r.id: r.id for r in records}
 
         count = garmin_247.process_items_batch(db, user.id, "sleeps", [sleep_with_nap])
 

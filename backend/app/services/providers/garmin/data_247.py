@@ -2006,18 +2006,22 @@ class Garmin247Data(Base247DataTemplate):
 
         # Single bulk insert for EventRecords
         if all_records:
-            inserted_ids = event_record_service.bulk_create(db, all_records)
+            stored = event_record_service.bulk_create(db, all_records)
             db.flush()
 
-            inserted_set = set(inserted_ids)
+            inserted_set = {record_id for record_id, stored_id in stored.items() if record_id == stored_id}
 
             # Bulk create sleep details for actually inserted records
             sleep_details = [d for d in all_sleep_details if d.record_id in inserted_set]
             if sleep_details:
                 event_record_service.bulk_create_details(db, sleep_details, detail_type=EventCategory.SLEEP)
 
-            # Bulk create workout details for actually inserted records
-            workout_details = [d for d in all_workout_details if d.record_id in inserted_set]
+            # Workout details also refresh the stored workouts matched on external_id
+            workout_details = [
+                d.model_copy(update={"record_id": stored[d.record_id]})
+                for d in all_workout_details
+                if d.record_id in stored
+            ]
             if workout_details:
                 event_record_service.bulk_create_details(db, workout_details, detail_type=EventCategory.WORKOUT)
 
@@ -2026,7 +2030,7 @@ class Garmin247Data(Base247DataTemplate):
             if mct_details:
                 event_record_service.bulk_create_details(db, mct_details, detail_type=EventCategory.MENSTRUAL_CYCLE)  # ty:ignore[invalid-argument-type]
 
-            count += WriteCounts(len(inserted_ids), 0)
+            count += WriteCounts(len(inserted_set), 0)
 
         if all_health_scores:
             count += health_score_service.bulk_create(db, all_health_scores)
