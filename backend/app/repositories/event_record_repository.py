@@ -186,24 +186,59 @@ class EventRecordRepository(
         )
 
     def _fetch_workout_by_external_id(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord | None:
-        """The one stored workout of this user and provider carrying the creator's external_id, across its sources."""
+        """The newest stored workout of this user and provider with the creator's external_id, across its sources."""
         if creator.category != EventCategory.WORKOUT or not creator.external_id or not creator.user_id:
             return None
         source_ids = select(DataSource.id).where(
             DataSource.user_id == creator.user_id,
             DataSource.provider == self.data_source_repo.provider_of(creator).value,
         )
-        matches = (
+        return (
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id.in_(source_ids.scalar_subquery()),
                 self.model.category == EventCategory.WORKOUT,
                 self.model.external_id == creator.external_id,
             )
-            .limit(2)
-            .all()
+            .order_by(self.model.created_at.desc())
+            .first()
         )
-        return matches[0] if len(matches) == 1 else None
+
+    def _refresh_from(self, db_session: DbSession, record: EventRecord, creator: EventRecordCreate) -> EventRecord:
+        """Update a stored workout to the newest delivery's times and type.
+
+        If another copy already holds those times, that copy is returned instead.
+        """
+        fields = ("type", "duration_seconds", "start_datetime", "end_datetime", "zone_offset")
+        if all(getattr(record, field) == getattr(creator, field) for field in fields):
+            return record
+        old_days = local_days(record.data_source_id, record.start_datetime, record.end_datetime, record.zone_offset)
+        nested = db_session.begin_nested()
+        try:
+            for field in fields:
+                setattr(record, field, getattr(creator, field))
+            db_session.flush()
+            nested.commit()
+        except IntegrityError:
+            nested.rollback()
+            db_session.refresh(record)
+            holder = db_session.query(self.model).filter(
+                self.model.data_source_id == record.data_source_id,
+                self.model.category != EventCategory.MEAL,
+                self.model.start_datetime == creator.start_datetime,
+                self.model.end_datetime == creator.end_datetime,
+            )
+            return holder.one_or_none() or record
+        self._record_coverage(db_session, [(creator, self.data_source_repo.provider_of(creator))])
+        mark_dirty_days(
+            db_session,
+            [
+                *old_days,
+                *local_days(record.data_source_id, record.start_datetime, record.end_datetime, record.zone_offset),
+            ],
+        )
+        db_session.commit()
+        return record
 
     def get_by_external_ids(
         self, db_session: DbSession, user_id: UUID, external_ids: Iterable[str], provider: str | None = None
@@ -303,7 +338,7 @@ class EventRecordRepository(
 
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         if existing := self._fetch_workout_by_external_id(db_session, creator):
-            return existing
+            return self._refresh_from(db_session, existing, creator)
         data_source_id, provider, creation = self._build_creation(db_session, creator)
         try:
             db_session.add(creation)
@@ -386,13 +421,20 @@ class EventRecordRepository(
         if not values_list:
             return []
 
-        # Batch insert with ON CONFLICT DO NOTHING; untargeted so the workout external_id index is skipped too
+        # Batch insert with ON CONFLICT DO NOTHING
         # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
         chunk_size = 6_500
         inserted_ids: set[UUID] = set()
         for i in range(0, len(values_list), chunk_size):
             chunk = values_list[i : i + chunk_size]
-            stmt = insert(self.model).values(chunk).on_conflict_do_nothing()
+            stmt = (
+                insert(self.model)
+                .values(chunk)
+                .on_conflict_do_nothing(
+                    index_elements=["data_source_id", "start_datetime", "end_datetime"],
+                    index_where=text(f"category <> '{EventCategory.MEAL}'"),
+                )
+            )
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
 

@@ -93,6 +93,7 @@ class TestEventRecordRepository:
         second = event_repo.create(db, workout(3426080, "Suunto Race 2"))
 
         assert second.id == first.id
+        assert second.end_datetime == start + timedelta(milliseconds=3426080)
         assert db.query(EventRecord).filter(EventRecord.external_id == "6aa10da139e69418a2fa8db1").count() == 1
 
     def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:

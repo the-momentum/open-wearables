@@ -82,9 +82,8 @@ class EventRecordDetailRepository(
         self._upsert(db_session, [self._row(creator, detail_type, exclude_none=True)], detail_type)
         self._mirror_workout_stats(db_session, [creator], detail_type)
         db_session.commit()
-        detail = self.get_by_record_id(db_session, creator.record_id, detail_type)
-        assert detail is not None
-        return detail
+        model = DETAIL_MODELS[detail_type]
+        return db_session.query(model).filter(model.record_id == creator.record_id).one()
 
     def create_and_flush(
         self,
