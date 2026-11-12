@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     secret_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    developer_refresh_token_expire_days: int = 30
     token_lifetime: int = 3600
 
     # VALIDATION SETTINGS

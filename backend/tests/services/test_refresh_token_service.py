@@ -2,10 +2,13 @@
 Unit tests for refresh token service.
 """
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy.orm import Session
+
+from app.config import settings
 
 from app.models import RefreshToken
 from app.schemas.auth import SDKTokenOrigin, TokenType
@@ -129,6 +132,102 @@ class TestRefreshToken:
         # Act & Assert
         with pytest.raises(AuthenticationError) as exc_info:
             refresh_token_service.refresh_token(db, invalid_token)
+
+        assert exc_info.value.status_code == 401
+
+    def test_refresh_expired_developer_token_raises_401(self, db: Session) -> None:
+        """Refreshing an expired developer token (older than expire days) should raise 401."""
+        # Arrange
+        developer = DeveloperFactory()
+        expired_token = RefreshToken(
+            id="rt-expireddevtest12345678901234",
+            token_type=TokenType.DEVELOPER,
+            user_id=None,
+            origin=None,
+            developer_id=developer.id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=settings.developer_refresh_token_expire_days + 1),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        db.add(expired_token)
+        db.commit()
+
+        # Act & Assert
+        with pytest.raises(AuthenticationError) as exc_info:
+            refresh_token_service.refresh_token(db, expired_token.id)
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Invalid or revoked refresh token"
+
+    def test_refresh_developer_token_just_within_expiry_succeeds(self, db: Session) -> None:
+        """Refreshing a developer token just within its lifetime should succeed."""
+        # Arrange
+        developer = DeveloperFactory()
+        valid_token = RefreshToken(
+            id="rt-validdevtest1234567890123456",
+            token_type=TokenType.DEVELOPER,
+            user_id=None,
+            origin=None,
+            developer_id=developer.id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=settings.developer_refresh_token_expire_days - 1),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        db.add(valid_token)
+        db.commit()
+
+        # Act
+        result = refresh_token_service.refresh_token(db, valid_token.id)
+
+        # Assert
+        assert result.access_token is not None
+        assert result.refresh_token.startswith("rt-")
+
+    def test_refresh_old_sdk_token_succeeds(self, db: Session) -> None:
+        """Refreshing an old SDK token should succeed because developer lifetime does not apply to SDK."""
+        # Arrange
+        user = UserFactory()
+        old_sdk_token = RefreshToken(
+            id="rt-oldsdktest123456789012345678",
+            token_type=TokenType.SDK,
+            user_id=user.id,
+            origin=SDKTokenOrigin.ADMIN,
+            developer_id=None,
+            created_at=datetime.now(timezone.utc) - timedelta(days=60),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        db.add(old_sdk_token)
+        db.commit()
+
+        # Act
+        result = refresh_token_service.refresh_token(db, old_sdk_token.id)
+
+        # Assert
+        assert result.access_token is not None
+        assert result.refresh_token.startswith("rt-")
+
+    def test_refresh_developer_token_respects_custom_expiry_setting(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Refreshing a developer token should respect custom developer_refresh_token_expire_days setting."""
+        # Arrange
+        monkeypatch.setattr(settings, "developer_refresh_token_expire_days", 7)
+        developer = DeveloperFactory()
+        ten_day_old_token = RefreshToken(
+            id="rt-customexpiretest123456789012",
+            token_type=TokenType.DEVELOPER,
+            user_id=None,
+            origin=None,
+            developer_id=developer.id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=10),
+            last_used_at=None,
+            revoked_at=None,
+        )
+        db.add(ten_day_old_token)
+        db.commit()
+
+        # Act & Assert
+        with pytest.raises(AuthenticationError) as exc_info:
+            refresh_token_service.refresh_token(db, ten_day_old_token.id)
 
         assert exc_info.value.status_code == 401
         assert exc_info.value.detail == "Invalid or revoked refresh token"

@@ -1,11 +1,12 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, or_, select, update
 
 from app.database import DbSession
 from app.models import RefreshToken
+from app.schemas.auth import TokenType
 
 
 class RefreshTokenRepository:
@@ -21,17 +22,33 @@ class RefreshTokenRepository:
         db_session.refresh(token)
         return token
 
-    def claim_valid_token(self, db_session: DbSession, token_id: str) -> RefreshToken | None:
-        """Revoke a token that is not revoked yet and return it, or None when there is none.
+    def claim_valid_token(
+        self,
+        db_session: DbSession,
+        token_id: str,
+        developer_max_age: timedelta | None = None,
+    ) -> RefreshToken | None:
+        """Revoke a token that is not revoked (and for developer tokens, not expired) yet and return it, or None.
 
         The check and the write are one UPDATE, so of concurrent claims only one gets the token.
         Does not commit: the claim is committed together with the replacement token
         when that is stored, and the row stays locked until then.
         """
+        now = datetime.now(timezone.utc)
+        conditions = [self.model.id == token_id, self.model.revoked_at.is_(None)]
+        if developer_max_age is not None:
+            cutoff = now - developer_max_age
+            conditions.append(
+                or_(
+                    self.model.token_type != TokenType.DEVELOPER,
+                    self.model.created_at >= cutoff,
+                )
+            )
+
         stmt = (
             update(self.model)
-            .where(self.model.id == token_id, self.model.revoked_at.is_(None))
-            .values(revoked_at=datetime.now(timezone.utc))
+            .where(*conditions)
+            .values(revoked_at=now)
             .returning(self.model)
             .execution_options(populate_existing=True)
         )
