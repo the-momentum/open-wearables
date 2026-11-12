@@ -300,9 +300,13 @@ class TestWrongSecretKeyKeepsTheConnection:
         assert raw_tokens(db, encrypted_with_other_key.id) == (None, None)
 
     def test_deleting_the_user_still_works(self, db: Session, encrypted_with_other_key: ConnectionIds) -> None:
-        user_service.delete(db, encrypted_with_other_key.user_id)
+        with patch("app.services.user_service.logger") as logger:
+            user_service.delete(db, encrypted_with_other_key.user_id)
 
         assert db.get(User, encrypted_with_other_key.user_id) is None
+        # Reported to Sentry: a SECRET_KEY mismatch must not pass as a provider's refusal
+        logger.error.assert_called_once()
+        assert isinstance(logger.error.call_args.kwargs["exc_info"], TokenDecryptionError)
 
 
 def test_marker_lookup_matches_the_model() -> None:

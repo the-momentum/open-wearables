@@ -26,7 +26,7 @@ from app.services.providers.garmin.backfill_state import force_release_backfill_
 from app.services.services import AppService
 from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
-from app.utils.exceptions import ConflictError, ResourceNotFoundError
+from app.utils.exceptions import ConflictError, ResourceNotFoundError, TokenDecryptionError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -96,6 +96,14 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 strategy = provider_factory.get_provider(connection.provider)
                 if oauth := strategy.oauth:
                     user_connection_service.deregister_from_provider(db_session, user.id, connection.provider, oauth)
+            except TokenDecryptionError as e:
+                # A deployment error (another SECRET_KEY), not the provider's answer: reported, deletion goes on
+                logger.error(
+                    "Could not deregister user, provider token doesn't decrypt",
+                    exc_info=e,
+                    user_id=user.id,
+                    provider=connection.provider,
+                )
             except Exception as e:
                 logger.warning(
                     "Failed to deregister user",
