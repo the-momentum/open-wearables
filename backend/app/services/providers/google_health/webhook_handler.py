@@ -177,10 +177,14 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             try:
                 results.append(self._process_one(db, item, trace_id))
             except Exception as e:
+                if not db.is_active:
+                    # A failed query/flush leaves the session unusable; reset it so the
+                    # remaining batch items and the task's final commit still run.
+                    db.rollback()
                 log_and_capture_error(
                     e,
                     logger,
-                    f"Google webhook notification failed: {e}",
+                    "Google webhook notification failed",
                     extra={"provider": "google_health", "trace_id": trace_id},
                 )
                 results.append({"status": "error", "error": str(e)})
@@ -251,10 +255,14 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             count = self._fetch_and_save(db, user_id, data.data_type, start, end)
         except Exception as e:
             # The user is resolved, so attribute the failure to them (process_payload's catch-all can't).
+            if not db.is_active:
+                # A failed flush/commit leaves the session unusable; reset it so the task's
+                # final commit still runs and this failure reaches the sync log as FAILED.
+                db.rollback()
             log_and_capture_error(
                 e,
                 logger,
-                f"Google webhook notification failed: {e}",
+                "Google webhook notification failed",
                 extra={"provider": "google_health", "trace_id": trace_id, "user_id": str(user_id)},
             )
             return {"status": "error", "error": str(e), "data_type": data.data_type, "user_id": str(user_id)}

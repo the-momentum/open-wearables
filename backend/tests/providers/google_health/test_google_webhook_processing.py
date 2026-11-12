@@ -51,6 +51,44 @@ def test_fetch_failure_after_user_resolution_is_attributed_to_the_user() -> None
     assert "user_id" not in not_found
 
 
+def test_failed_write_resets_an_unusable_session() -> None:
+    """A broken session must be rolled back so the task's final commit and sync-status emit still run."""
+    handler = _handler()
+    handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
+    db = MagicMock()
+    db.is_active = False
+
+    with patch.object(webhook_handler, "log_and_capture_error"):
+        result = handler.process_payload(db, [_notification("known")], "trace")
+
+    db.rollback.assert_called_once()
+    assert result["results"][0]["status"] == "error"
+    assert result["results"][0]["user_id"] == USER_ID
+
+
+def test_healthy_session_is_not_rolled_back() -> None:
+    """A non-database failure must not discard pending writes from earlier batch items."""
+    handler = _handler()
+    handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
+    db = MagicMock()
+    db.is_active = True
+
+    with patch.object(webhook_handler, "log_and_capture_error"):
+        handler.process_payload(db, [_notification("known")], "trace")
+
+    db.rollback.assert_not_called()
+
+
+def test_failure_log_message_is_stable_for_grouping() -> None:
+    handler = _handler()
+    handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
+
+    with patch.object(webhook_handler, "log_and_capture_error") as capture:
+        handler.process_payload(MagicMock(), [_notification("known")], "trace")
+
+    assert capture.call_args.args[2] == "Google webhook notification failed"
+
+
 def test_fetch_failure_emits_a_failed_sync_run() -> None:
     handler = _handler()
     handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
