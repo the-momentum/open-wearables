@@ -2,7 +2,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Table, func, update
+from sqlalchemy import Table, func, or_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
@@ -153,7 +153,12 @@ class EventRecordDetailRepository(
             if col_name not in immutable_on_upsert
         }
         if update_dict:
-            child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
+            # Skips the write when nothing changed, so a plain re-sync costs no new row version
+            child_stmt = child_stmt.on_conflict_do_update(
+                index_elements=["record_id"],
+                set_=update_dict,
+                where=or_(*(child_table.c[col].is_distinct_from(value) for col, value in update_dict.items())),
+            )
         else:
             child_stmt = child_stmt.on_conflict_do_nothing(index_elements=["record_id"])
         db_session.execute(child_stmt)
