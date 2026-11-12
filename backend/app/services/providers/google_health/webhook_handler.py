@@ -246,8 +246,18 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "no_interval", "user_id": str(user_id)}
 
         start, end = window
-        self.connection_repo.update_last_synced_at(db, connection)
-        count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+        try:
+            self.connection_repo.update_last_synced_at(db, connection)
+            count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+        except Exception as e:
+            # The user is resolved, so attribute the failure to them (process_payload's catch-all can't).
+            log_and_capture_error(
+                e,
+                logger,
+                f"Google webhook notification failed: {e}",
+                extra={"provider": "google_health", "trace_id": trace_id, "user_id": str(user_id)},
+            )
+            return {"status": "error", "error": str(e), "data_type": data.data_type, "user_id": str(user_id)}
 
         log_structured(
             logger,
