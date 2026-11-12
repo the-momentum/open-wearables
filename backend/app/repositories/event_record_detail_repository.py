@@ -60,30 +60,45 @@ class EventRecordDetailRepository(
             return WORKOUT_DETAIL_STATS
         return {**WORKOUT_DETAIL_STATS, "energy_burned": (creator.energy_series, "sum")}
 
-    def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
-        """Construct the concrete detail ORM object without touching the session."""
-        model = DETAIL_MODELS.get(detail_type)
-        if model is None:
-            raise ValueError(f"Unknown detail type: {detail_type}")
+    @staticmethod
+    def _creation_data(creator: EventRecordDetailCreate, detail_type: DetailType) -> dict[str, Any]:
         creation_data = creator.model_dump(exclude_none=True)
         if detail_type == EventCategory.SLEEP and creator.sleep_stages:
             # sleep_stages contains datetime fields that JSONB cannot serialize directly;
             # use Pydantic's JSON mode to convert datetimes to ISO strings.
             creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
-        return model(**creation_data)
+        return creation_data
 
-    @handle_exceptions
+    def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
+        """Construct the concrete detail ORM object without touching the session."""
+        model = DETAIL_MODELS.get(detail_type)
+        if model is None:
+            raise ValueError(f"Unknown detail type: {detail_type}")
+        return model(**self._creation_data(creator, detail_type))
+
     def create(
         self,
         db_session: DbSession,
         creator: EventRecordDetailCreate,
         detail_type: DetailType = EventCategory.WORKOUT,
     ) -> EventRecordDetail:
-        """Create a detail record using the appropriate polymorphic model.
+        """Create a detail record using the appropriate polymorphic model; see upsert()."""
+        return self.upsert(db_session, creator, detail_type)[0]
 
-        Idempotent on record_id: returns the existing row on duplicate insert.
+    @handle_exceptions
+    def upsert(
+        self,
+        db_session: DbSession,
+        creator: EventRecordDetailCreate,
+        detail_type: DetailType = EventCategory.WORKOUT,
+    ) -> tuple[EventRecordDetail, bool]:
+        """Create a detail, or refresh the stored one for its record_id. Returns (detail, inserted).
+
+        A re-fetched record carries the provider's revised values, so they replace the stored ones;
+        a value this write does not carry keeps the stored one, as bulk_create does.
         """
         detail = self._build_detail(creator, detail_type)
+        inserted = True
         try:
             db_session.add(detail)
             db_session.commit()
@@ -96,11 +111,15 @@ class EventRecordDetailRepository(
                 and (detail := self.get_by_record_id(db_session, creator.record_id, detail_type))
             ):
                 raise
+            inserted = False
+            for field, value in self._creation_data(creator, detail_type).items():
+                if field != "record_id":
+                    setattr(detail, field, value)
         # After the commit, so a duplicate's rollback does not take the statistics with it: the stored
         # detail keeps its row and the aggregate merges what this write carries.
         self._mirror_workout_stats(db_session, [creator], detail_type)
         db_session.commit()
-        return detail
+        return detail, inserted
 
     def create_and_flush(
         self,

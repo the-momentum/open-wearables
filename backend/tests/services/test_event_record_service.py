@@ -152,6 +152,76 @@ class TestEventRecordServiceCreateDetail:
         assert kwargs["sleep_stage_intervals"] == [stage.model_dump(mode="json")]
 
 
+class TestRefetchedWorkout:
+    """A pull lookback re-fetches workouts already stored: the provider's revision replaces the stored
+    copy in place, and only the first fetch announces a new workout."""
+
+    START = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
+
+    def _workout(
+        self, data_source: DataSource, distance: str, minutes: int = 30
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="workout",
+            type="running",
+            source_name="Strava",
+            source=data_source.source,
+            device_model=data_source.device_model,
+            user_id=data_source.user_id,
+            provider=data_source.provider,
+            external_id="activity-1",
+            start_datetime=self.START,
+            end_datetime=self.START + timedelta(minutes=minutes),
+            duration_seconds=minutes * 60,
+        )
+        return record, EventRecordDetailCreate(record_id=record.id, distance=Decimal(distance), heart_rate_max=170)
+
+    def _sync(self, db: Session, data_source: DataSource, distance: str, minutes: int = 30) -> UUID:
+        record, detail = self._workout(data_source, distance, minutes)
+        created = event_record_service.create(db, record)
+        event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
+        return created.id
+
+    def test_refetch_emits_workout_created_once(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            first = self._sync(db, data_source, "5000")
+            second = self._sync(db, data_source, "5000")
+
+        assert first == second
+        mock_workout.assert_called_once()
+
+    def test_refetch_refreshes_detail_with_revised_values(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+        record_id = self._sync(db, data_source, "5000")
+
+        _, detail = self._workout(data_source, "5200")
+        stored = event_record_service.create_detail(
+            db, detail.model_copy(update={"record_id": record_id, "heart_rate_max": None})
+        )
+
+        assert getattr(stored, "distance") == Decimal("5200")
+        # A value the revision does not carry keeps the stored one.
+        assert getattr(stored, "heart_rate_max") == 170
+
+    def test_refetch_with_revised_window_updates_the_record_in_place(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+        first = self._sync(db, data_source, "5000", minutes=30)
+
+        second = self._sync(db, data_source, "5000", minutes=25)
+
+        assert second == first
+        record = db.query(EventRecord).filter(EventRecord.data_source_id == data_source.id).one()
+        db.refresh(record)
+        assert record.end_datetime == self.START + timedelta(minutes=25)
+        assert record.duration_seconds == 25 * 60
+
+
 class TestEventRecordServiceBulkCreateDetails:
     """bulk_create_details must dispatch a webhook per detail on commit.
 
