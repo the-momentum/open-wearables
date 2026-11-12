@@ -423,6 +423,26 @@ class UserConnectionRepository(
         db_session.refresh(connection)
         return connection
 
+    def advance_last_synced_at(
+        self,
+        db_session: DbSession,
+        connection: UserConnection,
+        not_before: datetime,
+    ) -> None:
+        """Move ``last_synced_at`` forward to at least ``not_before``.
+
+        The GREATEST keeps a newer cursor written by a concurrent pull or
+        webhook from being regressed. Does not commit — the caller owns the
+        transaction.
+        """
+        db_session.execute(
+            update(self.model)
+            .where(self.model.id == connection.id)
+            .values(last_synced_at=func.greatest(self.model.last_synced_at, not_before))
+            .execution_options(synchronize_session=False)
+        )
+        db_session.refresh(connection)
+
     def get_all_active_by_user(self, db_session: DbSession, user_id: str) -> list[UserConnection]:
         """Get all active connections for a specific user."""
         return (

@@ -27,7 +27,7 @@ See: https://developers.google.com/health/notifications
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -177,10 +177,14 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             try:
                 results.append(self._process_one(db, item, trace_id))
             except Exception as e:
+                # Each item commits on its own, so this discards only the failed
+                # notification's partial writes — and recovers the transaction
+                # when a failed query left it aborted (is_active stays true then).
+                db.rollback()
                 log_and_capture_error(
                     e,
                     logger,
-                    f"Google webhook notification failed: {e}",
+                    "Google webhook notification failed",
                     extra={"provider": "google_health", "trace_id": trace_id},
                 )
                 results.append({"status": "error", "error": str(e)})
@@ -246,8 +250,30 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "no_interval", "user_id": str(user_id)}
 
         start, end = window
-        self.connection_repo.update_last_synced_at(db, connection)
-        count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+        # Bound the cursor to the fetch's start, not its end: data that lands
+        # at the provider mid-fetch isn't in the response, so stamping wall-clock
+        # now would claim coverage the fetch never read. Without pull lookback
+        # the next live pull would then start past that data and miss it.
+        fetch_started_at = datetime.now(timezone.utc)
+        try:
+            count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+            # Stamp only after the fetch lands: last_synced_at is the pull-sync
+            # cursor, so a failed fetch must not advance it past data we never
+            # ingested. The GREATEST update keeps a newer concurrent stamp.
+            self.connection_repo.advance_last_synced_at(db, connection, fetch_started_at)
+            db.commit()
+        except Exception as e:
+            # The user is resolved, so attribute the failure to them (process_payload's catch-all can't).
+            # Roll back unconditionally: a failed query can leave the transaction
+            # aborted while is_active stays true, and earlier items already committed.
+            db.rollback()
+            log_and_capture_error(
+                e,
+                logger,
+                "Google webhook notification failed",
+                extra={"provider": "google_health", "trace_id": trace_id, "user_id": str(user_id)},
+            )
+            return {"status": "error", "error": str(e), "data_type": data.data_type, "user_id": str(user_id)}
 
         log_structured(
             logger,

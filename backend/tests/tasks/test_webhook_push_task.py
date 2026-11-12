@@ -107,3 +107,49 @@ def test_emission_never_raises() -> None:
         task._emit_webhook_sync_status("oura", {"status": "processed", "records_saved": 1, "user_id": "not-a-uuid"})
     assert len(calls) == 1
     assert calls[0]["user_id"] == "not-a-uuid"
+
+
+def test_batched_results_emit_one_run_per_item(user_id: str) -> None:
+    """Google Health batches notifications per POST; each item is its own run.
+
+    A batch can span users, so the aggregate result's missing user_id must not
+    drop the per-item emissions.
+    """
+    other_user = "aB3dEf5hIjKlMnOpQrStUvWxYz012345"
+    calls, fake = _capture()
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
+        task._emit_webhook_sync_status(
+            "google_health",
+            {
+                "status": "processed",
+                "notifications": 4,
+                "records_saved": 5,
+                "results": [
+                    {"status": "processed", "data_type": "steps", "records_saved": 3, "user_id": user_id},
+                    {"status": "processed", "data_type": "sleep", "records_saved": 2, "user_id": other_user},
+                    {"status": "ignored", "reason": "no_interval", "user_id": user_id},
+                    {"status": "user_not_found", "health_user_id": "ghost", "data_type": "steps"},
+                ],
+            },
+        )
+    assert len(calls) == 3
+    assert calls[0]["user_id"] == user_id
+    assert calls[0]["status"] == SyncStatus.SUCCESS
+    assert calls[0]["items_processed"] == 3
+    assert calls[1]["user_id"] == other_user
+    assert calls[1]["status"] == SyncStatus.SUCCESS
+    assert calls[2]["status"] == SyncStatus.SKIPPED
+
+
+def test_batched_results_ignored_for_unlisted_provider(user_id: str) -> None:
+    """A results list does not smuggle emissions past the provider allowlist."""
+    calls, fake = _capture()
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
+        task._emit_webhook_sync_status(
+            "garmin",
+            {
+                "status": "processed",
+                "results": [{"status": "processed", "records_saved": 1, "user_id": user_id}],
+            },
+        )
+    assert calls == []
