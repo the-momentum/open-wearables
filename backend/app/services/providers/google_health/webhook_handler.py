@@ -177,10 +177,10 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             try:
                 results.append(self._process_one(db, item, trace_id))
             except Exception as e:
-                if not db.is_active:
-                    # A failed query/flush leaves the session unusable; reset it so the
-                    # remaining batch items and the task's final commit still run.
-                    db.rollback()
+                # Each item commits on its own, so this discards only the failed
+                # notification's partial writes — and recovers the transaction
+                # when a failed query left it aborted (is_active stays true then).
+                db.rollback()
                 log_and_capture_error(
                     e,
                     logger,
@@ -253,12 +253,15 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         try:
             self.connection_repo.update_last_synced_at(db, connection)
             count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+            # Commit per notification so a later item's failure can't take this
+            # one's writes down, and so the rollback below discards only this
+            # item's partial work.
+            db.commit()
         except Exception as e:
             # The user is resolved, so attribute the failure to them (process_payload's catch-all can't).
-            if not db.is_active:
-                # A failed flush/commit leaves the session unusable; reset it so the task's
-                # final commit still runs and this failure reaches the sync log as FAILED.
-                db.rollback()
+            # Roll back unconditionally: a failed query can leave the transaction
+            # aborted while is_active stays true, and earlier items already committed.
+            db.rollback()
             log_and_capture_error(
                 e,
                 logger,

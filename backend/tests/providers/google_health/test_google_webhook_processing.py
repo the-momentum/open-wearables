@@ -3,6 +3,9 @@
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 import app.integrations.celery.tasks.webhook_push_task as task
 from app.schemas.sync_status import SyncStatus
 from app.services.providers.google_health import webhook_handler
@@ -51,7 +54,7 @@ def test_fetch_failure_after_user_resolution_is_attributed_to_the_user() -> None
     assert "user_id" not in not_found
 
 
-def test_failed_write_resets_an_unusable_session() -> None:
+def test_failed_write_rolls_back_an_unusable_session() -> None:
     """A broken session must be rolled back so the task's final commit and sync-status emit still run."""
     handler = _handler()
     handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
@@ -66,17 +69,46 @@ def test_failed_write_resets_an_unusable_session() -> None:
     assert result["results"][0]["user_id"] == USER_ID
 
 
-def test_healthy_session_is_not_rolled_back() -> None:
-    """A non-database failure must not discard pending writes from earlier batch items."""
+def test_each_item_commits_and_failures_roll_back_only_their_own_work() -> None:
+    """Per-item commit means a failed notification can't take earlier writes down with it."""
     handler = _handler()
-    handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
+    handler.workouts.load_data.side_effect = [3, RuntimeError("Google API 500")]
     db = MagicMock()
-    db.is_active = True
 
     with patch.object(webhook_handler, "log_and_capture_error"):
-        handler.process_payload(db, [_notification("known")], "trace")
+        result = handler.process_payload(db, [_notification("known"), _notification("known")], "trace")
 
-    db.rollback.assert_not_called()
+    assert result["results"][0]["status"] == "processed"
+    assert result["results"][1]["status"] == "error"
+    db.commit.assert_called_once()
+    db.rollback.assert_called_once()
+
+
+def test_failed_query_does_not_poison_the_rest_of_the_batch(db: Session) -> None:
+    """A failed SQL statement aborts the PG transaction while ``is_active`` stays true;
+    the per-item rollback must recover it so later batch items still process."""
+    handler = _handler()
+    calls = {"count": 0}
+
+    def load_data(db_: Session, user_id: str, **kwargs: Any) -> int:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            db_.execute(text("SELECT * FROM table_that_does_not_exist"))
+        # A real query proves the transaction recovered; it would raise
+        # InFailedSqlTransaction if the aborted state had leaked through.
+        return int(db_.execute(text("SELECT 1")).scalar() or 0) + 2
+
+    handler.workouts.load_data.side_effect = load_data
+
+    with patch.object(webhook_handler, "log_and_capture_error"):
+        result = handler.process_payload(db, [_notification("known"), _notification("known")], "trace")
+
+    failed, recovered = result["results"]
+    assert failed["status"] == "error"
+    assert failed["user_id"] == USER_ID
+    assert recovered["status"] == "processed"
+    assert recovered["records_saved"] == 3
+    assert db.execute(text("SELECT 1")).scalar() == 1
 
 
 def test_failure_log_message_is_stable_for_grouping() -> None:
