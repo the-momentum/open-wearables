@@ -5,14 +5,19 @@ subscriptions against the callback URL, ``pull`` deletes whatever the provider
 still holds.
 """
 
+from contextlib import nullcontext
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.orm import Session
 
 import app.integrations.celery.tasks.provider_webhooks_task as task
+from app.config import settings
 from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.incoming_webhooks import WebhookOperationResult, WebhookSubscriptionStatus
+from app.utils.token_encryption import encrypt_token
+from tests.utils.provider_tokens import OTHER_SECRET_KEY, store_raw_webhook_secret
 
 
 def _deleted(subscription_id: str) -> WebhookOperationResult:
@@ -74,3 +79,16 @@ def test_provider_without_webhook_service_is_reported_not_retried(strategy: Magi
     result = _run("apple", LiveSyncMode.PULL, strategy)
 
     assert result["errors"] == 1
+
+
+def test_skipped_registration_does_not_decrypt_the_stored_secret(db: Session, strategy: MagicMock) -> None:
+    """Should only check that a secret is stored: one that doesn't decrypt mustn't fail a registration that worked."""
+    with patch.object(settings, "secret_key", OTHER_SECRET_KEY):
+        store_raw_webhook_secret(db, "polar", encrypt_token("polar-secret"))
+    strategy.capabilities.webhook_inbound_secret = True
+    strategy.webhook_service.register_subscriptions = AsyncMock(return_value=[{"status": "skipped"}])
+
+    with patch.object(task, "SessionLocal", return_value=nullcontext(db)):
+        result = _run("polar", LiveSyncMode.WEBHOOK, strategy)
+
+    assert result == {"provider": "polar", "created": 0, "skipped": 1, "errors": 0}

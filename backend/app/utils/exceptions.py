@@ -175,6 +175,17 @@ class ConfigurationError(AppError):
     code = "CONFIGURATION_ERROR"
 
 
+class TokenDecryptionError(ConfigurationError):
+    """A stored provider secret doesn't decrypt (another SECRET_KEY or a later release's format).
+
+    Never a reason to revoke the connection or clear its tokens: the right SECRET_KEY (or release) brings it back.
+    """
+
+
+class SecretKeyMismatchError(ConfigurationError):
+    """This process' SECRET_KEY isn't the one the migration recorded, so it must not encrypt provider secrets."""
+
+
 def unknown_provider(value: str, loc: tuple[str, ...], allowed: Iterable[str]) -> RequestValidationError:
     """An unknown provider slug, answered like a ``ProviderName`` parameter FastAPI validated: a 422
     ``VALIDATION_ERROR`` pointing at ``loc``, so a typo gets one code whatever the route."""

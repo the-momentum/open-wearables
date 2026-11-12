@@ -157,7 +157,7 @@ The defaults in `.env.example` are development values. Override at least these f
 |----------|--------|
 | `ENVIRONMENT` | `production` (required on any server reachable from the internet: other values accept the default admin password) |
 | `DB_PASSWORD` | a strong database password |
-| `SECRET_KEY` | a random secret of at least 32 characters, used to sign tokens, e.g. `openssl rand -hex 32` (the backend does not start without it) |
+| `SECRET_KEY` | a random secret of at least 32 characters, used to sign tokens and to encrypt the stored provider tokens and webhook secrets, e.g. `openssl rand -hex 32` (the backend does not start without it). The `app`, `celery-worker` and `celery-beat` containers must have the same value |
 | `ADMIN_PASSWORD` | password for the admin account seeded on first start (required: with `ENVIRONMENT=production` the seed and the login refuse the default; if the account whose email matches `ADMIN_EMAIL` still has the default, its password is changed to this value at startup) |
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |
@@ -166,6 +166,7 @@ The defaults in `.env.example` are development values. Override at least these f
 | `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 
 Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again and update the secret in the Suunto portal.
+It also stops every provider connection from working until the previous `SECRET_KEY` is back: their stored tokens no longer decrypt, and Polar webhooks are rejected (see [Provider token encryption](#provider-token-encryption)).
 
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 
@@ -206,6 +207,70 @@ By default every mobile SDK sync payload is queued in Redis. That's fine for ong
 In practice you will put the API and frontend behind a reverse proxy with TLS instead of exposing the container ports directly.
 
 To add Flower, run another backend container with `command: scripts/start/flower.sh` and publish port `5555`. To enable outgoing webhooks, add a `svix-server` service and a `svix` database; the development `docker-compose.yml` shows the wiring.
+
+## Provider token encryption
+
+Open Wearables stores the OAuth tokens of provider connections (Garmin, Oura, Whoop, ...) and the Polar webhook signing secret encrypted, with a key derived from `SECRET_KEY`. There is nothing to configure, but two rules follow from it:
+
+- **The API, worker and beat must run with the same `SECRET_KEY`.** When the migrations are applied (by the `app` container at startup, or by whatever job you run `alembic upgrade` from), a fingerprint of that process' key is recorded (it doesn't reveal the key), so that process needs the same `SECRET_KEY` too. A worker or beat with a different key never encrypts a token: it writes tokens as plaintext and logs an error saying its `SECRET_KEY` differs from the API's. It still cannot decrypt the tokens the others encrypted, so its syncs of those connections fail until its key is fixed.
+- **Changing `SECRET_KEY` breaks every provider connection** whose token is already encrypted, until the previous key is restored: the API answers `503` with code `CONFIGURATION_ERROR` where it needs them, and syncs fail. The connections are not revoked and their tokens are kept, so restoring the previous key brings them all back. Users do not need to connect again. Incoming Polar webhooks are answered with `503` too (Polar retries them). Until then, tokens are written as plaintext.
+
+Changing `SECRET_KEY` after the upgrade also stops the encryption: the new key's fingerprint differs from the recorded one, so every process writes tokens as plaintext and logs an error about it. Keep the key you upgraded with.
+
+If you have to change it (for example because it leaked), move the encryption to the new key:
+
+1. Stop `app`, `celery-worker` and `celery-beat`.
+2. With the **previous** `SECRET_KEY`, downgrade the database to the migration before the encryption. It decrypts every stored token and drops the recorded fingerprint:
+
+   ```bash
+   docker compose run --rm -e SECRET_KEY=<previous key> app uv run alembic downgrade 3f6b9c2d8e41
+   ```
+
+   Within 7 days of the upgrade no token is encrypted yet, so the downgrade also works with the new key.
+3. Set the new `SECRET_KEY` for all three containers and start them. The `app` container applies the migration again, which records the new key, and encryption starts 7 days later.
+
+### Upgrading to the first release with encryption
+
+Releases 0.11 and earlier store the tokens as plaintext and cannot read encrypted ones. A process of such a release that read an encrypted token would send it to the provider, get it rejected and revoke the connection, and the user would have to connect again. So the first release with encryption waits before it encrypts anything:
+
+1. When the `app` container applies the database migrations of the new release, the migration records the time of the upgrade.
+2. For 7 days after that, tokens are still written as plaintext, so `app`, `celery-worker` and `celery-beat` can be updated one after another, and rolled back, in any order.
+3. After 7 days, new tokens are written encrypted, and `celery-beat` schedules a job (every 5 minutes) that encrypts the tokens already stored.
+
+Update all three containers within those 7 days. A worker (or `app`) still on 0.11 or earlier after that would revoke connections whose tokens it cannot read. A beat still on 0.11 reads no tokens, but the job that encrypts the stored tokens doesn't run until it is updated.
+
+### Rolling back to an earlier release
+
+An earlier release's `app` container stops at startup when the database has migrations it doesn't know, so a rollback always starts by downgrading the database with the image you are leaving. `<revision>` is the newest migration of the release you go back to: the revision id in the name of the newest file in its `backend/migrations/versions/` (`e9413ac05e3b` for 0.11.0).
+
+```bash
+docker compose run --rm app uv run alembic downgrade <revision>
+```
+
+**Within 7 days of the upgrade** the tokens are still plaintext: downgrade and switch the images in the usual way, in any order.
+
+**After 7 days** the downgrade also decrypts every stored token, so the earlier release can read them:
+
+1. Stop `app`, `celery-worker` and `celery-beat`.
+2. Run the downgrade above, with the same `SECRET_KEY` as the containers (with another key it fails and changes nothing).
+3. Check that no encrypted token is left:
+
+   ```sql
+   SELECT (SELECT count(*) FROM user_connection WHERE access_token LIKE '§%' OR refresh_token LIKE '§%')
+        + (SELECT count(*) FROM provider_settings WHERE webhook_secret LIKE '§%');
+   ```
+
+4. Start the earlier images only when it returns `0`.
+
+If you can't keep the containers stopped for the whole downgrade, run it while they run and keep the newer `celery-beat` and `celery-worker` up afterwards: newer containers can still write an encrypted token for a while, and the job they run decrypts it within 5 minutes. Then switch the images:
+
+1. Wait at least 2 minutes after the downgrade finishes and run the query until it returns `0`.
+2. Stop the newer `app`, `celery-worker` and `celery-beat`. A token write still in progress either completes before they stop or is discarded.
+3. Run the query once more. Start the earlier images only if it still returns `0`; otherwise start the newer `celery-worker` and `celery-beat` again and go back to step 1.
+
+A newer `app` that restarts before step 2 applies the migration again; in that case, repeat the downgrade.
+
+Never start a worker or API of 0.11 or earlier against a database with encrypted tokens: it can revoke the connections it syncs.
 
 ## Logs
 
