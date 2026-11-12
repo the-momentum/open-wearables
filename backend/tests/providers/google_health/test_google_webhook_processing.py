@@ -52,6 +52,7 @@ def test_fetch_failure_after_user_resolution_is_attributed_to_the_user() -> None
     assert failed == {"status": "error", "error": "Google API 500", "data_type": "exercise", "user_id": USER_ID}
     assert not_found["status"] == "user_not_found"
     assert "user_id" not in not_found
+    handler.connection_repo.update_last_synced_at.assert_not_called()
 
 
 def test_failed_write_rolls_back_an_unusable_session() -> None:
@@ -82,6 +83,8 @@ def test_each_item_commits_and_failures_roll_back_only_their_own_work() -> None:
     assert result["results"][1]["status"] == "error"
     db.commit.assert_called_once()
     db.rollback.assert_called_once()
+    # last_synced_at is the pull cursor: only the successful fetch may stamp it.
+    handler.connection_repo.update_last_synced_at.assert_called_once()
 
 
 def test_failed_query_does_not_poison_the_rest_of_the_batch(db: Session) -> None:

@@ -251,11 +251,11 @@ class GoogleWebhookHandler(BaseWebhookHandler):
 
         start, end = window
         try:
-            self.connection_repo.update_last_synced_at(db, connection)
             count = self._fetch_and_save(db, user_id, data.data_type, start, end)
-            # Commit per notification so a later item's failure can't take this
-            # one's writes down, and so the rollback below discards only this
-            # item's partial work.
+            # Stamp only after the fetch lands: last_synced_at is the pull-sync
+            # cursor, so a failed fetch must not advance it past data we never
+            # ingested. Its internal commit also persists this item's writes.
+            self.connection_repo.update_last_synced_at(db, connection)
             db.commit()
         except Exception as e:
             # The user is resolved, so attribute the failure to them (process_payload's catch-all can't).
