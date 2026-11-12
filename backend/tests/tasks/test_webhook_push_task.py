@@ -117,6 +117,65 @@ def test_emission_never_raises() -> None:
     assert calls == []
 
 
+def test_google_health_batch_emits_one_run_per_notification(user_id: str) -> None:
+    """google_health returns per-notification entries under "results"; each attributed
+    entry becomes its own run, and entries with no resolvable user are dropped."""
+    calls, fake = _capture()
+    result = {
+        "status": "processed",
+        "notifications": 3,
+        "records_saved": 3,
+        "results": [
+            {"status": "processed", "data_type": "steps", "records_saved": 3, "user_id": user_id},
+            {"status": "ignored", "reason": "no_interval", "user_id": user_id},
+            {"status": "user_not_found", "health_user_id": "gh-user", "data_type": "sleep"},
+        ],
+    }
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
+        task._emit_webhook_sync_status("google_health", result)
+    assert len(calls) == 2
+    assert calls[0]["status"] == SyncStatus.SUCCESS
+    assert calls[0]["items_processed"] == 3
+    assert calls[0]["message"] == "webhook steps"
+    assert calls[1]["status"] == SyncStatus.SKIPPED
+    assert calls[1]["message"] == "skipped: no_interval"
+
+
+def test_google_health_failed_notification_emits_failed_run(user_id: str) -> None:
+    """A per-notification error attributed to a user becomes a FAILED run."""
+    calls, fake = _capture()
+    result = {
+        "status": "processed",
+        "notifications": 1,
+        "records_saved": 0,
+        "results": [
+            {"status": "error", "error": "upstream 500", "data_type": "heart-rate", "user_id": user_id},
+        ],
+    }
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
+        task._emit_webhook_sync_status("google_health", result)
+    assert len(calls) == 1
+    assert calls[0]["status"] == SyncStatus.FAILED
+    assert calls[0]["error"] == "upstream 500"
+    assert calls[0]["message"] == "webhook heart-rate"
+
+
+def test_batch_results_skip_malformed_entries(user_id: str) -> None:
+    """A non-dict entry in a batch result is dropped without blocking the rest."""
+    calls, fake = _capture()
+    result = {
+        "status": "processed",
+        "results": [
+            "junk",
+            {"status": "processed", "records_saved": 1, "user_id": user_id},
+        ],
+    }
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
+        task._emit_webhook_sync_status("google_health", result)
+    assert len(calls) == 1
+    assert calls[0]["status"] == SyncStatus.SUCCESS
+
+
 def _run_with_failing_handler(exc: Exception) -> dict[str, Any]:
     handler = MagicMock()
     handler.extract_user_id.return_value = "provider-user"
