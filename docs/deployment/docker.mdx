@@ -262,7 +262,7 @@ docker compose run --rm app uv run alembic downgrade <revision>
 
 4. Start the earlier images only when it returns `0`.
 
-If you can't stop the containers, run the downgrade while they run and keep the newer `celery-beat` and `celery-worker` up afterwards: newer containers can still write an encrypted token for up to a minute, and the job they run decrypts it within 5 minutes. Wait for the query to return `0`. A newer `app` that restarts meanwhile applies the migration again, so then run the downgrade again.
+If you can't stop the containers, run the downgrade while they run and keep the newer `celery-beat` and `celery-worker` up until the earlier images replace them. Newer containers can still write an encrypted token for up to a minute after the downgrade, so a `0` right after it doesn't mean none is left. Wait at least 2 minutes after the downgrade finishes, then run the query, and switch the images only when it returns `0`. If it doesn't, the job the newer `celery-beat` schedules decrypts the rest within 5 minutes; run the query again. A newer `app` that restarts meanwhile applies the migration again, so then run the downgrade again.
 
 Never start a worker or API of 0.11 or earlier against a database with encrypted tokens: it can revoke the connections it syncs.
 
