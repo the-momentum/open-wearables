@@ -320,9 +320,17 @@ class EventRecordRepository(
         if not changes:
             return existing
         old_days = local_days(data_source_id, existing.start_datetime, existing.end_datetime, existing.zone_offset)
+        window_changed = "start_datetime" in changes or "end_datetime" in changes
         for field, value in changes.items():
             setattr(existing, field, value)
         try:
+            if window_changed:
+                # Coverage only widens on write; a trimmed window must be recomputed from the
+                # records left or it keeps claiming days the revision removed.
+                db_session.flush()
+                data_type_coverage_repository.refresh_events(
+                    db_session, [(creator.user_id, provider.value, creator.category.value)]
+                )
             self._record_coverage(db_session, [(creator, provider)])
             mark_dirty_days(
                 db_session,

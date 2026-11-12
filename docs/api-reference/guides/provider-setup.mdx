@@ -256,4 +256,6 @@ The body also accepts `is_enabled`. Omit a field to keep its current value - an 
 
 <Note>
   **Pull mode and late revisions.** In `pull` mode each periodic sync starts from the connection's last synced time, so a day the provider revises *after* it was fetched (e.g. Oura finalising a step count once the ring finishes uploading) is not re-fetched. Set the `PULL_SYNC_LOOKBACK` env var (compact duration - `2d`, `20h`, `90m`, `1d12h`; disabled by default, capped per provider by its `max_historical_days`) to re-fetch a trailing window on every pull. Re-fetched days are upserted. `webhook` mode is unaffected.
+
+  **This deployment's value.** The ECS/Fargate tasks built from this repository's `buildspec.yml` set `PULL_SYNC_LOOKBACK=2d` in their shared environment, so API, worker and beat tasks here re-fetch a two-day trailing window on every pull even though the generic default is disabled. Other deployments (local `docker compose`, upstream) keep the disabled default unless they set the var themselves.
 </Note>

@@ -52,7 +52,10 @@ class EventRecordDetailRepository(
             if (value := getattr(creator, field, None)) is not None
         ]
         if rows:
-            self.event_aggregate_repo.upsert(db_session, rows)
+            # The detail is the record's one source of provider statistics: a re-sync revises it,
+            # so extremes replace the stored ones — accumulating would pin a corrected max at the
+            # stale higher value the revision replaced.
+            self.event_aggregate_repo.upsert(db_session, rows, accumulate_extremes=False)
 
     @staticmethod
     def _workout_stats(creator: EventRecordDetailCreate) -> dict[str, tuple[SeriesType, StatColumn]]:
