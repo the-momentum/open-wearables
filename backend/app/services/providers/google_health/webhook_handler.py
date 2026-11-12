@@ -27,7 +27,7 @@ See: https://developers.google.com/health/notifications
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -250,12 +250,17 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "no_interval", "user_id": str(user_id)}
 
         start, end = window
+        # Bound the cursor to the fetch's start, not its end: data that lands
+        # at the provider mid-fetch isn't in the response, so stamping wall-clock
+        # now would claim coverage the fetch never read. Without pull lookback
+        # the next live pull would then start past that data and miss it.
+        fetch_started_at = datetime.now(timezone.utc)
         try:
             count = self._fetch_and_save(db, user_id, data.data_type, start, end)
             # Stamp only after the fetch lands: last_synced_at is the pull-sync
             # cursor, so a failed fetch must not advance it past data we never
-            # ingested. Its internal commit also persists this item's writes.
-            self.connection_repo.update_last_synced_at(db, connection)
+            # ingested. The GREATEST update keeps a newer concurrent stamp.
+            self.connection_repo.advance_last_synced_at(db, connection, fetch_started_at)
             db.commit()
         except Exception as e:
             # The user is resolved, so attribute the failure to them (process_payload's catch-all can't).

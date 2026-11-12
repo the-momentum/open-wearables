@@ -225,9 +225,13 @@ with a fork rule, gate or adapt the feature rather than dropping the rule.
     `_SYNC_LOG_PROVIDERS` and `_emit_webhook_sync_status` keeps its per-item
     `results` fan-out; the webhook handler keeps user-attributed failure
     results, per-notification commit with unconditional rollback (a failed
-    query can leave the transaction aborted while `is_active` stays true), and
-    the stable `"Google webhook notification failed"` message. Without them,
-    webhook-fetched data lands silently — no `sync.completed`, so no
-    downstream refresh — and a failed delivery never becomes a FAILED sync
-    run. Upstream has the same emit gap; this is a candidate for upstreaming,
-    after which this rule can drop.
+    query can leave the transaction aborted while `is_active` stays true),
+    and the stable `"Google webhook notification failed"` message. The cursor
+    stamp is `advance_last_synced_at` bound to the fetch's *start* via
+    `GREATEST` — `last_synced_at` is the pull-sync cursor, so stamping
+    wall-clock now after the fetch would claim coverage for provider data
+    that landed mid-fetch and was never read. Without them, webhook-fetched
+    data lands silently — no `sync.completed`, so no downstream refresh —
+    and a failed delivery never becomes a FAILED sync run. Upstream has the
+    same emit gap; this is a candidate for upstreaming, after which this
+    rule can drop.

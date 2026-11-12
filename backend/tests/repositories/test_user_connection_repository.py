@@ -537,6 +537,33 @@ class TestUserConnectionRepository:
         assert result.last_synced_at is not None
         assert abs((result.last_synced_at - now).total_seconds()) < 1
 
+    def test_advance_last_synced_at_moves_the_cursor_forward(
+        self, db: Session, connection_repo: UserConnectionRepository
+    ) -> None:
+        """A bound newer than the cursor advances it."""
+        connection = UserConnectionFactory(last_synced_at=None)
+        bound = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+        connection_repo.advance_last_synced_at(db, connection, bound)
+        db.commit()
+
+        db.refresh(connection)
+        assert connection.last_synced_at == bound
+
+    def test_advance_last_synced_at_never_regresses(
+        self, db: Session, connection_repo: UserConnectionRepository
+    ) -> None:
+        """A concurrent newer stamp (pull or webhook) survives an older bound."""
+        newer = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        connection = UserConnectionFactory(last_synced_at=newer)
+        db.commit()
+
+        connection_repo.advance_last_synced_at(db, connection, datetime(2026, 1, 1, tzinfo=timezone.utc))
+        db.commit()
+
+        db.refresh(connection)
+        assert connection.last_synced_at == newer
+
     def test_get_all_with_filters(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test filtering connections using get_all."""
         # Arrange
