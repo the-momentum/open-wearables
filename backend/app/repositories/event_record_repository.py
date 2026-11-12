@@ -1290,7 +1290,7 @@ class EventRecordRepository(
         local_end = cast(
             func.timezone("UTC", EventRecord.end_datetime)
             + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
-            Date,
+            Date(),
         )
         rows = (
             db_session.query(
