@@ -10,14 +10,16 @@ from app.models import DataTypeCoverage
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.sync_status import DataTypeKind
 
-type _SpanKey = tuple[UUID, str, str, DataTypeKind]
-type EventKey = tuple[UUID, str, str]
-type _CoverageKey = tuple[UUID, str, str, str]
+type _SpanKey = tuple[str, str, str, DataTypeKind]
+type EventKey = tuple[str, str, str]
+type _CoverageKey = tuple[str, str, str, str]
 
 _TRIM_BATCH_SIZE = 5_000
 
+# user ids are strings (Firebase UIDs on the fork), not UUIDs — text[] keeps the join on the
+# varchar user_id columns working where upstream's uuid[] cast assumes UUID-typed ids.
 _KEYS = """
-    SELECT * FROM unnest(CAST(:user_ids AS uuid[]), CAST(:providers AS text[]), CAST(:data_types AS text[]))
+    SELECT * FROM unnest(CAST(:user_ids AS text[]), CAST(:providers AS text[]), CAST(:data_types AS text[]))
         AS k(user_id, provider, data_type)
 """
 _SAME_KEY = "(c.user_id, c.provider, c.data_type, c.kind) = (s.user_id, s.provider, s.data_type, s.kind)"
@@ -241,7 +243,7 @@ class DataTypeCoverageRepository:
         A span that ended before the cutoff is gone. Others start at the cutoff, which is at
         or before their first sample left. Commits per batch.
         """
-        after: _CoverageKey = (UUID(int=0), "", "", "")
+        after: _CoverageKey = ("", "", "", "")
         while keys := db_session.execute(
             _NEXT_SERIES_KEYS,
             {

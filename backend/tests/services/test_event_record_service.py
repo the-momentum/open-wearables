@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
 from app.repositories import AggregateRepository, data_point_series_repository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -30,6 +31,7 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.responses.activity import Meal, NutrientValue
+from app.schemas.sync_status import DataTypeKind
 from app.services.event_record_service import event_record_service
 from tests.factories import (
     DataPointSeriesFactory,
@@ -150,6 +152,115 @@ class TestEventRecordServiceCreateDetail:
         assert kwargs["device_type"] == "ring"
         assert kwargs["sleep_duration_seconds"] == 90 * 60
         assert kwargs["sleep_stage_intervals"] == [stage.model_dump(mode="json")]
+
+
+class TestRefetchedWorkout:
+    """A pull lookback re-fetches workouts already stored: the provider's revision replaces the stored
+    copy in place, and only the first fetch announces a new workout."""
+
+    START = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
+
+    def _workout(
+        self, data_source: DataSource, distance: str, minutes: int = 30, heart_rate_max: int | None = 170
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="workout",
+            type="running",
+            source_name="Strava",
+            source=data_source.source,
+            device_model=data_source.device_model,
+            user_id=data_source.user_id,
+            provider=data_source.provider,
+            external_id="activity-1",
+            start_datetime=self.START,
+            end_datetime=self.START + timedelta(minutes=minutes),
+            duration_seconds=minutes * 60,
+        )
+        return record, EventRecordDetailCreate(
+            record_id=record.id, distance=Decimal(distance), heart_rate_max=heart_rate_max
+        )
+
+    def _sync(
+        self, db: Session, data_source: DataSource, distance: str, minutes: int = 30, heart_rate_max: int | None = 170
+    ) -> UUID:
+        record, detail = self._workout(data_source, distance, minutes, heart_rate_max)
+        created = event_record_service.create(db, record)
+        event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
+        return created.id
+
+    def test_refetch_emits_workout_created_once(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            first = self._sync(db, data_source, "5000")
+            second = self._sync(db, data_source, "5000")
+
+        assert first == second
+        mock_workout.assert_called_once()
+
+    def test_refetch_refreshes_detail_with_revised_values(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+        record_id = self._sync(db, data_source, "5000")
+
+        _, detail = self._workout(data_source, "5200")
+        stored = event_record_service.create_detail(
+            db, detail.model_copy(update={"record_id": record_id, "heart_rate_max": None})
+        )
+
+        assert getattr(stored, "distance") == Decimal("5200")
+        # A value the revision does not carry keeps the stored one.
+        assert getattr(stored, "heart_rate_max") == 170
+
+    def test_refetch_with_revised_window_updates_the_record_in_place(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+        first = self._sync(db, data_source, "5000", minutes=30)
+
+        second = self._sync(db, data_source, "5000", minutes=25)
+
+        assert second == first
+        record = db.query(EventRecord).filter(EventRecord.data_source_id == data_source.id).one()
+        db.refresh(record)
+        assert record.end_datetime == self.START + timedelta(minutes=25)
+        assert record.duration_seconds == 25 * 60
+
+    def test_refetch_with_trimmed_window_narrows_coverage(self, db: Session) -> None:
+        """Coverage only widens on write, so a revised window must be recomputed or it keeps
+        claiming the days the provider trimmed away."""
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+        self._sync(db, data_source, "5000", minutes=30)
+
+        self._sync(db, data_source, "5000", minutes=25)
+
+        coverage = data_type_coverage_repository.get(
+            db, data_source.user_id, ProviderName.STRAVA.value, "workout", DataTypeKind.EVENT
+        )
+        assert coverage is not None
+        assert coverage.coverage_start == self.START
+        assert coverage.coverage_end == self.START + timedelta(minutes=25)
+
+    def test_refetch_replaces_revised_aggregate_extremes(self, db: Session) -> None:
+        """A provider revision that lowers a max must replace the stored extreme, not keep
+        the stale higher one through accumulate-on-conflict."""
+        data_source = DataSourceFactory(provider=ProviderName.STRAVA, source="strava")
+        record_id = self._sync(db, data_source, "5000", heart_rate_max=170)
+
+        self._sync(db, data_source, "5000", heart_rate_max=150)
+
+        heart_rate = get_series_type_id(SeriesType.heart_rate)
+        row = (
+            db.query(EventRecordAggregate)
+            .filter(
+                EventRecordAggregate.record_id == record_id,
+                EventRecordAggregate.series_type_definition_id == heart_rate,
+                EventRecordAggregate.computed_by == ComputedBy.PROVIDER,
+            )
+            .one()
+        )
+        assert row.max == Decimal("150")
 
 
 class TestEventRecordServiceBulkCreateDetails:

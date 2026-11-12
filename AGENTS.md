@@ -159,7 +159,10 @@ with a fork rule, gate or adapt the feature rather than dropping the rule.
 1. **String user IDs.** `User.id` and `FKUser` stay `Mapped[str]`/`String(255)` — the
    canonical ID is a raw Firebase UID, never a `UUID`. New upstream code that arrives
    with `user_id: UUID` annotations or `UUID(user_id)` conversions must be str-ified in
-   app code and tests (`str(uuid4())` / `fake_firebase_uid()`). Several upstream tests
+   app code and tests (`str(uuid4())` / `fake_firebase_uid()`). The same applies inside
+   raw SQL: `data_type_coverage_repository` binds user ids as `text[]` and types its
+   key aliases `str`, where upstream's `uuid[]` casts assume UUID-typed ids and break
+   on Firebase UIDs. Several upstream tests
    assume UUID ids and are expected to fail on the fork rather than be "fixed" by
    widening the model.
 2. **ECR base images.** `backend/Dockerfile` (and worker/beat) use
@@ -207,3 +210,14 @@ with a fork rule, gate or adapt the feature rather than dropping the rule.
    `python3 .agents/skills/support-new-provider/scripts/fork_providers.py verify`
    before and after every upstream merge. The preserve and adoption procedures are
    in `.agents/skills/support-new-provider/references/upstream-sync.md`.
+10. **Event-record revision refresh.** `EventRecordRepository._refresh_by_external_id`,
+    the detail `upsert`'s inserted flag and in-place field refresh, emit-on-insert in
+    `create_detail`, `AggregateRepository.upsert`'s `accumulate_extremes` flag (the
+    workout-stat mirror passes `False`), and the coverage `refresh_events` call on
+    window changes exist so re-fetched records — the `PULL_SYNC_LOOKBACK` trailing
+    window and overlapping webhook intervals — revise stored rows instead of
+    duplicating them or pinning stale coverage bounds and aggregate extremes.
+    Upstream's create paths don't refresh in place; taking upstream's versions
+    reintroduces duplicates, stale values, and stale aggregates. Candidate for
+    upstreaming; until then keep it through merges. The provider-setup doc note
+    naming this deployment's `PULL_SYNC_LOOKBACK=2d` is fork-side too.

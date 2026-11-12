@@ -61,6 +61,9 @@ from app.utils.dates import local_date
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
+# What a provider can revise about a session it already sent; the rest is its identity.
+_REFRESHED_FIELDS = ("type", "source_name", "duration_seconds", "start_datetime", "end_datetime", "zone_offset")
+
 
 def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
     """Match sleep records by nap flag; a missing detail row or NULL flag counts as main sleep."""
@@ -281,9 +284,73 @@ class EventRecordRepository(
         db_session.commit()
         return len(deleted)
 
+    def _refresh_by_external_id(
+        self,
+        db_session: DbSession,
+        data_source_id: UUID,
+        provider: ProviderName,
+        creator: EventRecordCreate,
+        creation: EventRecord,
+    ) -> EventRecord | None:
+        """Bring the stored copy of a re-fetched record up to date with the provider's revision of it.
+
+        The window is part of a record's identity, so a revised window (a trimmed workout) would otherwise
+        add a second record. Returns None when there is no single stored copy or the new window is taken.
+        """
+        if creation.external_id is None or creation.category == EventCategory.MEAL:
+            return None
+        matches = (
+            db_session.query(self.model)
+            .filter(
+                self.model.data_source_id == data_source_id,
+                self.model.category == creation.category,
+                self.model.external_id == creation.external_id,
+            )
+            .limit(2)
+            .all()
+        )
+        if len(matches) != 1:
+            return None
+        existing = matches[0]
+        changes = {
+            field: value
+            for field in _REFRESHED_FIELDS
+            if (value := getattr(creation, field)) is not None and getattr(existing, field) != value
+        }
+        if not changes:
+            return existing
+        old_days = local_days(data_source_id, existing.start_datetime, existing.end_datetime, existing.zone_offset)
+        window_changed = "start_datetime" in changes or "end_datetime" in changes
+        for field, value in changes.items():
+            setattr(existing, field, value)
+        try:
+            if window_changed:
+                # Coverage only widens on write; a trimmed window must be recomputed from the
+                # records left or it keeps claiming days the revision removed.
+                db_session.flush()
+                data_type_coverage_repository.refresh_events(
+                    db_session, [(creator.user_id, provider.value, creator.category.value)]
+                )
+            self._record_coverage(db_session, [(creator, provider)])
+            mark_dirty_days(
+                db_session,
+                [
+                    *old_days,
+                    *local_days(data_source_id, existing.start_datetime, existing.end_datetime, existing.zone_offset),
+                ],
+            )
+            db_session.commit()
+        except IntegrityError:
+            db_session.rollback()
+            return None
+        db_session.refresh(existing)
+        return existing
+
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         data_source_id, provider, creation = self._build_creation(db_session, creator)
+        if refreshed := self._refresh_by_external_id(db_session, data_source_id, provider, creator, creation):
+            return refreshed
         try:
             db_session.add(creation)
             self._record_coverage(db_session, [(creator, provider)])

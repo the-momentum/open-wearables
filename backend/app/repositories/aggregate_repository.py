@@ -31,16 +31,28 @@ class AggregateRepository:
         # written whole by one provider call, so a later call may correct it either way.
         self.extremes_accumulate = model is EventRecordAggregate
 
-    def upsert(self, db_session: DbSession, rows: list[dict[str, Any]]) -> int:
-        """Insert or refresh one row per upsert key; rows sharing a key merge their statistics."""
-        unique = self._one_per_key(rows)
+    def upsert(
+        self,
+        db_session: DbSession,
+        rows: list[dict[str, Any]],
+        *,
+        accumulate_extremes: bool | None = None,
+    ) -> int:
+        """Insert or refresh one row per upsert key; rows sharing a key merge their statistics.
+
+        accumulate_extremes defaults to the model's extremes_accumulate; pass False when the rows
+        carry one record's own revised statistics, so a corrected min or max replaces the stored
+        extreme instead of being absorbed by it.
+        """
+        accumulate = self.extremes_accumulate if accumulate_extremes is None else accumulate_extremes
+        unique = self._one_per_key(rows, accumulate)
         if unique:
             stmt = insert(self.model)
             stmt = stmt.on_conflict_do_update(
                 constraint=self.upsert_key,
                 # A value absent from this write keeps the stored one, e.g. a workout's mean cadence from its
                 # details and its max cadence from an SDK statistic, written by separate calls.
-                set_={column: self._refreshed_value(stmt, column) for column in self.refreshed},
+                set_={column: self._refreshed_value(stmt, column, accumulate) for column in self.refreshed},
             )
             self._execute_many(db_session, stmt, unique)
         return len(unique)
@@ -54,11 +66,11 @@ class AggregateRepository:
         """Two writers upserting overlapping keys in different orders can deadlock; one order for everyone."""
         return [unique[key] for key in sorted(unique, key=lambda key: tuple(str(part) for part in key))]
 
-    def _refreshed_value(self, stmt: Any, column: str) -> Any:
+    def _refreshed_value(self, stmt: Any, column: str, accumulate: bool) -> Any:
         excluded, stored = stmt.excluded[column], self.model.__table__.c[column]
-        if self.extremes_accumulate and column == "min":
+        if accumulate and column == "min":
             return func.least(excluded, stored)
-        if self.extremes_accumulate and column == "max":
+        if accumulate and column == "max":
             return func.greatest(excluded, stored)
         return func.coalesce(excluded, stored)
 
@@ -73,13 +85,13 @@ class AggregateRepository:
 
     def insert_missing(self, db_session: DbSession, rows: list[dict[str, Any]]) -> int:
         """Insert the rows whose key is not stored yet; a stored row is left exactly as it is."""
-        unique = self._one_per_key(rows)
+        unique = self._one_per_key(rows, self.extremes_accumulate)
         if not unique:
             return 0
         stmt = insert(self.model).on_conflict_do_nothing(constraint=self.upsert_key).returning(self.model.id)
         return len(self._execute_many(db_session, stmt, unique).all())
 
-    def _one_per_key(self, rows: list[dict[str, Any]]) -> dict[tuple, dict[str, Any]]:
+    def _one_per_key(self, rows: list[dict[str, Any]], accumulate: bool) -> dict[tuple, dict[str, Any]]:
         unique: dict[tuple, dict[str, Any]] = {}
         for row in rows:
             row = row | {
@@ -88,7 +100,7 @@ class AggregateRepository:
             key = tuple(row[column] for column in self.key_columns)
             known = unique.get(key) or {column: None for column in self.refreshed} | {"id": uuid4()}
             merged = known | {column: value for column, value in row.items() if value is not None}
-            if self.extremes_accumulate:
+            if accumulate:
                 # As the database merges them: two of a session's extremes in one write keep the more extreme.
                 for column, pick in (("min", min), ("max", max)):
                     stored, written = known.get(column), row.get(column)

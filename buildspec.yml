@@ -772,7 +772,8 @@ phases:
             {"name":"DB_ASYNC_POOL_SIZE","value":"0"},
             {"name":"DB_ASYNC_MAX_OVERFLOW","value":"0"},
             {"name":"OUTGOING_WEBHOOKS_ENABLED","value":$outgoing_webhooks_enabled},
-            {"name":"SVIX_SERVER_URL","value":$svix_server_url}
+            {"name":"SVIX_SERVER_URL","value":$svix_server_url},
+            {"name":"PULL_SYNC_LOOKBACK","value":"2d"}
           ]')"
         # Combined provider secrets are JSON objects; "<arn>:<key>::" resolves a
         # single key. DB creds come from the cluster's RDS-managed secret.

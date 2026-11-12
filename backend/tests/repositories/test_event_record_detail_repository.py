@@ -124,7 +124,7 @@ class TestEventRecordDetailRepository:
             detail_repo.create(db, detail_data, detail_type="invalid")
 
     def test_create_duplicate_returns_existing(self, db: Session) -> None:
-        """Re-syncing the same record_id returns the existing detail instead of raising.
+        """Re-syncing the same record_id updates the existing detail instead of raising.
 
         Regression for #1375: production wires the repo with the abstract
         ``EventRecordDetail`` base, so the old ``@handle_duplicates`` recovery blew up
@@ -146,10 +146,10 @@ class TestEventRecordDetailRepository:
             detail_type="workout",
         )
 
-        # Assert - existing row returned unchanged, not a new/overwritten one
+        # Assert - the stored row is returned, refreshed with the re-synced value
         assert isinstance(duplicate, WorkoutDetails)
         assert duplicate.record_id == first.record_id
-        assert duplicate.steps_count == 8500
+        assert duplicate.steps_count == 9999
 
     def test_create_and_flush_duplicate_returns_existing(self, db: Session) -> None:
         """create_and_flush is idempotent on record_id via its savepoint recovery."""

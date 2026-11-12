@@ -205,8 +205,11 @@ class EventRecordService(
         detail: EventRecordDetailCreate,
         detail_type: DetailType = EventCategory.WORKOUT,
     ) -> EventRecordDetail:
-        result = self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)
-        # event_record_detail_repo.create commits internally, so data is already persisted.
+        result, inserted = self.event_record_detail_repo.upsert(db_session, detail, detail_type=detail_type)
+        # A re-fetch of a stored record (e.g. a pull's lookback window) is not a new event.
+        if not inserted:
+            return result
+        # event_record_detail_repo.upsert commits internally, so data is already persisted.
         # Fire the webhook directly with fresh fetches rather than via after_commit — using
         # after_commit defers the call to the *next* session commit, at which point SQLAlchemy
         # has expired the captured ORM objects, causing lazy-load failures inside after_commit.
