@@ -261,4 +261,4 @@ def _openapi() -> dict[str, Any]:
     return api.openapi_schema
 
 
-api.openapi = _openapi  # ty: ignore[invalid-assignment]
+api.openapi = _openapi

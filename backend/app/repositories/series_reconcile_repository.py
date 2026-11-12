@@ -33,7 +33,7 @@ NOT_RECONCILED_SOURCE = or_(
 
 # The local day of a series_aggregate row: its UTC start moved by its offset.
 _ROW_DAY = sql_cast(
-    func.timezone("UTC", SeriesAggregate.period_start) + sql_cast(SeriesAggregate.zone_offset, Interval), Date
+    func.timezone("UTC", SeriesAggregate.period_start) + sql_cast(SeriesAggregate.zone_offset, Interval), Date()
 )
 
 # The series reconcile merges: amounts that accumulate over time, where two devices recording the same moment
