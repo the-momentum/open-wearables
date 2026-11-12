@@ -2,8 +2,8 @@ from typing import Any, cast
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Table, func, or_, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import Table, func, null, or_, update
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.exc import IntegrityError
 
 from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
@@ -133,11 +133,16 @@ class EventRecordDetailRepository(
         return cast(Table, model.__table__)
 
     def _row(self, creator: EventRecordDetailCreate, detail_type: DetailType, exclude_none: bool = False) -> dict:
-        valid_columns = set(self._table(detail_type).columns.keys())
+        columns = self._table(detail_type).columns
         data = creator.model_dump(exclude_none=exclude_none)
         if detail_type == EventCategory.SLEEP and data.get("sleep_stages"):
             data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
-        return {k: v for k, v in data.items() if k in valid_columns}
+        # A JSONB None binds as JSON null, which COALESCE would keep over the stored value
+        return {
+            k: null() if v is None and isinstance(columns[k].type, JSONB) else v
+            for k, v in data.items()
+            if k in columns
+        }
 
     def _upsert(self, db_session: DbSession, rows: list[dict], detail_type: DetailType) -> None:
         child_table = self._table(detail_type)

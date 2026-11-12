@@ -96,6 +96,16 @@ class TestEventRecordRepository:
         assert second.end_datetime == start + timedelta(milliseconds=3426080)
         assert db.query(EventRecord).filter(EventRecord.external_id == "6aa10da139e69418a2fa8db1").count() == 1
 
+        # Bulk: two more deliveries in one batch resolve to the same row, the last one's times winning
+        earlier, latest = workout(3426000, None), workout(3425900, None)
+        stored = event_repo.bulk_create(db, [earlier, latest])
+        db.commit()
+
+        assert stored == {earlier.id: first.id, latest.id: first.id}
+        db.refresh(first)
+        assert first.end_datetime == start + timedelta(milliseconds=3425900)
+        assert db.query(EventRecord).filter(EventRecord.external_id == "6aa10da139e69418a2fa8db1").count() == 1
+
     def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""
         # Arrange

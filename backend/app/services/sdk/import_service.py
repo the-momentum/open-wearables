@@ -657,7 +657,7 @@ class ImportService:
             # Bulk create details (requires event_record to exist due to FK)
             if details_to_insert:
                 self.event_record_service.bulk_create_details(
-                    db_session, details_to_insert, detail_type=EventCategory.WORKOUT
+                    db_session, details_to_insert, detail_type=EventCategory.WORKOUT, created=set(inserted_ids)
                 )
             workouts_saved = len(inserted_ids)
             for record in workout_records:

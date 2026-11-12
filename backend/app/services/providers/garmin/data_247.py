@@ -2023,7 +2023,9 @@ class Garmin247Data(Base247DataTemplate):
                 if d.record_id in stored
             ]
             if workout_details:
-                event_record_service.bulk_create_details(db, workout_details, detail_type=EventCategory.WORKOUT)
+                event_record_service.bulk_create_details(
+                    db, workout_details, detail_type=EventCategory.WORKOUT, created=inserted_set
+                )
 
             # Bulk create MCT details for actually inserted records
             mct_details = [d for d in all_mct_details if d.record_id in inserted_set]

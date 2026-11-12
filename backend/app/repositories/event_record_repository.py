@@ -185,15 +185,17 @@ class EventRecordRepository(
             .one_or_none()
         )
 
+    def _workout_key(self, creator: EventRecordCreate) -> tuple[UUID, str, str] | None:
+        """The user, provider and external_id that identify a workout across deliveries."""
+        if creator.category != EventCategory.WORKOUT or not creator.external_id or not creator.user_id:
+            return None
+        return creator.user_id, self.data_source_repo.provider_of(creator).value, creator.external_id
+
     def _fetch_workouts_by_external_id(
         self, db_session: DbSession, creators: list[EventRecordCreate]
     ) -> dict[UUID, EventRecord]:
         """Creator id -> newest stored workout of its user and provider with its external_id, in one query."""
-        keys = {
-            (creator.user_id, self.data_source_repo.provider_of(creator).value, creator.external_id): creator.id
-            for creator in creators
-            if creator.category == EventCategory.WORKOUT and creator.external_id and creator.user_id
-        }
+        keys = {key: creator.id for creator in creators if (key := self._workout_key(creator))}
         if not keys:
             return {}
         source_ids = select(DataSource.id).where(
@@ -222,13 +224,14 @@ class EventRecordRepository(
         If another copy already holds those times, that copy is returned instead.
         """
         fields = ("type", "duration_seconds", "start_datetime", "end_datetime", "zone_offset")
-        if all(getattr(record, field) == getattr(creator, field) for field in fields):
+        updates = {field: value for field in fields if (value := getattr(creator, field)) is not None}
+        if all(getattr(record, field) == value for field, value in updates.items()):
             return record
         old_days = local_days(record.data_source_id, record.start_datetime, record.end_datetime, record.zone_offset)
         nested = db_session.begin_nested()
         try:
-            for field in fields:
-                setattr(record, field, getattr(creator, field))
+            for field, value in updates.items():
+                setattr(record, field, value)
             db_session.flush()
             nested.commit()
         except IntegrityError:
@@ -239,6 +242,7 @@ class EventRecordRepository(
                 self.model.category != EventCategory.MEAL,
                 self.model.start_datetime == creator.start_datetime,
                 self.model.end_datetime == creator.end_datetime,
+                self.model.external_id == record.external_id,
             )
             return holder.one_or_none() or record
         self._record_coverage(db_session, [(creator, self.data_source_repo.provider_of(creator))])
@@ -433,6 +437,15 @@ class EventRecordRepository(
         if not creators:
             return {}
 
+        # Several deliveries of one workout in a batch: the last stands for all, the earlier ones map to it
+        latest = {key: creator.id for creator in creators if (key := self._workout_key(creator))}
+        copies = {
+            creator.id: latest[key]
+            for creator in creators
+            if (key := self._workout_key(creator)) and latest[key] != creator.id
+        }
+        creators = [creator for creator in creators if creator.id not in copies]
+
         # Workouts already stored under their external_id take the newest delivery instead of inserting
         creators_by_id = {creator.id: creator for creator in creators}
         stored = {
@@ -440,8 +453,6 @@ class EventRecordRepository(
             for creator_id, record in self._fetch_workouts_by_external_id(db_session, creators).items()
         }
         values_list = self._resolve_values(db_session, [c for c in creators if c.id not in stored])
-        if not values_list:
-            return stored
 
         # Batch insert with ON CONFLICT DO NOTHING
         # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
@@ -476,7 +487,8 @@ class EventRecordRepository(
         )
         # NOTE: Caller should commit - allows batching multiple operations
 
-        return stored | {record_id: record_id for record_id in inserted_ids}
+        stored |= {record_id: record_id for record_id in inserted_ids}
+        return stored | {copy: stored[last] for copy, last in copies.items() if last in stored}
 
     @staticmethod
     def _record_coverage(db_session: DbSession, records: list[tuple[EventRecordCreate, ProviderName]]) -> None:
