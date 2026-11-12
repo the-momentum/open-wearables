@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
@@ -89,8 +89,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
     def _extract_dates(self, start_timestamp: int, end_timestamp: int) -> tuple[datetime, datetime]:
         """Extract start and end dates from timestamps."""
-        start_date = datetime.fromtimestamp(start_timestamp / 1000)
-        end_date = datetime.fromtimestamp(end_timestamp / 1000)
+        start_date = datetime.fromtimestamp(start_timestamp / 1000, tz=timezone.utc)
+        end_date = datetime.fromtimestamp(end_timestamp / 1000, tz=timezone.utc)
         return start_date, end_date
 
     def _build_metrics(self, raw_workout: SuuntoWorkoutJSON) -> EventRecordMetrics:

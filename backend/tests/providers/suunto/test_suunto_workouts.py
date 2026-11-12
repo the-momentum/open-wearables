@@ -12,7 +12,7 @@ Tests cover:
 - Workout type mapping
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, PropertyMock, patch
 from uuid import uuid4
@@ -58,8 +58,8 @@ class TestSuuntoWorkouts:
         return {
             "workoutId": 123456789,
             "activityId": 1,  # Running
-            "startTime": 1705309200000,  # 2024-01-15T08:00:00 in milliseconds
-            "stopTime": 1705312800000,  # 2024-01-15T09:00:00 in milliseconds
+            "startTime": 1705309200000,  # 2024-01-15T09:00:00Z in milliseconds
+            "stopTime": 1705312800000,  # 2024-01-15T10:00:00Z in milliseconds
             "totalTime": 3600.0,  # 1 hour in seconds
             "totalDistance": 10000,
             "stepCount": 8500,
@@ -95,22 +95,20 @@ class TestSuuntoWorkouts:
             max=175,
         )
 
-    def test_extract_dates_from_millisecond_timestamps(self, suunto_workouts: SuuntoWorkouts) -> None:
-        """Should extract datetime objects from millisecond timestamps."""
+    @pytest.mark.usefixtures("non_utc_process_timezone")
+    def test_extract_dates_returns_utc_instants_on_non_utc_host(self, suunto_workouts: SuuntoWorkouts) -> None:
+        """Millisecond timestamps should become UTC instants regardless of the host timezone."""
         # Arrange
-        start_ms = 1705309200000  # 2024-01-15T08:00:00
-        end_ms = 1705312800000  # 2024-01-15T09:00:00
+        start_ms = 1705309200000  # 2024-01-15T09:00:00Z
+        end_ms = 1705312800000  # 2024-01-15T10:00:00Z
 
         # Act
         start_date, end_date = suunto_workouts._extract_dates(start_ms, end_ms)
 
         # Assert
-        assert isinstance(start_date, datetime)
-        assert isinstance(end_date, datetime)
-        assert start_date.year == 2024
-        assert start_date.month == 1
-        assert start_date.day == 15
-        assert end_date > start_date
+        assert start_date == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
+        assert end_date == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
+        assert start_date.utcoffset() == end_date.utcoffset() == timedelta(0)
 
     def test_build_metrics_with_complete_data(
         self,
@@ -197,6 +195,7 @@ class TestSuuntoWorkouts:
         assert workout.totalDistance == 21381.4
         assert metrics["distance"] == Decimal("21381.4")
 
+    @pytest.mark.usefixtures("non_utc_process_timezone")
     def test_normalize_workout_creates_event_record(
         self,
         suunto_workouts: SuuntoWorkouts,
@@ -216,6 +215,8 @@ class TestSuuntoWorkouts:
         assert record.source_name == "Suunto 9 Peak"
         assert record.device_model == "Suunto 9 Peak"  # Uses displayName from gear
         assert record.duration_seconds == 3600
+        assert record.start_datetime == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
+        assert record.end_datetime == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
         assert record.external_id == "123456789"
         assert record.user_id == user_id
 
