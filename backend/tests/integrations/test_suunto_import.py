@@ -38,7 +38,8 @@ class TestSuuntoImport:
             "error": None,
             "payload": [
                 {
-                    "workoutId": 123456789,
+                    "workoutId": 0,
+                    "workoutKey": "6aa10da139e69418a2fa8db1",
                     "activityId": 1,  # Running
                     "startTime": 1705309200000,
                     "stopTime": 1705312800000,
@@ -62,7 +63,8 @@ class TestSuuntoImport:
                     },
                 },
                 {
-                    "workoutId": 987654321,
+                    "workoutId": 0,
+                    "workoutKey": "6aa10da139e69418a2fa8db2",
                     "activityId": 2,  # Cycling
                     "startTime": 1705395600000,
                     "stopTime": 1705402800000,
