@@ -15,7 +15,3 @@ export const flipped = (
 	settings.filter(
 		(setting) => (draft[setting.provider] ?? setting.is_enabled) !== setting.is_enabled
 	);
-
-/** How a provider is told about new data, for the ones that cannot be asked. */
-export const liveSyncLabel = (mode: ProviderSetting['live_sync_mode']) =>
-	mode === 'webhook' ? 'Webhook' : 'Periodic pull';

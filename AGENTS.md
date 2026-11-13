@@ -235,3 +235,16 @@ with a fork rule, gate or adapt the feature rather than dropping the rule.
     and a failed delivery never becomes a FAILED sync run. Upstream has the
     same emit gap; this is a candidate for upstreaming, after which this
     rule can drop.
+12. **Live-sync mode switcher stays hidden.** This deployment runs a hybrid
+    upstream cannot express — `pull` mode plus manually registered provider
+    subscriptions, i.e. webhook push freshness *and* pull reconciliation
+    (runbook: `ren-bbb/areas/eng/wearable-sync-latency.md`). The fork UI
+    therefore has no PULL/WEBHOOK control: `LiveSync.svelte`, the
+    `?/liveSync` form action, `setLiveSyncMode`, and `liveSyncLabel` are
+    gone, along with their e2e coverage. Do not restore them on upstream
+    sync UNLESS upstream ships a native UI for that hybrid mode. The
+    backend `live_sync_mode` API still works and must not be flipped:
+    `reconcile_provider_webhooks` registers subscriptions on `webhook` and
+    deletes them on `pull` — for `oura` that removes the subscriptions
+    registered via `POST /api/v1/oura/webhooks/subscriptions`, and for
+    `google_health` registration 500s without `GOOGLE_PROJECT_ID`.
