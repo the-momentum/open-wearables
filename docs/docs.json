@@ -141,7 +141,8 @@
             "pages": [
               "mcp-server/index",
               "mcp-server/claude-desktop",
-              "mcp-server/cursor"
+              "mcp-server/cursor",
+              "mcp-server/remote-http"
             ]
           },
           {
