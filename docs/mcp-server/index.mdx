@@ -17,6 +17,10 @@ keywords: ["mcp server health data", "model context protocol wearables", "health
 MCP (Model Context Protocol) is a standard for connecting AI assistants to external data sources. The Open Wearables MCP server enables AI tools like **Claude Desktop** and **Cursor** to query your wearable health data through natural language conversations.
 
 <Note>
+  The server runs locally over stdio by default. To use it from clients that need a remote server, such as claude.ai custom connectors, see [Remote MCP server over HTTP](/mcp-server/remote-http).
+</Note>
+
+<Note>
   The MCP server is **decoupled** from the backend - it communicates via REST API using your API key. This means it can be deployed independently and uses existing, tested API endpoints.
 </Note>
 

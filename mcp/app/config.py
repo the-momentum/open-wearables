@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,37 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
     request_timeout: int = Field(default=30, description="HTTP request timeout in seconds")
 
+    # Transport settings
+    mcp_transport: Literal["stdio", "http"] = Field(default="stdio", description="MCP transport")
+    mcp_host: str = Field(default="127.0.0.1", description="Bind host when mcp_transport='http'")
+    mcp_port: int = Field(default=8100, description="Bind port when mcp_transport='http'")
+    mcp_bearer_token: SecretStr = Field(
+        default=SecretStr(""),
+        description="Shared bearer token required from HTTP clients. Used when mcp_transport='http' "
+        "and mcp_oauth_password is not set.",
+    )
+
+    # OAuth settings
+    mcp_oauth_password: SecretStr = Field(
+        default=SecretStr(""),
+        description="Password gating the OAuth login page. Enables OAuth mode when mcp_transport='http'.",
+    )
+    mcp_public_url: str = Field(
+        default="http://localhost:8100",
+        description="Public HTTPS URL this server is reachable at, used for OAuth issuer/redirect URLs.",
+    )
+    mcp_client_ip_header: str = Field(
+        default="",
+        description="Request header carrying the real client address (e.g. CF-Connecting-IP), used to rate limit "
+        "login attempts per client. Only set it when a reverse proxy in front sets or overwrites that header. "
+        "Empty uses the socket peer, which is the proxy itself when one is in front.",
+    )
+    mcp_state_file: str = Field(
+        default="",
+        description="JSON file where OAuth clients and tokens are persisted so they survive restarts. "
+        "Empty keeps them in memory only.",
+    )
+
     def is_configured(self) -> bool:
         """Check if the API key is configured."""
         return bool(self.open_wearables_api_key.get_secret_value())
@@ -44,4 +76,7 @@ try:
         )
 except ValidationError as e:
     print(f"Configuration error: {e}", file=sys.stderr)
-    settings = Settings(open_wearables_api_key=SecretStr(""))
+    # Fall back to field defaults directly, bypassing env/dotenv parsing - the
+    # invalid value that triggered this is still in the environment, so
+    # re-running Settings() here would just raise the same error again.
+    settings = Settings.model_construct(open_wearables_api_key=SecretStr(""))

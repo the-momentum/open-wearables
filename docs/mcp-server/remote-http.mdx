@@ -1,0 +1,122 @@
+---
+title: "Remote MCP Server over HTTP"
+sidebarTitle: "Remote (HTTP)"
+description: "Run the Open Wearables MCP server over HTTP with OAuth or a bearer token, so remote clients such as claude.ai custom connectors can query wearable health data."
+keywords: ["mcp http transport", "claude.ai custom connector health data", "remote mcp server oauth", "mcp bearer token"]
+"og:title": "Remote MCP Server over HTTP | Open Wearables"
+"og:description": "Run the Open Wearables MCP server over HTTP with OAuth or a bearer token for remote clients such as claude.ai custom connectors."
+"og:url": "https://docs.openwearables.io/mcp-server/remote-http"
+"og:type": "article"
+"twitter:title": "Remote MCP Server over HTTP | Open Wearables"
+"twitter:description": "Run the Open Wearables MCP server over HTTP with OAuth or a bearer token for remote clients such as claude.ai custom connectors."
+"twitter:card": "summary_large_image"
+---
+
+By default the MCP server runs over stdio and is started by Claude Desktop or Cursor on the same machine. Clients that cannot launch a local process, such as **claude.ai custom connectors**, need the server reachable over HTTPS instead. HTTP mode adds that, with authentication.
+
+<Warning>
+  Like the API, the MCP server assumes the **instance administrator**. The token identifies the client, not a user, and the server reaches the backend with your instance API key, so anyone who can sign in can read every user's data. Use it for your own instance, not to expose an instance to other people.
+</Warning>
+
+## Authentication
+
+HTTP mode requires one of these, and the server exits at startup without either. Set one even if you start the server through a runner such as `fastmcp run app/main.py:mcp --transport http`: the secret is what attaches authentication, and without one nothing protects the endpoint.
+
+<Tabs>
+  <Tab title="OAuth (claude.ai)">
+    A self-contained OAuth 2.1 flow with dynamic client registration and a login page protected by one password. claude.ai connectors only support this.
+
+    Generate the password, then put its value in `config/.env`:
+
+    ```bash
+    openssl rand -hex 24
+    ```
+
+    ```bash config/.env
+    MCP_TRANSPORT=http
+    MCP_OAUTH_PASSWORD=<the value printed above>
+    MCP_PUBLIC_URL=https://mcp.example.com
+    ```
+
+    `MCP_PUBLIC_URL` is the public HTTPS address of the server, used for the OAuth issuer and redirect URLs.
+  </Tab>
+  <Tab title="Bearer token">
+    A static shared secret sent as `Authorization: Bearer <token>`, for clients that let you paste one in. Ignored if `MCP_OAUTH_PASSWORD` is set.
+
+    Generate the token, then put its value in `config/.env`:
+
+    ```bash
+    openssl rand -hex 32
+    ```
+
+    ```bash config/.env
+    MCP_TRANSPORT=http
+    MCP_BEARER_TOKEN=<the value printed above>
+    ```
+  </Tab>
+</Tabs>
+
+## Run it
+
+<Steps>
+  <Step title="Start the server">
+    With Docker, the `mcp` service is an opt-in compose profile:
+
+    ```bash
+    docker compose up -d mcp
+    ```
+
+    The container always listens on port `8100`. To publish it on another host port, set `MCP_PORT` in the root `.env` (or the shell) that Compose reads, not in `mcp/config/.env`; the mapping is `127.0.0.1:${MCP_PORT:-8100}:8100`.
+
+    Without Docker, run `uv run start` from the `mcp` directory. The server listens on `MCP_HOST:MCP_PORT` (`127.0.0.1:8100` by default).
+  </Step>
+  <Step title="Put a TLS reverse proxy in front">
+    Bind the port to `127.0.0.1` and terminate TLS in a reverse proxy such as Caddy or nginx, forwarding `https://mcp.example.com` to `127.0.0.1:8100`. Do not expose the port directly.
+  </Step>
+  <Step title="Check that it is protected">
+    Without a token the MCP endpoint must answer `401`:
+
+    ```bash
+    curl -s -o /dev/null -w '%{http_code}\n' -X POST https://mcp.example.com/mcp
+    ```
+
+    ```text
+    401
+    ```
+  </Step>
+</Steps>
+
+## Connect from claude.ai
+
+<Steps>
+  <Step title="Add the connector">
+    In claude.ai, open **Settings → Connectors → Add custom connector** and enter `https://mcp.example.com/mcp`.
+  </Step>
+  <Step title="Sign in">
+    claude.ai registers itself and redirects you to the server's login page. Enter `MCP_OAUTH_PASSWORD`. There is no separate token to copy.
+  </Step>
+  <Step title="Ask a question">
+    Once authorized, ask for example "How did I sleep last week?" and Claude calls the same tools as in the other clients.
+  </Step>
+</Steps>
+
+## Behind a reverse proxy
+
+Behind a proxy every request arrives from the proxy's address, so the login rate limit would be shared by everyone. Set `MCP_CLIENT_IP_HEADER` to a header your proxy sets or overwrites with the real client address, for example `CF-Connecting-IP` behind Cloudflare. For a list such as `X-Forwarded-For` the last entry is used. Leave it empty if no proxy sets such a header.
+
+## Staying signed in across restarts
+
+OAuth clients and tokens are kept in memory unless you set `MCP_STATE_FILE`, so every restart would force connectors to sign in again. The bundled `docker-compose.yml` sets it to `/data/oauth_state.json` on a volume. The file is written with owner-only permissions. An unreadable file is moved aside to `.corrupt` and the server starts empty.
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `MCP_TRANSPORT` | `stdio` | `stdio` or `http`. Fixed to `http` in the compose service. |
+| `MCP_HOST` | `127.0.0.1` | Bind address in HTTP mode. Fixed to `0.0.0.0` in the compose service. |
+| `MCP_PORT` | `8100` | Bind port in HTTP mode. |
+| `MCP_OAUTH_PASSWORD` | empty | Enables OAuth; the password for its login page. |
+| `MCP_PUBLIC_URL` | `http://localhost:8100` | Public HTTPS URL, used for OAuth issuer and redirect URLs. |
+| `MCP_BEARER_TOKEN` | empty | Shared bearer token, used when no OAuth password is set. |
+| `MCP_CLIENT_IP_HEADER` | empty | Header carrying the real client address, for per-client login rate limiting. |
+| `MCP_STATE_FILE` | empty | JSON file where OAuth clients and tokens are saved. Empty keeps them in memory. |

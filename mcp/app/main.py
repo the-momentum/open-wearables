@@ -1,9 +1,11 @@
 """Open Wearables MCP Server - Main entry point."""
 
 import logging
+import sys
 from datetime import date
 
 from fastmcp import FastMCP
+from fastmcp.server.auth import AuthProvider
 
 from app.config import settings
 from app.prompts import prompts_router
@@ -21,6 +23,55 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _build_auth_provider() -> AuthProvider:
+    """Build the HTTP-mode auth provider, or exit if neither secret is configured."""
+    if settings.mcp_oauth_password.get_secret_value():
+        from fastmcp.server.auth.auth import ClientRegistrationOptions, RevocationOptions
+
+        from app.oauth import SinglePasswordOAuthProvider
+
+        if settings.mcp_public_url.startswith(("http://localhost", "http://127.0.0.1")):
+            print(
+                f"Warning: MCP_PUBLIC_URL is still {settings.mcp_public_url!r} - set it to the "
+                "server's public HTTPS URL, or remote clients won't be able to complete OAuth.",
+                file=sys.stderr,
+            )
+
+        return SinglePasswordOAuthProvider(
+            base_url=settings.mcp_public_url,
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+            revocation_options=RevocationOptions(enabled=True),
+            state_file=settings.mcp_state_file or None,
+        )
+    if settings.mcp_bearer_token.get_secret_value():
+        from app.auth import SharedSecretVerifier
+
+        return SharedSecretVerifier()
+
+    print(
+        "Fatal: MCP_TRANSPORT=http requires MCP_OAUTH_PASSWORD or MCP_BEARER_TOKEN to be set "
+        "(the server would otherwise be reachable without authentication).",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _auth_provider_or_none() -> AuthProvider | None:
+    """Return the auth provider, or None when running without secrets over stdio.
+
+    Attached whenever MCP_TRANSPORT=http or a secret is configured, so a runner that picks HTTP itself
+    (`fastmcp run app/main.py:mcp --transport http`) cannot serve the backend without authentication.
+    """
+    if (
+        settings.mcp_transport == "http"
+        or settings.mcp_oauth_password.get_secret_value()
+        or settings.mcp_bearer_token.get_secret_value()
+    ):
+        return _build_auth_provider()
+    return None
+
 
 # Create FastMCP server instance
 mcp = FastMCP(
@@ -126,12 +177,21 @@ mcp.mount(menstrual_cycles_router)
 # Mount prompts
 mcp.mount(prompts_router)
 
+# Set before main() so the auth provider is attached to `mcp` as soon as this
+# module is imported - e.g. by a FastMCP CLI runner that imports `mcp` and
+# never calls main() - rather than only when the server is started directly.
+if (auth_provider := _auth_provider_or_none()) is not None:
+    mcp.auth = auth_provider
+
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
 
 def main() -> None:
     """Entry point for the MCP server."""
-    mcp.run()
+    if settings.mcp_transport == "http":
+        mcp.run(transport="http", host=settings.mcp_host, port=settings.mcp_port)
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":
