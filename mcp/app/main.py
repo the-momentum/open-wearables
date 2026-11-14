@@ -43,6 +43,7 @@ def _build_auth_provider() -> AuthProvider:
             base_url=settings.mcp_public_url,
             client_registration_options=ClientRegistrationOptions(enabled=True),
             revocation_options=RevocationOptions(enabled=True),
+            state_file=settings.mcp_state_file or None,
         )
     if settings.mcp_bearer_token.get_secret_value():
         from app.auth import SharedSecretVerifier

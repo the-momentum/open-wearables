@@ -1,6 +1,7 @@
 """Behaviour of the OAuth provider's token lifecycle, login and registration."""
 
 import time
+from pathlib import Path
 
 import pytest
 from mcp.server.auth.provider import AuthorizationCode, AuthorizationParams, AuthorizeError
@@ -12,8 +13,8 @@ from app.config import settings
 from app.oauth import UNUSED_CLIENT_EXPIRY_SECONDS, SinglePasswordOAuthProvider, _PendingAuthorization
 
 
-def _provider() -> SinglePasswordOAuthProvider:
-    return SinglePasswordOAuthProvider(base_url="https://example.test")
+def _provider(state_file: Path | None = None) -> SinglePasswordOAuthProvider:
+    return SinglePasswordOAuthProvider(base_url="https://example.test", state_file=state_file)
 
 
 def _client(client_id: str = "c1") -> OAuthClientInformationFull:
@@ -22,8 +23,9 @@ def _client(client_id: str = "c1") -> OAuthClientInformationFull:
     )
 
 
-async def test_refresh_token_outlives_expired_access_token() -> None:
-    provider = _provider()
+async def test_refresh_token_outlives_expired_access_token(tmp_path: Path) -> None:
+    state_file = tmp_path / "oauth_state.json"
+    provider = _provider(state_file)
     client = _client()
     await provider.register_client(client)
     issued = provider._issue_tokens("c1", [], None)
@@ -31,8 +33,9 @@ async def test_refresh_token_outlives_expired_access_token() -> None:
 
     assert await provider.load_access_token(issued.access_token) is None
 
-    refresh = await provider.load_refresh_token(client, issued.refresh_token)
-    assert refresh is not None
+    for p in (provider, _provider(state_file)):
+        refresh = await p.load_refresh_token(client, issued.refresh_token)
+        assert refresh is not None
     renewed = await provider.exchange_refresh_token(client, refresh, [])
     assert await provider.load_access_token(renewed.access_token) is not None
 

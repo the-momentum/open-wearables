@@ -56,6 +56,11 @@ class Settings(BaseSettings):
         "login attempts per client. Only set it when a reverse proxy in front sets or overwrites that header. "
         "Empty uses the socket peer, which is the proxy itself when one is in front.",
     )
+    mcp_state_file: str = Field(
+        default="",
+        description="JSON file where OAuth clients and tokens are persisted so they survive restarts. "
+        "Empty keeps them in memory only.",
+    )
 
     def is_configured(self) -> bool:
         """Check if the API key is configured."""
