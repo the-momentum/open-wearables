@@ -26,14 +26,31 @@ logger = logging.getLogger(__name__)
 
 
 def _build_auth_provider() -> AuthProvider:
-    """Build the HTTP-mode auth provider, or exit if no secret is configured."""
+    """Build the HTTP-mode auth provider, or exit if neither secret is configured."""
+    if settings.mcp_oauth_password.get_secret_value():
+        from fastmcp.server.auth.auth import ClientRegistrationOptions, RevocationOptions
+
+        from app.oauth import SinglePasswordOAuthProvider
+
+        if settings.mcp_public_url.startswith(("http://localhost", "http://127.0.0.1")):
+            print(
+                f"Warning: MCP_PUBLIC_URL is still {settings.mcp_public_url!r} - set it to the "
+                "server's public HTTPS URL, or remote clients won't be able to complete OAuth.",
+                file=sys.stderr,
+            )
+
+        return SinglePasswordOAuthProvider(
+            base_url=settings.mcp_public_url,
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+            revocation_options=RevocationOptions(enabled=True),
+        )
     if settings.mcp_bearer_token.get_secret_value():
         from app.auth import SharedSecretVerifier
 
         return SharedSecretVerifier()
 
     print(
-        "Fatal: MCP_TRANSPORT=http requires MCP_BEARER_TOKEN to be set "
+        "Fatal: MCP_TRANSPORT=http requires MCP_OAUTH_PASSWORD or MCP_BEARER_TOKEN to be set "
         "(the server would otherwise be reachable without authentication).",
         file=sys.stderr,
     )
@@ -46,7 +63,11 @@ def _auth_provider_or_none() -> AuthProvider | None:
     Attached whenever MCP_TRANSPORT=http or a secret is configured, so a runner that picks HTTP itself
     (`fastmcp run app/main.py:mcp --transport http`) cannot serve the backend without authentication.
     """
-    if settings.mcp_transport == "http" or settings.mcp_bearer_token.get_secret_value():
+    if (
+        settings.mcp_transport == "http"
+        or settings.mcp_oauth_password.get_secret_value()
+        or settings.mcp_bearer_token.get_secret_value()
+    ):
         return _build_auth_provider()
     return None
 

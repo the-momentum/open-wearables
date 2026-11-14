@@ -37,7 +37,24 @@ class Settings(BaseSettings):
     mcp_port: int = Field(default=8100, description="Bind port when mcp_transport='http'")
     mcp_bearer_token: SecretStr = Field(
         default=SecretStr(""),
-        description="Shared bearer token required from HTTP clients when mcp_transport='http'.",
+        description="Shared bearer token required from HTTP clients. Used when mcp_transport='http' "
+        "and mcp_oauth_password is not set.",
+    )
+
+    # OAuth settings
+    mcp_oauth_password: SecretStr = Field(
+        default=SecretStr(""),
+        description="Password gating the OAuth login page. Enables OAuth mode when mcp_transport='http'.",
+    )
+    mcp_public_url: str = Field(
+        default="http://localhost:8100",
+        description="Public HTTPS URL this server is reachable at, used for OAuth issuer/redirect URLs.",
+    )
+    mcp_client_ip_header: str = Field(
+        default="",
+        description="Request header carrying the real client address (e.g. CF-Connecting-IP), used to rate limit "
+        "login attempts per client. Only set it when a reverse proxy in front sets or overwrites that header. "
+        "Empty uses the socket peer, which is the proxy itself when one is in front.",
     )
 
     def is_configured(self) -> bool:
