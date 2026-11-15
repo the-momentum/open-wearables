@@ -24,7 +24,7 @@ The legacy ``/oura/webhooks`` routes are kept in place while individual
 handlers are migrated.  Once a provider's ``BaseWebhookHandler`` is implemented
 and wired into its strategy, traffic can be cut over to this router.  The
 legacy ``/garmin/webhooks/{ping,push}`` routes cannot carry Garmin's callback
-token, so they always answer ``401`` (see ``deprecated_webhooks.py``).
+token, so they answer ``401`` once ``GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN`` is off.
 """
 
 from typing import Annotated

@@ -154,7 +154,7 @@ Garmin describes both business tiers as intended for organizations (company, uni
     - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint. That includes **Deregistrations** and **User Permissions**
 
     <Note>
-    Garmin does not sign its notifications, and the `garmin-client-id` header it sends is public: your client ID appears in every OAuth authorization URL. The token in the URL path is what proves that a notification comes from Garmin. Open Wearables rejects every Garmin notification with `401` when the token in the path is missing or wrong. A new `SECRET_KEY` or `API_BASE_URL` changes the URL: run the script again and update every endpoint (see the **Rotate the webhook URL** step below).
+    Garmin does not sign its notifications, and the `garmin-client-id` header it sends is public: your client ID appears in every OAuth authorization URL. The token in the URL path is what proves that a notification comes from Garmin. Open Wearables rejects every Garmin notification with `401` when the token in the path is wrong, or missing once `GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN` is `false` (see **Upgrading** below). A new `SECRET_KEY` or `API_BASE_URL` changes the URL: run the script again and update every endpoint (see the **Rotate the webhook URL** step below).
     </Note>
 
     <Warning>
@@ -211,17 +211,16 @@ GARMIN_CLIENT_SECRET=your_client_secret_here
     </Note>
 
     <Warning>
-    **Upgrading an instance that already receives Garmin data?** Older versions accepted Garmin notifications at `/api/v1/providers/garmin/webhooks` and at the deprecated `/api/v1/garmin/webhooks/push` and `/api/v1/garmin/webhooks/ping`, authenticated only by the public client ID. Open Wearables now rejects every notification sent to those URLs with `401`. There is nothing to configure, but you have to change the URL of **every** data type in [API Endpoints](https://apis.garmin.com/tools/endpoints), **Deregistrations** and **User Permissions** included, to the one the script prints.
+    **Upgrading an instance that already receives Garmin data?** Older versions accepted Garmin notifications at `/api/v1/providers/garmin/webhooks` and at the deprecated `/api/v1/garmin/webhooks/push` and `/api/v1/garmin/webhooks/ping`, authenticated only by the public client ID, so anyone could send data in Garmin's name. Those URLs keep working while `GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN` is `true`, which is the default for now; a later release turns it off. Switch to the token URL now:
 
-    To upgrade without losing data, pause delivery in the Garmin portal while you switch:
+    1. Deploy the new version (backend and Celery workers). Garmin data keeps arriving at the old URLs.
+    2. Print the webhook URL with `docker compose exec app uv run python scripts/garmin_webhook_url.py` (or `uv run python scripts/garmin_webhook_url.py` in `backend/`).
+    3. In [API Endpoints](https://apis.garmin.com/tools/endpoints), change the URL of **every** data type to the one the script printed, **Deregistrations** and **User Permissions** included.
+    4. Set `GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN=false` and restart the backend. Only then are the old URLs closed.
 
-    1. In [API Endpoints](https://apis.garmin.com/tools/endpoints), turn **On Hold** on for **every** data type, **Deregistrations** and **User Permissions** included. It is a setting per data type, not per app. Garmin queues their notifications for up to 7 days instead of sending them.
-    2. Deploy the new version (backend and Celery workers).
-    3. Print the webhook URL with `docker compose exec app uv run python scripts/garmin_webhook_url.py` (or `uv run python scripts/garmin_webhook_url.py` in `backend/`).
-    4. Change the URL of every data type to the one the script printed.
-    5. Turn **On Hold** off for every data type. Garmin resumes delivery, including the queued notifications, within about 2 minutes.
+    While old URLs are accepted, the backend logs a warning (`garmin_webhook_without_token_accepted`) with the URL to set for every notification that arrives without the token: when they stop, every data type has been switched.
 
-    If a notification is rejected anyway, Garmin retries it with backoff, usually for long enough to fix the URLs, but only **On Hold** guarantees that nothing is lost. Until then, the backend logs an error with the URL to set (the token shown as a placeholder) and the command that prints it, for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token. The client ID is public, so others can trigger this error too. The URL is set per data type, so one type can stop while the others still arrive. Before acting on the error, check whether new data of some type has stopped arriving or a data type in the portal has another URL, and don't rotate `SECRET_KEY` because of it alone.
+    Once old URLs are off, the backend logs an error with the URL to set (the token shown as a placeholder) and the command that prints it, for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token. Garmin retries a rejected notification with backoff, usually for long enough to fix the URL; to be sure nothing is lost, turn **On Hold** on for the affected data types while you fix them. The client ID is public, so others can trigger this error too. The URL is set per data type, so one type can stop while the others still arrive. Before acting on the error, check whether new data of some type has stopped arriving or a data type in the portal has another URL, and don't rotate `SECRET_KEY` because of it alone.
     </Warning>
   </Step>
   <Step title="Rotate the webhook URL">

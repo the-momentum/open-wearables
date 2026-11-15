@@ -15,7 +15,9 @@ Authenticity
   which is the only credential. The operator prints the URL with
   ``scripts/garmin_webhook_url.py`` and sets it in the Garmin portal for every
   data type. The ``garmin-client-id`` header is public, so it only filters out
-  requests meant for another Garmin app.
+  requests meant for another Garmin app. Until operators have switched, URLs
+  without the token are still accepted while
+  ``GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN`` is on.
 """
 
 import contextlib
@@ -48,7 +50,7 @@ from app.services.providers.templates.base_webhook_handler import BaseWebhookHan
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.exceptions import InvalidInputError, WebhookVerificationError
 from app.utils.structured_logging import get_logger
-from app.utils.webhook_callback import provider_webhook_url, redact_callback_url
+from app.utils.webhook_callback import CALLBACK_TOKEN_PARAM, provider_webhook_url, redact_callback_url
 
 logger = get_logger(__name__)
 
@@ -134,7 +136,9 @@ class GarminWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
 
     def authenticate_callback(self, request: Request) -> None:
-        """Check the token as the base class does, and flag Garmin itself being turned away."""
+        """Check the token as the base class does (tokenless URLs pass while accepted), flag Garmin turned away."""
+        if settings.garmin_accept_webhooks_without_token and CALLBACK_TOKEN_PARAM not in request.path_params:
+            return
         try:
             super().authenticate_callback(request)
         except WebhookVerificationError:
@@ -169,6 +173,16 @@ class GarminWebhookHandler(BaseWebhookHandler):
             )
             return False
 
+        if CALLBACK_TOKEN_PARAM not in request.path_params:
+            logger.warning(
+                "Accepted a Garmin webhook on a URL without the callback token; set the token URL in the Garmin "
+                "portal for every data type (see docs)",
+                provider="garmin",
+                action="garmin_webhook_without_token_accepted",
+                webhook_url=webhook_url_hint(),
+                docs=DOCS_URL,
+                path=request.url.path,
+            )
         return True
 
     def parse_payload(self, body: bytes) -> dict[str, Any]:
