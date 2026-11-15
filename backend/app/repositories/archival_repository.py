@@ -202,7 +202,7 @@ class DataPointSeriesArchiveRepository:
         """Delete up to ``limit`` rows of the legacy archive for UTC days before ``cutoff_date``; the backfill has
         copied them into the aggregate tables by the time retention runs, except a source it skipped."""
         params = {"cutoff": cutoff_date, "limit": limit, "skipped": SKIPPED_SOURCE}
-        return db.execute(_DELETE_ARCHIVE_BEFORE, params).rowcount  # ty: ignore[unresolved-attribute]
+        return db.execute(_DELETE_ARCHIVE_BEFORE, params).rowcount  # ty: ignore[missing-attribute]
 
     def delete_days(self, db: DbSession, source_id: UUID, days: list[date]) -> int:
         """Delete the source's samples of these consecutive local days, whole; returns the rows deleted."""

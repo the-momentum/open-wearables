@@ -292,7 +292,7 @@ def _queue_rollup(target: UUID, days: list) -> None:
 
 
 def _rowcount(db: Session, query: TextClause, params: dict) -> int:
-    return db.execute(query, params).rowcount  # ty: ignore[unresolved-attribute]
+    return db.execute(query, params).rowcount  # ty: ignore[missing-attribute]
 
 
 def _move_in_batches(db: Session, statements: _BatchStatements, src: UUID, tgt: UUID) -> None:

@@ -284,7 +284,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         self,
         raw_workout: WhoopWorkoutJSON,
         user_id: UUID,
-    ) -> tuple[EventRecordCreate, EventRecordDetailCreate, HealthScoreCreate | None]:  # ty:ignore[invalid-method-override]
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate, HealthScoreCreate | None]:  # ty:ignore[incompatible-method-override]
         """Normalize Whoop workout to EventRecordCreate, EventRecordDetailCreate, and strain HealthScoreCreate."""
         workout_id = uuid4()
 

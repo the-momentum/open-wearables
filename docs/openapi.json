@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Open Wearables API",
-    "version": "0.11.0"
+    "version": "1.0.0"
   },
   "paths": {
     "/": {
@@ -8367,6 +8367,18 @@
                                 }
                               ],
                               "title": "Unit"
+                            },
+                            "count": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "description": "HKQuantitySample.count. Above 1 for a quantity series, e.g. one HealthKit condensed from older samples.",
+                              "title": "Count"
                             },
                             "metadata": {
                               "anyOf": [

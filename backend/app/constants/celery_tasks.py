@@ -11,6 +11,7 @@ class CeleryTask(StrEnum):
     DROP_RECONCILED_DAYS = f"{_PREFIX}.archival_task.drop_reconciled_days"
     RUN_AGGREGATE_BACKFILL = f"{_PREFIX}.aggregate_backfill_task.run_aggregate_backfill"
     CLASSIFY_SLEEP_NAPS = f"{_PREFIX}.classify_sleep_naps_task.classify_sleep_naps"
+    REPAIR_CONDENSED_SERIES = f"{_PREFIX}.repair_condensed_series_task.repair_condensed_series"
     BACKFILL_DATA_TYPE_COVERAGE = f"{_PREFIX}.backfill_data_type_coverage_task.backfill_data_type_coverage"
     CLOSE_STALE_SYNC_RUNS = f"{_PREFIX}.close_stale_sync_runs_task.close_stale_sync_runs"
     DELETE_USER_WEBHOOK_PAYLOADS = f"{_PREFIX}.delete_user_webhook_payloads_task.delete_user_webhook_payloads"

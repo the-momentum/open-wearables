@@ -607,7 +607,7 @@ class EventRecordRepository(
         if not query_params.cursor and query_params.offset:
             query = query.offset(query_params.offset)
 
-        return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
+        return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-explicit-return]
 
     def get_workout_totals(
         self,
@@ -1290,7 +1290,7 @@ class EventRecordRepository(
         local_end = cast(
             func.timezone("UTC", EventRecord.end_datetime)
             + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
-            Date,
+            Date(),
         )
         rows = (
             db_session.query(

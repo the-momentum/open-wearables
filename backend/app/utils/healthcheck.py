@@ -10,10 +10,10 @@ def get_pool_status() -> dict[str, str]:
     """Get connection pool status for monitoring."""
     pool = engine.pool
     return {
-        "max_pool_size": str(pool.size()),  # ty:ignore[unresolved-attribute]
-        "connections_ready_for_reuse": str(pool.checkedin()),  # ty:ignore[unresolved-attribute]
-        "active_connections": str(pool.checkedout()),  # ty:ignore[unresolved-attribute]
-        "overflow": str(pool.overflow()),  # ty:ignore[unresolved-attribute]
+        "max_pool_size": str(pool.size()),  # ty:ignore[missing-attribute]
+        "connections_ready_for_reuse": str(pool.checkedin()),  # ty:ignore[missing-attribute]
+        "active_connections": str(pool.checkedout()),  # ty:ignore[missing-attribute]
+        "overflow": str(pool.overflow()),  # ty:ignore[missing-attribute]
     }
 
 

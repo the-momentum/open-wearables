@@ -80,10 +80,10 @@ def relabel_whoop_active_energy(db: Session, *, dry_run: bool) -> dict[str, int]
             result["archive_updated"] += archive - archive_dropped
             result["archive_deleted"] += archive_dropped
             continue
-        result["series_deleted"] += db.execute(_SERIES_DELETE, params).rowcount  # ty: ignore[unresolved-attribute]
-        result["series_updated"] += db.execute(_SERIES_UPDATE, params).rowcount  # ty: ignore[unresolved-attribute]
-        result["archive_deleted"] += db.execute(_ARCHIVE_DELETE, params).rowcount  # ty: ignore[unresolved-attribute]
-        result["archive_updated"] += db.execute(_ARCHIVE_UPDATE, params).rowcount  # ty: ignore[unresolved-attribute]
+        result["series_deleted"] += db.execute(_SERIES_DELETE, params).rowcount  # ty: ignore[missing-attribute]
+        result["series_updated"] += db.execute(_SERIES_UPDATE, params).rowcount  # ty: ignore[missing-attribute]
+        result["archive_deleted"] += db.execute(_ARCHIVE_DELETE, params).rowcount  # ty: ignore[missing-attribute]
+        result["archive_updated"] += db.execute(_ARCHIVE_UPDATE, params).rowcount  # ty: ignore[missing-attribute]
         db.commit()
 
     verb = ("Would relabel", "remove") if dry_run else ("Relabeled", "removed")
