@@ -498,7 +498,7 @@ class TestWorkoutsEndpoints:
                 "include": "zonez",
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_source_filters_narrow_the_list(self, client: TestClient, db: Session) -> None:
         """Every source filter is wired through to the query, not just accepted and dropped."""

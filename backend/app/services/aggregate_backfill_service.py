@@ -4,7 +4,6 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from logging import getLogger
 from typing import cast
 from uuid import UUID
 
@@ -19,8 +18,8 @@ from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.local_day import utc_midnight
 from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.enums import ProviderName, SeriesType
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.schemas.utils import HistoryRollupStatus
+from app.utils.structured_logging import get_logger
 
 # Set once every step is done; retention waits for it.
 BACKFILL_MIGRATION = "aggregate_backfill"
@@ -29,17 +28,13 @@ BACKFILL_MIGRATION = "aggregate_backfill"
 RECENT = timedelta(days=30)
 # Days rolled up per statement and commit: a month of 1 Hz data is a few million rows.
 ROLLUP_CHUNK_DAYS = 31
-# Our day and session rows from the history's samples: off until a release decides to run it; the summaries
-# count those days from the samples meanwhile, and a step added later runs where the others are long done.
-ROLL_UP_HISTORY = False
-
 _CURSOR_KEY = "aggregate_backfill:cursor:{step}"
 _SOURCES_PER_QUERY = 50
 # The span of one source's workouts or archive one statement covers, so none grows with the history's length.
 _WINDOW_DAYS = 365
 _FIRST = UUID(int=0)
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -71,39 +66,41 @@ class AggregateBackfillService:
         self.rollup_repo = SeriesRollupRepository()
         self.migrations = DataMigrationRepository()
 
-    @property
-    def steps(self) -> list[BackfillStep]:
+    def steps(self, db: DbSession) -> list[BackfillStep]:
+        # Our day and session rows from the history's samples join once the admin switches them on: hours on a
+        # large instance. Turned off again, it stops with the running task, within about four minutes;
+        # switched back on, it resumes where it left off.
+        history = ArchivalSettingRepository().get(db).history_rollup_enabled
         return [
             BackfillStep("suunto_speed", self._suunto_speed),
             BackfillStep("workout_details", self._workout_details),
             # The last month first: those are the days clients look at, so they come back before the rest.
             BackfillStep("history_recent", self._history(RECENT)),
-            *([BackfillStep("rollup_recent", self._rollup(RECENT))] if ROLL_UP_HISTORY else []),
+            *([BackfillStep("rollup_recent", self._rollup(RECENT))] if history else []),
             BackfillStep("history_all", self._history(None)),
-            *([BackfillStep("rollup_all", self._rollup(None))] if ROLL_UP_HISTORY else []),
+            *([BackfillStep("rollup_all", self._rollup(None))] if history else []),
             BackfillStep("garmin_epoch_windows", self._garmin_epoch_windows),
             BackfillStep("archive_days", self._archive_days),
         ]
 
     def is_done(self, db: DbSession) -> bool:
         """Every step done: a step a later release adds still runs where the earlier ones finished long ago."""
-        return all(self.migrations.is_completed(db, f"{BACKFILL_MIGRATION}:{step.name}") for step in self.steps)
+        return all(self.migrations.is_completed(db, f"{BACKFILL_MIGRATION}:{step.name}") for step in self.steps(db))
 
     def run(self, db: DbSession, budget_seconds: float, keep_alive: Callable[[], bool] = lambda: True) -> bool:
         """Run the pending steps until all are done (True) or the budget is spent (False); ``keep_alive`` extends
         the caller's lock and says whether it still holds it."""
         budget = Budget(time.monotonic() + budget_seconds, keep_alive)
-        for step in self.steps:
+        for step in self.steps(db):
             name = f"{BACKFILL_MIGRATION}:{step.name}"
             if self.migrations.is_completed(db, name):
                 continue
             started = time.monotonic()
             done = step.run(db, budget)
-            log_structured(
-                logger,
-                "info",
-                f"Aggregate backfill: {step.name} {'done' if done else 'paused'}",
+            logger.info(
+                "Aggregate backfill: step run ended",
                 step=step.name,
+                done=done,
                 seconds=round(time.monotonic() - started, 1),
             )
             if not done:
@@ -113,6 +110,19 @@ class AggregateBackfillService:
         self.migrations.mark_completed(db, BACKFILL_MIGRATION)
         db.commit()
         return True
+
+    def history_rollup_status(self, db: DbSession) -> HistoryRollupStatus:
+        """Where the history's rollup is: its steps' marks, and the data source its running pass last finished."""
+        if self.migrations.is_completed(db, f"{BACKFILL_MIGRATION}:rollup_all"):
+            return HistoryRollupStatus(state="done")
+        if not ArchivalSettingRepository().get(db).history_rollup_enabled:
+            return HistoryRollupStatus(state="off")
+        step = (
+            "rollup_all" if self.migrations.is_completed(db, f"{BACKFILL_MIGRATION}:rollup_recent") else "rollup_recent"
+        )
+        reached = cast(str | None, get_redis_client().get(_CURSOR_KEY.format(step=step)))
+        done, total = self.rollup_repo.sources_reached(db, UUID(reached) if reached else None)
+        return HistoryRollupStatus(state="running", step=step, sources_done=done, sources_total=total)
 
     def _suunto_speed(self, db: DbSession, budget: Budget) -> bool:
         def divide(source_id: UUID) -> bool:
@@ -216,12 +226,12 @@ class AggregateBackfillService:
         if token is None:
             return
         try:
-            archival_service.roll_up_queued_days(db)
+            archival_service.roll_up_queued_days(db, reconcile=False)
         except SoftTimeLimitExceeded:
             raise
         except Exception as exc:
             db.rollback()
-            log_and_capture_error(exc, logger, "Aggregate backfill: the queued days failed; the backfill goes on")
+            logger.error("Aggregate backfill: the queued days failed; the backfill goes on", exc_info=exc)
         finally:
             rollup_queue.release_lock(token)
 
@@ -328,7 +338,12 @@ class AggregateBackfillService:
             except Exception as exc:
                 db.rollback()
                 if attempt == 2:
-                    log_and_capture_error(exc, logger, f"Aggregate backfill: {step} skips data source {source_id}")
+                    logger.error(
+                        "Aggregate backfill: skips a data source",
+                        exc_info=exc,
+                        step=step,
+                        data_source_id=str(source_id),
+                    )
         self.migrations.mark_completed(db, f"{SKIPPED_SOURCE}{source_id}")
         db.commit()
         return True

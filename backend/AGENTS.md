@@ -60,7 +60,6 @@ def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
 
 ```python
 # app/services/user_service.py
-from logging import Logger, getLogger
 from app.database import DbSession
 from app.models import User
 from app.repositories.user_repository import UserRepository
@@ -69,8 +68,8 @@ from app.services.services import AppService
 
 
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
-    def __init__(self, log: Logger, **kwargs):
-        super().__init__(crud_model=UserRepository, model=User, log=log, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(crud_model=UserRepository, model=User, **kwargs)
 
     def create(self, db_session: DbSession, creator: UserCreate) -> User:
         """Create user with server-generated id and created_at."""
@@ -78,8 +77,8 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         return super().create(db_session, internal_creator)
 
 
-# Instantiate as singleton
-user_service = UserService(log=getLogger(__name__))
+# Instantiate as singleton. Log with `logger = get_logger(__name__)` (see Logging below).
+user_service = UserService()
 ```
 
 ### Repository Pattern
@@ -146,11 +145,35 @@ class UserCreateInternal(UserCreate):
 
 ### Error Handling
 
-**General rule:** Let exceptions propagate up to global handlers when possible.
+**General rule:** Let exceptions propagate up to the global handlers in `app/main.py`.
+
+Services and repositories raise domain errors from `app/utils/exceptions.py`, they also run in Celery tasks, which catch them by type:
+
+| Error | Status |
+|---|---|
+| `InvalidInputError` (`InvalidCursorError`, `DatetimeParseError`, `UnsupportedProviderError`, `ProviderTokenUnavailableError`) | 400 |
+| `AuthenticationError` (adds `WWW-Authenticate: Bearer`; `WebhookVerificationError` doesn't) | 401 |
+| `PermissionDeniedError` | 403 |
+| `NotFoundError` (`ResourceNotFoundError`, `ProviderNotConnectedError`) | 404 |
+| `ConflictError` (`ReauthRequiredError`) | 409 |
+| `IntegrityError`: unique violation / foreign key to a missing row | 409 / 400 |
+| `UpstreamError` (`ProviderError`, `ProviderAuthRejectedError`) | 502, with its `detail` |
+| `ServiceUnavailableError`; `ProviderRateLimitError` (a `ProviderError`, not a `ServiceUnavailableError`); `ConfigurationError` | 503, with its `detail` |
+| anything else, incl. other `IntegrityError`s and a bare `AppError` | 500 `INTERNAL_ERROR`, detail `Internal server error` |
+
+Every error response is RFC 9457 Problem Details (`app/utils/problem.py`, `application/problem+json`): `{"title", "status", "detail", "code"}`, plus `errors` on a 422 from request validation, which lists every failure without the submitted values. `code` is part of the API contract (listed in `docs/api-reference/guides/error-handling.mdx`): an `AppError` takes it from its class, a status' base class (`NotFoundError` → `NOT_FOUND`) has the status' name, and an `HTTPException` gets that name from its status. Give a subclass its own `code` only where a client can act on the difference (`ProviderNotConnectedError`, `InvitationExpiredError`), and add it to the docs table.
+
+Celery tasks don't retry a 4xx domain error, a `ConfigurationError` or an `IntegrityError` (webhook push does retry a duplicate: two pushes racing): the same input fails the same way on every attempt. A violation the client didn't cause (NOT NULL, CHECK) still fails the task, so it reaches Sentry.
+
+**Provider integrations** raise these too, never `HTTPException`. `api_client` turns a failed call into `provider_error_from_response(...)`: a 429 that outlasts the backoff is a `ProviderRateLimitError` (503), a 401 after the token was refreshed (or with nothing to refresh it with) a `ProviderAuthRejectedError` (502: often an endpoint the user did not consent to, not proof the grant is dead), anything else (also no response at all) a `ProviderError` (502). A `ProviderError` keeps the provider's status in `upstream_status` and its answer in `upstream_body` - branch on those (a task's retry/drop decision, "no data" 404s), and never put the provider's answer into `detail`, which the client sees. The user's own connection state is a `ProviderConnectionError`, never a 401 (which would read as a bad API key) and never worth a retry: `ProviderNotConnectedError` (404), `ProviderTokenUnavailableError` (400) and `ReauthRequiredError` (409), raised only once the connection is revoked - a rejected refresh token, or a day of nothing but rejections. A provider's answer about the user's state (`is_provider_state_error`: 401, 403, 404, 409, 410, 412, 429, or a `ProviderRateLimitError` by type) is logged as a warning and stays out of Sentry. Everything else upstream is reported, grouped per provider and status by `before_send`: an outage (a 5xx, no response, a storage failure) breaks syncs for every user, and a request the provider rejected (`ProviderError.request_rejected`: any other 4xx) most likely means it changed its API. A missing or rejected setting (bucket, credentials) is a `ConfigurationError`: the client sees the 503 and its detail, it reaches Sentry, and tasks do not retry it. Every `AppError` has a stable `code`; sync history and webhooks report `error_code_of(exc)`: the provider's status (`http_404`) or that code in lower case (`reauth_required`).
 
 ```python
-# In services - use raise_404=True
+from app.utils.exceptions import ConflictError
+
+# In services - use raise_404=True, or raise a domain error
 user = user_service.get(db, user_id, raise_404=True)
+if user_repository.get_by_email(db, email):
+    raise ConflictError("User with this email already exists.")
 
 # In routes - raise HTTPException directly
 from fastapi import HTTPException, status
@@ -159,64 +182,77 @@ if not user:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 ```
 
+A 500 is re-raised after the response is sent, so it keeps its traceback in the access log and reaches Sentry. A 4xx domain error or a provider's answer about the user's state passed as `exc_info` is logged as a warning and stays out of Sentry, like a 4xx `HTTPException`; any other `UpstreamError` is reported. Don't map a generic `ValueError`/`AttributeError` to a 4xx - raise `InvalidInputError` where the input is the client's fault.
+
+On a unique violation `CrudRepository.create` (`@handle_duplicates`) returns the existing row as if it had just been created, instead of raising. Where a duplicate must be a 409, check it in the service before creating (see `UserService.create`).
+
 **Handled exceptions in background tasks:**
 
-When catching exceptions that are intentionally not propagated (e.g., to collect partial errors), use `log_and_capture_error` to ensure they're reported to Sentry:
+When catching exceptions that are intentionally not propagated (e.g., to collect partial errors), log them at `error` with `exc_info=` so they are reported to Sentry:
 
 ```python
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # DON'T - error never reaches Sentry
 try:
     process_item(item)
 except Exception as e:
-    logger.error(f"Failed to process: {e}")
+    logger.error("Failed to process item", item_id=item.id, user_id=user_id, error=str(e))
     continue
 
-# DO - error is logged AND captured in Sentry
+# DO - error is logged (with its traceback) AND captured in Sentry
 try:
     process_item(item)
 except Exception as e:
-    log_and_capture_error(e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id})
+    logger.error("Failed to process item", exc_info=e, item_id=item.id, user_id=user_id)
     continue
 ```
 
-**When to use `log_and_capture_error`:**
-- ✅ Celery tasks that catch exceptions and return error responses instead of failing
-- ✅ Batch processing where you want to continue despite errors
-- ✅ Multi-provider sync where one provider failure shouldn't stop others
-- ❌ Don't use if exception is re-raised or allowed to propagate naturally
+**What reaches Sentry:**
+- ✅ `logger.error(..., exc_info=e)` - Celery tasks that return error responses instead of failing, batch processing that continues despite errors, multi-provider sync where one failure shouldn't stop others
+- ✅ `alert=True` - always reported, also without an exception (`logger.error("S3 storage requested but no S3 bucket configured", alert=True)`), below `error` (`logger.warning(..., exc_info=e, alert=True)` - the line is a warning, the Sentry event an error, as for every captured exception) and whatever `LOG_LEVEL` is
+- ❌ `logger.warning(..., exc_info=e)` - expected failures nobody needs to be alerted about (a provider rejecting a revoked token, a malformed optional field): the line keeps the traceback, Sentry gets nothing
+- ❌ `logger.error(...)` without `exc_info` or `alert` - logged only
+- An exception that is re-raised: log it without `exc_info`. Celery or the global handler reports it as unhandled; passing it here would report it first as handled, and deduplication drops the unhandled event.
 
-**Keep health data and PII out of Sentry:** `extra` is sent to Sentry as event context. Put only identifiers and categories in it (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise and to `logger.error(...)` text, since both become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
+4xx `HTTPException`s and `AppError`s passed as `exc_info` are logged as warnings and not captured, unless the line has `alert=True`; a warning that should alert on every other exception passes `alert=not is_client_error(e)`. Reporting does not follow `LOG_LEVEL`: an error with `exc_info` reaches Sentry even when `LOG_LEVEL=CRITICAL` keeps it out of the logs. App code reports to Sentry through the logger itself: Sentry's logging integration ignores the `app` loggers, so app lines never become breadcrumbs.
+
+**Keep health data and PII out of Sentry:** for reported lines, the message and all attributes are sent to Sentry as event context. Put only identifiers and categories in them (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise, since they become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
 
 ### Logging
 
-**Default rule:** Use `log_structured` instead of raw `logger.info/warning/error/...`. Structured logs are emitted as single-line JSON, making them queryable by attribute (`@user_id:...`, `@action:...`) in Railway, GCP, Vercel, etc. This is the established standard in the codebase - prefer it even when editing an existing file that still uses the raw logger.
+**Rule:** All app code logs through a logger from `get_logger(__name__)` (`app.utils.structured_logging`) - never through a `logging.getLogger(...)` logger. Logs are emitted as single-line JSON, making them queryable by attribute (`@user_id:...`, `@action:...`) in Railway, GCP, Vercel, etc.
 
 ```python
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # DON'T - unstructured, not queryable by attribute
-self.logger.warning(f"Failed to save {key} sample for user {user_id} at {recorded_at}: {e}")
+logger.warning(f"Failed to save {key} sample for user {user_id} at {recorded_at}: {e}")
 
 # DO - structured, queryable
-log_structured(
-    self.logger,
-    "warning",
+logger.warning(
     "Failed to save activity sample",
     provider=self.provider_name,
     action="save_activity_sample_failed",
     user_id=str(user_id),
     series=key,
     recorded_at=recorded_at,
-    error=str(e),
+    exc_info=e,
 )
 ```
 
-- Pass the message as a stable, human-readable string and put the variable parts in `**attributes` (don't f-string them into the message).
-- `trace_id` is injected automatically from context when not supplied.
-- Output format follows `LOG_FORMAT` (`legacy` default, `json`, `text`) and `LOG_LEVEL` (see `app/utils/logging_setup.py`). Keep attribute values JSON-serializable: an unserializable value raises `TypeError` at the call site in every mode, also when `LOG_LEVEL` filters the call out.
-- For handled exceptions in background tasks you still want in Sentry, use `log_and_capture_error` (see above) rather than plain `logger.error`. Keep its `message` stable there too and pass variables via `extra` - note that `extra` becomes Sentry event context, not queryable log attributes.
+- Define `logger = get_logger(__name__)` once per module, below the imports. Scripts outside `app/` pass an explicit name (`get_logger("app.scripts.create_svix_db")`).
+- Pass the message as a stable, human-readable string and put the variable parts in keyword arguments (don't f-string them into the message; ruff's `G00` rules enforce it). `provider=` is printed right after the message; every other keyword becomes an attribute of the line.
+- Attributes cannot be named `timestamp`, `level` or `message` (the line's own fields).
+- `trace_id` is injected automatically from context when not supplied; the logger name (shown with `LOG_FORMAT=text` and in log export) is the module name.
+- Levels: `logger.debug/info/warning/error/critical`, or `logger.log(level, ...)` for a computed level. `debug` lines are dropped unless `LOG_LEVEL=DEBUG`.
+- Output format follows `LOG_FORMAT` (`legacy` default, `json`, `text`) and `LOG_LEVEL` (see `app/utils/logging_setup.py`). The `app` logger has its own stdout handler and does not propagate to the root logger.
+- Keep attribute values JSON-serializable. The test suite raises `TypeError` at the call site for a value that is not (also when `LOG_LEVEL` filters the call out); in production the line is printed with `str()` of that value.
+- In tests, patch the module's logger (`patch("app.x.logger")`) and assert on `mock.error.call_args.kwargs`.
 
 ### Provider Strategy Pattern
 
@@ -372,12 +408,11 @@ Services contain business logic. They **NEVER** perform database operations dire
 
 ```python
 from app.services.services import AppService
-from app.utils.exceptions import handle_exceptions
 
 
 class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
-    def __init__(self, crud_model: type[UserRepository], model: type[User], log: Logger, **kwargs):
-        super().__init__(crud_model, model, log, **kwargs)
+    def __init__(self, crud_model: type[UserRepository], model: type[User], **kwargs):
+        super().__init__(crud_model, model, **kwargs)
 
 
 # Mixin pattern for additional functionality
@@ -386,12 +421,11 @@ class ActivityMixin:
         self.activity_repository = activity_repository
         super().__init__(**kwargs)
 
-    @handle_exceptions
     def is_user_active(self: "UserService", object_id: UUID) -> bool:
         return self.activity_repository.is_user_active(object_id)
 ```
 
-**Error handling:** Use `@handle_exceptions` decorator from `app.utils.exceptions`
+**Error handling:** Raise domain errors from `app.utils.exceptions` and let them propagate (see Error Handling above)
 
 **Flow:** repository → SQLAlchemy model → service → SQLAlchemy model → route
 

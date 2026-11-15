@@ -12,11 +12,11 @@ Tests cover:
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.schemas.model_crud.user_management import UserCreate, UserUpdate
 from app.services.user_service import user_service
+from app.utils.exceptions import ConflictError, NotFoundError
 from tests.factories import UserFactory, fake_firebase_uid
 
 
@@ -94,7 +94,7 @@ class TestUserServiceCreate:
         """Should raise 409 when registering with an already-used email."""
         UserFactory(email="taken@example.com")
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ConflictError) as exc_info:
             user_service.create(db, UserCreate(id=fake_firebase_uid(), email="taken@example.com"))
 
         assert exc_info.value.status_code == 409
@@ -103,7 +103,7 @@ class TestUserServiceCreate:
         """Should raise 409 on a repeated id: the table mirrors Ren users one-to-one."""
         existing = UserFactory()
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ConflictError) as exc_info:
             user_service.create(db, UserCreate(id=existing.id, email="other@example.com"))
 
         assert exc_info.value.status_code == 409
@@ -157,15 +157,13 @@ class TestUserServiceUpdate:
         assert result is None
 
     def test_update_user_with_raise_404(self, db: Session) -> None:
-        """Should raise HTTPException(404) when updating non-existent user with raise_404=True."""
+        """Should raise NotFoundError when updating non-existent user with raise_404=True."""
         # Arrange
-        from fastapi import HTTPException
-
         fake_id = fake_firebase_uid()
         update_payload = UserUpdate(email="new@example.com")
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             user_service.update(db, fake_id, update_payload, raise_404=True)
 
         assert exc_info.value.status_code == 404

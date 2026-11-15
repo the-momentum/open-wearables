@@ -17,7 +17,7 @@ from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.auth import ConnectionStatus
 from app.services.providers.base_strategy import HistoricalSyncResult
 from app.services.providers.sync_247_result import Sync247Result
-from app.utils.exceptions import UnsupportedProviderError
+from app.utils.exceptions import ProviderNotConnectedError, UnsupportedProviderError
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
 
@@ -152,12 +152,8 @@ class TestSyncDataEndpoint:
         api_key = ApiKeyFactory()
         # No connection created for this user
 
-        # Configure mock to raise HTTPException for no connection
-        from fastapi import HTTPException
-
-        mock_provider_factory.get_provider.return_value.workouts.load_data.side_effect = HTTPException(
-            status_code=404,
-            detail="No active connection found for user",
+        mock_provider_factory.get_provider.return_value.workouts.load_data.side_effect = ProviderNotConnectedError(
+            "garmin"
         )
 
         # Act - use async=false to test synchronous path
@@ -216,7 +212,7 @@ class TestSyncDataEndpoint:
         assert call_kwargs["offset"] == 10
 
     def test_sync_invalid_provider(self, client: TestClient, db: Session) -> None:
-        """Test that invalid provider enum value returns 400."""
+        """Test that invalid provider enum value returns 422."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -228,7 +224,7 @@ class TestSyncDataEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_sync_provider_not_supporting_workouts(
         self,

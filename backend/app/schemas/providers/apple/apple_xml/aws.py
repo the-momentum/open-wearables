@@ -8,6 +8,9 @@ DEFAULT_EXPIRATION_SECONDS = 300  # 5 minutes
 MIN_FILE_SIZE = 1024  # 1KB
 MAX_FILE_SIZE = settings.apple_xml_max_file_size_bytes
 DEFAULT_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+# A direct upload travels inside the Celery message: Redis caps it at 512 MiB (~288 MiB of file after
+# encoding) and the API holds several copies while publishing. Larger files go through multipart.
+MAX_DIRECT_UPLOAD_SIZE = 200 * 1024 * 1024  # 200MB
 
 
 class PresignedURLRequest(BaseModel):

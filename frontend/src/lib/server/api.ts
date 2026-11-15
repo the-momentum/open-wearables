@@ -1,5 +1,6 @@
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
+import { getRequestEvent } from '$app/server';
 
 const DEFAULT_API_URL = 'http://localhost:8000';
 
@@ -44,22 +45,66 @@ export type Developer = {
 export class ApiError extends Error {
 	constructor(
 		readonly status: number,
-		message: string
+		message: string,
+		/** The Problem Details `code` (`NOT_FOUND`, `INVITATION_EXPIRED`, ...), when there is a body. */
+		readonly code?: string
 	) {
 		super(message);
 		this.name = 'ApiError';
 	}
 }
 
+/**
+ * What a form can show from an error body. A 422's `detail` leads with the API's
+ * name for the field (`body.user_id: ...`), so it shows the first failure's own
+ * message instead.
+ */
+export function problemMessage(body: unknown): string | undefined {
+	if (typeof body !== 'object' || body === null) return undefined;
+	const { detail, errors } = body as { detail?: unknown; errors?: unknown };
+	const first: unknown = Array.isArray(errors) ? errors[0] : undefined;
+	if (typeof first === 'object' && first !== null) {
+		const { msg } = first as { msg?: unknown };
+		if (typeof msg === 'string') return msg;
+	}
+	return typeof detail === 'string' ? detail : undefined;
+}
+
 async function raiseFor(response: Response): Promise<never> {
-	let detail: string | undefined;
+	let message: string | undefined;
+	let code: string | undefined;
 	try {
 		const body = await response.json();
-		detail = typeof body?.detail === 'string' ? body.detail : undefined;
+		message = problemMessage(body);
+		code = typeof body?.code === 'string' ? body.code : undefined;
 	} catch {
-		detail = undefined;
+		message = undefined;
 	}
-	throw new ApiError(response.status, detail ?? response.statusText);
+	throw new ApiError(response.status, message ?? response.statusText, code);
+}
+
+/** A refused session token is renewed and retried once; a session that cannot renew redirects to sign-in. */
+async function authorized(
+	path: string,
+	init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> },
+	accessToken: string | null | undefined
+): Promise<Response> {
+	const send = (token: string | null | undefined) =>
+		fetch(apiUrl(path), {
+			...init,
+			headers: { ...init.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+		});
+
+	const response = await send(accessToken);
+	if (response.status !== 401 || !accessToken) return response;
+
+	const auth = getRequestEvent().locals.auth;
+	const renewed = await auth.rejected(accessToken);
+	if (!renewed) return response;
+
+	const retried = await send(renewed);
+	if (retried.status === 401) await auth.rejected(renewed);
+	return retried;
 }
 
 /** OAuth2 password flow: form-encoded, and the field is `username`. */
@@ -100,9 +145,7 @@ export async function revokeToken(refreshToken: string): Promise<void> {
 
 /** The token is optional: a few endpoints, and the pairing page, have no session. */
 export async function apiGet<T>(path: string, accessToken?: string): Promise<T> {
-	const response = await fetch(apiUrl(path), {
-		headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
-	});
+	const response = await authorized(path, {}, accessToken);
 
 	if (!response.ok) await raiseFor(response);
 	return response.json();
@@ -114,14 +157,15 @@ async function apiWrite<T>(
 	accessToken: string | null,
 	body?: unknown
 ): Promise<T> {
-	const response = await fetch(apiUrl(path), {
-		method,
-		headers: {
-			...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-			...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+	const response = await authorized(
+		path,
+		{
+			method,
+			headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+			body: body === undefined ? undefined : JSON.stringify(body)
 		},
-		body: body === undefined ? undefined : JSON.stringify(body)
-	});
+		accessToken
+	);
 
 	if (!response.ok) await raiseFor(response);
 	return response.status === 204 ? (undefined as T) : response.json();

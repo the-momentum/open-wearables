@@ -38,7 +38,10 @@ from app.schemas.enums import (
     get_series_type_from_id,
     get_series_type_id,
 )
+from app.schemas.utils import ArchivalSettingUpdate
 from app.services.aggregate_backfill_service import aggregate_backfill_service
+from app.services.archival_service import archival_service
+from app.utils.exceptions import InvalidInputError
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -58,9 +61,16 @@ def _archival_settings(db: Session) -> None:
 
 
 @pytest.fixture
-def roll_up_history(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The history's rollup, off until a release turns it on."""
-    monkeypatch.setattr("app.services.aggregate_backfill_service.ROLL_UP_HISTORY", True)
+def roll_up_history(db: Session) -> None:
+    """The history's rollup, off until the admin turns it on."""
+    _switch_history_rollup(db, True)
+
+
+def _switch_history_rollup(db: Session, on: bool) -> None:
+    setting = db.get(ArchivalSetting, 1)
+    assert setting is not None
+    setting.history_rollup_enabled = on
+    db.flush()
 
 
 def _legacy_workout(db: Session, provider: ProviderName, **columns: object) -> WorkoutDetails:
@@ -80,16 +90,14 @@ def _session_rows(db: Session, detail: WorkoutDetails) -> dict[int, EventRecordA
 
 
 class TestBackfillSteps:
-    def test_the_history_is_rolled_up_only_once_a_release_turns_it_on(
-        self, db: Session, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_history_is_rolled_up_only_once_the_admin_turns_it_on(self, db: Session) -> None:
         DataPointSeriesFactory(mapping=DataSourceFactory(), recorded_at=AT)
         ours = db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES)
 
         assert aggregate_backfill_service.run(db, budget_seconds=60)
         assert ours.count() == 0
 
-        monkeypatch.setattr("app.services.aggregate_backfill_service.ROLL_UP_HISTORY", True)
+        _switch_history_rollup(db, True)
         assert not aggregate_backfill_service.is_done(db)
         assert aggregate_backfill_service.run(db, budget_seconds=60)
         assert ours.count() == 1
@@ -272,6 +280,75 @@ class TestBackfillSteps:
         retention = DataPointSeriesArchiveRepository()
         assert retention.sources_with_samples_before(db, later, UUID(int=0), 50) == []
         assert retention.delete_archive_before(db, later.date(), 50) == 0
+
+
+class TestHistoryRollupSwitch:
+    def test_the_status_follows_the_pass_from_off_to_done(self, db: Session) -> None:
+        sources = sorted((DataSourceFactory() for _ in range(3)), key=lambda source: source.id)
+        assert aggregate_backfill_service.history_rollup_status(db).state == "off"
+
+        _switch_history_rollup(db, True)
+        get_redis_client().set("aggregate_backfill:cursor:rollup_recent", str(sources[1].id))
+        running = aggregate_backfill_service.history_rollup_status(db)
+        assert (running.state, running.step, running.sources_done) == ("running", "rollup_recent", 2)
+        assert running.sources_total == db.query(DataSource).count()
+
+        assert aggregate_backfill_service.run(db, budget_seconds=60)
+        assert aggregate_backfill_service.history_rollup_status(db).state == "done"
+
+    def test_turned_off_again_the_backfill_counts_as_done_and_the_pass_waits(self, db: Session) -> None:
+        _switch_history_rollup(db, True)
+        assert not aggregate_backfill_service.is_done(db)
+
+        _switch_history_rollup(db, False)
+
+        assert aggregate_backfill_service.run(db, budget_seconds=60)
+        assert aggregate_backfill_service.history_rollup_status(db).state == "off"
+
+    @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")
+    def test_switching_it_on_queues_the_backfill(self, delay: MagicMock, db: Session) -> None:
+        settings = archival_service.update_settings(
+            db, ArchivalSettingUpdate(rollup_enabled=True, history_rollup_enabled=True)
+        )
+
+        delay.assert_called_once()
+        assert settings.history_rollup.state == "running"
+
+    @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")
+    def test_switching_it_on_once_done_queues_nothing(self, delay: MagicMock, db: Session) -> None:
+        _switch_history_rollup(db, True)
+        assert aggregate_backfill_service.run(db, budget_seconds=60)
+
+        archival_service.update_settings(db, ArchivalSettingUpdate(rollup_enabled=True, history_rollup_enabled=True))
+
+        delay.assert_not_called()
+
+    def test_it_needs_the_current_rollup(self, db: Session) -> None:
+        with pytest.raises(InvalidInputError) as refused:
+            archival_service.update_settings(
+                db, ArchivalSettingUpdate(rollup_enabled=False, history_rollup_enabled=True)
+            )
+        assert refused.value.status_code == 400
+
+    def test_it_needs_the_saved_current_rollup_too(self, db: Session) -> None:
+        archival_service.update_settings(db, ArchivalSettingUpdate(rollup_enabled=False))
+
+        with pytest.raises(InvalidInputError):
+            archival_service.update_settings(db, ArchivalSettingUpdate(history_rollup_enabled=True))
+
+    @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")
+    def test_a_field_left_out_keeps_its_saved_value(self, delay: MagicMock, db: Session) -> None:
+        archival_service.update_settings(
+            db, ArchivalSettingUpdate(rollup_enabled=True, history_rollup_enabled=True, delete_after_days=90)
+        )
+
+        settings = archival_service.update_settings(db, ArchivalSettingUpdate(delete_after_days=None)).settings
+
+        assert (settings.rollup_enabled, settings.history_rollup_enabled, settings.delete_after_days) == (
+            True,
+            True,
+            None,
+        )
 
 
 class TestBackfillTask:

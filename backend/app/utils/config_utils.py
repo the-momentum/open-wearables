@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import os
 import re
 from datetime import timedelta
@@ -27,6 +29,11 @@ def parse_duration(value: str) -> timedelta:
         raise ValueError(f"Invalid duration {value!r}; expected e.g. '2d', '20h', '90m', '1d12h'")
     total_seconds = sum(int(amount) * _DURATION_UNIT_SECONDS[unit] for amount, unit in matches)
     return timedelta(seconds=total_seconds)
+
+
+def derive_secret(secret_key: str, purpose: str) -> str:
+    """A secret for one purpose that doesn't reveal SECRET_KEY, for values a provider receives."""
+    return hmac.new(secret_key.encode(), purpose.encode(), hashlib.sha256).hexdigest()
 
 
 def format_duration(value: timedelta) -> str:

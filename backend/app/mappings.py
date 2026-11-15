@@ -26,6 +26,7 @@ type OneToOne[T] = T
 json_binary = Annotated[list[dict[str, Any]], mapped_column(JSONB)]
 json_object = Annotated[dict[str, Any], mapped_column(JSONB)]
 int_zero = Annotated[int, mapped_column(server_default=text("0"))]
+bool_true = Annotated[bool, mapped_column(server_default=text("true"))]
 bool_false = Annotated[bool, mapped_column(server_default=text("false"))]
 email = Annotated[str, mapped_column(String)]
 str_10 = Annotated[str, mapped_column(String(10))]

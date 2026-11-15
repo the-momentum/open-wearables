@@ -45,7 +45,7 @@ def test_fetch_failure_after_user_resolution_is_attributed_to_the_user() -> None
     handler = _handler()
     handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
 
-    with patch.object(webhook_handler, "log_and_capture_error"):
+    with patch.object(webhook_handler.logger, "error"):
         result = handler.process_payload(MagicMock(), [_notification("known"), _notification("ghost")], "trace")
 
     failed, not_found = result["results"]
@@ -62,7 +62,7 @@ def test_failed_write_rolls_back_an_unusable_session() -> None:
     db = MagicMock()
     db.is_active = False
 
-    with patch.object(webhook_handler, "log_and_capture_error"):
+    with patch.object(webhook_handler.logger, "error"):
         result = handler.process_payload(db, [_notification("known")], "trace")
 
     db.rollback.assert_called_once()
@@ -76,7 +76,7 @@ def test_each_item_commits_and_failures_roll_back_only_their_own_work() -> None:
     handler.workouts.load_data.side_effect = [3, RuntimeError("Google API 500")]
     db = MagicMock()
 
-    with patch.object(webhook_handler, "log_and_capture_error"):
+    with patch.object(webhook_handler.logger, "error"):
         result = handler.process_payload(db, [_notification("known"), _notification("known")], "trace")
 
     assert result["results"][0]["status"] == "processed"
@@ -103,7 +103,7 @@ def test_failed_query_does_not_poison_the_rest_of_the_batch(db: Session) -> None
 
     handler.workouts.load_data.side_effect = load_data
 
-    with patch.object(webhook_handler, "log_and_capture_error"):
+    with patch.object(webhook_handler.logger, "error"):
         result = handler.process_payload(db, [_notification("known"), _notification("known")], "trace")
 
     failed, recovered = result["results"]
@@ -118,16 +118,16 @@ def test_failure_log_message_is_stable_for_grouping() -> None:
     handler = _handler()
     handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
 
-    with patch.object(webhook_handler, "log_and_capture_error") as capture:
+    with patch.object(webhook_handler.logger, "error") as capture:
         handler.process_payload(MagicMock(), [_notification("known")], "trace")
 
-    assert capture.call_args.args[2] == "Google webhook notification failed"
+    assert capture.call_args.args[0] == "Google webhook notification failed"
 
 
 def test_fetch_failure_emits_a_failed_sync_run() -> None:
     handler = _handler()
     handler.workouts.load_data.side_effect = RuntimeError("Google API 500")
-    with patch.object(webhook_handler, "log_and_capture_error"):
+    with patch.object(webhook_handler.logger, "error"):
         result = handler.process_payload(MagicMock(), [_notification("known")], "trace")
 
     calls: list[dict[str, Any]] = []

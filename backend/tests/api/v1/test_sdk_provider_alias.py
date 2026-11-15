@@ -63,4 +63,4 @@ class TestSDKProviderAlias:
         """The cloud OAuth provider must not be reachable through the SDK upload endpoint."""
         response = _post(client, api_v1_prefix, "google_health")
 
-        assert response.status_code == 400
+        assert response.status_code == 422

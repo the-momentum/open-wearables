@@ -7,18 +7,22 @@ Tests XML file processing from S3 for Apple Health data imports.
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from botocore.exceptions import ClientError
-from fastapi import HTTPException, status
+from psycopg.errors import ForeignKeyViolation, NotNullViolation, UniqueViolation
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.process_aws_upload_task import (
     _import_xml_data,
+    _is_retryable,
     complete_and_process_aws_upload,
     process_aws_upload,
 )
 from app.schemas.providers.apple.apple_xml import CompletedPart
+from app.utils.exceptions import AppError, InvalidInputError, NotFoundError, ServiceUnavailableError
 from tests.factories import UserFactory
 
 
@@ -292,6 +296,28 @@ class TestProcessUploadTask:
         mock_multipart_service.complete_upload.assert_called_once()
         assert mock_process.call_count == 2
 
+    @patch("app.integrations.celery.tasks.process_aws_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client")
+    def test_process_aws_upload_skips_a_missing_user(
+        self,
+        mock_get_s3_client: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        """A user deleted before the import is skipped without downloading the export."""
+        # Arrange
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        missing_user_id = str(uuid4())
+
+        # Act
+        result = process_aws_upload("test-bucket", f"{missing_user_id}/raw/export.xml", missing_user_id)
+
+        # Assert
+        assert result["status"] == "skipped"
+        mock_get_s3_client.return_value.get_object.assert_not_called()
+
     def test_object_processing_tasks_use_late_ack_and_retries(self) -> None:
         assert process_aws_upload.acks_late is True
         assert process_aws_upload.reject_on_worker_lost is True
@@ -313,8 +339,8 @@ class TestProcessUploadTask:
         """A duplicate delivery finds the upload already completed (404) but the object
         present, so it must still process instead of failing on the consumed upload id."""
         key = "user-123/raw/export.xml"
-        mock_multipart_service.complete_upload.side_effect = HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Failed to complete multipart upload: NoSuchUpload"
+        mock_multipart_service.complete_upload.side_effect = NotFoundError(
+            "Failed to complete multipart upload: NoSuchUpload"
         )
         mock_s3 = MagicMock()
         mock_s3.head_object.return_value = {}  # object exists -> completion already happened
@@ -345,14 +371,14 @@ class TestProcessUploadTask:
     ) -> None:
         """A genuine 404 (no finalized object) must not be swallowed, and must not process."""
         key = "user-123/raw/export.xml"
-        mock_multipart_service.complete_upload.side_effect = HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Failed to complete multipart upload: NoSuchUpload"
+        mock_multipart_service.complete_upload.side_effect = NotFoundError(
+            "Failed to complete multipart upload: NoSuchUpload"
         )
         mock_s3 = MagicMock()
         mock_s3.head_object.side_effect = ClientError({"Error": {"Code": "404"}}, "HeadObject")
         mock_get_s3_client.return_value = mock_s3
 
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(NotFoundError):
             complete_and_process_aws_upload(
                 bucket_name="test-bucket",
                 object_key=key,
@@ -361,7 +387,6 @@ class TestProcessUploadTask:
                 user_id="user-123",
             )
 
-        assert exc.value.status_code == status.HTTP_404_NOT_FOUND
         mock_process.assert_not_called()
 
 
@@ -534,3 +559,22 @@ class TestImportXmlData:
         _import_xml_data(db, source, str(user.id))
 
         assert mock_xml_service_class.call_args.args[0] is source
+
+
+@pytest.mark.parametrize(
+    ("exc", "retryable"),
+    [
+        (RuntimeError("temporary database failure"), True),
+        (ServiceUnavailableError("Object storage unavailable"), True),
+        (InvalidInputError("Completed parts do not match"), False),
+        (AppError("broken invariant"), True),
+        (NotFoundError("User not found."), False),
+        (IntegrityError("stmt", {}, UniqueViolation("duplicate key")), False),
+        (ForeignKeyViolation("raw psycopg, from a COPY"), False),
+        # our bug, but just as deterministic: the failed task still reaches Sentry
+        (IntegrityError("stmt", {}, NotNullViolation("null value")), False),
+    ],
+)
+def test_is_retryable(exc: Exception, retryable: bool) -> None:
+    """Client errors and constraint violations fail the same way on every attempt."""
+    assert _is_retryable(exc) is retryable

@@ -76,14 +76,15 @@ describe('policy', () => {
 		expect(growthOf({ rollup: false, retain: 365 })).toBe('bounded');
 	});
 
-	// The PUT rejects these with a 422 whose detail is a list, which the
-	// reader would see as nothing - so the form says it first.
+	// The PUT rejects these with a 422 in pydantic's words ("Input should be
+	// greater than or equal to 1") - so the form says it first, in its own.
 	it('refuses what the API would', () => {
-		expect(invalid({ rollup: true, retain: 0 })).toMatch(/1 to 7300/);
-		expect(invalid({ rollup: true, retain: 1.5 })).toMatch(/whole number/);
-		expect(invalid({ rollup: false, retain: 7301 })).toMatch(/1 to 7300/);
-		expect(invalid({ rollup: true, retain: 365 })).toBeNull();
-		expect(invalid({ rollup: false, retain: null })).toBeNull();
+		expect(invalid({ rollup: true, history: false, retain: 0 })).toMatch(/1 to 7300/);
+		expect(invalid({ rollup: true, history: false, retain: 1.5 })).toMatch(/whole number/);
+		expect(invalid({ rollup: false, history: false, retain: 7301 })).toMatch(/1 to 7300/);
+		expect(invalid({ rollup: false, history: true, retain: null })).toMatch(/needs rollup on/);
+		expect(invalid({ rollup: true, history: true, retain: 365 })).toBeNull();
+		expect(invalid({ rollup: false, history: false, retain: null })).toBeNull();
 	});
 
 	it('estimates the daily ingest off the span the live data covers', () => {
@@ -97,9 +98,9 @@ describe('the policy on the wire', () => {
 	// and this is what holds them to each other.
 	it('survives the trip through a form', () => {
 		for (const policy of [
-			{ rollup: true, retain: 365 },
-			{ rollup: false, retain: 90 },
-			{ rollup: false, retain: null }
+			{ rollup: true, history: true, retain: 365 },
+			{ rollup: true, history: false, retain: 90 },
+			{ rollup: false, history: false, retain: null }
 		]) {
 			const form = new FormData();
 			for (const [name, value] of Object.entries(toFields(policy))) form.set(name, value);
@@ -108,15 +109,21 @@ describe('the policy on the wire', () => {
 	});
 
 	it('maps onto the names the API uses, and back', () => {
-		const policy = { rollup: true, retain: 365 };
-		expect(settingsOf(policy)).toEqual({ rollup_enabled: true, delete_after_days: 365 });
+		const policy = { rollup: true, history: true, retain: 365 };
+		expect(settingsOf(policy)).toEqual({
+			rollup_enabled: true,
+			history_rollup_enabled: true,
+			delete_after_days: 365
+		});
 		expect(policyOf(settingsOf(policy))).toEqual(policy);
 	});
 
 	it('tells a real change from none', () => {
-		expect(samePolicy({ rollup: true, retain: null }, { rollup: true, retain: null })).toBe(true);
-		expect(samePolicy({ rollup: true, retain: null }, { rollup: false, retain: null })).toBe(false);
-		expect(samePolicy({ rollup: true, retain: 30 }, { rollup: true, retain: 31 })).toBe(false);
+		const policy = { rollup: true, history: false, retain: 30 };
+		expect(samePolicy(policy, { ...policy })).toBe(true);
+		expect(samePolicy(policy, { ...policy, rollup: false })).toBe(false);
+		expect(samePolicy(policy, { ...policy, history: true })).toBe(false);
+		expect(samePolicy(policy, { ...policy, retain: 31 })).toBe(false);
 	});
 
 	it('says the ratio the maths uses', () => {

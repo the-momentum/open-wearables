@@ -16,10 +16,13 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 from celery.exceptions import Retry
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.webhook_push_task import process_webhook_push
+from app.repositories import UserConnectionRepository
 from app.schemas.auth import ConnectionStatus
+from app.services.providers.api_client import get_valid_token
 from app.services.providers.garmin.oauth import GarminOAuth
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -733,6 +736,29 @@ class TestGarminDeregistrationWebhook:
         mock_garmin_user_id.assert_called_once_with(connection.access_token)
         task_db.refresh(connection)
         assert connection.status == ConnectionStatus.ACTIVE
+        mock_revoked_webhook.assert_not_called()
+
+    def test_grant_check_ignores_token_cached_in_session(
+        self,
+        task_db: Session,
+        mock_external_apis: dict[str, MagicMock],
+        mock_garmin_user_id: MagicMock,
+        mock_revoked_webhook: MagicMock,
+    ) -> None:
+        """A token refreshed by another worker is used, not the stale one cached earlier in the session."""
+        connection = UserConnectionFactory(user=UserFactory(), provider="garmin", provider_user_id="garmin_user_123")
+        get_valid_token(task_db, connection.user_id, "garmin", UserConnectionRepository(), MagicMock())
+        task_db.execute(
+            text("UPDATE user_connection SET access_token = 'refreshed-by-another-worker' WHERE id = :id"),
+            {"id": connection.id},
+        )
+        mock_garmin_user_id.side_effect = None
+        mock_garmin_user_id.return_value = "garmin_user_123"
+
+        result = process_webhook_push.run("garmin", {"deregistrations": [{"userId": "garmin_user_123"}]}, "trace-040")
+
+        assert result["deregistrations"]["ignored_stale"] == 1
+        mock_garmin_user_id.assert_called_once_with("refreshed-by-another-worker")
         mock_revoked_webhook.assert_not_called()
 
     @pytest.mark.parametrize(

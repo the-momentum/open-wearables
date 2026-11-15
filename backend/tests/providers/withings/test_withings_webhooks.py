@@ -14,6 +14,7 @@ from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.oauth import WithingsOAuth
 from app.services.providers.withings.webhook_handler import WithingsWebhookHandler
 from app.services.providers.withings.webhook_service import WithingsWebhookService
+from app.utils.exceptions import WebhookVerificationError
 
 CALLBACK_URL = "https://example.com/api/v1/providers/withings/webhooks?token=secret"
 
@@ -49,10 +50,8 @@ def test_signature_requires_the_callback_token_and_a_userid() -> None:
 
 
 def test_probe_rejects_an_unauthenticated_head_request() -> None:
-    from fastapi import HTTPException
-
     assert _handler().handle_probe(_request()) is None
-    with pytest.raises(HTTPException):
+    with pytest.raises(WebhookVerificationError):
         _handler().handle_probe(_request(None))
 
 

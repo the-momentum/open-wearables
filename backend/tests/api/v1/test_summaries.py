@@ -533,6 +533,7 @@ class TestSleepSummaryEndpoint:
         )
 
         assert response.status_code == 400
+
     def test_get_sleep_summary_pages_nights_not_sources(self, client: TestClient, db: Session) -> None:
         """Paging through nights two sources recorded returns what one big page does."""
         user = UserFactory()
@@ -1689,7 +1690,7 @@ class TestRecoverySummaryEndpoint:
     def test_returns_200_with_recovery_score(self, client: TestClient, db: Session) -> None:
         """Basic recovery record is returned with correct score and date."""
         user = UserFactory()
-        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        source = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source=ProviderName.WHOOP)
         recorded_at = datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc)
         HealthScoreFactory(
             data_source=source,
@@ -1738,6 +1739,31 @@ class TestRecoverySummaryEndpoint:
         assert item["avg_hrv_rmssd_ms"] == 45.5
         assert item["avg_hrv_sdnn_ms"] is None
         assert item["avg_spo2_percent"] == 97.0
+
+    def test_fields_a_winning_device_lacks_come_from_other_sources(self, client: TestClient, db: Session) -> None:
+        """WHOOP's scores carry no data source; its band's vitals and another watch's SDNN still share the day."""
+        user = UserFactory()
+        band = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop", device_type="band")
+        other_band = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop", device_type="band")
+        day = datetime(2025, 12, 26, tzinfo=timezone.utc)
+        provider_day(db, band, SeriesType.resting_heart_rate, day.date(), avg=Decimal("52"))
+        provider_day(db, other_band, SeriesType.heart_rate_variability_sdnn, day.date(), avg=Decimal("48"))
+        HealthScoreFactory(
+            user_id=user.id,
+            data_source_id=None,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("70"),
+            recorded_at=day + timedelta(hours=8),
+        )
+
+        response = client.get(
+            self._url(user.id), headers=api_key_headers(ApiKeyFactory().plain_key), params=self.BASE_PARAMS
+        )
+
+        assert response.status_code == 200
+        [item] = response.json()["data"]
+        assert (item["resting_heart_rate_bpm"], item["avg_hrv_sdnn_ms"], item["recovery_score"]) == (52, 48.0, 70)
 
     def test_empty_range_returns_no_data(self, client: TestClient, db: Session) -> None:
         """Empty range returns empty list, not an error."""
@@ -1887,6 +1913,7 @@ class TestRecoverySummaryEndpoint:
         assert response.status_code == 200
         scores = [item["recovery_score"] for item in response.json()["data"]]
         assert scores == [85, 70, 60]
+
     def test_pagination_pages_days_not_scores(self, client: TestClient, db: Session) -> None:
         """A provider that scores many times a day still pages one summary per day.
 
@@ -1972,4 +1999,4 @@ class TestDataTimelineEndpoint:
             params={"bucket": "month"},
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 422

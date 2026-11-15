@@ -1,10 +1,12 @@
 """Unified webhook router – delegates incoming requests to provider strategies.
 
-Route: ``/providers/{provider}/webhooks``
+Routes: ``/providers/{provider}/webhooks`` and, for providers that require a
+secret in the callback path, ``/providers/{provider}/webhooks/{callback_token}``
 
 This router is the single entry point for all provider webhook events.
 It resolves the provider strategy via ``ProviderFactory``, checks that the
-provider has a ``BaseWebhookHandler`` wired up, and delegates to:
+provider has a ``BaseWebhookHandler`` wired up, checks the callback token with
+``handler.authenticate_callback(request)``, and delegates to:
 
 * ``strategy.webhooks.handle(request, body, db)``   – POST (data events)
 * ``strategy.webhooks.handle_challenge(request)``   – GET (subscription verification)
@@ -18,19 +20,19 @@ The per-provider webhook handlers (to be implemented under
 2. Parsing and validating the payload schema.
 3. Dispatching to the appropriate service method.
 
-Existing provider-specific routes (``/garmin/webhooks``, ``/oura/webhooks``,
-``/strava/webhooks``) are intentionally kept in place while individual handlers
-are migrated.  Once a provider's ``BaseWebhookHandler`` is implemented and wired
-into its strategy, traffic can be cut over to this router.
+Existing provider-specific routes (``/garmin/webhooks``, ``/oura/webhooks``)
+are intentionally kept in place while individual handlers are migrated.  Once a
+provider's ``BaseWebhookHandler`` is implemented and wired into its strategy,
+traffic can be cut over to this router.
 """
 
-from logging import getLogger
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
+from app.schemas.enums import ProviderName
 from app.schemas.responses.incoming_webhooks import (
     WebhookDeletedResponse,
     WebhookSubscriptionResponse,
@@ -41,9 +43,10 @@ from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.utils.auth import DeveloperDep
+from app.utils.exceptions import unknown_provider
+from app.utils.webhook_callback import provider_webhook_url
 
 router = APIRouter()
-logger = getLogger(__name__)
 
 _factory = ProviderFactory()
 
@@ -53,7 +56,7 @@ def _get_strategy(provider: str) -> BaseProviderStrategy:
     try:
         return _factory.get_provider(from_url_slug(provider))
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
+        raise unknown_provider(provider, ("path", "provider"), (p.value for p in ProviderName)) from None
 
 
 StrategyDep = Annotated[BaseProviderStrategy, Depends(_get_strategy)]
@@ -68,7 +71,7 @@ def _get_webhook_handler(provider: str) -> BaseWebhookHandler:
     try:
         strategy = _factory.get_provider(from_url_slug(provider))
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
+        raise unknown_provider(provider, ("path", "provider"), (p.value for p in ProviderName)) from None
 
     if strategy.webhooks is None:
         raise HTTPException(
@@ -108,6 +111,8 @@ def handle_provider_webhook(
     Returns whatever dict the provider's ``dispatch()`` method returns.
     """
     handler = _get_webhook_handler(provider)
+    # handle() checks it too, but a provider may override handle() and answer early (Polar PING).
+    handler.authenticate_callback(request)
     return handler.handle(request, body, db)
 
 
@@ -120,18 +125,22 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     echoed back.  This endpoint delegates to the provider's
     ``handle_challenge()`` method.
 
-    Providers that do not support GET challenges will receive a ``501``
-    response from the default ``BaseWebhookHandler.handle_challenge()``
-    implementation.
+    Providers whose handler does not override ``handle_challenge()`` receive
+    a ``501`` response.
     """
     handler = _get_webhook_handler(provider)
-    return handler.handle_challenge(request)
+    handler.authenticate_callback(request)
+    try:
+        return handler.handle_challenge(request)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
 
 
 @router.head("", response_class=Response)
 def probe_provider_webhook(provider: str, request: Request) -> None:
     """Handle a callback reachability probe without a response body."""
     handler = _get_webhook_handler(provider)
+    handler.authenticate_callback(request)
     probe = getattr(handler, "handle_probe", None)
     if probe is None:
         raise HTTPException(
@@ -168,16 +177,22 @@ async def list_webhook_subscriptions(
 async def register_webhook_subscriptions(
     strategy: StrategyDep,
     _dev: DeveloperDep,
-    callback_url: str,
+    callback_url: str | None = None,
 ) -> dict:
-    """Register or update webhook subscriptions for a provider."""
+    """Register or update webhook subscriptions for a provider.
+
+    ``callback_url`` defaults to this deployment's ``/providers/{provider}/webhooks``.
+    Providers whose callback URL carries a secret token (Strava) ignore it.
+    """
     if strategy.webhook_service is None:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Provider does not support webhook subscription management",
         )
     try:
-        result = await strategy.webhook_service.register_subscriptions(callback_url)
+        result = await strategy.webhook_service.register_subscriptions(
+            callback_url or provider_webhook_url(strategy.name)
+        )
     except NotImplementedError as e:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
     return {"subscriptions": result}
@@ -257,3 +272,33 @@ async def update_webhook_subscription(
     except NotImplementedError as e:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
     return WebhookUpdatedResponse(updated=result)
+
+
+# ---------------------------------------------------------------------------
+# Callback URLs with a secret path segment (see app.utils.webhook_callback).
+# Declared last, so /subscriptions is never taken for a token.
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{callback_token}")
+def handle_provider_webhook_with_token(
+    provider: str,
+    callback_token: str,
+    request: Request,
+    db: DbSession,
+    body: Annotated[bytes, Depends(_read_body)],
+) -> dict:
+    """Receive an incoming webhook event on a callback URL that carries a secret token."""
+    return handle_provider_webhook(provider, request, db, body)
+
+
+@router.get("/{callback_token}")
+def verify_provider_webhook_with_token(provider: str, callback_token: str, request: Request) -> dict:
+    """Handle a GET subscription challenge on a callback URL that carries a secret token."""
+    return verify_provider_webhook(provider, request)
+
+
+@router.head("/{callback_token}", response_class=Response)
+def probe_provider_webhook_with_token(provider: str, callback_token: str, request: Request) -> None:
+    """Handle a callback reachability probe on a callback URL that carries a secret token."""
+    probe_provider_webhook(provider, request)

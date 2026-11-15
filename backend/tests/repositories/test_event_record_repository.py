@@ -10,9 +10,11 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
@@ -508,3 +510,74 @@ class TestEventRecordRepository:
         assert event.type is not None
         assert "running" in event.type
         assert mapping_result.device_model == "watch1"
+
+
+class TestFindAdjacentSleepRecord:
+    """A night only merges with the same writer app's record, so Oura via HealthKit never joins the Watch's (#720)."""
+
+    NIGHT_START = datetime(2026, 3, 24, 22, tzinfo=timezone.utc)
+
+    def _night(self, user: Any, source_app_id: str, hours_later: int = 0) -> EventRecord:
+        start = self.NIGHT_START + timedelta(hours=hours_later)
+        return EventRecordFactory(
+            data_source=DataSourceFactory(
+                user=user, provider="apple", source="unknown", device_model=None, source_app_id=source_app_id
+            ),
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=start,
+            end_datetime=start + timedelta(hours=8),
+        )
+
+    def _adjacent(self, db: Session, user: Any, source_app_id: str | None) -> EventRecord | None:
+        return EventRecordRepository(EventRecord).find_adjacent_sleep_record(
+            db,
+            user.id,
+            self.NIGHT_START + timedelta(hours=8),
+            self.NIGHT_START + timedelta(hours=9),
+            120,
+            provider="apple",
+            source_app_id=source_app_id,
+        )
+
+    def test_locks_only_the_sleep_record(self, db: Session) -> None:
+        """The data source stays unlocked: the rollup takes it (by FK) before the record, so locking both deadlocks."""
+        user = UserFactory()
+        self._night(user, "com.apple.health.11111111")
+        statements: list[str] = []
+
+        def capture(*args: Any) -> None:
+            statements.append(args[2])
+
+        sa_event.listen(db.get_bind(), "before_cursor_execute", capture)
+        try:
+            self._adjacent(db, user, "com.apple.health.11111111")
+        finally:
+            sa_event.remove(db.get_bind(), "before_cursor_execute", capture)
+
+        locking = [s for s in statements if "FOR UPDATE" in s]
+        assert len(locking) == 1
+        assert locking[0].rstrip().endswith("FOR UPDATE OF event_record")
+
+    def test_matches_only_the_same_writer_app(self, db: Session) -> None:
+        user = UserFactory()
+        watch = self._night(user, "com.apple.health.11111111")
+        oura = self._night(user, "com.ouraring.oura", hours_later=1)
+
+        assert self._adjacent(db, user, "com.ouraring.oura") == oura
+        assert self._adjacent(db, user, "com.apple.health.11111111") == watch
+
+    def test_apple_own_sources_count_as_one_writer(self, db: Session) -> None:
+        """The iPhone's in-bed sample belongs to the Watch's night."""
+        user = UserFactory()
+        watch = self._night(user, "com.apple.health.11111111")
+        self._night(user, "com.ouraring.oura", hours_later=1)
+
+        assert self._adjacent(db, user, "com.apple.health.22222222") == watch
+
+    def test_without_a_writer_app_any_record_matches(self, db: Session) -> None:
+        user = UserFactory()
+        self._night(user, "com.apple.health.11111111")
+        oura = self._night(user, "com.ouraring.oura", hours_later=1)
+
+        assert self._adjacent(db, user, None) == oura

@@ -92,11 +92,9 @@ class TestPolarWorkoutsDateExtraction:
             duration="PT1H0M0S",  # 1 hour
         )
 
-        # Assert
-        assert isinstance(start_date, datetime)
-        assert isinstance(end_date, datetime)
-        assert end_date > start_date
-        assert (end_date - start_date).total_seconds() == 3600  # 1 hour
+        # Assert: 08:00 local at +1 is 07:00 UTC
+        assert start_date == datetime(2024, 1, 15, 7, 0, 0)
+        assert end_date == datetime(2024, 1, 15, 8, 0, 0)
 
     def test_extract_dates_with_offset_negative_offset(self, db: Session) -> None:
         """Test extracting dates with negative UTC offset."""
@@ -131,10 +129,9 @@ class TestPolarWorkoutsDateExtraction:
             duration="PT30M0S",  # 30 minutes
         )
 
-        # Assert
-        assert isinstance(start_date, datetime)
-        assert isinstance(end_date, datetime)
-        assert (end_date - start_date).total_seconds() == 1800  # 30 minutes
+        # Assert: 08:00 local at -5 is 13:00 UTC
+        assert start_date == datetime(2024, 1, 15, 13, 0, 0)
+        assert end_date == datetime(2024, 1, 15, 13, 30, 0)
 
     def test_extract_dates_not_implemented_fallback(self, db: Session) -> None:
         """Test that _extract_dates raises NotImplementedError for Polar."""
@@ -571,6 +568,13 @@ class TestGetUnifiedWorkoutType:
             ("CYCLING", "INDOOR_CYCLING", WorkoutType.INDOOR_CYCLING),
             ("OTHER", "JUMP_ROPE", WorkoutType.CARDIO_TRAINING),
             ("OTHER", "KICKBOXING_MARTIAL_ARTS", WorkoutType.BOXING),
+            ("OTHER", "TENNIS", WorkoutType.TENNIS),
+            ("OTHER", "VERTICALSPORTS_WALLCLIMBING", WorkoutType.INDOOR_CLIMBING),
+            ("OTHER", "STRENGTH_TRAINING", WorkoutType.STRENGTH_TRAINING),
+            ("RUNNING", "TREADMILL_RUNNING", WorkoutType.TREADMILL),
+            ("RUNNING", "UNKNOWN_DETAIL", WorkoutType.RUNNING),
+            ("OTHER", "UNKNOWN_DETAIL", WorkoutType.GENERIC),
+            ("UNKNOWN_SPORT", None, WorkoutType.OTHER),
         ],
     )
     def test_mappings(self, sport: str, detailed: str, expected: WorkoutType) -> None:

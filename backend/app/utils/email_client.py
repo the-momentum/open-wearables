@@ -1,4 +1,3 @@
-import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -10,9 +9,10 @@ import resend
 from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.config import settings
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
 _email_validator = TypeAdapter(EmailStr)
 
 SMTP_TIMEOUT_SECONDS = 30
@@ -60,7 +60,7 @@ def _send_via_resend(to_email: str, subject: str, html: str, text: str) -> None:
     resend.api_key = settings.resend_api_key.get_secret_value()  # ty:ignore[unresolved-attribute]
     params = cast(Any, {"from": _get_from_address(), "to": [to_email], "subject": subject, "html": html, "text": text})
     result = resend.Emails.send(params)
-    logger.info(f"Email sent via Resend, result: {result}")
+    logger.info("Email sent via Resend", provider="email", email_id=result.get("id"))
 
 
 def _send_via_smtp(to_email: str, subject: str, html: str, text: str) -> None:
@@ -85,7 +85,7 @@ def _send_via_smtp(to_email: str, subject: str, html: str, text: str) -> None:
         if settings.smtp_username and settings.smtp_password:
             server.login(settings.smtp_username, settings.smtp_password.get_secret_value())
         server.send_message(msg)
-    logger.info(f"Email sent via SMTP ({host}:{settings.smtp_port})")
+    logger.info("Email sent via SMTP", provider="email", smtp_host=host, smtp_port=settings.smtp_port)
 
 
 def _send_email(to_email: str, subject: str, html: str, text: str) -> None:
@@ -109,13 +109,14 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
         True if email was sent successfully, False otherwise
     """
     if not is_valid_email(to_email):
-        log_structured(
-            logger, "warning", "Invalid email address provided", provider="email", task="send_invitation_email"
-        )
+        logger.warning("Invalid email address provided", provider="email", task="send_invitation_email")
         return False
     if config_error := get_email_config_error():
-        log_structured(
-            logger, "warning", f"{config_error}, skipping email send", provider="email", task="send_invitation_email"
+        logger.warning(
+            "Email not configured, skipping email send",
+            provider="email",
+            task="send_invitation_email",
+            config_error=config_error,
         )
         return False
 
@@ -124,7 +125,7 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
     ignore_text = "If you didn't expect this invitation, you can safely ignore this email."
 
     try:
-        logger.info(f"Sending invitation email from '{_get_from_address()}'")
+        logger.info("Sending invitation email", provider="email", task="send_invitation_email")
         _send_email(
             to_email,
             subject=f"You've been invited to join {settings.email_from_name}",
@@ -151,7 +152,5 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
         )
         return True
     except Exception as e:
-        log_structured(
-            logger, "error", f"Failed to send invitation email: {e}", provider="email", task="send_invitation_email"
-        )
+        logger.error("Failed to send invitation email", provider="email", task="send_invitation_email", error=str(e))
         return False

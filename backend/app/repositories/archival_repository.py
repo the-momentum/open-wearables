@@ -31,10 +31,17 @@ class ArchivalSettingRepository:
         """Return the current archival settings (singleton row with id=1)."""
         return db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).one()
 
-    def update(self, db: DbSession, rollup_enabled: bool, delete_after_days: int | None) -> ArchivalSetting:
+    def deleted_before(self, db: DbSession) -> date | None:
+        """The day retention has deleted samples before, or None."""
+        return db.query(ArchivalSetting.deleted_before).filter(ArchivalSetting.id == 1).scalar()
+
+    def update(
+        self, db: DbSession, rollup_enabled: bool, history_rollup_enabled: bool, delete_after_days: int | None
+    ) -> ArchivalSetting:
         """Update the data lifecycle settings."""
         setting = self.get(db)
         setting.rollup_enabled = rollup_enabled
+        setting.history_rollup_enabled = history_rollup_enabled
         setting.delete_after_days = delete_after_days
         db.commit()
         db.refresh(setting)

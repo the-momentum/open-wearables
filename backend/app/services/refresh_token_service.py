@@ -1,9 +1,6 @@
 import secrets
 from datetime import datetime, timezone
-from logging import Logger, getLogger
 from uuid import UUID
-
-from fastapi import HTTPException, status
 
 from app.config import settings
 from app.database import DbSession
@@ -11,15 +8,17 @@ from app.models import Application, RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.auth import SDKTokenOrigin, TokenResponse, TokenType
 from app.services.sdk_token_service import create_sdk_user_token
+from app.utils.exceptions import AppError, AuthenticationError, NotFoundError
 from app.utils.security import create_access_token
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RefreshTokenService:
     """Service for managing refresh tokens."""
 
-    def __init__(self, log: Logger) -> None:
-        self.logger = log
+    def __init__(self) -> None:
         self.repo = refresh_token_repository
 
     @staticmethod
@@ -106,9 +105,7 @@ class RefreshTokenService:
             revoked_at=None,
         )
         self.repo.create(db_session, token)
-        log_structured(
-            self.logger,
-            "debug",
+        logger.debug(
             "Created SDK refresh token",
             action="sdk_refresh_token_created",
             user_id=str(user_id),
@@ -137,7 +134,7 @@ class RefreshTokenService:
             revoked_at=None,
         )
         self.repo.create(db_session, token)
-        self.logger.debug(f"Created developer refresh token for developer {developer_id}")
+        logger.debug("Created developer refresh token", developer_id=str(developer_id))
         return token_id
 
     def refresh_token(self, db_session: DbSession, refresh_token_str: str) -> TokenResponse:
@@ -154,20 +151,14 @@ class RefreshTokenService:
             TokenResponse with new access token and new refresh token
 
         Raises:
-            HTTPException: If the refresh token is invalid or revoked
+            AuthenticationError: If the refresh token is invalid or revoked
         """
-        token = self.repo.get_valid_token(db_session, refresh_token_str)
+        token = self.repo.claim_valid_token(db_session, refresh_token_str)
         if not token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or revoked refresh token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            raise AuthenticationError("Invalid or revoked refresh token")
 
-        # Revoke the old refresh token (rotation)
-        self.repo.revoke_token(db_session, token)
-
-        # Generate new access token and refresh token based on token type
+        # Storing the new refresh token commits the old one's revocation with it, so a failure
+        # before that leaves the old token usable
         if token.token_type == TokenType.SDK:
             access_token, new_refresh_token = self.issue_sdk_tokens(
                 db_session,
@@ -176,19 +167,16 @@ class RefreshTokenService:
                 application=token.application,
                 issued_by_developer_id=token.issued_by_developer_id,
             )
-            self.logger.debug(f"Refreshed SDK token for user {token.user_id} (rotated)")
+            logger.debug("Refreshed SDK token (rotated)", user_id=str(token.user_id))
         elif token.token_type == TokenType.DEVELOPER:
             access_token = create_access_token(subject=str(token.developer_id))
             new_refresh_token = self.create_developer_refresh_token(
                 db_session,
                 developer_id=token.developer_id,  # ty:ignore[invalid-argument-type]
             )
-            self.logger.debug(f"Refreshed developer token for developer {token.developer_id} (rotated)")
+            logger.debug("Refreshed developer token (rotated)", developer_id=str(token.developer_id))
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown token type: {token.token_type}",
-            )
+            raise AppError(f"Unknown token type: {token.token_type}")  # a stored state we never write: 500
 
         return TokenResponse(
             access_token=access_token,
@@ -208,18 +196,20 @@ class RefreshTokenService:
             True if the token was revoked, False if not found
 
         Raises:
-            HTTPException: If the refresh token is not found
+            NotFoundError: If the refresh token is not found
         """
-        token = self.repo.get_valid_token(db_session, refresh_token_str)
+        token = self.repo.claim_valid_token(db_session, refresh_token_str)
         if not token:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Refresh token not found",
-            )
+            raise NotFoundError("Refresh token not found")
 
-        self.repo.revoke_token(db_session, token)
-        self.logger.debug(f"Revoked refresh token {refresh_token_str[:10]}...")
+        db_session.commit()
+        logger.debug(
+            "Revoked refresh token",
+            token_type=str(token.token_type),
+            user_id=str(token.user_id) if token.user_id else None,
+            developer_id=str(token.developer_id) if token.developer_id else None,
+        )
         return True
 
 
-refresh_token_service = RefreshTokenService(log=getLogger(__name__))
+refresh_token_service = RefreshTokenService()

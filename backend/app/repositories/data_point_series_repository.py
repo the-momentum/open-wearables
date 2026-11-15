@@ -1,8 +1,7 @@
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable, Sequence
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from logging import getLogger
-from typing import LiteralString, NamedTuple, overload
+from typing import Any, LiteralString, NamedTuple, overload
 from typing import cast as typing_cast
 from uuid import UUID
 
@@ -17,10 +16,12 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    and_,
     asc,
     case,
     cast,
     column,
+    delete,
     desc,
     func,
     literal,
@@ -57,16 +58,19 @@ from app.repositories.data_type_coverage_repository import data_type_coverage_re
 from app.repositories.local_day import OFFSET_REACH
 from app.repositories.repositories import (
     CrudRepository,
+    SourceRanking,
     source_filter_conditions,
     timeline_key_column,
     utc_bucket_start,
 )
 from app.repositories.series_aggregate_repository import LOCAL_DAY
+from app.repositories.series_reconcile_repository import NOT_RECONCILED_SOURCE
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
     ComputedBy,
+    EventCategory,
     PeriodKind,
     ProviderName,
     Resolution,
@@ -89,11 +93,10 @@ from app.schemas.responses.activity import (
 )
 from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import as_utc, local_date
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TypeCounts(NamedTuple):
@@ -210,8 +213,6 @@ class WriteCounts(int):
         return f"WriteCounts(inserted={self.inserted}, updated={self.updated})"
 
 
-# Sources whose provider or device type is not ranked sort last, in id order.
-_UNRANKED = 1_000_000
 SERIES_TYPE_IDS: tuple[int, ...] = tuple(get_series_type_id(t) for t in SeriesType)
 _AGGREGATE_FUNCS = {
     AggregationMethod.AVG: func.avg,
@@ -229,6 +230,7 @@ _TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
 
 # Rows per avg HR query; 5 bind parameters each keeps a query far below PostgreSQL's 65535
 _MAX_WINDOW_ROWS = 2000
+_TIE_COUNT_CAP = 10_000
 
 
 class WorkoutWindow(NamedTuple):
@@ -239,6 +241,105 @@ class WorkoutWindow(NamedTuple):
     start_time: datetime
     end_time: datetime
     fallback_source_ids: tuple[UUID, ...] = ()
+
+
+class StoredWindow(NamedTuple):
+    """A writer app's samples of one type in [start, end), less the one with external_id."""
+
+    source_app_id: str | None
+    series_type_definition_id: int
+    start: datetime
+    end: datetime
+    external_id: str | None
+
+
+class Coverage(NamedTuple):
+    """The stored samples in a window: how many, how many are instants, their sum and the largest value."""
+
+    covered: int
+    instants: int
+    total: Decimal
+    largest: Decimal
+
+
+# LATERAL so each window is one range of the (source, type, time) index; a plain join filters type and time after it.
+# Matched by writer app: a series can be filed under another device model. A sample with a window counts when it
+# ends inside the series window, give or take the second the series' whole-second window can lose.
+_STORED_IN_WINDOWS = text("""
+    SELECT stored.covered, stored.instants, stored.total, stored.largest
+    FROM unnest(
+        CAST(:app_ids AS text[]), CAST(:type_ids AS integer[]), CAST(:starts AS timestamptz[]),
+        CAST(:ends AS timestamptz[]), CAST(:external_ids AS text[])
+    ) WITH ORDINALITY AS w(source_app_id, type_id, start_at, end_at, external_id, pos)
+    CROSS JOIN LATERAL (
+        SELECT count(*) AS covered, count(*) FILTER (WHERE s.window_seconds IS NULL) AS instants,
+            coalesce(sum(s.value), 0) AS total, coalesce(max(s.value), 0) AS largest
+        FROM data_source ds
+        JOIN series_sample s ON s.data_source_id = ds.id
+        WHERE ds.user_id = :user_id AND ds.source_app_id = w.source_app_id
+            AND s.series_type_definition_id = w.type_id AND s.recorded_at >= w.start_at AND s.recorded_at < w.end_at
+            AND (
+                s.window_seconds IS NULL
+                OR s.recorded_at + make_interval(secs => s.window_seconds) <= w.end_at + interval '1 second'
+            )
+            AND (w.external_id IS NULL OR s.external_id IS DISTINCT FROM w.external_id)
+    ) stored
+    ORDER BY w.pos
+""")
+
+
+class WindowedSample(NamedTuple):
+    """A stored sample with a window, as the condensed series repair reads it."""
+
+    id: UUID
+    series_type_definition_id: int
+    recorded_at: datetime
+    zone_offset: str | None
+    value: Decimal
+    window_seconds: int
+    external_id: str
+
+
+# The source's windowed rows inside the user's Apple workouts, each span once (a workout is often stored twice).
+# OFFSET 0 bounds each lookup by its span; flattened, the planner scans the source. 1-minute margin: a series may
+# start just before its workout. The repair leaves the row out of its own lookup by external id, which every SDK
+# series has.
+_WINDOWED_IN_WORKOUTS = text("""
+    SELECT series.*
+    FROM (
+        SELECT DISTINCT er.start_datetime, er.end_datetime
+        FROM data_source wds
+        JOIN event_record er ON er.data_source_id = wds.id
+        WHERE wds.user_id = :user_id AND wds.provider = :provider
+          AND er.category = :category AND er.start_datetime < :before
+    ) w
+    CROSS JOIN LATERAL (
+        SELECT s.id, s.series_type_definition_id, s.recorded_at, s.zone_offset, s.value, s.window_seconds,
+            s.external_id
+        FROM series_sample s
+        WHERE s.data_source_id = :source_id
+          AND s.series_type_definition_id = ANY(:types)
+          AND s.recorded_at >= w.start_datetime - interval '1 minute'
+          AND s.recorded_at < LEAST(w.end_datetime, :before)
+          AND s.window_seconds IS NOT NULL
+          AND s.external_id IS NOT NULL
+        OFFSET 0
+    ) series
+""")
+_RESTORE_REPLACED = text(
+    "UPDATE series_sample SET value = :value, window_seconds = NULL, external_id = NULL WHERE id = :id"
+)
+
+
+class LatestValue(NamedTuple):
+    """A series' latest reading and the source it came from."""
+
+    value: float
+    recorded_at: datetime
+    provider: str | None
+    source: str | None
+    device_model: str | None
+    device_type: str | None
 
 
 class AggregatedSample(NamedTuple):
@@ -263,7 +364,6 @@ class DataPointSeriesRepository(
         self.series_aggregate_repo = AggregateRepository(SeriesAggregate)
         self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
 
-    @handle_exceptions
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> SeriesSample:
         """Create a data point sample, or return existing if duplicate.
 
@@ -293,7 +393,6 @@ class DataPointSeriesRepository(
         mark_dirty_days(db_session, [(data_source.id, local_date(creator.recorded_at, creator.zone_offset))])
         return self.try_commit(db_session, creation)
 
-    @handle_exceptions
     def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
         """Bulk create data point samples.
 
@@ -349,6 +448,54 @@ class DataPointSeriesRepository(
         )
         return counts
 
+    def stored_in_windows(self, db_session: DbSession, user_id: str, windows: Sequence[StoredWindow]) -> list[Coverage]:
+        """Each window's Coverage among the user's samples, in order. A sample with the window's external_id is left
+        out: a re-sent sample doesn't cover itself."""
+        if not windows:
+            return []
+        # The planner prices a big batch high and JIT-compiles it, which costs more than running it.
+        db_session.execute(text("SET LOCAL jit = off"))
+        rows = db_session.execute(
+            _STORED_IN_WINDOWS,
+            {
+                "user_id": user_id,
+                "app_ids": [window.source_app_id for window in windows],
+                "type_ids": [window.series_type_definition_id for window in windows],
+                "starts": [window.start for window in windows],
+                "ends": [window.end for window in windows],
+                "external_ids": [window.external_id for window in windows],
+            },
+        ).all()
+        return [Coverage(row.covered, row.instants, row.total, row.largest) for row in rows]
+
+    def windowed_in_apple_workouts(
+        self, db_session: DbSession, source_id: UUID, user_id: str, type_ids: Collection[int], before: datetime
+    ) -> list[WindowedSample]:
+        """The source's samples of these types with a window and an external id, inside the user's Apple workouts
+        that started before ``before``; each once."""
+        rows = db_session.execute(
+            _WINDOWED_IN_WORKOUTS,
+            {
+                "source_id": source_id,
+                "user_id": user_id,
+                "types": sorted(type_ids),
+                "before": before,
+                "provider": ProviderName.APPLE.value,
+                "category": EventCategory.WORKOUT.value,
+            },
+        ).all()
+        # A row inside two overlapping workouts comes twice
+        return list({row.id: WindowedSample(*row) for row in rows}.values())
+
+    def restore_replaced(self, db_session: DbSession, replaced: Collection[tuple[UUID, Decimal]]) -> None:
+        """Turn each row back into the sample it replaced: that value, with no window and no external id."""
+        if replaced:
+            db_session.execute(_RESTORE_REPLACED, [{"id": row_id, "value": value} for row_id, value in replaced])
+
+    def delete_ids(self, db_session: DbSession, ids: Collection[UUID]) -> None:
+        if ids:
+            db_session.execute(delete(SeriesSample).where(SeriesSample.id.in_(list(ids))))
+
     @staticmethod
     def _with_live_sessions(
         db_session: DbSession, creators: list[TimeSeriesSampleCreate]
@@ -362,9 +509,7 @@ class DataPointSeriesRepository(
         ids = cast(list(record_ids), postgresql.ARRAY(PGUUID(as_uuid=True)))
         live = {record_id for (record_id,) in db_session.query(EventRecord.id).filter(EventRecord.id == func.any(ids))}
         if gone := record_ids - live:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Session values point at deleted records; kept as samples only",
                 samples=sum(1 for c in creators if c.session is not None and c.session.record_id in gone),
             )
@@ -766,52 +911,114 @@ class DataPointSeriesRepository(
         params: TimeSeriesQueryParams,
         types: list[SeriesType],
         user_id: str,
-        provider_order: dict,
-        device_type_order: dict,
+        ranking: SourceRanking,
+        sample_sources: Collection[UUID] | None = None,
     ) -> dict[int, UUID]:
         """Best-ranked data source per series type, among those holding data in the window.
+
+        Day, week and month reads look for day rows; of ``sample_sources`` also for samples, as the read counts
+        their days from samples where the rollup has not written rows (yet).
 
         Decided on source metadata plus one existence probe per (source, series type), so the
         cost tracks the number of devices a user owns rather than the number of samples. The
         winner is resolved per series type, so a watch with heart rate but no GPS keeps the
         heart rate and yields only the GPS series to the next source.
         """
-        ranked = self._ranked_sources(db_session, params, user_id, provider_order, device_type_order)
+        ranked = self._ranked_sources(db_session, params, user_id, ranking)
         type_ids = [get_series_type_id(t) for t in types] if types else SERIES_TYPE_IDS
         if not ranked or not type_ids:
             return {}
 
         start, end = params.start_datetime, params.end_datetime
-        candidates = values(
-            column("type_id", Integer),
-            column("source_id", PGUUID(as_uuid=True)),
-            name="candidates",
-        ).data([(type_id, source.id) for type_id in type_ids for source in ranked])
+        pairs = [(type_id, source.id) for type_id in type_ids for source in ranked]
         if params.resolution in PERIOD_RESOLUTIONS:
             # Day, week and month reads come from the day rows, so that is where a source must hold
             # something: retention may have deleted its samples while its day rows stay, and a source
             # with only a provider day value (a Whoop cycle's steps) has exactly what these return.
-            source, series, at = (
-                SeriesAggregate.data_source_id,
-                SeriesAggregate.series_type_definition_id,
-                SeriesAggregate.period_start,
-            )
             # The same local days the read then returns: the UTC reach alone would crown a source on a row
             # just past the range, and the read would come back empty.
             available = [SeriesAggregate.period_kind == PeriodKind.DAY]
+            at = SeriesAggregate.period_start
             if start is not None:
                 available.extend([at >= start - OFFSET_REACH, start.date() <= LOCAL_DAY])
             if end is not None:
                 available.extend([at < end + OFFSET_REACH, (end - timedelta(microseconds=1)).date() >= LOCAL_DAY])
+            probe = (SeriesAggregate.data_source_id, SeriesAggregate.series_type_definition_id, at, available)
         else:
-            source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
-            available = [at >= start] if start is not None else []
-            if end is not None:
-                available.append(at < end)
-            if params.resolution is not Resolution.RAW:
-                # Bucketed reads drop daily totals, so a source holding only those has nothing to
-                # offer here and must not outrank one with real intraday samples.
-                available.append(self.model.is_daily_total.isnot(True))
+            probe = self._sample_probe(start, end, intraday_only=params.resolution is not Resolution.RAW)
+        # Each (series, source) pair with the probe that found it: a tie is broken by counting with that probe.
+        found = dict.fromkeys(self._populated(db_session, pairs, *probe), probe)
+        if params.resolution in PERIOD_RESOLUTIONS and sample_sources:
+            sample_probe = self._sample_probe(start, end, intraday_only=True, local_days=True)
+            unfound = [pair for pair in pairs if pair[1] in sample_sources and pair not in found]
+            found |= dict.fromkeys(self._populated(db_session, unfound, *sample_probe), sample_probe)
+
+        rank_of = {s.id: ranking.rank(s.provider, s.device_type) for s in ranked}
+        by_type: dict[int, list[UUID]] = {}
+        for type_id, source_id in found:
+            by_type.setdefault(type_id, []).append(source_id)
+        winners: dict[int, UUID] = {}
+        for type_id, source_ids in by_type.items():
+            best = min(rank_of[source_id] for source_id in source_ids)
+            tied = [source_id for source_id in source_ids if rank_of[source_id] == best]
+            if len(tied) == 1:
+                winners[type_id] = tied[0]
+                continue
+            # A tie goes to the source holding the most here (capped), so one stray entry never hides a real device.
+            counts = []
+            for tie_probe in {id(found[(type_id, s)]): found[(type_id, s)] for s in tied}.values():
+                source, series, _, available = tie_probe
+                members = [s for s in tied if found[(type_id, s)] is tie_probe]
+                tied_sources = values(column("source_id", PGUUID(as_uuid=True)), name="tied").data(
+                    [(s,) for s in members]
+                )
+                held = (
+                    select(literal_column("1").label("one"))
+                    .where(source == tied_sources.c.source_id, series == type_id, *available)
+                    .limit(_TIE_COUNT_CAP)
+                    .lateral("held")
+                )
+                counts += db_session.execute(
+                    select(tied_sources.c.source_id, func.count())
+                    .select_from(tied_sources.join(held, true()))
+                    .group_by(tied_sources.c.source_id)
+                ).all()
+            winners[type_id] = min(counts, key=lambda row: (-row[1], str(row[0])))[0]
+        return winners
+
+    def _sample_probe(
+        self, start: datetime | None, end: datetime | None, intraday_only: bool, local_days: bool = False
+    ) -> tuple:
+        """The source, series and instant columns of samples, and the conditions a sample in the window meets;
+        with ``local_days``, a sample of the window's local days, as day reads count them."""
+        at = self.model.recorded_at
+        reach = OFFSET_REACH if local_days else timedelta(0)
+        day = cast(func.timezone("UTC", at) + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval), Date)
+        available = [at >= start - reach] if start is not None else []
+        if end is not None:
+            available.append(at < end + reach)
+        if local_days and start is not None:
+            available.append(day >= start.date())
+        if local_days and end is not None:
+            available.append(day <= (end - timedelta(microseconds=1)).date())
+        if intraday_only:
+            # Bucketed and sample-counted day reads drop daily totals, so a source holding only those has
+            # nothing to offer there and must not outrank one with real intraday samples.
+            available.append(self.model.is_daily_total.isnot(True))
+        return self.model.data_source_id, self.model.series_type_definition_id, at, available
+
+    @staticmethod
+    def _populated(
+        db_session: DbSession, pairs: list[tuple[int, UUID]], source: Any, series: Any, at: Any, available: list
+    ) -> set[tuple[int, UUID]]:
+        """The (series type, source) pairs holding a row that meets ``available``: one index probe each."""
+        if not pairs:
+            return set()
+        candidates = values(
+            column("type_id", Integer),
+            column("source_id", PGUUID(as_uuid=True)),
+            name="candidates",
+        ).data(pairs)
         probe = (
             select(literal_column("1"))
             .where(source == candidates.c.source_id, series == candidates.c.type_id, *available)
@@ -821,39 +1028,26 @@ class DataPointSeriesRepository(
             .limit(1)
             .lateral("probe")
         )
-        populated = db_session.execute(
+        rows = db_session.execute(
             select(candidates.c.type_id, candidates.c.source_id).select_from(candidates.join(probe, true()))
-        ).all()
-
-        rank_of = {source.id: position for position, source in enumerate(ranked)}
-        winners: dict[int, UUID] = {}
-        for type_id, source_id in populated:
-            if type_id not in winners or rank_of[source_id] < rank_of[winners[type_id]]:
-                winners[type_id] = source_id
-        return winners
+        )
+        return {(row.type_id, row.source_id) for row in rows}
 
     def _ranked_sources(
         self,
         db_session: DbSession,
         params: TimeSeriesQueryParams,
         user_id: str,
-        provider_order: dict,
-        device_type_order: dict,
+        ranking: SourceRanking,
     ) -> list[DataSource]:
         """The caller's sources, best first. Honours the source filters, so priority picks a
         winner from what the request actually asked for rather than from everything owned."""
         query = db_session.query(DataSource).filter(
             DataSource.user_id == user_id,
+            NOT_RECONCILED_SOURCE,
             *source_filter_conditions(params, DataSource.id),
         )
-        return sorted(
-            query.all(),
-            key=lambda s: (
-                provider_order.get(s.provider, _UNRANKED),
-                device_type_order.get(s.device_type, _UNRANKED),
-                s.id,
-            ),
-        )
+        return sorted(query.all(), key=lambda s: (*ranking.rank(s.provider, s.device_type), s.id))
 
     def _first_sample_at_or_after(
         self,
@@ -910,6 +1104,34 @@ class DataPointSeriesRepository(
         if not branches:
             return func.avg(self.model.value)
         return case(*branches, else_=func.avg(self.model.value))
+
+    def has_samples_in_range(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        source: str,
+        device_model: str | None,
+        series_types: Iterable[SeriesType],
+        start_datetime: datetime,
+        end_datetime: datetime,
+    ) -> bool:
+        """Whether a sample of `series_types` from `source` and `device_model` exists for the user in [start, end).
+
+        The types bound the (source, type, time) index to the window; without them it reads the source's history.
+        """
+        query = (
+            db_session.query(self.model.id)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.source == source,
+                DataSource.device_model.is_(None) if device_model is None else DataSource.device_model == device_model,
+                self.model.series_type_definition_id.in_([get_series_type_id(t) for t in series_types]),
+                self.model.recorded_at >= start_datetime,
+                self.model.recorded_at < end_datetime,
+            )
+        )
+        return bool(db_session.query(query.exists()).scalar())
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
@@ -1377,7 +1599,7 @@ class DataPointSeriesRepository(
         user_id: str,
         before_date: datetime,
         series_types: list[SeriesType],
-    ) -> dict[SeriesType, tuple[float, datetime, str | None, str | None, str | None, str | None]]:
+    ) -> dict[SeriesType, LatestValue]:
         """Get the most recent value for each series type before a given date.
 
         Used for slow-changing measurements like weight, height, body fat %.
@@ -1386,8 +1608,7 @@ class DataPointSeriesRepository(
             before_date: Only consider measurements recorded before this datetime
 
         Returns:
-            Dict mapping SeriesType to tuple of
-            (value, recorded_at, provider, source, device_model, device_type)
+            Dict mapping SeriesType to its LatestValue
         """
         if not series_types:
             raise ValueError("series_types cannot be empty")
@@ -1448,14 +1669,86 @@ class DataPointSeriesRepository(
         )
 
         # Build result dict
-        latest_values: dict[SeriesType, tuple[float, datetime, str | None, str | None, str | None, str | None]] = {}
+        latest_values: dict[SeriesType, LatestValue] = {}
         for type_id, value, recorded_at, provider, source, device_model, device_type in results:
             try:
                 series_type = get_series_type_from_id(type_id)
-                latest_values[series_type] = (float(value), recorded_at, provider, source, device_model, device_type)
+                latest_values[series_type] = LatestValue(
+                    float(value), recorded_at, provider, source, device_model, device_type
+                )
             except KeyError:
                 pass
 
+        return latest_values
+
+    def get_ranked_latest_values(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        before_date: datetime,
+        series_types: list[SeriesType],
+        ranking: SourceRanking,
+    ) -> dict[SeriesType, LatestValue]:
+        """Per series, the best-ranked source's last reading on the local day of the newest before ``before_date``."""
+        type_ids = [get_series_type_id(t) for t in series_types]
+        newest = (
+            db_session.query(
+                self.model.series_type_definition_id.label("type_id"),
+                func.max(self.model.recorded_at).label("at"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.recorded_at < before_date,
+                self.model.series_type_definition_id.in_(type_ids),
+            )
+            .group_by(self.model.series_type_definition_id)
+            .subquery()
+        )
+        # Two days back reaches every reading that can share the newest one's local day, whatever the offsets.
+        rows = (
+            db_session.query(
+                self.model.series_type_definition_id,
+                self.model.value,
+                self.model.recorded_at,
+                self.model.zone_offset,
+                DataSource.provider,
+                DataSource.source,
+                DataSource.device_model,
+                DataSource.device_type,
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .join(
+                newest,
+                and_(
+                    self.model.series_type_definition_id == newest.c.type_id,
+                    self.model.recorded_at <= newest.c.at,
+                    self.model.recorded_at > newest.c.at - timedelta(days=2),
+                ),
+            )
+            .filter(DataSource.user_id == user_id)
+            .all()
+        )
+
+        by_type: dict[int, list] = {}
+        for row in rows:
+            by_type.setdefault(row.series_type_definition_id, []).append(row)
+        latest_values: dict[SeriesType, LatestValue] = {}
+        for type_id, readings in by_type.items():
+            newest_reading = max(readings, key=lambda r: r.recorded_at)
+            day = local_date(newest_reading.recorded_at, newest_reading.zone_offset)
+            best = min(
+                (r for r in readings if local_date(r.recorded_at, r.zone_offset) == day),
+                key=lambda r: (*ranking.rank(r.provider, r.device_type), -r.recorded_at.timestamp()),
+            )
+            latest_values[get_series_type_from_id(type_id)] = LatestValue(
+                float(best.value),
+                best.recorded_at,
+                best.provider,
+                best.source,
+                best.device_model,
+                best.device_type,
+            )
         return latest_values
 
     def get_aggregates_for_period(
@@ -1521,8 +1814,9 @@ class DataPointSeriesRepository(
         series_type: SeriesType,
         window_start: datetime,
         window_end: datetime,
-    ) -> tuple[float, datetime, str | None, str | None] | None:
-        """Get the most recent reading for a series type within a time window.
+        ranking: SourceRanking,
+    ) -> tuple[float, datetime] | None:
+        """Get the best-ranked source's most recent reading for a series type within a time window.
 
         Used for point-in-time metrics like body temperature that are only
         relevant if recently measured. Returns None if no reading exists
@@ -1532,44 +1826,27 @@ class DataPointSeriesRepository(
             series_type: The type of measurement to retrieve
             window_start: Start of the valid time window
             window_end: End of the valid time window (typically now)
-
-        Returns:
-            Tuple of (value, recorded_at, provider_name, device_id) or None if no recent reading
         """
         type_id = get_series_type_id(series_type)
+        provider_rank, device_rank, _ = ranking.order_terms()
 
         result = (
-            db_session.query(
-                self.model.value,
-                self.model.recorded_at,
-                DataSource.source,
-                DataSource.device_model,
-            )
+            db_session.query(self.model.value, self.model.recorded_at)
             .join(DataSource, self.model.data_source_id == DataSource.id)
-            .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
-            .outerjoin(
-                DeviceTypePriority,
-                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
-            )
             .filter(
                 DataSource.user_id == user_id,
                 self.model.series_type_definition_id == type_id,
                 self.model.recorded_at >= window_start,
                 self.model.recorded_at <= window_end,
             )
-            .order_by(
-                self.model.recorded_at.desc(),
-                ProviderPriority.priority.asc().nulls_last(),
-                DeviceTypePriority.priority.asc().nulls_last(),
-            )
+            # The window is a few hours, so the preferred source's reading is recent enough to beat a newer one.
+            .order_by(provider_rank, device_rank, self.model.recorded_at.desc())
             .first()
         )
 
         if result is None:
             return None
-
-        value, recorded_at, provider_name, device_id = result
-        return (float(value), recorded_at, provider_name, device_id)
+        return float(result.value), result.recorded_at
 
     def query_series(
         self,

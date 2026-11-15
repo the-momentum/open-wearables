@@ -6,28 +6,24 @@ multipart services; SNS notification handling remains in ``sns_service``.
 """
 
 from datetime import UTC, datetime
-from logging import getLogger
 from typing import Any
 from uuid import uuid4
 
 import boto3
 from botocore.exceptions import NoCredentialsError
-from fastapi import HTTPException, status
 
 from app.config import settings
 from app.services.s3_client import create_s3_client
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ConfigurationError
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def require_bucket_name() -> str:
     """Return the configured bucket name or fail with the public API error."""
     if not settings.aws_bucket_name:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="S3 bucket not configured",
-        )
+        raise ConfigurationError("S3 bucket not configured")
     return settings.aws_bucket_name
 
 
@@ -39,7 +35,7 @@ _client_cache: dict[str | None, Any] = {}
 
 def _resolve_client(endpoint_url: str | None) -> Any | None:
     if not (settings.aws_access_key_id and settings.aws_secret_access_key):
-        log_structured(logger, "warning", "AWS credentials not configured")
+        logger.warning("AWS credentials not configured")
         return None
     cached = _client_cache.get(endpoint_url)
     if cached is not None:
@@ -82,7 +78,7 @@ def get_sns_client() -> Any | None:
             aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),  # ty:ignore[unresolved-attribute]
         )
     except (NoCredentialsError, AttributeError):
-        log_structured(logger, "warning", "AWS credentials not configured")
+        logger.warning("AWS credentials not configured")
         return None
 
 

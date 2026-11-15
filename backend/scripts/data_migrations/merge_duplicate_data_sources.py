@@ -27,7 +27,6 @@ Usage (inside Docker):
 """
 
 import argparse
-from logging import getLogger
 from typing import NamedTuple
 from uuid import UUID
 
@@ -40,9 +39,9 @@ from app.constants.devices_map.device_types import DEVICE_MODEL_PLACEHOLDERS
 from app.database import engine
 from app.integrations.rollup_queue import requeue_dirty_days
 from app.services.data_migration_service import data_migration_service
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger("app.scripts.merge_duplicate_data_sources")
 
 # Rows per committed batch when moving samples/archive and deleting duplicate events
 _BATCH_SIZE = 50_000
@@ -289,9 +288,7 @@ def _queue_rollup(target: UUID, days: list) -> None:
     try:
         requeue_dirty_days((target, day) for day in days)
     except Exception as exc:
-        log_and_capture_error(
-            exc, logger, "Could not queue the moved days for the rollup", extra={"data_source_id": str(target)}
-        )
+        logger.error("Could not queue the moved days for the rollup", exc_info=exc, data_source_id=str(target))
 
 
 def _rowcount(db: Session, query: TextClause, params: dict) -> int:
@@ -372,9 +369,7 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
             except SQLAlchemyError as e:
                 db.rollback()
                 failed += 1
-                log_and_capture_error(
-                    e, logger, f"Skipped merging data source {src}: {e}", extra={"data_source_id": str(src)}
-                )
+                logger.error("Skipped merging data source", exc_info=e, data_source_id=str(src))
                 if target is not None and moved_days:
                     _queue_rollup(target, moved_days)
                 continue
@@ -392,7 +387,7 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
         except SQLAlchemyError as e:
             db.rollback()
             failed += 1
-            log_and_capture_error(e, logger, f"Skipped removing duplicate events: {e}")
+            logger.error("Skipped removing duplicate events", exc_info=e)
 
     result = {
         "renamed_sources": renamed,
