@@ -116,14 +116,14 @@ _MOVE_DETAILS = text(f"""
     WHERE d.record_id = c.id
 """)
 
-_DELETE = text("DELETE FROM event_record WHERE id = ANY(CAST(:ids AS uuid[]))")
+_DELETE = text("DELETE FROM event_record WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id")
 
 
 def _remove(db: Session, rows: Sequence[Row]) -> int:
     params = {"ids": [row.id for row in rows], "keepers": [row.keeper_id for row in rows]}
     for statement in (_MOVE_SCORES, _MOVE_AGGREGATES, _MOVE_DETAILS):
         db.execute(statement, params)
-    deleted = db.execute(_DELETE, params).rowcount  # ty: ignore[unresolved-attribute]
+    deleted = len(db.execute(_DELETE, params).fetchall())
     data_type_coverage_repository.refresh_events(db, {(row.user_id, row.provider, "workout") for row in rows})
     mark_dirty_days(
         db,
