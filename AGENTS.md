@@ -156,6 +156,11 @@ merged from upstream periodically. The rules below record deliberate fork diverg
 do not silently adopt upstream's version.** When upstream lands a feature that conflicts
 with a fork rule, gate or adapt the feature rather than dropping the rule.
 
+Treat these entries as interim overrides, not permanent forks: keep the fork behavior only
+while upstream lacks an equivalent implementation. When upstream ships its own implementation
+for the same issue, take upstream's version and delete the rule instead of carrying a parallel
+fork divergence.
+
 1. **String user IDs.** `User.id` and `FKUser` stay `Mapped[str]`/`String(255)` — the
    canonical ID is a raw Firebase UID, never a `UUID`. New upstream code that arrives
    with `user_id: UUID` annotations or `UUID(user_id)` conversions must be str-ified in
