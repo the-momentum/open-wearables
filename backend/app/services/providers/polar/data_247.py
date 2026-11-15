@@ -181,8 +181,7 @@ class Polar247Data(Base247DataTemplate):
             start_time.date() + timedelta(days=i) for i in range((end_time.date() - start_time.date()).days + 1)
         }
         available_dates = self._get_available_sleep_dates(db, user_id)
-        # A night lands in /sleep/available only once the watch syncs with Polar Flow, which can be days after
-        # its date left the sync window. Fetch those late nights too, unless they are already stored.
+        # Nights show up in /sleep/available after the watch syncs, often after their date left the window
         late_dates = available_dates - date_range
         if late_dates:
             stored = event_record_service.crud.get_by_external_ids(
