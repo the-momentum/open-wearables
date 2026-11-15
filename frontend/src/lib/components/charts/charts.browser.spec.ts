@@ -4,8 +4,8 @@ import IntervalChart from './IntervalChart.svelte';
 
 describe('IntervalChart', () => {
 	// Copies of a night that differ in where a stage ends start their spans at the same time
-	it('draws spans of one lane that share a start', () => {
-		const chart = render(IntervalChart, {
+	it('draws spans of one lane that share a start', async () => {
+		const chart = await render(IntervalChart, {
 			rows: [
 				{
 					key: 'light',

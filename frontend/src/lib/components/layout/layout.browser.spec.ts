@@ -17,7 +17,7 @@ const external: NavItem = {
 
 describe('NavLink', () => {
 	it('marks the active destination for assistive tech, not only with colour', async () => {
-		render(NavLink, { item: internal, active: true });
+		await render(NavLink, { item: internal, active: true });
 
 		await expect
 			.element(page.getByRole('link', { name: 'Dashboard' }))
@@ -25,7 +25,7 @@ describe('NavLink', () => {
 	});
 
 	it('opens an external destination in a new tab without leaking the referrer', async () => {
-		render(NavLink, { item: external });
+		await render(NavLink, { item: external });
 
 		const link = page.getByRole('link', { name: /Documentation/ });
 		await expect.element(link).toHaveAttribute('target', '_blank');
