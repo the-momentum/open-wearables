@@ -360,6 +360,40 @@ class TestGetSleepSummaries:
 
         assert (summary.avg_heart_rate_bpm, summary.avg_hrv_sdnn_ms) == (52, 45.0)
 
+    def test_a_sleep_reports_its_resting_heart_rate(self, db: Session, service: SummariesService) -> None:
+        """Providers that send resting pulse on the sleep expose it on the daily sleep summary."""
+        user = UserFactory()
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        record = EventRecordFactory(
+            data_source=ring,
+            category="sleep",
+            type="sleep",
+            start_datetime=_dt("2026-01-01T23:00:00+00:00"),
+            end_datetime=_dt("2026-01-02T07:00:00+00:00"),
+            duration_seconds=8 * 3600,
+            zone_offset="+00:00",
+        )
+        SleepDetailsFactory(event_record=record)
+        rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": record.id,
+                    "series_type_definition_id": rhr_type.id,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("48"),
+                    "count": 1,
+                }
+            ],
+        )
+
+        summary = service.get_sleep_summaries(
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-03T00:00:00+00:00"), cursor=None, limit=10
+        ).data[0]
+
+        assert summary.resting_heart_rate_bpm == 48
+
     def test_a_night_not_rolled_up_yet_reads_its_own_devices_samples_first(
         self, db: Session, service: SummariesService
     ) -> None:

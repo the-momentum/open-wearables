@@ -306,6 +306,12 @@ stored before this behavior was introduced may still show `0` for stages the pro
 report. In the daily sleep summary
 (`/summaries/sleep`), `stages` itself is `null` when no stage is reported.
 
+The same sleep summary carries the night's physiology: `avg_heart_rate_bpm`,
+`resting_heart_rate_bpm`, `avg_hrv_sdnn_ms`, `avg_hrv_rmssd_ms`, `avg_respiratory_rate`, and
+`avg_spo2_percent`. `resting_heart_rate_bpm` is that night's resting pulse, read from the sleep's
+`resting_heart_rate` aggregate or the samples recorded inside it — not the rolling mean that
+`/summaries/body` returns under `averaged.resting_heart_rate_bpm`.
+
 A sleep session's `is_nap` comes from the provider when it flags naps (Garmin, Oura, Whoop, Suunto,
 Google Health). Apple, Samsung and Health Connect (through the mobile SDK), Sensor Bio, Ultrahuman
 and Withings don't, so Open Wearables flags their naps. Per day (the local date a session ends on),

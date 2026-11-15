@@ -160,6 +160,11 @@ merged from upstream periodically. The rules below record deliberate fork diverg
 do not silently adopt upstream's version.** When upstream lands a feature that conflicts
 with a fork rule, gate or adapt the feature rather than dropping the rule.
 
+Treat these entries as interim overrides, not permanent forks: keep the fork behavior only
+while upstream lacks an equivalent implementation. When upstream ships its own implementation
+for the same issue, take upstream's version and delete the rule instead of carrying a parallel
+fork divergence.
+
 1. **String user IDs.** `User.id` and `FKUser` stay `Mapped[str]`/`String(255)` — the
    canonical ID is a raw Firebase UID, never a `UUID`. New upstream code that arrives
    with `user_id: UUID` annotations or `UUID(user_id)` conversions must be str-ified in
@@ -239,3 +244,9 @@ with a fork rule, gate or adapt the feature rather than dropping the rule.
     and a failed delivery never becomes a FAILED sync run. Upstream has the
     same emit gap; this is a candidate for upstreaming, after which this
     rule can drop.
+
+12. **Sleep summary resting heart rate.** `SleepSummary.resting_heart_rate_bpm`,
+    the `resting_hr` entry in `_SLEEP_PHYSIOLOGY`, and the summaries-service
+    rounding are the per-night RHR contract Ren's wearable ingest reads as a
+    fallback. Upstream has no sleep-summary field for it today; keep it through
+    merges and upstream the shape rather than dropping it in a sync.
