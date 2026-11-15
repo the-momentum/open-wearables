@@ -107,12 +107,12 @@ def restamp_provider_sleep_scores(db: Session, *, dry_run: bool) -> int:
     db.execute(_DROP)
     db.execute(_COLLECT, params)
     db.execute(_INDEX)
-    deleted = db.execute(_DELETE_DUPLICATES).rowcount  # ty: ignore[unresolved-attribute]
+    deleted = db.execute(_DELETE_DUPLICATES).rowcount  # ty: ignore[missing-attribute]
     db.execute(_FORGET_DELETED)
     db.commit()
     moved = 0
     while ids := list(db.execute(_NEXT, {"batch_size": _BATCH_SIZE}).scalars()):
-        moved += db.execute(_MOVE, {"ids": ids}).rowcount  # ty: ignore[unresolved-attribute]
+        moved += db.execute(_MOVE, {"ids": ids}).rowcount  # ty: ignore[missing-attribute]
         db.execute(_FORGET, {"ids": ids})
         db.commit()
     db.execute(_DROP)

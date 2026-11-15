@@ -237,7 +237,7 @@ def send(
             event_type=event_type,
             app_id=app_id,
         )
-        return True  # type: ignore[return-value]  # truthy = don't count as failure  # ty:ignore[invalid-return-type]
+        return True  # type: ignore[return-value]  # truthy = don't count as failure  # ty:ignore[invalid-explicit-return]
     except HttpError as exc:
         if exc.status_code == 409:
             # Svix deduplication: the same event_id was already delivered.
@@ -246,7 +246,7 @@ def send(
                 "Svix duplicate event_id already delivered (409), skipping",
                 idempotency_key=idempotency_key,
             )
-            return True  # ty:ignore[invalid-return-type]
+            return True  # ty:ignore[invalid-explicit-return]
         logger.error("Failed to send webhook event", exc_info=exc, event_type=event_type, app_id=app_id)
         return None
     except Exception as e:

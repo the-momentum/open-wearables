@@ -34,8 +34,8 @@ class AppService[
 
     def create(self, db_session: DbSession, creator: CreateSchemaType) -> ModelType:
         creation = self.crud.create(db_session, creator)
-        logger.debug("Created object", model=self.name, object_id=str(creation.id))  # ty:ignore[unresolved-attribute]
-        return creation  # ty:ignore[invalid-return-type]
+        logger.debug("Created object", model=self.name, object_id=str(creation.id))  # ty:ignore[missing-union-attribute]
+        return creation  # ty:ignore[invalid-explicit-return]
 
     def get(
         self,

@@ -151,8 +151,8 @@ def merge_average_met(db: Session, *, dry_run: bool) -> dict[str, int]:
                 continue
             if table == "series_sample":
                 db.execute(_KEEP_WORKOUT_AVERAGE, params)
-            result[f"{table}_deleted"] += db.execute(delete, params).rowcount  # ty: ignore[unresolved-attribute]
-            result[f"{table}_updated"] += db.execute(update, params).rowcount  # ty: ignore[unresolved-attribute]
+            result[f"{table}_deleted"] += db.execute(delete, params).rowcount  # ty: ignore[missing-attribute]
+            result[f"{table}_updated"] += db.execute(update, params).rowcount  # ty: ignore[missing-attribute]
         if not dry_run:
             db.commit()
     if not dry_run and not aggregates_merged:
@@ -160,7 +160,7 @@ def merge_average_met(db: Session, *, dry_run: bool) -> dict[str, int]:
     if not dry_run:
         for old, new in _RENAMED_DATA_TYPES.items():
             for statement in _RENAME_COVERAGE:
-                renamed = db.execute(statement, {"old": old, "new": new}).rowcount  # ty: ignore[unresolved-attribute]
+                renamed = db.execute(statement, {"old": old, "new": new}).rowcount  # ty: ignore[missing-attribute]
             result["coverage_renamed"] += renamed
         db.commit()
 
