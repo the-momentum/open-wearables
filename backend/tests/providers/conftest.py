@@ -13,13 +13,7 @@ import pytest
 
 @pytest.fixture
 def non_utc_process_timezone(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Run the test with the process local timezone set to Europe/Warsaw rules (UTC+1, UTC+2 in summer).
-
-    A naive ``datetime.fromtimestamp()`` returns local wall-clock time, so it only
-    yields the right instant when the host runs in UTC, and naive arithmetic drifts
-    across DST changes. Tests that pin instants use this fixture to catch both.
-    The POSIX ``TZ`` string needs no tzdata (POSIX inverts the sign: ``CET-1`` is UTC+1).
-    """
+    """Run the test with the process timezone on Europe/Warsaw rules (POSIX string, no tzdata needed)."""
     with monkeypatch.context() as mp:
         mp.setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3")
         try:

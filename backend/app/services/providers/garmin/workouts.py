@@ -120,7 +120,6 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         if not end_ts:
             end_ts = int(datetime.now(timezone.utc).timestamp())
 
-        # Aware UTC keeps each chunk 24 real hours; naive local time would stretch one to 25h across a DST change.
         start_dt = datetime.fromtimestamp(start_ts, tz=timezone.utc)
         end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
