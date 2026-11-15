@@ -861,6 +861,8 @@ class EventRecordService(
 
         With created given, only those records fire it; the rest are refreshes of stored records.
         """
+        # Several deliveries of one workout in a batch resolve to one record; the last one's detail stands
+        details = list({d.record_id: d for d in details}.values())
         self.event_record_detail_repo.bulk_create(db_session, details, detail_type=detail_type)
 
         if created is not None:
