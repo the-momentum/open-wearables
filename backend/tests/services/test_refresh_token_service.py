@@ -9,7 +9,6 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.config import settings
-
 from app.models import RefreshToken
 from app.schemas.auth import SDKTokenOrigin, TokenType
 from app.services.refresh_token_service import refresh_token_service
@@ -134,6 +133,7 @@ class TestRefreshToken:
             refresh_token_service.refresh_token(db, invalid_token)
 
         assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Invalid or revoked refresh token"
 
     def test_refresh_expired_developer_token_raises_401(self, db: Session) -> None:
         """Refreshing an expired developer token (older than expire days) should raise 401."""
@@ -207,7 +207,9 @@ class TestRefreshToken:
         assert result.access_token is not None
         assert result.refresh_token.startswith("rt-")
 
-    def test_refresh_developer_token_respects_custom_expiry_setting(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_refresh_developer_token_respects_custom_expiry_setting(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Refreshing a developer token should respect custom developer_refresh_token_expire_days setting."""
         # Arrange
         monkeypatch.setattr(settings, "developer_refresh_token_expire_days", 7)
@@ -230,7 +232,6 @@ class TestRefreshToken:
             refresh_token_service.refresh_token(db, ten_day_old_token.id)
 
         assert exc_info.value.status_code == 401
-        assert exc_info.value.detail == "Invalid or revoked refresh token"
 
     def test_refresh_revoked_token_raises_401(self, db: Session) -> None:
         """Refreshing revoked token should raise 401."""

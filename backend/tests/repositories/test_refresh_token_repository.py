@@ -105,9 +105,7 @@ class TestRefreshTokenRepository:
         db.commit()
 
         # Act
-        result = refresh_token_repository.claim_valid_token(
-            db, token.id, developer_max_age=timedelta(days=30)
-        )
+        result = refresh_token_repository.claim_valid_token(db, token.id, developer_max_age=timedelta(days=30))
 
         # Assert
         assert result is None
@@ -130,9 +128,7 @@ class TestRefreshTokenRepository:
         db.commit()
 
         # Act
-        result = refresh_token_repository.claim_valid_token(
-            db, token.id, developer_max_age=timedelta(days=30)
-        )
+        result = refresh_token_repository.claim_valid_token(db, token.id, developer_max_age=timedelta(days=30))
 
         # Assert
         assert result is not None
@@ -156,9 +152,7 @@ class TestRefreshTokenRepository:
         db.commit()
 
         # Act
-        result = refresh_token_repository.claim_valid_token(
-            db, token.id, developer_max_age=timedelta(days=30)
-        )
+        result = refresh_token_repository.claim_valid_token(db, token.id, developer_max_age=timedelta(days=30))
 
         # Assert
         assert result is not None
