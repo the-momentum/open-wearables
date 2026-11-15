@@ -89,7 +89,7 @@ class ProviderPriorityRepository(
         )
         db_session.execute(stmt)
         db_session.flush()
-        return self.get_by_provider(db_session, provider)  # ty: ignore[invalid-return-type]
+        return self.get_by_provider(db_session, provider)  # ty: ignore[invalid-explicit-return]
 
     def bulk_update(
         self,

@@ -34,7 +34,7 @@ class RefreshTokenService:
     ) -> str:
         """Build the app_id claim of an SDK access token from where the token came from."""
         if origin == SDKTokenOrigin.APPLICATION:
-            return application.app_id  # ty:ignore[unresolved-attribute]
+            return application.app_id  # ty:ignore[missing-union-attribute]
         # The issuing developer may have been deleted since; keep the origin prefix alone then
         return f"{origin}:{issued_by_developer_id}" if issued_by_developer_id else str(origin)
 

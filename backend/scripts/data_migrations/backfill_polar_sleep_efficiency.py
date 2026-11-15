@@ -61,7 +61,7 @@ def backfill_polar_sleep_efficiency(db: Session, *, dry_run: bool) -> int:
         found = db.execute(_COUNT, params).scalar() or 0
         print(f"Would set the efficiency of {found} Polar night(s).\n\nDry run: no changes made.")
         return found
-    updated = db.execute(_UPDATE, params).rowcount  # ty: ignore[unresolved-attribute]
+    updated = db.execute(_UPDATE, params).rowcount  # ty: ignore[missing-attribute]
     print(f"Set the efficiency of {updated} Polar night(s).")
     return updated
 

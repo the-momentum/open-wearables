@@ -15,11 +15,14 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.models import SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
+from tests.factories import UserFactory
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -217,6 +220,32 @@ class TestSensorBio247SaveSleepData:
         assert detail.sleep_awake_minutes is None
         assert detail.sleep_rem_minutes == 0
         assert detail.sleep_total_duration_minutes == 0
+
+
+class TestSensorBio247SleepNaps:
+    def test_a_nap_is_flagged_once_it_is_saved(self, data_247: SensorBio247Data, db: Session) -> None:
+        user = UserFactory()
+        night = {
+            "id": uuid4(),
+            "start_time": datetime(2026, 3, 20, 22, tzinfo=timezone.utc),
+            "end_time": datetime(2026, 3, 21, 6, tzinfo=timezone.utc),
+            "duration_seconds": 28800,
+            "stages": {"deep_seconds": 5400, "light_seconds": 14400, "rem_seconds": 7200, "awake_seconds": 1800},
+        }
+        nap = {
+            "id": uuid4(),
+            "start_time": datetime(2026, 3, 21, 13, tzinfo=timezone.utc),
+            "end_time": datetime(2026, 3, 21, 14, 30, tzinfo=timezone.utc),
+            "duration_seconds": 5400,
+            "stages": {"deep_seconds": 0, "light_seconds": 3600, "rem_seconds": 1200, "awake_seconds": 600},
+        }
+
+        assert data_247.save_sleep_data(db, user.id, night)
+        assert data_247.save_sleep_data(db, user.id, nap)
+
+        db.expire_all()
+        assert db.get(SleepDetails, nap["id"]).is_nap is True
+        assert db.get(SleepDetails, night["id"]).is_nap is False
 
 
 # ---------------------------------------------------------------------------

@@ -18,12 +18,13 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.integrations.rollup_queue import pop_dirty_days
-from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
+from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore, SleepDetails
 from app.repositories import AggregateRepository, data_point_series_repository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     ComputedBy,
+    EventCategory,
     HealthScoreCategory,
     ProviderName,
     SeriesType,
@@ -555,7 +556,9 @@ class TestCreateOrMergeSleep:
     def _dt(self, hour: int, minute: int = 0, day: int = 21) -> datetime:
         return datetime(2026, 3, day, hour, minute, tzinfo=timezone.utc)
 
-    def _record(self, data_source: DataSource, start: datetime, end: datetime) -> EventRecordCreate:
+    def _record(
+        self, data_source: DataSource, start: datetime, end: datetime, zone_offset: str | None = "+00:00"
+    ) -> EventRecordCreate:
         return EventRecordCreate(
             id=uuid4(),
             category="sleep",
@@ -567,6 +570,7 @@ class TestCreateOrMergeSleep:
             start_datetime=start,
             end_datetime=end,
             duration_seconds=int((end - start).total_seconds()),
+            zone_offset=zone_offset,
         )
 
     def _detail(
@@ -593,6 +597,159 @@ class TestCreateOrMergeSleep:
             sleep_efficiency_score=Decimal(efficiency),
             is_nap=is_nap,
         )
+
+    def _nap_detail(self, record_id: UUID) -> EventRecordDetailCreate:
+        return self._detail(record_id, deep=0, light=60, rem=20, awake=10, in_bed=90)
+
+    def test_a_nap_of_a_provider_without_nap_flags_is_flagged(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WITHINGS, source="withings")
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30))
+
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+        )
+
+        db.expire_all()
+        assert db.get(SleepDetails, nap.id).is_nap is True
+        assert db.get(SleepDetails, night.id).is_nap is False
+
+    def test_a_nap_is_flagged_once_its_night_arrives(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WITHINGS, source="withings")
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30))
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+        )
+        db.expire_all()
+        assert db.get(SleepDetails, nap.id).is_nap is False
+
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        db.expire_all()
+        assert db.get(SleepDetails, nap.id).is_nap is True
+
+    def test_a_nap_without_a_zone_offset_is_flagged_far_from_the_night(self, db: Session) -> None:
+        # Sensor Bio sleep comes without a zone offset
+        data_source = DataSourceFactory(provider=ProviderName.SENSORBIO, source="sensorbio")
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6), zone_offset=None)
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30), zone_offset=None)
+
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+        )
+
+        db.expire_all()
+        assert db.get(SleepDetails, nap.id).is_nap is True
+
+    def test_a_provider_nap_flag_is_kept(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.GARMIN, source="garmin")
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30))
+
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+        )
+
+        db.expire_all()
+        assert db.get(SleepDetails, nap.id).is_nap is False
+
+    def test_a_session_that_becomes_a_nap_loses_its_internal_sleep_score(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WITHINGS, source="withings")
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30))
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+        )
+        # Scored as the day's main sleep, as fill_missing_sleep_scores would
+        HealthScoreFactory(
+            user_id=data_source.user_id,
+            data_source_id=data_source.id,
+            provider=ProviderName.INTERNAL,
+            category=HealthScoreCategory.SLEEP,
+            recorded_at=self._dt(14, 30),
+            event_record_id=nap.id,
+        )
+
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+
+        db.expire_all()
+        assert db.query(HealthScore).filter(HealthScore.event_record_id == nap.id).count() == 0
+
+    def test_the_sleep_created_webhook_carries_the_inferred_nap_flag(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WITHINGS, source="withings")
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30))
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+
+        with patch("app.services.event_record_service.on_sleep_created") as mock_sleep:
+            event_record_service.create_or_merge_sleep(
+                db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+            )
+
+        assert mock_sleep.call_args.kwargs["is_nap"] is True
+
+    def test_the_new_flag_is_committed(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WITHINGS, source="withings")
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30))
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+        )
+
+        # A caller that rolls back afterwards (an error later in its sync) keeps the flag
+        db.rollback()
+        db.expire_all()
+        assert db.get(SleepDetails, nap.id).is_nap is True
+
+    def test_a_failing_nap_step_keeps_the_session_and_its_webhook(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WITHINGS, source="withings")
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+
+        with (
+            patch.object(event_record_service, "reclassify_sleep_naps", side_effect=RuntimeError("boom")),
+            patch("app.services.event_record_service.on_sleep_created") as mock_sleep,
+        ):
+            event_record_service.create_or_merge_sleep(
+                db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+            )
+
+        assert db.get(EventRecord, night.id) is not None
+        mock_sleep.assert_called_once()
+
+    def test_deleting_the_night_makes_the_nap_main_sleep(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WITHINGS, source="withings")
+        night = self._record(data_source, self._dt(22, day=20), self._dt(6))
+        nap = self._record(data_source, self._dt(13), self._dt(14, 30))
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, night, self._detail(night.id), self.THRESHOLD
+        )
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, nap, self._nap_detail(nap.id), self.THRESHOLD
+        )
+
+        assert event_record_service.delete_event_record(db, data_source.user_id, night.id, EventCategory.SLEEP)
+
+        db.expire_all()
+        assert db.get(SleepDetails, nap.id).is_nap is False
 
     def test_no_adjacent_creates_single_record(self, db: Session) -> None:
         """When no adjacent record exists, creates the record normally."""
@@ -983,7 +1140,8 @@ class TestCreateOrMergeSleep:
     def test_is_nap_false_when_only_one_is_nap(self, db: Session) -> None:
         """Merged session is not a nap unless both sessions are naps."""
         user = UserFactory()
-        data_source = DataSourceFactory(user=user)
+        # A provider that flags naps itself, so the merge keeps its flags
+        data_source = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
 
         existing = EventRecordFactory(
             mapping=data_source,
@@ -1005,7 +1163,8 @@ class TestCreateOrMergeSleep:
     def test_is_nap_true_when_both_are_naps(self, db: Session) -> None:
         """Merged session is a nap when both sessions are naps."""
         user = UserFactory()
-        data_source = DataSourceFactory(user=user)
+        # A provider that flags naps itself, so the merge keeps its flags
+        data_source = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
 
         existing = EventRecordFactory(
             mapping=data_source,
