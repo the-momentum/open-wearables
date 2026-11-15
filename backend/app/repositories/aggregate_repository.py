@@ -67,7 +67,7 @@ class AggregateRepository:
         rows = [
             {column: getattr(row, column) for column in (*self.key_columns, *self.refreshed)}
             | {"record_id": to_record_id}
-            for row in db_session.query(self.model).filter(self.model.record_id == from_record_id)  # ty: ignore[unresolved-attribute]
+            for row in db_session.query(self.model).filter(self.model.record_id == from_record_id)  # ty: ignore[missing-union-attribute]
         ]
         return self.upsert(db_session, rows) if rows else 0
 

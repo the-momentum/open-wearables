@@ -242,7 +242,7 @@ class Polar247Data(Base247DataTemplate):
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[SleepNormalized]:  # ty:ignore[invalid-method-override]
+    ) -> list[SleepNormalized]:  # ty:ignore[incompatible-method-override]
         results: list[Polar247Data.SleepNormalized] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, SleepJSON, user_id, "sleep")) is None:
@@ -371,7 +371,7 @@ class Polar247Data(Base247DataTemplate):
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[TimeSeriesSampleCreate]:  # ty:ignore[invalid-method-override]
+    ) -> list[TimeSeriesSampleCreate]:  # ty:ignore[incompatible-method-override]
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, DailyActivityJSON, user_id, "daily_activity")) is None:

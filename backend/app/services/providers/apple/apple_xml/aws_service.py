@@ -75,7 +75,7 @@ def get_sns_client() -> Any | None:
             "sns",
             region_name=settings.aws_region,
             aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),  # ty:ignore[unresolved-attribute]
+            aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),  # ty:ignore[missing-union-attribute]
         )
     except (NoCredentialsError, AttributeError):
         logger.warning("AWS credentials not configured")

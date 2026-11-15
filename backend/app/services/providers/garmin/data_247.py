@@ -272,7 +272,7 @@ class Garmin247Data(Base247DataTemplate):
         self,
         raw_sleep: dict[str, Any],
         user_id: UUID,
-    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:  # ty:ignore[invalid-method-override]
+    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:  # ty:ignore[incompatible-method-override]
         """Normalize Garmin sleep data to internal schema."""
         start_ts = raw_sleep.get("startTimeInSeconds", 0)
         duration = raw_sleep.get("durationInSeconds", 0)
@@ -2095,7 +2095,7 @@ class Garmin247Data(Base247DataTemplate):
         self,
         raw_stats: dict[str, Any],
         user_id: UUID,
-    ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:  # ty:ignore[invalid-method-override]
+    ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:  # ty:ignore[incompatible-method-override]
         """Delegate to normalize_dailies."""
         return self.normalize_dailies(raw_stats, user_id)
 

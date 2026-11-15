@@ -65,7 +65,7 @@ class StravaWebhookService(BaseWebhookService):
         """
         callback_url = build_callback_url("strava")
         client_id, client_secret = self._get_strava_credentials()
-        verify_token = settings.strava_webhook_verify_token.get_secret_value()  # ty:ignore[unresolved-attribute]
+        verify_token = settings.strava_webhook_verify_token.get_secret_value()  # ty:ignore[missing-union-attribute]
 
         async with httpx.AsyncClient() as client:
             # Check for existing subscription

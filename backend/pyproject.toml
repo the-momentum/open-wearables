@@ -5,57 +5,57 @@ description = ""
 requires-python = ">=3.14"
 dependencies = [
     "cryptography>=50.0.2",
-    "pydantic-settings>=2.16.2",
-    "email-validator>=2.2.0",
-    "psycopg>=3.3.6",
-    "sqlalchemy>=2.1.6",
-    "fastapi>=0.143.5",
-    "fastapi-cli>=0.0.32",
-    "celery>=5.6.3",
+    "pydantic-settings>=2.16.3",
+    "email-validator>=2.4.0",
+    "psycopg>=3.3.9",
+    "sqlalchemy>=2.1.8",
+    "fastapi>=0.163.1",
+    "fastapi-cli>=0.0.34",
+    "celery>=5.7.0",
     "flower>=2.2.0",
     "redis>=8.1.0",
-    "sentry-sdk[fastapi]>=2.73.0",
+    "sentry-sdk[fastapi]>=2.75.0",
     "python-multipart>=0.0.33",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
     "alembic>=1.20.1",
-    "boto3>=1.43.123",
+    "boto3>=1.44.3",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.50.0",
+    "resend>=2.53.2",
     "pyyaml>=6.0.3",
-    "svix>=2.9.1",
+    "svix>=2.10.0",
     "numpy>=2.5.4",
-    "faker>=40.44.0",
+    "faker>=40.54.0",
     "fitdecode>=0.11.0",
-    "google-auth>=2.62.0",
-    "packaging>=24",
+    "google-auth>=2.62.2",
+    "packaging>=26.3",
 ]
 
 [project.optional-dependencies]
 # OpenTelemetry log export, used only with OTEL_ENABLED=true. The published image includes it.
 otel = [
-    "fastapi[opentelemetry]>=0.162.0",
+    "fastapi[opentelemetry]>=0.163.1",
     "opentelemetry-sdk>=1.45.2",
     "opentelemetry-exporter-otlp-proto-http>=1.45.2",
-    "opentelemetry-instrumentation-logging>=0.66b0",
+    "opentelemetry-instrumentation-logging>=0.66b2",
 ]
 
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.7.0",
-    "ruff>=0.17.3",
-    "ty>=0.0.95",
+    "ruff>=0.17.5",
+    "ty>=0.0.104",
 ]
 dev = [
     "pytest>=9.2.0",
-    "pytest-asyncio>=1.4.1.post1",
+    "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",
-    "freezegun>=1.5.0",
-    "factory-boy>=3.3.0",
-    "psycopg-binary>=3.3.6",
-    "testcontainers[postgres,redis]>=4.14.2",
+    "freezegun>=1.5.5",
+    "factory-boy>=3.3.3",
+    "psycopg-binary>=3.3.9",
+    "testcontainers[postgres,redis]>=4.15.0",
 ]
 
 [tool.ruff]

@@ -430,6 +430,6 @@ class BaseOAuthTemplate(ABC):
             on_connection_created(
                 user_id=user_id,
                 provider=self.provider_name,
-                connection_id=new_connection.id,  # ty:ignore[unresolved-attribute]
-                connected_at=new_connection.created_at.isoformat(),  # ty:ignore[unresolved-attribute]
+                connection_id=new_connection.id,  # ty:ignore[missing-union-attribute]
+                connected_at=new_connection.created_at.isoformat(),  # ty:ignore[missing-union-attribute]
             )
