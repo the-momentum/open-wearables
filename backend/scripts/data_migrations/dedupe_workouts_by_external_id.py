@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
-"""Delete duplicate workouts that share one data source and external_id, keeping the newest copy.
+"""Delete duplicate workouts that share one data source and external_id and overlap in time, keeping the newest.
 
 Workouts were matched only on their exact timestamps, so a provider re-delivering one with revised
 times (e.g. Whoop trimming a workout after the webhook) stored a second row (#1607). The newest copy
-holds the provider's current version, the same rule ingest now applies. Health scores the keeper
-lacks move onto it; details and aggregates of the deleted copies cascade.
+holds the provider's current version, the same rule ingest now applies.
 
-Usage (inside Docker):
-    docker compose exec app uv run python scripts/data_migrations/dedupe_workouts_by_external_id.py --dry-run
+Copies must also overlap in time: an id shared by workouts far apart is not an id. Suunto stored the
+detail endpoint's workoutId, which is always 0, so every Suunto workout of a source shares "0".
+Overlapping copies form one cluster per (data source, external_id); the newest copy of each cluster
+is kept. Health scores, session aggregates and details the keeper lacks move onto it from the newest
+copy that has them; the rest cascade with the deleted copies. Coverage is refreshed and the deleted
+copies' days are queued for the rollup.
+
+The clusters are found in one pass over the workouts with a shared external_id, then deleted by
+primary key in committed batches. Idempotent: a re-run finds nothing. Runs once per instance
+through data_migration_service.
+
+Usage (inside Docker), with --dry-run to preview without changes:
     docker compose exec app uv run python scripts/data_migrations/dedupe_workouts_by_external_id.py
 """
 
 import argparse
+from collections.abc import Sequence
 
-from sqlalchemy import text
+from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
 
 from app.database import engine
@@ -22,60 +32,114 @@ from app.repositories.data_type_coverage_repository import data_type_coverage_re
 from app.repositories.event_record_repository import local_days
 from app.services.data_migration_service import data_migration_service
 
-_DUPLICATES = """
-    WITH ranked AS (
-        SELECT er.id, er.data_source_id, er.external_id, er.start_datetime, er.end_datetime, er.zone_offset,
-               first_value(er.id) OVER (
-                   PARTITION BY er.data_source_id, er.external_id ORDER BY er.created_at DESC, er.id
-               ) AS keeper_id
-        FROM event_record er
-        WHERE er.category = 'workout'
-          AND er.external_id IS NOT NULL
-          AND (er.data_source_id, er.external_id) IN (
+_BATCH_SIZE = 1_000
+
+_DUPLICATES = text("""
+    WITH candidates AS (
+        SELECT e.id, e.data_source_id, e.external_id, e.start_datetime, e.end_datetime, e.zone_offset, e.created_at
+        FROM event_record e
+        WHERE e.category = 'workout' AND e.external_id IS NOT NULL
+          AND (e.data_source_id, e.external_id) IN (
               SELECT data_source_id, external_id
               FROM event_record
               WHERE category = 'workout' AND external_id IS NOT NULL
               GROUP BY data_source_id, external_id
               HAVING count(*) > 1
           )
+    ),
+    ordered AS (
+        SELECT c.*, max(c.end_datetime) OVER (
+            PARTITION BY c.data_source_id, c.external_id ORDER BY c.start_datetime, c.id
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ) AS previous_end
+        FROM candidates c
+    ),
+    clustered AS (
+        SELECT o.*, sum(CASE WHEN o.previous_end IS NULL OR o.start_datetime > o.previous_end THEN 1 ELSE 0 END)
+            OVER (PARTITION BY o.data_source_id, o.external_id ORDER BY o.start_datetime, o.id) AS cluster
+        FROM ordered o
+    ),
+    ranked AS (
+        SELECT cl.*, first_value(cl.id) OVER (
+            PARTITION BY cl.data_source_id, cl.external_id, cl.cluster ORDER BY cl.created_at DESC, cl.id DESC
+        ) AS keeper_id
+        FROM clustered cl
     )
-    SELECT * FROM ranked WHERE id <> keeper_id
-"""
-
-_SELECT = text(f"""
-    WITH dups AS ({_DUPLICATES})
-    SELECT d.id, d.keeper_id, d.data_source_id, d.external_id, d.start_datetime, d.end_datetime, d.zone_offset,
+    SELECT r.id, r.keeper_id, r.data_source_id, r.external_id, r.start_datetime, r.end_datetime, r.zone_offset,
            ds.user_id, ds.provider
-    FROM dups d
-    JOIN data_source ds ON ds.id = d.data_source_id
-    ORDER BY ds.provider, d.start_datetime DESC
+    FROM ranked r
+    JOIN data_source ds ON ds.id = r.data_source_id
+    WHERE r.id <> r.keeper_id
+    ORDER BY r.keeper_id, r.created_at DESC, r.id DESC
 """)
 
-# One score per (keeper, provider, category), and only where the keeper has none
+# Copies arrive newest first per keeper, so the newest copy that has a row is the one moved
+_PAIRS = "unnest(CAST(:ids AS uuid[]), CAST(:keepers AS uuid[])) WITH ORDINALITY AS p(id, keeper_id, rank)"
+
 _MOVE_SCORES = text(f"""
-    WITH dups AS ({_DUPLICATES}),
-    movable AS (
-        SELECT DISTINCT ON (d.keeper_id, hs.provider, hs.category) hs.id, d.keeper_id
-        FROM health_score hs
-        JOIN dups d ON d.id = hs.event_record_id
+    UPDATE health_score h SET event_record_id = c.keeper_id
+    FROM (
+        SELECT DISTINCT ON (p.keeper_id, x.provider, x.category) x.id, p.keeper_id
+        FROM {_PAIRS} JOIN health_score x ON x.event_record_id = p.id
         WHERE NOT EXISTS (
             SELECT 1 FROM health_score k
-            WHERE k.event_record_id = d.keeper_id AND k.provider = hs.provider AND k.category = hs.category
+            WHERE k.event_record_id = p.keeper_id AND k.provider = x.provider AND k.category = x.category
         )
-        ORDER BY d.keeper_id, hs.provider, hs.category, hs.created_at DESC
-    )
-    UPDATE health_score hs SET event_record_id = m.keeper_id FROM movable m WHERE hs.id = m.id
+        ORDER BY p.keeper_id, x.provider, x.category, p.rank
+    ) c
+    WHERE h.id = c.id
 """)
 
-_DELETE = text(f"""
-    WITH dups AS ({_DUPLICATES})
-    DELETE FROM event_record er USING dups d WHERE er.id = d.id
+_MOVE_AGGREGATES = text(f"""
+    UPDATE event_record_aggregate a SET record_id = c.keeper_id
+    FROM (
+        SELECT DISTINCT ON (p.keeper_id, x.series_type_definition_id, x.computed_by) x.id, p.keeper_id
+        FROM {_PAIRS} JOIN event_record_aggregate x ON x.record_id = p.id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM event_record_aggregate k
+            WHERE k.record_id = p.keeper_id AND k.series_type_definition_id = x.series_type_definition_id
+              AND k.computed_by = x.computed_by
+        )
+        ORDER BY p.keeper_id, x.series_type_definition_id, x.computed_by, p.rank
+    ) c
+    WHERE a.id = c.id
 """)
+
+_MOVE_DETAILS = text(f"""
+    UPDATE workout_details d SET record_id = c.keeper_id
+    FROM (
+        SELECT DISTINCT ON (p.keeper_id) p.id, p.keeper_id
+        FROM {_PAIRS} JOIN workout_details x ON x.record_id = p.id
+        WHERE NOT EXISTS (SELECT 1 FROM workout_details k WHERE k.record_id = p.keeper_id)
+        ORDER BY p.keeper_id, p.rank
+    ) c
+    WHERE d.record_id = c.id
+""")
+
+_DELETE = text("DELETE FROM event_record WHERE id = ANY(CAST(:ids AS uuid[]))")
+
+
+def _remove(db: Session, rows: Sequence[Row]) -> int:
+    params = {"ids": [row.id for row in rows], "keepers": [row.keeper_id for row in rows]}
+    for statement in (_MOVE_SCORES, _MOVE_AGGREGATES, _MOVE_DETAILS):
+        db.execute(statement, params)
+    deleted = db.execute(_DELETE, params).rowcount  # ty: ignore[unresolved-attribute]
+    data_type_coverage_repository.refresh_events(db, {(row.user_id, row.provider, "workout") for row in rows})
+    mark_dirty_days(
+        db,
+        [
+            day
+            for row in rows
+            for day in local_days(row.data_source_id, row.start_datetime, row.end_datetime, row.zone_offset)
+        ],
+    )
+    db.commit()
+    return deleted
 
 
 def dedupe_workouts(db: Session, *, dry_run: bool) -> int:
-    """Does not commit; the caller owns the transaction. Returns the number of duplicates found."""
-    rows = db.execute(_SELECT).fetchall()
+    """Commits after each batch. Returns the number of duplicates found."""
+    rows = db.execute(_DUPLICATES).fetchall()
     if not rows:
         print("No duplicate workouts - nothing to do.")
         return 0
@@ -92,18 +156,8 @@ def dedupe_workouts(db: Session, *, dry_run: bool) -> int:
         print("\nDry run - no changes made.")
         return len(rows)
 
-    moved = db.execute(_MOVE_SCORES).rowcount  # ty: ignore[unresolved-attribute]
-    deleted = db.execute(_DELETE).rowcount  # ty: ignore[unresolved-attribute]
-    data_type_coverage_repository.refresh_events(db, {(row.user_id, row.provider, "workout") for row in rows})
-    mark_dirty_days(
-        db,
-        [
-            day
-            for row in rows
-            for day in local_days(row.data_source_id, row.start_datetime, row.end_datetime, row.zone_offset)
-        ],
-    )
-    print(f"\nMoved {moved} health score(s), deleted {deleted} workout(s).")
+    deleted = sum(_remove(db, rows[i : i + _BATCH_SIZE]) for i in range(0, len(rows), _BATCH_SIZE))
+    print(f"\nDeleted {deleted} workout(s).")
     return len(rows)
 
 
