@@ -267,6 +267,8 @@ class SummariesService:
 
             hr_avg = result.get("avg_hr")
             avg_hr: int | None = int(round(hr_avg)) if hr_avg is not None else None
+            resting_hr = result.get("resting_hr")
+            resting_heart_rate_bpm: int | None = int(round(resting_hr)) if resting_hr is not None else None
             avg_hrv_sdnn: float | None = result.get("avg_hrv_sdnn")
             avg_hrv_rmssd: float | None = result.get("avg_hrv_rmssd")
             avg_respiratory_rate: float | None = result.get("avg_resp")
@@ -317,6 +319,7 @@ class SummariesService:
                 nap_count=result.get("nap_count"),
                 nap_duration_minutes=result.get("nap_duration_minutes"),
                 avg_heart_rate_bpm=avg_hr,
+                resting_heart_rate_bpm=resting_heart_rate_bpm,
                 avg_hrv_sdnn_ms=avg_hrv_sdnn,
                 avg_hrv_rmssd_ms=avg_hrv_rmssd,
                 avg_respiratory_rate=avg_respiratory_rate,
