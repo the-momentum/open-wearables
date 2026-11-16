@@ -11,17 +11,15 @@ Dispatched by the provider-wide fan-out and by the OAuth callback, which must
 reconcile a single new connection rather than every existing one.
 """
 
-from logging import getLogger
-
 from celery import Task, shared_task
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.withings.webhook_service import WithingsWebhookService
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(
@@ -46,9 +44,7 @@ def sync_user_subscriptions(self: Task, user_id: str) -> dict:
         with SessionLocal() as db:
             results = service.reconcile_user(db, user_id)
     except Exception as exc:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Withings user subscription sync failed, scheduling retry",
             provider="withings",
             user_id=user_id,
@@ -60,9 +56,7 @@ def sync_user_subscriptions(self: Task, user_id: str) -> dict:
 
     failed = [result for result in results if result.get("status") == "error"]
     if failed:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Withings user subscription sync had failures",
             provider="withings",
             user_id=user_id,
@@ -73,9 +67,7 @@ def sync_user_subscriptions(self: Task, user_id: str) -> dict:
         # Attach the cause; a bare MaxRetriesExceededError would lose the failed items.
         raise self.retry(exc=RuntimeError(f"Withings subscription sync failed for user {user_id}: {failed}"))
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Withings user subscriptions synced",
         provider="withings",
         user_id=user_id,

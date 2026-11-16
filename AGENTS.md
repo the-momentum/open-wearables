@@ -36,6 +36,9 @@ open-wearables/
 ### Docker (Recommended)
 
 ```bash
+# Create the .env files and generate SECRET_KEY (safe to repeat)
+make init
+
 # Start all services
 docker compose up -d
 
@@ -60,6 +63,7 @@ make stop
 
 | Command | Description |
 |---------|-------------|
+| `make init` | Create the `.env` files and generate `SECRET_KEY` |
 | `make build` | Build Docker images |
 | `make run` | Start in detached mode |
 | `make up` | Start in foreground |
@@ -299,3 +303,18 @@ fork divergence.
     deletes them on `pull` — for `oura` that removes the subscriptions
     registered via `POST /api/v1/oura/webhooks/subscriptions`, and for
     `google_health` registration 500s without `GOOGLE_PROJECT_ID`.
+17. **Prev-page order on `_page_days` summaries.** `_page_days` returns
+    `direction == "prev"` pages nearest-first — the reverse of `sort_order` —
+    so `results[:limit]` keeps the days closest to the cursor.
+    `get_recovery_summaries` and `get_activity_summaries` must then decode the
+    cursor direction, `reverse()` the sliced page for display, and emit
+    cursors with prev-page semantics (`next_cursor` always, `previous_cursor`
+    only when `has_more`) — the contract `get_sleep_summaries` already
+    implements. Upstream's versions do none of this: every `previous_cursor`
+    page renders in reverse order and boundary pages dead-end or emit an
+    empty page. The bug is latent upstream (it exposes `sort_order` only on
+    `/summaries/activity`, and its prev-page tests compare `sorted()` dates),
+    while the fork exposes `sort_order` on recovery too and its exact-order
+    test catches it. Candidate for upstreaming; until then keep the
+    direction/reverse/cursor block through merges rather than resolving
+    `summaries_service.py` toward upstream's shape.

@@ -1,7 +1,5 @@
 """Copies the history into the aggregate tables once per instance, a few minutes at a time."""
 
-from logging import getLogger
-
 from celery import shared_task
 from sqlalchemy import Connection, event
 from sqlalchemy.orm import Session, SessionTransaction
@@ -11,8 +9,9 @@ from app.database import SessionLocal
 from app.integrations import redis_lock
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.services.aggregate_backfill_service import aggregate_backfill_service
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 _LOCK_KEY = "aggregate_backfill:lock"
 # Extended after every data source, so it only runs out on a holder that stopped making progress.

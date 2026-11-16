@@ -19,7 +19,6 @@ import.
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -39,8 +38,6 @@ from app.services.sync_status_service import (
     list_stored_runs,
     stream_user_events,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

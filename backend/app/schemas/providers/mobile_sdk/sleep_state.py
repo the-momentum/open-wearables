@@ -31,6 +31,8 @@ class SleepState(BaseModel):
 
     last_start_timestamp: datetime
     last_end_timestamp: datetime
+    last_received_at: datetime | None = None
+    has_apple_watch_sleep: bool = False
 
     in_bed_seconds: float = 0
     awake_seconds: float = 0

@@ -420,8 +420,8 @@ class TestDisconnectEndpoint:
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/not_a_provider", headers=headers)
 
-        # Assert - FastAPI returns 400 for invalid enum path params
-        assert response.status_code == 400
+        # Assert - FastAPI returns 422 for invalid enum path params
+        assert response.status_code == 422
 
     def test_disconnect_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""

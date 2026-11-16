@@ -6,7 +6,6 @@ Revises: c1e7f8ff781d, ef6ff24def41
 """
 from typing import Sequence, Union
 
-
 # revision identifiers, used by Alembic.
 revision: str = '19248cba05f6'
 down_revision: Union[str, None] = ('c1e7f8ff781d', 'ef6ff24def41')

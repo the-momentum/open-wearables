@@ -15,12 +15,14 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.models import SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
-from tests.factories import fake_firebase_uid
+from tests.factories import UserFactory, fake_firebase_uid
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -65,7 +67,7 @@ class TestSensorBio247SleepNormalization:
         assert result is not None
         assert result["start_time"] == datetime.fromtimestamp(1_700_000_000, tz=timezone.utc)
         assert result["end_time"] == datetime.fromtimestamp(1_700_028_800, tz=timezone.utc)
-        assert result["duration_seconds"] == 420 * 60
+        assert result["duration_seconds"] == 28_800  # the start-to-end window, not total_sleep_mins
         assert result["efficiency_percent"] == 88
         assert result["stages"]["deep_seconds"] == 90 * 60
         assert result["stages"]["rem_seconds"] == 120 * 60
@@ -146,7 +148,7 @@ class TestSensorBio247SleepNormalization:
 
 
 class TestSensorBio247SaveSleepData:
-    """save_sleep_data() — skips records with missing start/end; persists valid ones."""
+    """save_sleep_data() — skips records with a missing or reversed window; persists valid ones."""
 
     def test_skips_missing_start_time(self, data_247: SensorBio247Data) -> None:
         db = MagicMock()
@@ -167,6 +169,19 @@ class TestSensorBio247SaveSleepData:
         }
         result = data_247.save_sleep_data(db, USER_ID, normalized)
         assert result is False
+
+    def test_skips_window_that_ends_before_it_starts(self, data_247: SensorBio247Data) -> None:
+        db = MagicMock()
+        normalized = {
+            "id": uuid4(),
+            "start_time": datetime(2024, 1, 15, 8, 0, 0, tzinfo=timezone.utc),
+            "end_time": datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
+            "duration_seconds": -28800,
+        }
+        with patch("app.services.providers.sensorbio.data_247.event_record_service") as mock_svc:
+            result = data_247.save_sleep_data(db, USER_ID, normalized)
+        assert result is False
+        mock_svc.create.assert_not_called()
 
     def test_persists_valid_record(self, data_247: SensorBio247Data) -> None:
         db = MagicMock()
@@ -205,6 +220,32 @@ class TestSensorBio247SaveSleepData:
         assert detail.sleep_awake_minutes is None
         assert detail.sleep_rem_minutes == 0
         assert detail.sleep_total_duration_minutes == 0
+
+
+class TestSensorBio247SleepNaps:
+    def test_a_nap_is_flagged_once_it_is_saved(self, data_247: SensorBio247Data, db: Session) -> None:
+        user = UserFactory()
+        night = {
+            "id": uuid4(),
+            "start_time": datetime(2026, 3, 20, 22, tzinfo=timezone.utc),
+            "end_time": datetime(2026, 3, 21, 6, tzinfo=timezone.utc),
+            "duration_seconds": 28800,
+            "stages": {"deep_seconds": 5400, "light_seconds": 14400, "rem_seconds": 7200, "awake_seconds": 1800},
+        }
+        nap = {
+            "id": uuid4(),
+            "start_time": datetime(2026, 3, 21, 13, tzinfo=timezone.utc),
+            "end_time": datetime(2026, 3, 21, 14, 30, tzinfo=timezone.utc),
+            "duration_seconds": 5400,
+            "stages": {"deep_seconds": 0, "light_seconds": 3600, "rem_seconds": 1200, "awake_seconds": 600},
+        }
+
+        assert data_247.save_sleep_data(db, user.id, night)
+        assert data_247.save_sleep_data(db, user.id, nap)
+
+        db.expire_all()
+        assert db.get(SleepDetails, nap["id"]).is_nap is True
+        assert db.get(SleepDetails, night["id"]).is_nap is False
 
 
 # ---------------------------------------------------------------------------

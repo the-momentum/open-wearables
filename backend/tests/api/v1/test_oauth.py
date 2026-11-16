@@ -85,7 +85,7 @@ class TestOAuthAuthorizeEndpoint:
         response = client.get("/api/v1/oauth/garmin/authorize")
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_authorize_invalid_provider(self, client: TestClient, db: Session) -> None:
         """Test authorization with non-existent provider."""
@@ -99,7 +99,7 @@ class TestOAuthAuthorizeEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_authorize_non_oauth_provider(self, client: TestClient, db: Session) -> None:
         """Test authorization with provider that doesn't support OAuth."""
@@ -113,7 +113,8 @@ class TestOAuthAuthorizeEndpoint:
         )
 
         # Assert - Should fail because apple doesn't have OAuth
-        assert response.status_code in [400, 401, 422]
+        assert response.status_code == 400
+        assert response.json()["code"] == "UNSUPPORTED_PROVIDER"
 
 
 class TestOAuthProvidersEndpoint:
@@ -330,6 +331,7 @@ class TestOAuthUpdateProviderEndpoint:
 
         # Assert
         assert response.status_code == 400
+        assert response.json()["code"] == "BAD_REQUEST"
 
     def test_update_live_sync_mode_non_configurable_provider(
         self,
@@ -353,6 +355,7 @@ class TestOAuthUpdateProviderEndpoint:
 
         # Assert
         assert response.status_code == 400
+        assert response.json()["code"] == "UNSUPPORTED_PROVIDER"
 
     def test_update_provider_response_structure(
         self,
@@ -419,4 +422,4 @@ class TestOAuthCallbackProbe:
 
     def test_head_callback_invalid_provider(self, client: TestClient, db: Session) -> None:
         response = client.head("/api/v1/oauth/not-a-provider/callback")
-        assert response.status_code == 400
+        assert response.status_code == 422

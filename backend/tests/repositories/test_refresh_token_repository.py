@@ -38,8 +38,8 @@ class TestRefreshTokenRepository:
         assert created.token_type == TokenType.SDK
         assert created.user_id == user.id
 
-    def test_get_valid_token(self, db: Session) -> None:
-        """get_valid_token should return token if not revoked."""
+    def test_claim_valid_token_revokes_and_returns_it(self, db: Session) -> None:
+        """claim_valid_token should revoke a live token and return it."""
         # Arrange
         user = UserFactory()
         token = RefreshToken(
@@ -56,14 +56,16 @@ class TestRefreshTokenRepository:
         db.commit()
 
         # Act
-        result = refresh_token_repository.get_valid_token(db, token.id)
+        result = refresh_token_repository.claim_valid_token(db, token.id)
 
         # Assert
         assert result is not None
         assert result.id == token.id
+        assert result.revoked_at is not None
+        assert refresh_token_repository.claim_valid_token(db, token.id) is None
 
-    def test_get_valid_token_returns_none_for_revoked(self, db: Session) -> None:
-        """get_valid_token should return None if token is revoked."""
+    def test_claim_valid_token_returns_none_for_revoked(self, db: Session) -> None:
+        """claim_valid_token should return None if token is revoked."""
         # Arrange
         user = UserFactory()
         token = RefreshToken(
@@ -80,7 +82,7 @@ class TestRefreshTokenRepository:
         db.commit()
 
         # Act
-        result = refresh_token_repository.get_valid_token(db, token.id)
+        result = refresh_token_repository.claim_valid_token(db, token.id)
 
         # Assert
         assert result is None
@@ -141,30 +143,6 @@ class TestRefreshTokenRepository:
         # Assert
         assert len(result) == 1
         assert result[0].developer_id == developer.id
-
-    def test_revoke_token(self, db: Session) -> None:
-        """revoke_token should set revoked_at timestamp."""
-        # Arrange
-        user = UserFactory()
-        token = RefreshToken(
-            id="rt-torevoke123456789012345678901",
-            token_type=TokenType.SDK,
-            user_id=user.id,
-            origin=SDKTokenOrigin.ADMIN,
-            developer_id=None,
-            created_at=datetime.now(timezone.utc),
-            last_used_at=None,
-            revoked_at=None,
-        )
-        db.add(token)
-        db.commit()
-
-        # Act
-        refresh_token_repository.revoke_token(db, token)
-
-        # Assert
-        db.refresh(token)
-        assert token.revoked_at is not None
 
     def test_revoke_all_for_user(self, db: Session) -> None:
         """revoke_all_for_user should revoke all tokens for a user."""

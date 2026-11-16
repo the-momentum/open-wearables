@@ -2,11 +2,13 @@
 	let {
 		checked = $bindable(false),
 		label,
+		disabled = false,
 		onchange
 	}: {
 		checked?: boolean;
 		/** Named for assistive tech; the visible text is the caller's own. */
 		label: string;
+		disabled?: boolean;
 		onchange?: (next: boolean) => void;
 	} = $props();
 
@@ -23,8 +25,10 @@
 	role="switch"
 	aria-checked={checked}
 	aria-label={label}
+	{disabled}
 	onclick={toggle}
 	class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors
+		disabled:cursor-not-allowed disabled:opacity-50
 		{checked ? 'bg-primary' : 'bg-surface-muted ring-1 ring-border'}"
 >
 	<span

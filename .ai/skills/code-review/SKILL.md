@@ -151,8 +151,11 @@ def process_user(db, user_id, active=True):
 ### Error Handling
 
 - Use `raise_404=True` in service methods instead of manual checks
-- Let exceptions propagate to global handlers
-- Use `log_and_capture_error` for caught exceptions in background tasks
+- Let exceptions propagate to the global handlers in `app/main.py`; flag a revived `@handle_exceptions` decorator or a `try/except` that only re-raises as `HTTPException`
+- Services and repositories raise domain errors from `app/utils/exceptions.py` (`InvalidInputError`, `NotFoundError`, `ConflictError`, ...), not `HTTPException` - they also run in Celery tasks
+- Don't map a generic `ValueError`/`AttributeError` to a 4xx; raise `InvalidInputError` where the input is the client's fault
+- A unique violation in `CrudRepository.create` returns the existing row instead of raising; where a duplicate must be a 409, the service has to check it before creating
+- Log caught exceptions in background tasks with `logger.error(..., exc_info=e)` so they reach Sentry; log through `get_logger(__name__)`, never `logging.getLogger`
 
 ---
 

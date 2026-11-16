@@ -24,13 +24,15 @@ def mock_log() -> Generator[MagicMock, None, None]:
         patch("app.api.routes.v1.sdk_sync.process_sdk_upload"),
         patch("app.api.routes.v1.sdk_sync.store_raw_payload"),
         patch.object(settings, "sdk_payload_s3_offload", False),
-        patch("app.api.routes.v1.sdk_sync.log_structured") as mock,
+        patch("app.api.routes.v1.sdk_sync.logger") as mock,
     ):
         yield mock
 
 
 def _batch_received(mock_log: MagicMock) -> dict:
-    return next(call.kwargs for call in mock_log.call_args_list if call.kwargs["action"] == "apple_sdk_batch_received")
+    return next(
+        call.kwargs for call in mock_log.method_calls if call.kwargs.get("action") == "apple_sdk_batch_received"
+    )
 
 
 class TestSDKSyncAttribution:

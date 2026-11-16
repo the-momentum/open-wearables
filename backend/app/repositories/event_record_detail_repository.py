@@ -23,7 +23,6 @@ from app.schemas.model_crud.activities import (
     EventRecordDetailUpdate,
     StatColumn,
 )
-from app.utils.exceptions import handle_exceptions
 
 
 class EventRecordDetailRepository(
@@ -88,7 +87,6 @@ class EventRecordDetailRepository(
         """Create a detail record using the appropriate polymorphic model; see upsert()."""
         return self.upsert(db_session, creator, detail_type)[0]
 
-    @handle_exceptions
     def upsert(
         self,
         db_session: DbSession,
@@ -151,7 +149,6 @@ class EventRecordDetailRepository(
                 return existing
             raise
 
-    @handle_exceptions
     def bulk_create(
         self,
         db_session: DbSession,

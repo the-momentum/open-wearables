@@ -1,7 +1,5 @@
 """Ultrahuman Ring Air OAuth 2.0 implementation."""
 
-import logging
-
 import httpx
 
 from app.config import settings
@@ -15,6 +13,9 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class UltrahumanOAuth(BaseOAuthTemplate):
@@ -32,7 +33,6 @@ class UltrahumanOAuth(BaseOAuthTemplate):
         api_base_url: str,
     ):
         super().__init__(user_repo, connection_repo, provider_name, api_base_url)
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     @property
     def endpoints(self) -> ProviderEndpoints:
@@ -79,10 +79,17 @@ class UltrahumanOAuth(BaseOAuthTemplate):
                 "username": provider_username,
             }
         except httpx.HTTPError as e:
-            self.logger.error(f"HTTP error fetching Ultrahuman user profile for user {user_id}: {e}")
+            logger.error(
+                "HTTP error fetching Ultrahuman user profile", exc_info=e, provider="ultrahuman", user_id=user_id
+            )
             return {"user_id": None, "username": None}
         except Exception as e:
-            self.logger.error(f"Unexpected error fetching Ultrahuman user profile for user {user_id}: {e}")
+            logger.error(
+                "Unexpected error fetching Ultrahuman user profile",
+                exc_info=e,
+                provider="ultrahuman",
+                user_id=user_id,
+            )
             return {"user_id": None, "username": None}
 
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:

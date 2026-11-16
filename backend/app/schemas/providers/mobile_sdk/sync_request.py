@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, ValidationInfo, field_validator
 
 from app.constants.series_types.sdk import SDKMetricType, SleepPhase, WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
@@ -80,6 +80,12 @@ class MetricRecord(BaseModel):
     source: SourceInfo | None = None
     value: Decimal
     unit: str | None
+    count: int | None = Field(
+        None,
+        description=(
+            "HKQuantitySample.count. Above 1 for a quantity series, e.g. one HealthKit condensed from older samples."
+        ),
+    )
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 
@@ -105,6 +111,61 @@ class WorkoutStatistic(BaseModel):
     value: float | int
 
 
+class WorkoutLap(BaseModel):
+    """HealthKit workout event (lap, segment or marker) or Health Connect lap (no `type`)."""
+
+    type: str | None = None
+    startDate: datetime
+    endDate: datetime
+    duration: float | None = None
+    distanceM: float | None = None
+    strokeStyle: str | None = None  # freestyle | backstroke | breaststroke | butterfly | kickboard | mixed | unknown
+    strokeCount: float | None = None
+    swolf: float | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class WorkoutSegment(BaseModel):
+    """Exercise segment of a workout (Health Connect `ExerciseSegment`)."""
+
+    type: str | None = None
+    startDate: datetime
+    endDate: datetime
+    repetitions: int | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class WorkoutRoutePoint(BaseModel):
+    """One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored."""
+
+    # NaN / Infinity fail validation, so the point is dropped instead of stored.
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    timestamp: datetime | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    altitudeM: float | None = None
+
+
+class WorkoutSample(BaseModel):
+    """One per-sample measurement recorded during a workout (heart rate, speed, cadence, power)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    timestamp: datetime | None = None
+    type: str | None = None
+    value: float | None = None
+    unit: str | None = None
+
+
+_WORKOUT_ITEM_MODELS: dict[str | None, type[BaseModel]] = {
+    "route": WorkoutRoutePoint,
+    "samples": WorkoutSample,
+    "segments": WorkoutSegment,
+    "laps": WorkoutLap,
+}
+
+
 class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
@@ -118,12 +179,27 @@ class Workout(BaseModel):
     title: str | None = None
     notes: str | None = None
     values: list[WorkoutStatistic] | None = None
+    route: list[WorkoutRoutePoint] | None = None
+    samples: list[WorkoutSample] | None = None
+    segments: list[WorkoutSegment] | None = None
+    laps: list[WorkoutLap] | None = None
+
+    @field_validator("route", "samples", "segments", "laps", mode="before")
+    @classmethod
+    def _drop_invalid_items(cls, items: Any, info: ValidationInfo) -> Any:
+        """A malformed item is dropped on its own instead of failing the workout."""
+        if not isinstance(items, list):
+            return items
+        model = _WORKOUT_ITEM_MODELS[info.field_name]
+        valid = []
+        for item in items:
+            try:
+                valid.append(model.model_validate(item))
+            except ValidationError:
+                continue
+        return valid
 
     # everything below is unused for now
-    segments: list[dict[str, Any]] | None = None
-    laps: list[dict[str, Any]] | None = None
-    route: list[dict[str, Any]] | None = None
-    samples: list[dict[str, Any]] | None = None
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 

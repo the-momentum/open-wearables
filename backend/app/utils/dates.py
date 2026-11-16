@@ -1,7 +1,7 @@
 import re
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, overload
 
 from fastapi import Query
 from pydantic import BeforeValidator, Field
@@ -148,6 +148,10 @@ def align_tz_awareness(start: datetime | None, end: datetime | None) -> tuple[da
     return start, end
 
 
+@overload
+def as_utc(moment: datetime) -> datetime: ...
+@overload
+def as_utc(moment: None) -> None: ...
 def as_utc(moment: datetime | None) -> datetime | None:
     """Return the same instant as a UTC-aware datetime; a naive input is read as UTC."""
     if moment is None:

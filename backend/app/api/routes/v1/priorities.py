@@ -1,6 +1,6 @@
 """API endpoints for managing global provider priorities."""
 
-from logging import getLogger
+import contextlib
 from typing import Annotated
 
 from fastapi import APIRouter, Path
@@ -18,9 +18,19 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityUpdate,
 )
 from app.services import DeveloperDep, PriorityService
+from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
-priority_service = PriorityService(log=getLogger(__name__))
+priority_service = PriorityService()
+
+
+def _with_display(item: ProviderPriorityResponse) -> ProviderPriorityResponse:
+    """The strategy's display name and icon, as provider settings show them. Added here, not in the priority
+    service: the strategies import the services that rank sources through it, a circular import there."""
+    with contextlib.suppress(ValueError):
+        strategy = ProviderFactory().get_provider(ProviderName(item.provider).value)
+        item.name, item.icon_url = strategy.display_name, strategy.icon_url
+    return item
 
 
 @router.get(
@@ -31,7 +41,9 @@ def get_provider_priorities(
     db: DbSession,
     _developer: DeveloperDep,
 ) -> ProviderPriorityListResponse:
-    return priority_service.get_provider_priorities(db)
+    result = priority_service.get_provider_priorities(db)
+    result.items = [_with_display(item) for item in result.items]
+    return result
 
 
 @router.put(
@@ -44,7 +56,7 @@ def update_provider_priority(
     provider: Annotated[ProviderName, Path(description="Provider name enum")],
     update: ProviderPriorityUpdate,
 ) -> ProviderPriorityResponse:
-    return priority_service.update_provider_priority(db, provider, update.priority)
+    return _with_display(priority_service.update_provider_priority(db, provider, update.priority))
 
 
 @router.put(
@@ -56,7 +68,9 @@ def bulk_update_provider_priorities(
     _developer: DeveloperDep,
     update: ProviderPriorityBulkUpdate,
 ) -> ProviderPriorityListResponse:
-    return priority_service.bulk_update_priorities(db, update)
+    result = priority_service.bulk_update_priorities(db, update)
+    result.items = [_with_display(item) for item in result.items]
+    return result
 
 
 @router.get(

@@ -18,6 +18,7 @@ from .sync_request import (
     SyncRequestData,
     WorkoutStatistic,
 )
+from .sync_state import CoveredRange, SDKDataTypeSyncState, SDKSyncState
 
 __all__ = [
     # SDKLogEvents
@@ -37,4 +38,8 @@ __all__ = [
     "WorkoutStatistic",
     "SourceInfo",
     "OSVersion",
+    # SyncState
+    "CoveredRange",
+    "SDKDataTypeSyncState",
+    "SDKSyncState",
 ]

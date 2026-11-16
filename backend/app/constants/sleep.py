@@ -9,3 +9,6 @@ class SleepStageType(StrEnum):
     DEEP = "deep"
     REM = "rem"
     UNKNOWN = "unknown"
+
+
+ASLEEP_STAGES = frozenset({SleepStageType.SLEEPING, SleepStageType.LIGHT, SleepStageType.DEEP, SleepStageType.REM})
