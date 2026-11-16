@@ -4070,6 +4070,234 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/reproductive-health": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "List Reproductive Health",
+        "description": "Returns reproductive health entries from phone health stores (Apple Health, Health Connect).\n\nEach entry is one record the user or an app logged: menstrual flow, a menstrual period, spotting,\ncervical mucus, an ovulation, pregnancy or progesterone test, sexual activity, contraceptive use,\npregnancy, lactation, or a cycle deviation Apple Health detected. This is sensitive data: it reaches\nOpen Wearables only for the types your app requested and the user allowed on the phone.\n\nAn entry is returned when it overlaps the date range, so a period that started before\n`start_date` or a pregnancy that ends after `end_date` is still included.",
+        "operationId": "list_reproductive_health_api_v1_users__user_id__events_reproductive_health_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReproductiveHealthType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Return only entries of this type.",
+              "title": "Type"
+            },
+            "description": "Return only entries of this type."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_ReproductiveHealthRecord_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/events/workouts/{workout_id}": {
       "delete": {
         "tags": [
@@ -4366,6 +4594,94 @@
               "type": "string",
               "format": "uuid",
               "title": "Meal Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/events/reproductive-health/{entry_id}": {
+      "delete": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Delete Reproductive Health Entry",
+        "description": "Delete a reproductive health entry.",
+        "operationId": "delete_reproductive_health_entry_api_v1_users__user_id__events_reproductive_health__entry_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
             }
           },
           {
@@ -7991,6 +8307,7 @@
                                     "HKQuantityTypeIdentifierForcedExpiratoryVolume1",
                                     "HKQuantityTypeIdentifierPeakExpiratoryFlowRate",
                                     "HKQuantityTypeIdentifierBasalBodyTemperature",
+                                    "BASAL_BODY_TEMPERATURE",
                                     "HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances",
                                     "HKQuantityTypeIdentifierWaistCircumference",
                                     "HKQuantityTypeIdentifierInsulinDelivery",
@@ -15587,6 +15904,13 @@
             "type": "array",
             "title": "Meal Fields"
           },
+          "reproductive_health_types": {
+            "items": {
+              "$ref": "#/components/schemas/ReproductiveHealthEntryType"
+            },
+            "type": "array",
+            "title": "Reproductive Health Types"
+          },
           "health_scores": {
             "items": {
               "$ref": "#/components/schemas/HealthScore"
@@ -15603,6 +15927,7 @@
           "sleep_fields",
           "menstrual_cycle_fields",
           "meal_fields",
+          "reproductive_health_types",
           "health_scores"
         ],
         "title": "CoverageResponse"
@@ -18055,6 +18380,30 @@
         ],
         "title": "PaginatedResponse[RecoverySummary]"
       },
+      "PaginatedResponse_ReproductiveHealthRecord_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ReproductiveHealthRecord"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/TimeseriesMetadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "pagination",
+          "metadata"
+        ],
+        "title": "PaginatedResponse[ReproductiveHealthRecord]"
+      },
       "PaginatedResponse_SleepSession_": {
         "properties": {
           "data": {
@@ -19005,6 +19354,147 @@
         "title": "RefreshTokenRequest",
         "description": "Request to exchange refresh token for new access token."
       },
+      "ReproductiveHealthEntryType": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "providers"
+        ],
+        "title": "ReproductiveHealthEntryType"
+      },
+      "ReproductiveHealthRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ReproductiveHealthType",
+            "description": "What the entry records",
+            "example": "menstrual_flow"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time"
+          },
+          "end_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End Time",
+            "description": "Equal to `start_time` for an entry at a single moment"
+          },
+          "zone_offset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone Offset"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceMetadata"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Normalized value, by `type`: `menstrual_flow`: unspecified, none, light, medium, heavy; `cervical_mucus`: unknown, dry, sticky, creamy, watery, egg_white, unusual; `ovulation_test`: negative, lh_surge, estrogen_surge, indeterminate; `pregnancy_test`: negative, positive, indeterminate; `progesterone_test`: negative, positive, indeterminate; `contraceptive`: unspecified, implant, injection, iud, intravaginal_ring, oral, patch. Null for the other types, where the entry itself is the signal.",
+            "example": "light"
+          },
+          "cycle_start": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Start",
+            "description": "`menstrual_flow` only: whether this is the first day of a period (HealthKit only)"
+          },
+          "protection_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protection Used",
+            "description": "`sexual_activity` only: whether protection was used; null when not recorded"
+          },
+          "cervical_mucus_sensation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cervical Mucus Sensation",
+            "description": "`cervical_mucus` only: light, medium, heavy (Health Connect only)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "start_time",
+          "end_time",
+          "source"
+        ],
+        "title": "ReproductiveHealthRecord",
+        "description": "One reproductive health entry, as the phone's health store recorded it."
+      },
+      "ReproductiveHealthType": {
+        "type": "string",
+        "enum": [
+          "menstrual_flow",
+          "menstrual_period",
+          "intermenstrual_bleeding",
+          "cervical_mucus",
+          "ovulation_test",
+          "pregnancy_test",
+          "progesterone_test",
+          "sexual_activity",
+          "contraceptive",
+          "pregnancy",
+          "lactation",
+          "infrequent_menstrual_cycles",
+          "irregular_menstrual_cycles",
+          "prolonged_menstrual_periods",
+          "persistent_spotting"
+        ],
+        "title": "ReproductiveHealthType",
+        "description": "What a reproductive health entry records, shared by HealthKit and Health Connect.\n\nStored in ``event_record.type`` (at most 32 characters)."
+      },
       "Resolution": {
         "type": "string",
         "enum": [
@@ -19633,6 +20123,7 @@
           "body_mass_index",
           "lean_body_mass",
           "body_temperature",
+          "basal_body_temperature",
           "skin_temperature",
           "skin_temperature_deviation",
           "skin_temperature_trend_deviation",
@@ -22172,6 +22663,12 @@
             "type": "integer",
             "title": "Meals Saved",
             "description": "Meal correlations saved",
+            "default": 0
+          },
+          "reproductive_health_saved": {
+            "type": "integer",
+            "title": "Reproductive Health Saved",
+            "description": "Reproductive health entries saved",
             "default": 0
           },
           "sleep_saved": {

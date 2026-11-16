@@ -169,6 +169,20 @@ class TestEventCoverage:
         assert sleep.coverage_start == NOW - timedelta(hours=9)
         assert sleep.coverage_end == NOW - timedelta(hours=1)
 
+    def test_a_record_ending_in_the_future_is_held_up_to_now(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """A pregnancy logged up to its due date must not move the newest data held past today."""
+        user = UserFactory()
+        due = datetime.now(timezone.utc) + timedelta(days=200)
+        event_repo.bulk_create(db, [_event(user.id, NOW, due, "reproductive_health")])
+        db.commit()
+
+        (row,) = data_type_coverage_repository.list_for_user(db, user.id)
+
+        assert row.coverage_start == NOW
+        assert row.coverage_end <= datetime.now(timezone.utc)
+
     def test_create_and_flush_records_coverage_without_committing(
         self, db: Session, event_repo: EventRecordRepository
     ) -> None:
@@ -280,6 +294,23 @@ class TestCoverageFollowsRemovals:
         assert event_record_service.delete_event_record(db, user.id, late.id, "workout")
 
         assert self._span(db, user.id, "workout") == (early.start_datetime, early.end_datetime)
+
+    def test_recomputed_end_stays_at_now(self, db: Session, event_repo: EventRecordRepository) -> None:
+        user = UserFactory()
+        due = datetime.now(timezone.utc) + timedelta(days=200)
+        ongoing, past = (
+            _event(user.id, NOW, due, "reproductive_health", external_id="pregnancy"),
+            _event(user.id, NOW - timedelta(days=2), NOW - timedelta(days=1), "reproductive_health", external_id="t"),
+        )
+        event_repo.bulk_upsert_by_external_id(db, [ongoing, past])
+        db.commit()
+
+        assert event_record_service.delete_event_record(db, user.id, past.id, "reproductive_health")
+
+        span = self._span(db, user.id, "reproductive_health")
+        assert span is not None
+        assert span[0] == NOW
+        assert span[1] <= datetime.now(timezone.utc)
 
     def test_deleting_the_last_event_of_a_category_forgets_it(
         self, db: Session, event_repo: EventRecordRepository

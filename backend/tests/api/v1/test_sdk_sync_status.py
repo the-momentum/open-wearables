@@ -163,6 +163,57 @@ class TestSDKSyncState:
         assert _types(body)["workout"]["historicalSyncCompleted"] is True
 
     @pytest.mark.usefixtures("stored_runs")
+    def test_reproductive_health_types_resume_from_the_least_advanced(self, client: TestClient, db: Session) -> None:
+        """The device reports flow and mucus on their own; both are held as reproductive_health."""
+        user = UserFactory()
+        run_key = _open_export(user.id, "s1", _at(30))
+        _report(
+            run_key,
+            "HKCategoryTypeIdentifierMenstrualFlow",
+            SyncStatus.SUCCESS,
+            DataTypeKind.EVENT,
+            covered=(_at(5), _at(29)),
+        )
+        _report(
+            run_key,
+            "HKCategoryTypeIdentifierCervicalMucusQuality",
+            SyncStatus.UNFINISHED,
+            DataTypeKind.EVENT,
+            covered=(_at(20), _at(30)),
+        )
+        _hold(db, user.id, _at(5), _at(30), data_type="reproductive_health", kind=DataTypeKind.EVENT)
+
+        reproductive = _types(_get(client, user.id))["reproductive_health"]
+
+        assert reproductive["historicalSyncCompleted"] is False
+        assert reproductive["exportedRange"] == {"startDate": "2026-10-20T00:00:00Z", "endDate": "2026-10-30T00:00:00Z"}
+
+    @pytest.mark.usefixtures("stored_runs")
+    def test_one_reproductive_type_done_is_not_the_whole_category(self, client: TestClient, db: Session) -> None:
+        """The app was killed mid-export: flow ended, mucus never reported, heart rate still running."""
+        user = UserFactory()
+        run_key = _open_export(user.id, "s1", _at(30))
+        _report(run_key, "HKCategoryTypeIdentifierMenstrualFlow", SyncStatus.SUCCESS, DataTypeKind.EVENT)
+        _report(run_key, "heart_rate", SyncStatus.IN_PROGRESS)
+        _hold(db, user.id, _at(5), _at(30), data_type="reproductive_health", kind=DataTypeKind.EVENT)
+
+        assert _types(_get(client, user.id))["reproductive_health"]["historicalSyncCompleted"] is False
+
+    @pytest.mark.usefixtures("stored_runs")
+    def test_reproductive_health_completes_with_its_export(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        run_key = _open_export(user.id, "s1", _at(30))
+        _report(run_key, "HKCategoryTypeIdentifierMenstrualFlow", SyncStatus.SUCCESS, DataTypeKind.EVENT)
+        _report(run_key, "HKCategoryTypeIdentifierCervicalMucusQuality", SyncStatus.SUCCESS, DataTypeKind.EVENT)
+        _report(run_key, "heart_rate", SyncStatus.SUCCESS)
+        _hold(db, user.id, _at(5), _at(30), data_type="reproductive_health", kind=DataTypeKind.EVENT)
+
+        body = _get(client, user.id)
+
+        assert body["historicalSyncCompleted"] is True
+        assert _types(body)["reproductive_health"]["historicalSyncCompleted"] is True
+
+    @pytest.mark.usefixtures("stored_runs")
     def test_completed_export_marks_every_held_type_done(self, client: TestClient, db: Session) -> None:
         """The device sends no end event for a type it had nothing to send, so the run decides."""
         user = UserFactory()

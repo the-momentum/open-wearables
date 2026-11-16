@@ -192,6 +192,22 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             },
         },
     },
+    WebhookEventType.REPRODUCTIVE_HEALTH_CREATED: {
+        "type": WebhookEventType.REPRODUCTIVE_HEALTH_CREATED,
+        "data": {
+            "id": _RECORD_ID,
+            "user_id": _USER_ID,
+            "type": "menstrual_flow",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "end_time": "2024-01-02T00:00:00+00:00",
+            "zone_offset": "+00:00",
+            "source": {"provider": "apple", "device": "iPhone 15"},
+            "value": "medium",
+            "cycle_start": True,
+            "protection_used": None,
+            "cervical_mucus_sensation": None,
+        },
+    },
     # ------------------------------------------------------------------
     # Timeseries — GROUP events
     # ------------------------------------------------------------------
@@ -347,6 +363,9 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     # Body temperature
     WebhookEventType.SERIES_BODY_TEMPERATURE: _ts_payload(
         WebhookEventType.SERIES_BODY_TEMPERATURE, "body_temperature", "apple", "°C", 36.6
+    ),
+    WebhookEventType.SERIES_BASAL_BODY_TEMPERATURE: _ts_payload(
+        WebhookEventType.SERIES_BASAL_BODY_TEMPERATURE, "basal_body_temperature", "apple", "°C", 36.4
     ),
     WebhookEventType.SERIES_SKIN_TEMPERATURE: _ts_payload(
         WebhookEventType.SERIES_SKIN_TEMPERATURE, "skin_temperature", "oura", "°C", 36.1

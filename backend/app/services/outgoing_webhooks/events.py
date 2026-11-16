@@ -193,6 +193,47 @@ def on_menstrual_cycle_created(
     )
 
 
+def on_reproductive_health_created(
+    *,
+    record_id: UUID,
+    user_id: UUID,
+    provider: str,
+    device: str | None,
+    entry_type: str | None,
+    start_time: str,
+    end_time: str,
+    zone_offset: str | None,
+    value: str | None = None,
+    cycle_start: bool | None = None,
+    protection_used: bool | None = None,
+    cervical_mucus_sensation: str | None = None,
+    sync: dict[str, str] | None = None,
+) -> None:
+    """Dispatch the reproductive_health.created webhook for a newly saved entry."""
+    _dispatch(
+        WebhookEventType.REPRODUCTIVE_HEALTH_CREATED,
+        {
+            "type": WebhookEventType.REPRODUCTIVE_HEALTH_CREATED,
+            "data": {
+                "id": str(record_id),
+                "user_id": str(user_id),
+                "type": entry_type,
+                "start_time": start_time,
+                "end_time": end_time,
+                "zone_offset": zone_offset,
+                "source": {"provider": provider, "device": device},
+                "value": value,
+                "cycle_start": cycle_start,
+                "protection_used": protection_used,
+                "cervical_mucus_sensation": cervical_mucus_sensation,
+                "sync": sync,
+            },
+        },
+        idempotency_key=f"reproductive_health.created.{record_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
 def on_sleep_created(
     *,
     record_id: UUID,

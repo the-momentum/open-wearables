@@ -18,6 +18,7 @@ from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
+from .reproductive_health_details import ReproductiveHealthDetails
 from .series_aggregate import SeriesAggregate
 from .series_sample import SeriesSample
 from .series_sample_backup import SeriesSampleBackup
@@ -59,6 +60,7 @@ __all__ = [
     "EventRecordDetail",
     "MealDetails",
     "MenstrualCycleDetails",
+    "ReproductiveHealthDetails",
     "SleepDetails",
     "WorkoutDetails",
     "PersonalRecord",

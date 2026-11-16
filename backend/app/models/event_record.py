@@ -21,27 +21,36 @@ if TYPE_CHECKING:
     from app.models.workout_details import WorkoutDetails
     from app.models.menstrual_cycle_details import MenstrualCycleDetails
     from app.models.meal_details import MealDetails
+    from app.models.reproductive_health_details import ReproductiveHealthDetails
+
+
+# Categories unique by (data source, external_id), not by time: several of their records can
+# share one interval, e.g. a flow and a mucus entry logged for the same day.
+EXTERNAL_ID_KEYED_CATEGORIES: tuple[EventCategory, ...] = (EventCategory.MEAL, EventCategory.REPRODUCTIVE_HEALTH)
+_EXTERNAL_ID_KEYED_LIST = ", ".join(f"'{category}'" for category in EXTERNAL_ID_KEYED_CATEGORIES)
+# Partial index predicates, repeated verbatim in ON CONFLICT so Postgres picks the index.
+EXTERNAL_ID_KEYED_WHERE = f"category IN ({_EXTERNAL_ID_KEYED_LIST})"
+TIME_KEYED_WHERE = f"category NOT IN ({_EXTERNAL_ID_KEYED_LIST})"
 
 
 class EventRecord(BaseDbModel):
     __tablename__ = "event_record"
     __table_args__ = (
         Index("ix_event_record_source_category", "data_source_id", "category"),
-        # Meals are unique by external_id, not time - several can share one interval (e.g. MyFitnessPal).
         Index(
             "ix_event_record_source_time",
             "data_source_id",
             "start_datetime",
             "end_datetime",
             unique=True,
-            postgresql_where=text(f"category <> '{EventCategory.MEAL}'"),
+            postgresql_where=text(TIME_KEYED_WHERE),
         ),
         Index(
-            "ix_event_record_meal_source_external_id",
+            "ix_event_record_source_external_id",
             "data_source_id",
             "external_id",
             unique=True,
-            postgresql_where=text(f"category = '{EventCategory.MEAL}'"),
+            postgresql_where=text(EXTERNAL_ID_KEYED_WHERE),
         ),
     )
 
@@ -84,6 +93,12 @@ class EventRecord(BaseDbModel):
         cascade="all, delete-orphan",
         foreign_keys="[MealDetails.record_id]",
     )
+    reproductive_health_detail: Mapped["ReproductiveHealthDetails | None"] = relationship(
+        "ReproductiveHealthDetails",
+        uselist=False,
+        cascade="all, delete-orphan",
+        foreign_keys="[ReproductiveHealthDetails.record_id]",
+    )
 
     @classmethod
     def detail_relationship(cls, category: EventCategory | None) -> list[QueryableAttribute]:
@@ -92,7 +107,14 @@ class EventRecord(BaseDbModel):
             EventCategory.WORKOUT: [cls.workout_detail],
             EventCategory.MENSTRUAL_CYCLE: [cls.menstrual_cycle_detail],
             EventCategory.MEAL: [cls.meal_detail],
+            EventCategory.REPRODUCTIVE_HEALTH: [cls.reproductive_health_detail],
         }.get(
             category,
-            [cls.sleep_detail, cls.workout_detail, cls.menstrual_cycle_detail, cls.meal_detail],
+            [
+                cls.sleep_detail,
+                cls.workout_detail,
+                cls.menstrual_cycle_detail,
+                cls.meal_detail,
+                cls.reproductive_health_detail,
+            ],
         )

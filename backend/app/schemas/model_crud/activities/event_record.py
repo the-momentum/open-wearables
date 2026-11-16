@@ -7,7 +7,15 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants.devices_map import normalize_device_model
-from app.schemas.enums import DeviceType, EntrySource, EventCategory, SeriesType, WorkoutIntensity, WorkoutType
+from app.schemas.enums import (
+    DeviceType,
+    EntrySource,
+    EventCategory,
+    ReproductiveHealthType,
+    SeriesType,
+    WorkoutIntensity,
+    WorkoutType,
+)
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -119,6 +127,10 @@ class EventRecordQueryParams(SourceFilterParams):
     # Date filtering
     start_datetime: datetime | None = Field(None, description="Start datetime for filtering records")
     end_datetime: datetime | None = Field(None, description="End datetime for filtering records")
+    overlapping: bool = Field(
+        False,
+        description="Match records that overlap the range rather than lie inside it, for records that span days",
+    )
 
     # Category and type filtering
     category: EventCategory | None = Field(
@@ -129,6 +141,9 @@ class EventRecordQueryParams(SourceFilterParams):
         None, description="Subtype filter, substring match (e.g. HKWorkoutActivityTypeRunning)"
     )
     workout_type: WorkoutType | None = Field(None, description="Exact normalized workout type filter")
+    reproductive_health_type: ReproductiveHealthType | None = Field(
+        None, description="Exact reproductive health entry type filter"
+    )
 
     # Source filtering (provider, source, device_model, data_source_id come from SourceFilterParams)
     source_name: str | None = Field(None, description="Filter by source/app name")

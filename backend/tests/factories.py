@@ -30,6 +30,7 @@ from app.models import (
     MealDetails,
     PersonalRecord,
     ProviderSetting,
+    ReproductiveHealthDetails,
     SeriesAggregate,
     SeriesSample,
     SeriesTypeDefinition,
@@ -620,6 +621,27 @@ class SleepDetailsFactory(BaseFactory):
         kwargs.pop("record_id", None)
         if event_record is None:
             event_record = EventRecordFactory(category="sleep", type="sleep")
+        kwargs["record_id"] = event_record.id
+        return super()._create(model_class, *args, **kwargs)
+
+
+class ReproductiveHealthDetailsFactory(BaseFactory):
+    """Factory for ReproductiveHealthDetails model."""
+
+    class Meta:
+        model = ReproductiveHealthDetails
+
+    value = "medium"
+
+    @classmethod
+    def _create(
+        cls, model_class: type[ReproductiveHealthDetails], *args: Any, **kwargs: Any
+    ) -> ReproductiveHealthDetails:
+        """Override create to handle event_record relationship."""
+        event_record = kwargs.pop("event_record", None)
+        kwargs.pop("record_id", None)
+        if event_record is None:
+            event_record = EventRecordFactory(category="reproductive_health", type_="menstrual_flow")
         kwargs["record_id"] = event_record.id
         return super()._create(model_class, *args, **kwargs)
 

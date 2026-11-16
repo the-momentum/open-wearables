@@ -11,4 +11,5 @@ class EventCategory(StrEnum):
     SLEEP = "sleep"
     MEAL = "meal"
     MENSTRUAL_CYCLE = "menstrual_cycle"
+    REPRODUCTIVE_HEALTH = "reproductive_health"
     ACTIVITY = "activity"

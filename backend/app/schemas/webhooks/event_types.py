@@ -49,6 +49,7 @@ class WebhookEventType(StrEnum):
     SLEEP_CREATED = "sleep.created"
     MEAL_CREATED = "meal.created"
     MENSTRUAL_CYCLE_CREATED = "menstrual_cycle.created"
+    REPRODUCTIVE_HEALTH_CREATED = "reproductive_health.created"
 
     # -------------------------------------------------------------------------
     # TimeSeries — GROUP events (one per category)
@@ -127,6 +128,7 @@ class WebhookEventType(StrEnum):
 
     # Body temperature
     SERIES_BODY_TEMPERATURE = "series.body_temperature.created"
+    SERIES_BASAL_BODY_TEMPERATURE = "series.basal_body_temperature.created"
     SERIES_SKIN_TEMPERATURE = "series.skin_temperature.created"
     SERIES_SKIN_TEMPERATURE_DEVIATION = "series.skin_temperature_deviation.created"
     SERIES_SKIN_TEMPERATURE_TREND_DEVIATION = "series.skin_temperature_trend_deviation.created"
@@ -225,6 +227,9 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
     WebhookEventType.MEAL_CREATED: "A new meal or nutrition-log entry was saved.",
     WebhookEventType.MENSTRUAL_CYCLE_CREATED: "A new menstrual cycle record was saved.",
+    WebhookEventType.REPRODUCTIVE_HEALTH_CREATED: (
+        "A new reproductive health entry (menstrual flow, ovulation test, ...) was saved."
+    ),
     # Group events
     WebhookEventType.HEART_RATE_CREATED: "Any heart-rate samples (all HR variants) were ingested.",
     WebhookEventType.HEART_RATE_VARIABILITY_CREATED: "Any HRV samples (SDNN or RMSSD) were ingested.",
@@ -282,6 +287,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_BODY_WATER_PERCENTAGE: "Body water percentage samples were ingested.",
     WebhookEventType.SERIES_WAIST_CIRCUMFERENCE: "Waist circumference samples were ingested.",
     WebhookEventType.SERIES_BODY_TEMPERATURE: "Core body temperature samples were ingested.",
+    WebhookEventType.SERIES_BASAL_BODY_TEMPERATURE: "Basal body temperature samples were ingested.",
     WebhookEventType.SERIES_SKIN_TEMPERATURE: "Skin temperature samples were ingested.",
     WebhookEventType.SERIES_SKIN_TEMPERATURE_DEVIATION: "Skin temperature deviation samples were ingested.",
     WebhookEventType.SERIES_SKIN_TEMPERATURE_TREND_DEVIATION: (
@@ -402,6 +408,7 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
     ],
     WebhookEventType.BODY_TEMPERATURE_CREATED: [
         WebhookEventType.SERIES_BODY_TEMPERATURE,
+        WebhookEventType.SERIES_BASAL_BODY_TEMPERATURE,
         WebhookEventType.SERIES_SKIN_TEMPERATURE,
         WebhookEventType.SERIES_SKIN_TEMPERATURE_DEVIATION,
         WebhookEventType.SERIES_SKIN_TEMPERATURE_TREND_DEVIATION,

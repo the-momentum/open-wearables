@@ -30,7 +30,7 @@ from app.constants.series_types.sdk.workout_statistics import (
 )
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
-from app.schemas.model_crud.activities import EventRecordDetailCreate
+from app.schemas.model_crud.activities import EventRecordDetailCreate, ReproductiveHealthDetailCreate
 from app.services.providers.factory import ProviderFactory
 
 PROVIDERS_DIR = Path("app/services/providers")
@@ -75,8 +75,13 @@ def _all_detail_fields() -> set[str]:
     return fields
 
 
+# Reproductive health coverage is declared per entry type (REPRODUCTIVE_HEALTH_TYPES), not per detail field.
+TYPE_COVERED_DETAIL_FIELDS = set(ReproductiveHealthDetailCreate.model_fields) - set(
+    EventRecordDetailCreate.model_fields
+)
+
 ALL_DETAIL_FIELDS = _all_detail_fields()
-TRACKED_DETAIL_FIELDS = ALL_DETAIL_FIELDS - STRUCTURAL_DETAIL_FIELDS
+TRACKED_DETAIL_FIELDS = ALL_DETAIL_FIELDS - STRUCTURAL_DETAIL_FIELDS - TYPE_COVERED_DETAIL_FIELDS
 
 _SERIES_EMIT_RE = re.compile(r"series_type=SeriesType\.(\w+)")
 

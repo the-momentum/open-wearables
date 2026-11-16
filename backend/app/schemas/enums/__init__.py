@@ -23,6 +23,16 @@ from .provider import (
     DEFAULT_PROVIDER_PRIORITY,
     ProviderName,
 )
+from .reproductive_health import (
+    REPRODUCTIVE_HEALTH_VALUE_ENUMS,
+    CervicalMucusAppearance,
+    CervicalMucusSensation,
+    ContraceptiveMethod,
+    HormoneTestResult,
+    MenstrualFlow,
+    OvulationTestResult,
+    ReproductiveHealthType,
+)
 from .sdk_connection_outcome import SdkConnectionOutcome
 from .series_types import (
     SERIES_TYPE_DEFINITIONS,
@@ -70,6 +80,14 @@ __all__ = [
     "DEFAULT_PROVIDER_PRIORITY",
     "HealthScoreCategory",
     "PeriodKind",
+    "ReproductiveHealthType",
+    "REPRODUCTIVE_HEALTH_VALUE_ENUMS",
+    "MenstrualFlow",
+    "CervicalMucusAppearance",
+    "CervicalMucusSensation",
+    "OvulationTestResult",
+    "HormoneTestResult",
+    "ContraceptiveMethod",
     "SdkConnectionOutcome",
     "SourceSelection",
     "TimelineBucket",

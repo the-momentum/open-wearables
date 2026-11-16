@@ -41,7 +41,9 @@ _REFRESH_EVENTS = text(f"""
     ), emptied AS (
         DELETE FROM data_type_coverage c USING spans s WHERE {_SAME_KEY} AND s.first_start IS NULL
     )
-    UPDATE data_type_coverage c SET coverage_start = s.first_start, coverage_end = s.last_end
+    -- Capped at now like record(); not in spans, where LEAST would turn an empty category's NULL into now().
+    UPDATE data_type_coverage c
+    SET coverage_start = LEAST(s.first_start, now()), coverage_end = LEAST(s.last_end, now())
     FROM spans s
     WHERE {_SAME_KEY} AND s.first_start IS NOT NULL
 """)
@@ -139,7 +141,8 @@ _HELD_SERIES_SPANS = f"""
 
 _HELD_EVENT_SPANS = """
     SELECT ds.user_id, ds.provider, er.category AS data_type, CAST(:event AS varchar) AS kind,
-           min(er.start_datetime) AS coverage_start, max(er.end_datetime) AS coverage_end
+           LEAST(min(er.start_datetime), now()) AS coverage_start,
+           LEAST(max(er.end_datetime), now()) AS coverage_end
     FROM event_record er
     JOIN data_source ds ON ds.id = er.data_source_id
     WHERE er.data_source_id > :after AND er.data_source_id <= :upto
@@ -186,15 +189,19 @@ class DataTypeCoverageRepository:
         Ranges only ever widen, so batches of one type arriving out of order still add up
         to a single span. Runs in the caller's transaction and does not commit, so a
         rollback takes the coverage with the rows it described.
+
+        Spans end at now at the latest: a pregnancy logged up to its due date would otherwise
+        move syncedUntil past data still to come, for good.
         """
+        # In SQL: some providers pass naive datetimes, which Postgres reads as it stores them.
         rows = [
             {
                 "user_id": user_id,
                 "provider": provider,
                 "data_type": data_type,
                 "kind": kind,
-                "coverage_start": start,
-                "coverage_end": end,
+                "coverage_start": func.least(start, func.now()),
+                "coverage_end": func.least(end, func.now()),
                 "last_written_at": datetime.now(timezone.utc),
             }
             for (user_id, provider, data_type, kind), (start, end) in sorted(_merge(spans).items())

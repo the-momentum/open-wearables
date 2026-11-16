@@ -33,6 +33,7 @@ from app.schemas.model_crud.activities import (
     EventRecordMetrics,
     HeartRateSampleCreate,
     MealDetailCreate,
+    ReproductiveHealthDetailCreate,
     SessionValue,
     StepSampleCreate,
     TimeSeriesSampleCreate,
@@ -58,6 +59,7 @@ from app.utils.units import BloodGlucoseUnit, EnergyUnit, UnitConverter, VolumeU
 
 from .condensed_series import drop_condensed_series
 from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
+from .reproductive_health import reproductive_health_detail, reproductive_health_type
 from .sleep_service import save_sleep
 from .workout_segments import build_workout_segments
 
@@ -89,6 +91,38 @@ _FRACTION_PERCENT_SERIES = frozenset(
 _SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
 
 
+def _event_record(
+    record: MetricRecord,
+    record_id: UUID,
+    category: EventCategory,
+    record_type: str | None,
+    provider: str,
+    user_id: UUID,
+) -> EventRecordCreate:
+    """The event record of one `records[]` item (a meal, a reproductive health entry), keyed by its id."""
+    device_model, software_version, source_name = extract_device_info(record.source, provider)
+    device_id, source_app_id, device_manufacturer = extract_device_ids(record.source)
+    return EventRecordCreate(
+        category=category,
+        type=record_type,
+        source_name=source_name or "unknown",
+        device_model=device_model,
+        start_datetime=record.startDate,
+        end_datetime=record.endDate,
+        zone_offset=record.zoneOffset,
+        id=record_id,
+        external_id=record.id,
+        source=source_name,
+        software_version=software_version,
+        device_type=extract_device_type(record.source, provider),
+        device_id=device_id,
+        source_app_id=source_app_id,
+        device_manufacturer=device_manufacturer,
+        provider=provider,
+        user_id=user_id,
+    )
+
+
 def _sends_fraction_percentages(provider: str | None, sdk_version: str | None) -> bool:
     """Whether percentage values from this SDK arrive as a 0-1 fraction.
 
@@ -118,6 +152,7 @@ class InvalidRecord(TypedDict):
 class LoadDataResult(TypedDict):
     workouts_saved: int
     meals_saved: int  # meal correlations inserted
+    reproductive_health_saved: int  # reproductive health entries inserted
     records_saved: int  # samples submitted
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
@@ -353,28 +388,7 @@ class ImportService:
 
             meal_id = uuid4()
             metadata = rjson.metadata if isinstance(rjson.metadata, dict) else {}
-            device_model, software_version, original_source_name = extract_device_info(rjson.source, provider)
-            device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
-
-            record = EventRecordCreate(
-                category=EventCategory.MEAL,
-                type=rjson.type,
-                source_name=original_source_name or "unknown",
-                device_model=device_model,
-                start_datetime=rjson.startDate,
-                end_datetime=rjson.endDate,
-                zone_offset=rjson.zoneOffset,
-                id=meal_id,
-                external_id=rjson.id,
-                source=original_source_name,
-                software_version=software_version,
-                device_type=extract_device_type(rjson.source, provider),
-                device_id=device_id,
-                source_app_id=source_app_id,
-                device_manufacturer=device_manufacturer,
-                provider=provider,
-                user_id=user_uuid,
-            )
+            record = _event_record(rjson, meal_id, EventCategory.MEAL, rjson.type, provider, user_uuid)
             nutrients: dict[SeriesType, float] = {}
             for sample in self._build_statistic_bundles(nutrient_records.get(rjson.id, []), provider, user_id):
                 nutrients[sample.series_type] = nutrients.get(sample.series_type, 0.0) + float(sample.value)
@@ -386,6 +400,24 @@ class ImportService:
             )
 
             yield record, detail
+
+    def _build_reproductive_health_bundles(
+        self,
+        records: list[MetricRecord],
+        provider: str,
+        user_id: str,
+    ) -> Generator[tuple[EventRecordCreate, ReproductiveHealthDetailCreate]]:
+        """One reproductive health event per record, keyed by its id so a resync updates it in place."""
+        user_uuid = UUID(user_id)
+
+        for rjson in records:
+            entry_type = reproductive_health_type(rjson.type)
+            if not rjson.id or entry_type is None:
+                continue
+
+            record_id = uuid4()
+            record = _event_record(rjson, record_id, EventCategory.REPRODUCTIVE_HEALTH, entry_type, provider, user_uuid)
+            yield record, reproductive_health_detail(rjson, record_id)
 
     def _normalize_unit(
         self,
@@ -590,6 +622,7 @@ class ImportService:
         validation_ms = round((time.perf_counter() - started) * 1000, 1)
         workouts_saved = 0
         meals_saved = 0
+        reproductive_health_saved = 0
         records_saved = 0
         records_inserted = 0
         records_updated = 0
@@ -605,9 +638,13 @@ class ImportService:
         correlation_records = [r for r in request.data.records if (r.type or "") in MEAL_CORRELATION_TYPES]
         meal_external_ids = {r.id for r in correlation_records if r.id}
         nutrient_records: dict[str, list[MetricRecord]] = {}
+        reproductive_records: list[MetricRecord] = []
         records: list[MetricRecord] = []
         for rjson in request.data.records:
             if (rjson.type or "") in MEAL_CORRELATION_TYPES:
+                continue
+            if reproductive_health_type(rjson.type):
+                reproductive_records.append(rjson)
                 continue
             if (
                 rjson.parentId is not None
@@ -628,6 +665,14 @@ class ImportService:
         meal_bundles = list(self._build_meal_bundles(correlation_records, nutrient_records, request.provider, user_id))
         if meal_bundles:
             meals_saved = self.event_record_service.upsert_meals(db_session, meal_bundles)
+
+        reproductive_bundles = list(
+            self._build_reproductive_health_bundles(reproductive_records, request.provider, user_id)
+        )
+        if reproductive_bundles:
+            reproductive_health_saved = self.event_record_service.upsert_reproductive_health(
+                db_session, reproductive_bundles
+            )
 
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))
@@ -696,6 +741,7 @@ class ImportService:
         return {
             "workouts_saved": workouts_saved,
             "meals_saved": meals_saved,
+            "reproductive_health_saved": reproductive_health_saved,
             "records_saved": records_saved,
             "records_inserted": records_inserted,
             "records_updated": records_updated,
@@ -766,6 +812,8 @@ class ImportService:
                 records_inserted=saved_counts["records_inserted"],
                 records_updated=saved_counts["records_updated"],
                 workouts_saved=saved_counts["workouts_saved"],
+                meals_saved=saved_counts["meals_saved"],
+                reproductive_health_saved=saved_counts["reproductive_health_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
                 unsupported_types=saved_counts["unsupported_types"],
                 validation_ms=saved_counts["validation_ms"],
@@ -819,6 +867,7 @@ class ImportService:
                 spans=saved_counts["spans"],
                 workouts_saved=saved_counts["workouts_saved"],
                 meals_saved=saved_counts["meals_saved"],
+                reproductive_health_saved=saved_counts["reproductive_health_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
             )
 

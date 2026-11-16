@@ -18,6 +18,7 @@ from app.models import (
     HealthScore,
     MealDetails,
     MenstrualCycleDetails,
+    ReproductiveHealthDetails,
     SeriesSample,
     SleepDetails,
     WorkoutDetails,
@@ -34,7 +35,14 @@ from app.repositories.data_point_series_repository import WorkoutWindow
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.event_record_repository import local_days
 from app.schemas.data_type_coverage import CoverageSpan
-from app.schemas.enums import EventCategory, HealthScoreCategory, SeriesType, SourceSelection, get_series_type_unit
+from app.schemas.enums import (
+    EventCategory,
+    HealthScoreCategory,
+    ReproductiveHealthType,
+    SeriesType,
+    SourceSelection,
+    get_series_type_unit,
+)
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -43,6 +51,7 @@ from app.schemas.model_crud.activities import (
     EventRecordUpdate,
     MealDetailCreate,
     MenstrualCycleDetailCreate,
+    ReproductiveHealthDetailCreate,
     SleepInclude,
     WorkoutInclude,
 )
@@ -53,6 +62,7 @@ from app.schemas.responses.activity import (
     Meal,
     MenstrualCycleRecord,
     NutrientValue,
+    ReproductiveHealthRecord,
     SleepSession,
     SleepStagesSummary,
     SleepTotals,
@@ -72,6 +82,7 @@ from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import (
     on_meal_created,
     on_menstrual_cycle_created,
+    on_reproductive_health_created,
     on_sleep_created,
     on_workout_created,
 )
@@ -371,19 +382,39 @@ class EventRecordService(
         meals: list[tuple[EventRecordCreate, MealDetailCreate]],
     ) -> int:
         """Insert or refresh meals with their details; webhooks only for new ones. Returns the number inserted."""
-        stored = self.crud.bulk_upsert_meals(db_session, [record for record, _ in meals])
+        return self._upsert_by_external_id(db_session, meals, EventCategory.MEAL)
+
+    def upsert_reproductive_health(
+        self,
+        db_session: DbSession,
+        entries: list[tuple[EventRecordCreate, ReproductiveHealthDetailCreate]],
+    ) -> int:
+        """Insert or refresh reproductive health entries; webhooks only for new ones. Returns the number inserted.
+
+        Refreshed entries take the new details whole: Health Connect edits records in place.
+        """
+        return self._upsert_by_external_id(db_session, entries, EventCategory.REPRODUCTIVE_HEALTH, replace=True)
+
+    def _upsert_by_external_id(
+        self,
+        db_session: DbSession,
+        entries: Sequence[tuple[EventRecordCreate, EventRecordDetailCreate]],
+        detail_type: DetailType,
+        replace: bool = False,
+    ) -> int:
+        stored = self.crud.bulk_upsert_by_external_id(db_session, [record for record, _ in entries])
         inserted: list[EventRecordDetailCreate] = []
         refreshed: list[EventRecordDetailCreate] = []
-        for record, detail in meals:
+        for record, detail in entries:
             if record.id not in stored:
                 continue
             record_id, is_inserted = stored[record.id]
             (inserted if is_inserted else refreshed).append(detail.model_copy(update={"record_id": record_id}))
 
         if inserted:
-            self.bulk_create_details(db_session, inserted, detail_type=EventCategory.MEAL)
+            self.bulk_create_details(db_session, inserted, detail_type=detail_type)
         if refreshed:
-            self.event_record_detail_repo.bulk_create(db_session, refreshed, detail_type=EventCategory.MEAL)
+            self.event_record_detail_repo.bulk_create(db_session, refreshed, detail_type=detail_type, replace=replace)
         return len(inserted)
 
     def create_or_merge_sleep(
@@ -839,6 +870,22 @@ class EventRecordService(
                     nutrients={code: value.model_dump() for code, value in _nutrient_values(detail.nutrients).items()},
                     sync=sync,
                 )
+            case EventCategory.REPRODUCTIVE_HEALTH if isinstance(detail, ReproductiveHealthDetailCreate):
+                on_reproductive_health_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    entry_type=record.type,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    value=detail.value,
+                    cycle_start=detail.cycle_start,
+                    protection_used=detail.protection_used,
+                    cervical_mucus_sensation=detail.cervical_mucus_sensation,
+                    sync=sync,
+                )
 
     def bulk_create(
         self,
@@ -981,39 +1028,7 @@ class EventRecordService(
         # Ensure total_count is always an int (not None)
         total_count = total_count if total_count is not None else 0
 
-        limit = params.limit or 20
-        has_more = len(records) > limit
-
-        # Check if this is backward pagination
-        is_backward = params.cursor and params.cursor.startswith("prev_")
-
-        # Trim to limit
-        if has_more:
-            records = records[-limit:] if is_backward else records[:limit]
-
-        # Generate cursors
-        next_cursor = None
-        previous_cursor = None
-
-        if records:
-            # Always generate next_cursor if has_more
-            if has_more:
-                last_record, _ = records[-1]
-                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
-
-            # Generate previous_cursor only if:
-            # 1. We used a cursor to get here (not the first page)
-            # 2. There are more items before (for backward) OR we're doing forward navigation
-            if params.cursor:
-                # For backward navigation: only set previous_cursor if has_more
-                # For forward navigation: always set previous_cursor
-                if is_backward:
-                    if has_more:
-                        first_record, _ = records[0]
-                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
-                else:
-                    first_record, _ = records[0]
-                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+        records, has_more, next_cursor, previous_cursor = self._page(records, params)
 
         statistics = self.crud.get_workout_statistics(db_session, [r.id for r, _ in records])
         computed_hr = self._resolve_avg_hr(db_session, [r for r, _ in records], statistics)
@@ -1135,39 +1150,7 @@ class EventRecordService(
         # Ensure total_count is always an int (not None)
         total_count = total_count if total_count is not None else 0
 
-        limit = params.limit or 20
-        has_more = len(records) > limit
-
-        # Check if this is backward pagination
-        is_backward = params.cursor and params.cursor.startswith("prev_")
-
-        # Trim to limit
-        if has_more:
-            records = records[-limit:] if is_backward else records[:limit]
-
-        # Generate cursors
-        next_cursor = None
-        previous_cursor = None
-
-        if records:
-            # Always generate next_cursor if has_more
-            if has_more:
-                last_record, _ = records[-1]
-                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
-
-            # Generate previous_cursor only if:
-            # 1. We used a cursor to get here (not the first page)
-            # 2. There are more items before (for backward) OR we're doing forward navigation
-            if params.cursor:
-                # For backward navigation: only set previous_cursor if has_more
-                # For forward navigation: always set previous_cursor
-                if is_backward:
-                    if has_more:
-                        first_record, _ = records[0]
-                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
-                else:
-                    first_record, _ = records[0]
-                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+        records, has_more, next_cursor, previous_cursor = self._page(records, params)
 
         final_ids = final_record_ids(db_session, user_id, records, datetime.now(timezone.utc))
         data = []
@@ -1215,19 +1198,14 @@ class EventRecordService(
             ),
         )
 
-    def get_menstrual_cycles(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        params: EventRecordQueryParams,
-    ) -> PaginatedResponse[MenstrualCycleRecord]:
-        params.category = EventCategory.MENSTRUAL_CYCLE
-        # Cycles can end in the future (predicted end of cycle), so filtering by
-        # end_datetime would exclude current/upcoming cycles. Filter by start_datetime only.
-        params.end_datetime = None
-        records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
-        total_count = total_count if total_count is not None else 0
+    @staticmethod
+    def _page(
+        records: list[tuple[EventRecord, DataSource]], params: EventRecordQueryParams
+    ) -> tuple[list[tuple[EventRecord, DataSource]], bool, str | None, str | None]:
+        """Trim the limit + 1 rows a listing fetched to one page and build its cursors.
 
+        Returns (page, has_more, next_cursor, previous_cursor).
+        """
         limit = params.limit or 20
         has_more = len(records) > limit
         is_backward = params.cursor and params.cursor.startswith("prev_")
@@ -1242,6 +1220,8 @@ class EventRecordService(
             if has_more:
                 last_record, _ = records[-1]
                 next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
+            # A previous page exists when we got here through a cursor: always going forward,
+            # going backward only while there are more rows before this page.
             if params.cursor:
                 if is_backward:
                     if has_more:
@@ -1250,6 +1230,23 @@ class EventRecordService(
                 else:
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+
+        return records, has_more, next_cursor, previous_cursor
+
+    def get_menstrual_cycles(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+    ) -> PaginatedResponse[MenstrualCycleRecord]:
+        params.category = EventCategory.MENSTRUAL_CYCLE
+        # Cycles can end in the future (predicted end of cycle), so filtering by
+        # end_datetime would exclude current/upcoming cycles. Filter by start_datetime only.
+        params.end_datetime = None
+        records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
+        total_count = total_count if total_count is not None else 0
+
+        records, has_more, next_cursor, previous_cursor = self._page(records, params)
 
         data = []
         for record, data_source in records:
@@ -1303,28 +1300,7 @@ class EventRecordService(
         params.category = EventCategory.MEAL
         records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
 
-        limit = params.limit or 20
-        has_more = len(records) > limit
-        is_backward = params.cursor and params.cursor.startswith("prev_")
-
-        if has_more:
-            records = records[-limit:] if is_backward else records[:limit]
-
-        next_cursor = None
-        previous_cursor = None
-
-        if records:
-            if has_more:
-                last_record, _ = records[-1]
-                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
-            if params.cursor:
-                if is_backward:
-                    if has_more:
-                        first_record, _ = records[0]
-                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
-                else:
-                    first_record, _ = records[0]
-                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+        records, has_more, next_cursor, previous_cursor = self._page(records, params)
 
         data = []
         for record, data_source in records:
@@ -1346,6 +1322,51 @@ class EventRecordService(
                     macros=macros,
                     water_ml=water_ml,
                     nutrients=_nutrient_values(nutrients),
+                )
+            )
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+                total_count=total_count,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
+
+    def get_reproductive_health(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+    ) -> PaginatedResponse[ReproductiveHealthRecord]:
+        params.category = EventCategory.REPRODUCTIVE_HEALTH
+        # A period, pregnancy or contraceptive spans days or months: return it to every range it touches.
+        params.overlapping = True
+        records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
+        records, has_more, next_cursor, previous_cursor = self._page(records, params)
+
+        data = []
+        for record, data_source in records:
+            details: ReproductiveHealthDetails | None = record.reproductive_health_detail
+            data.append(
+                ReproductiveHealthRecord(
+                    id=record.id,
+                    type=ReproductiveHealthType(record.type),
+                    start_time=record.start_datetime,
+                    end_time=record.end_datetime,
+                    zone_offset=record.zone_offset,
+                    source=self._map_source(data_source),
+                    value=details.value if details else None,
+                    cycle_start=details.cycle_start if details else None,
+                    protection_used=details.protection_used if details else None,
+                    cervical_mucus_sensation=details.cervical_mucus_sensation if details else None,
                 )
             )
 

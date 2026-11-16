@@ -34,6 +34,7 @@ from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.series_types.sdk.reproductive_health import SDK_TYPE_TO_REPRODUCTIVE_HEALTH_TYPE
 from app.database import DbSession, SessionLocal
 from app.extensions import events as extension_events
 from app.integrations import rollup_queue
@@ -362,7 +363,8 @@ def last_backfill_requested_until(db: DbSession, user_id: UUID, provider: str) -
     return sync_run_repository.last_window_end(db, user_id, provider, SyncSource.BACKFILL)
 
 
-# One SDK export names sleep and workouts differently per writer (batch vs the device's end event).
+# One SDK export names sleep and workouts differently per writer (batch vs the device's end event),
+# and reports each reproductive health type on its own.
 _SDK_EVENT_TYPE_NAMES: dict[str, str] = {
     "sleep": EventCategory.SLEEP,
     "SLEEP": EventCategory.SLEEP,
@@ -371,7 +373,10 @@ _SDK_EVENT_TYPE_NAMES: dict[str, str] = {
     "workouts": EventCategory.WORKOUT,
     "WORKOUT": EventCategory.WORKOUT,
     "HKWorkoutTypeIdentifier": EventCategory.WORKOUT,
+    **dict.fromkeys(SDK_TYPE_TO_REPRODUCTIVE_HEALTH_TYPE, EventCategory.REPRODUCTIVE_HEALTH),
 }
+# Exported as several device types, so done only when the whole run is.
+_SDK_SPLIT_TYPES = frozenset({EventCategory.REPRODUCTIVE_HEALTH})
 
 _FINISHED_STATUSES = frozenset({SyncStatus.SUCCESS, SyncStatus.SKIPPED})
 # IN_PROGRESS is no verdict: a batch writes it while the end event is still to come.
@@ -387,23 +392,37 @@ def _finished_types_by_run(rows: list[HistoricalTypeRow]) -> dict[UUID, dict[str
             continue
         name = _SDK_EVENT_TYPE_NAMES.get(row.data_type, row.data_type)
         by_type.setdefault(name, set()).add(SyncStatus(row.status))
-    return {
-        run_id: {
+    finished: dict[UUID, dict[str, bool]] = {}
+    for run_id, by_type in statuses.items():
+        verdicts = {
             name: bool(seen & _FINISHED_STATUSES) and not seen & _UNFINISHED_STATUSES for name, seen in by_type.items()
         }
-        for run_id, by_type in statuses.items()
-    }
+        run_done = all(verdicts.values())
+        for name in _SDK_SPLIT_TYPES & verdicts.keys():
+            verdicts[name] = verdicts[name] and run_done
+        finished[run_id] = verdicts
+    return finished
 
 
 def _exported_ranges(rows: list[HistoricalTypeRow]) -> dict[str, CoveredRange]:
-    """Per type, the span the latest historical export that reported one has sent so far."""
+    """Per type, the span the latest historical export that reported one has sent so far.
+
+    A type exported as several device types starts where the least advanced of them got to.
+    """
     latest: dict[str, tuple[datetime, CoveredRange]] = {}
     for row in rows:
         if row.data_type is None or row.covered_start is None or row.covered_end is None:
             continue
         name = _SDK_EVENT_TYPE_NAMES.get(row.data_type, row.data_type)
-        if name not in latest or row.run_started_at > latest[name][0]:
-            latest[name] = (row.run_started_at, CoveredRange(startDate=row.covered_start, endDate=row.covered_end))
+        span = CoveredRange(startDate=row.covered_start, endDate=row.covered_end)
+        held = latest.get(name)
+        if held is not None and row.run_started_at == held[0]:
+            span = CoveredRange(
+                startDate=max(held[1].startDate, span.startDate), endDate=max(held[1].endDate, span.endDate)
+            )
+        elif held is not None and row.run_started_at < held[0]:
+            continue
+        latest[name] = (row.run_started_at, span)
     return {name: span for name, (_, span) in latest.items()}
 
 

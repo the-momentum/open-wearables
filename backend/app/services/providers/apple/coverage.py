@@ -1,4 +1,5 @@
 from app.constants.series_types.sdk.metric_types import APPLE_METRIC_TYPE_TO_SERIES_TYPE
+from app.constants.series_types.sdk.reproductive_health import HEALTHKIT_REPRODUCTIVE_HEALTH_TYPES
 from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_SERIES
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
 from app.schemas.enums import SeriesType
@@ -50,5 +51,7 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
 )
 
 MEAL_FIELDS: frozenset[str] = frozenset({"title", "meal_type", "nutrients"})
+
+REPRODUCTIVE_HEALTH_TYPES = HEALTHKIT_REPRODUCTIVE_HEALTH_TYPES
 
 HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset()

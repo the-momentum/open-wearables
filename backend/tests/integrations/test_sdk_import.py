@@ -5,6 +5,7 @@ Tests the full import flow for Apple HealthKit data via SDK.
 """
 
 import json
+from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -15,7 +16,15 @@ from sqlalchemy.orm import Session
 
 from app.constants.celery_tasks import CeleryTask
 from app.constants.series_types.sdk import get_series_type_from_metric_type
-from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
+from app.models import (
+    DataSource,
+    EventRecord,
+    EventRecordAggregate,
+    MealDetails,
+    ReproductiveHealthDetails,
+    SeriesSample,
+    WorkoutDetails,
+)
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
 from app.schemas.enums.series_types import get_series_type_from_id
 from app.schemas.model_crud.activities import EventRecordQueryParams
@@ -2034,3 +2043,217 @@ class TestSDKWorkoutRouteAndSamples:
 
         assert result["workouts_saved"] == 1
         assert self._series(db, user.id) == {}
+
+
+class TestSDKImportReproductiveHealth:
+    """HealthKit and Health Connect reproductive health records become `reproductive_health` events."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService()
+
+    @staticmethod
+    def _record(
+        record_id: str,
+        record_type: str,
+        value: float,
+        *,
+        start: str = "2026-11-01T00:00:00Z",
+        end: str = "2026-11-02T00:00:00Z",
+        unit: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        app_id: str = "com.apple.Health",
+    ) -> dict[str, Any]:
+        return {
+            "id": record_id,
+            "type": record_type,
+            "startDate": start,
+            "endDate": end,
+            "zoneOffset": "+01:00",
+            "source": {"appId": app_id, "deviceModel": "iPhone15,2", "deviceType": "phone"},
+            "value": value,
+            "unit": unit,
+            "parentId": None,
+            "metadata": metadata,
+        }
+
+    @staticmethod
+    def _payload(provider: str, records: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "provider": provider,
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2026-11-02T08:00:00Z",
+            "data": {"records": records},
+        }
+
+    @staticmethod
+    def _entries(db: Session, user_id: UUID) -> list[tuple[EventRecord, ReproductiveHealthDetails]]:
+        return (
+            db.query(EventRecord, ReproductiveHealthDetails)
+            .join(ReproductiveHealthDetails, ReproductiveHealthDetails.record_id == EventRecord.id)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, EventRecord.category == "reproductive_health")
+            .order_by(EventRecord.external_id)
+            .all()
+        )
+
+    def test_entries_of_one_day_are_all_saved(self, db: Session, import_service: ImportService) -> None:
+        """Cycle Tracking logs flow, mucus and an ovulation test over the same day; each is its own entry."""
+        user = UserFactory()
+        payload = self._payload(
+            "apple",
+            [
+                self._record(
+                    "flow-1", "HKCategoryTypeIdentifierMenstrualFlow", 3, metadata={"HKMenstrualCycleStart": "1"}
+                ),
+                self._record("mucus-1", "HKCategoryTypeIdentifierCervicalMucusQuality", 5),
+                self._record("ovulation-1", "HKCategoryTypeIdentifierOvulationTestResult", 2),
+                self._record("pregnancy-1", "HKCategoryTypeIdentifierPregnancy", 0, end="2027-08-01T00:00:00Z"),
+            ],
+        )
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["reproductive_health_saved"] == 4
+        assert result["unsupported_types"] == {}
+        assert result["records_saved"] == 0
+        stored = {record.external_id: (record.type, detail.value) for record, detail in self._entries(db, user.id)}
+        assert stored == {
+            "flow-1": ("menstrual_flow", "medium"),
+            "mucus-1": ("cervical_mucus", "egg_white"),
+            "ovulation-1": ("ovulation_test", "lh_surge"),
+            "pregnancy-1": ("pregnancy", None),
+        }
+        flow = next(detail for record, detail in self._entries(db, user.id) if record.external_id == "flow-1")
+        assert flow.cycle_start is True
+
+    def test_a_resync_updates_entries_in_place(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        first = self._payload("apple", [self._record("flow-1", "HKCategoryTypeIdentifierMenstrualFlow", 2)])
+        edited = self._payload("apple", [self._record("flow-1", "HKCategoryTypeIdentifierMenstrualFlow", 4)])
+
+        assert import_service.load_data(db, first, str(user.id))["reproductive_health_saved"] == 1
+        assert import_service.load_data(db, edited, str(user.id))["reproductive_health_saved"] == 0
+
+        entries = self._entries(db, user.id)
+        assert len(entries) == 1
+        assert entries[0][1].value == "heavy"
+
+    def test_a_value_cleared_on_the_phone_is_cleared_here(self, db: Session, import_service: ImportService) -> None:
+        """Health Connect edits a record under its id: protection back to unknown, sensation removed."""
+        user = UserFactory()
+        app_id = "com.google.android.apps.healthdata"
+        first = self._payload(
+            "health_connect",
+            [
+                self._record("hc-sex-1", "SEXUAL_ACTIVITY", 1, app_id=app_id),
+                self._record("hc-mucus-1", "CERVICAL_MUCUS", 3, metadata={"sensation": "light"}, app_id=app_id),
+            ],
+        )
+        edited = self._payload(
+            "health_connect",
+            [
+                self._record("hc-sex-1", "SEXUAL_ACTIVITY", 0, app_id=app_id),
+                self._record("hc-mucus-1", "CERVICAL_MUCUS", 3, metadata={"sensation": "unknown"}, app_id=app_id),
+            ],
+        )
+
+        import_service.load_data(db, first, str(user.id))
+        import_service.load_data(db, edited, str(user.id))
+        db.expire_all()
+
+        details = {record.external_id: detail for record, detail in self._entries(db, user.id)}
+        assert details["hc-sex-1"].protection_used is None
+        assert details["hc-mucus-1"].value == "creamy"
+        assert details["hc-mucus-1"].cervical_mucus_sensation is None
+
+    def test_health_connect_period_and_flow(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        payload = self._payload(
+            "health_connect",
+            [
+                self._record(
+                    "hc-period-1",
+                    "MENSTRUAL_PERIOD",
+                    1,
+                    start="2026-11-01T06:00:00Z",
+                    end="2026-11-05T06:00:00Z",
+                    app_id="com.google.android.apps.healthdata",
+                ),
+                self._record(
+                    "hc-flow-1",
+                    "MENSTRUAL_FLOW",
+                    2,
+                    start="2026-11-01T08:00:00Z",
+                    end="2026-11-01T08:00:00Z",
+                    metadata={"flow": "medium"},
+                    app_id="com.google.android.apps.healthdata",
+                ),
+            ],
+        )
+
+        import_service.load_data(db, payload, str(user.id))
+
+        page = event_record_service.get_reproductive_health(db, user.id, EventRecordQueryParams())
+        by_type = {entry.type: entry for entry in page.data}
+        assert by_type["menstrual_period"].value is None
+        assert by_type["menstrual_period"].end_time - by_type["menstrual_period"].start_time == timedelta(days=4)
+        assert by_type["menstrual_flow"].value == "medium"
+        assert by_type["menstrual_flow"].source.provider == "health_connect"
+
+    def test_a_record_without_id_is_skipped(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        record = self._record("x", "HKCategoryTypeIdentifierLactation", 0)
+        record["id"] = None
+
+        result = import_service.load_data(db, self._payload("apple", [record]), str(user.id))
+
+        assert result["reproductive_health_saved"] == 0
+        assert self._entries(db, user.id) == []
+
+    @pytest.mark.parametrize(
+        ("provider", "record_type", "unit"),
+        [
+            ("apple", "HKQuantityTypeIdentifierBasalBodyTemperature", "degC"),
+            ("health_connect", "BASAL_BODY_TEMPERATURE", "°C"),
+        ],
+    )
+    def test_basal_body_temperature_has_its_own_series(
+        self, db: Session, import_service: ImportService, provider: str, record_type: str, unit: str
+    ) -> None:
+        user = UserFactory()
+        record = self._record(
+            "bbt-1", record_type, 36.45, start="2026-11-01T06:30:00Z", end="2026-11-01T06:30:00Z", unit=unit
+        )
+
+        result = import_service.load_data(db, self._payload(provider, [record]), str(user.id))
+
+        assert result["types"] == ["basal_body_temperature"]
+        sample = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).one()
+        assert get_series_type_from_id(sample.series_type_definition_id) == SeriesType.basal_body_temperature
+        assert sample.value == Decimal("36.45")
+
+    def test_webhook_fires_once_per_new_entry(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        payload = self._payload(
+            "apple",
+            [
+                self._record(
+                    "sex-1",
+                    "HKCategoryTypeIdentifierSexualActivity",
+                    0,
+                    metadata={"HKSexualActivityProtectionUsed": "0"},
+                )
+            ],
+        )
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_reproductive_health_created") as created,
+        ):
+            import_service.load_data(db, payload, str(user.id))
+            import_service.load_data(db, payload, str(user.id))
+
+        created.assert_called_once()
+        assert created.call_args.kwargs["entry_type"] == "sexual_activity"
+        assert created.call_args.kwargs["protection_used"] is False

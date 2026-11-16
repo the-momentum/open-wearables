@@ -61,6 +61,7 @@ class SeriesType(str, Enum):
     body_mass_index = "body_mass_index"
     lean_body_mass = "lean_body_mass"
     body_temperature = "body_temperature"
+    basal_body_temperature = "basal_body_temperature"  # at rest after waking, for cycle tracking
     skin_temperature = "skin_temperature"
     skin_temperature_deviation = "skin_temperature_deviation"
     skin_temperature_trend_deviation = "skin_temperature_trend_deviation"
@@ -289,6 +290,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (52, SeriesType.bone_mass, "kg"),
     (53, SeriesType.body_water_mass, "kg"),
     (54, SeriesType.body_water_percentage, "percent"),
+    (55, SeriesType.basal_body_temperature, "celsius"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
     # -------------------------------------------------------------------------

@@ -118,7 +118,8 @@ class SDKMetricType(StrEnum):
     FORCED_VITAL_CAPACITY = "HKQuantityTypeIdentifierForcedVitalCapacity"
     FORCED_EXPIRATORY_VOLUME_1 = "HKQuantityTypeIdentifierForcedExpiratoryVolume1"
     PEAK_EXPIRATORY_FLOW_RATE = "HKQuantityTypeIdentifierPeakExpiratoryFlowRate"
-    BASAL_BODY_TEMPERATURE = "HKQuantityTypeIdentifierBasalBodyTemperature"
+    APPLE_BASAL_BODY_TEMPERATURE = "HKQuantityTypeIdentifierBasalBodyTemperature"
+    ANDROID_BASAL_BODY_TEMPERATURE = "BASAL_BODY_TEMPERATURE"
     SLEEPING_BREATHING_DISTURBANCES = "HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances"
 
     # Body Metrics - Extended
@@ -279,7 +280,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.ANDROID_BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
     SDKMetricType.APPLE_RESPIRATORY_RATE: SeriesType.respiratory_rate,
     SDKMetricType.ANDROID_RESPIRATORY_RATE: SeriesType.respiratory_rate,
-    SDKMetricType.BASAL_BODY_TEMPERATURE: SeriesType.body_temperature,
+    SDKMetricType.APPLE_BASAL_BODY_TEMPERATURE: SeriesType.basal_body_temperature,
+    SDKMetricType.ANDROID_BASAL_BODY_TEMPERATURE: SeriesType.basal_body_temperature,
     SDKMetricType.SLEEPING_BREATHING_DISTURBANCES: SeriesType.sleeping_breathing_disturbances,
     # Blood & Respiratory - Extended
     SDKMetricType.BLOOD_ALCOHOL_CONTENT: SeriesType.blood_alcohol_content,

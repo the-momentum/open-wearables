@@ -20,6 +20,7 @@ from app.schemas.model_crud.coverage import (
     HealthScore,
     MealField,
     MenstrualCycleField,
+    ReproductiveHealthEntryType,
     SleepField,
     WorkoutField,
 )
@@ -100,9 +101,15 @@ def _render_markdown_tables(groups: Groups, providers: list[str], code_header: s
 
 
 def _field_groups(
-    fields: list[WorkoutField] | list[SleepField] | list[MenstrualCycleField] | list[MealField] | list[HealthScore],
+    fields: list[WorkoutField]
+    | list[SleepField]
+    | list[MenstrualCycleField]
+    | list[ReproductiveHealthEntryType]
+    | list[MealField]
+    | list[HealthScore],
+    group_name: str | None = None,
 ) -> Groups:
-    return [(None, [(f.code, "", f.providers) for f in fields])]
+    return [(group_name, [(f.code, "", f.providers) for f in fields])]
 
 
 def generate_body(coverage: CoverageResponse) -> str:
@@ -114,7 +121,12 @@ def generate_body(coverage: CoverageResponse) -> str:
         ("Timeseries", "Metric", timeseries),
         ("Workout", "Field", _field_groups(coverage.workout_fields)),
         ("Sleep", "Field", _field_groups(coverage.sleep_fields)),
-        ("Women's Health", "Field", _field_groups(coverage.menstrual_cycle_fields)),
+        (
+            "Women's Health",
+            "Field",
+            _field_groups(coverage.menstrual_cycle_fields, "Menstrual cycles (field)")
+            + _field_groups(coverage.reproductive_health_types, "Reproductive health entries (type)"),
+        ),
         ("Meals", "Field", _field_groups(coverage.meal_fields)),
         ("Health Scores", "Score", _field_groups(coverage.health_scores)),
     ]

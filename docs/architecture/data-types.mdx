@@ -60,6 +60,7 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `body_mass_index` | kg/m² | BMI |
 | `lean_body_mass` | kg | Lean body mass |
 | `body_temperature` | °C | Body temperature |
+| `basal_body_temperature` | °C | Body temperature at rest right after waking, used for cycle tracking |
 | `skin_temperature` | °C | Skin temperature |
 | `skin_temperature_deviation` | °C | Skin temperature deviation from the user's baseline |
 | `skin_temperature_trend_deviation` | °C | Weighted multi-day trend of the skin temperature deviation |
@@ -340,11 +341,48 @@ Besides timeseries and workouts, the API returns these record types:
 | `/events/sleep` | Sleep sessions with stage totals and, with `?include=stages`, stage intervals |
 | `/events/meals` | Meals with calories, macros and per-nutrient values (the `dietary_*` types above) |
 | `/events/menstrual-cycles` | Menstrual cycle records (cycle day, phase, period and cycle length) |
+| `/events/reproductive-health` | Single reproductive health entries from Apple Health and Health Connect: menstrual flow, ovulation tests and the other types [below](#reproductive-health-entries) |
 | `/summaries/activity`, `/summaries/sleep`, `/summaries/recovery` | Per-day rollups |
 | `/summaries/body` | Current snapshot: latest slow-changing values (weight, body fat, ...), vitals averaged over `average_period` days, and readings from the last `latest_window_hours` |
 | `/health-scores` | Provider and Open Wearables scores |
 
 Health scores use these categories: `sleep`, `recovery`, `readiness`, `activity`, `stress`, `resilience`, `body_battery`, `strain`. See [Health Scores](/scores/health-scores) for how each one is sourced.
+
+### Reproductive Health Entries
+
+`/events/reproductive-health` returns what the user, or an app such as Clue or Flo, logged in Apple Health or Health Connect, one entry per record. Garmin cycle summaries stay in `/events/menstrual-cycles`.
+
+HealthKit and Health Connect number their values differently. Open Wearables maps both to the values below, so `value` means the same thing whichever phone the entry came from. Filter by type with `?type=`.
+
+| `type` | `value` | Apple Health | Health Connect |
+|--------|---------|:------------:|:--------------:|
+| `menstrual_flow` | `unspecified`, `none`, `light`, `medium`, `heavy` | ✅ | ✅ |
+| `menstrual_period` | null; the period runs from `start_time` to `end_time` | ❌ | ✅ |
+| `intermenstrual_bleeding` | null | ✅ | ✅ |
+| `cervical_mucus` | `unknown`, `dry`, `sticky`, `creamy`, `watery`, `egg_white`, `unusual` | ✅ | ✅ |
+| `ovulation_test` | `negative`, `lh_surge`, `estrogen_surge`, `indeterminate` | ✅ | ✅ |
+| `pregnancy_test` | `negative`, `positive`, `indeterminate` | ✅ | ❌ |
+| `progesterone_test` | `negative`, `positive`, `indeterminate` | ✅ | ❌ |
+| `sexual_activity` | null; see `protection_used` | ✅ | ✅ |
+| `contraceptive` | `unspecified`, `implant`, `injection`, `iud`, `intravaginal_ring`, `oral`, `patch` | ✅ | ❌ |
+| `pregnancy` | null; the pregnancy runs from `start_time` to `end_time` | ✅ | ❌ |
+| `lactation` | null | ✅ | ❌ |
+| `infrequent_menstrual_cycles` | null | ✅ (iOS 16+) | ❌ |
+| `irregular_menstrual_cycles` | null | ✅ (iOS 16+) | ❌ |
+| `prolonged_menstrual_periods` | null | ✅ (iOS 16+) | ❌ |
+| `persistent_spotting` | null | ✅ (iOS 16+) | ❌ |
+
+A null `value` means the entry itself is the information: that it happened, and when. Three fields apply to one type each:
+
+- `cycle_start` (`menstrual_flow`): `true` on the first day of a period. Only Apple Health records it; Health Connect sends `menstrual_period` spans instead.
+- `protection_used` (`sexual_activity`): whether protection was used, or null when not recorded.
+- `cervical_mucus_sensation` (`cervical_mucus`): `light`, `medium` or `heavy`. Only Health Connect records it.
+
+The last four types are cycle deviations Apple Health detects from the logged periods, not something the user enters.
+
+<Warning>
+This is sensitive health data. The SDK reads only the types your app asks for, and the user grants each type separately on the phone. Request only the types your product needs.
+</Warning>
 
 ---
 

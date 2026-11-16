@@ -15,7 +15,14 @@ from jose import jwt
 from app.config import settings
 from app.main import api
 from app.middlewares import _EndpointUsageMiddleware, add_endpoint_usage_middleware
-from app.services.endpoint_usage import UNRESOLVED, _path_template, caller_type, endpoint_usage, usage_bucket
+from app.services.endpoint_usage import (
+    _EXCLUDED_ROUTE_MARKERS,
+    UNRESOLVED,
+    _path_template,
+    caller_type,
+    endpoint_usage,
+    usage_bucket,
+)
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
 
@@ -43,6 +50,10 @@ def _build_client(*, telemetry_enabled: bool = True) -> TestClient:
 
     @router.get("/users/{user_id}/events/menstrual-cycles")
     async def menstrual_cycles(user_id: str) -> list[str]:
+        return []
+
+    @router.get("/users/{user_id}/events/reproductive-health")
+    async def reproductive_health(user_id: str) -> list[str]:
         return []
 
     @router.get("/boom")
@@ -153,9 +164,10 @@ class TestEndpointUsageMiddleware:
 
         assert _recorded() == {"unmatched": {"none": {"4xx": "1-10"}}}
 
-    def test_sensitive_routes_are_not_counted(self) -> None:
+    @pytest.mark.parametrize("route", ["menstrual-cycles", "reproductive-health"])
+    def test_sensitive_routes_are_not_counted(self, route: str) -> None:
         client = _build_client()
-        client.get(f"{settings.api_v1}/users/{USER_ID}/events/menstrual-cycles")
+        client.get(f"{settings.api_v1}/users/{USER_ID}/events/{route}")
 
         assert _recorded() == {}
 
@@ -214,7 +226,7 @@ class TestRealRouteTable:
     def test_every_api_route_is_counted_under_its_full_template(self, client: TestClient) -> None:
         expected: set[str] = set()
         for template, operations in api.openapi()["paths"].items():
-            if "/menstrual-cycles" in template:
+            if any(marker in template for marker in _EXCLUDED_ROUTE_MARKERS):
                 continue
             path = template.replace("{provider}", "not-a-provider")
             for name in set(re.findall(r"{(\w+)}", path)):
