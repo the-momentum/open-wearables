@@ -1,12 +1,14 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { page } from '$app/state';
+	import { pageTitle } from '$lib/branding/branding';
 	import Wordmark from './Wordmark.svelte';
 
 	let { title, description, children }: { title: string; description: string; children: Snippet } =
 		$props();
 </script>
 
-<svelte:head><title>{title} · Open Wearables</title></svelte:head>
+<svelte:head><title>{pageTitle(page.data.brandName, title)}</title></svelte:head>
 
 <!-- The pages reached without an account: signing in, and joining a team. -->
 <main class="flex min-h-dvh flex-col justify-center px-5 py-10">
