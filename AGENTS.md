@@ -156,6 +156,12 @@ merged from upstream periodically. The rules below record deliberate fork diverg
 do not silently adopt upstream's version.** When upstream lands a feature that conflicts
 with a fork rule, gate or adapt the feature rather than dropping the rule.
 
+**Maintaining the rules:** whenever a change diverges the fork from upstream — a fork-only
+fix, a deliberately different implementation, or behavior upstream lacks — add or update a
+rule here in the same change. Name the symbols and files, state *why* the divergence exists
+and what silently taking upstream's version would break, and mark upstreamable divergences
+as candidates for upstreaming.
+
 Treat these entries as interim overrides, not permanent forks: keep the fork behavior only
 while upstream lacks an equivalent implementation. When upstream ships its own implementation
 for the same issue, take upstream's version and delete the rule instead of carrying a parallel
@@ -258,3 +264,25 @@ fork divergence.
     (flag naps) adds more internal commits in `reclassify_sleep_naps` — when
     that merge lands it widens this collision surface rather than fixing it,
     so resolve the step wrapper toward no-savepoint regardless.
+14. **Google Health webhook degenerate intervals.** `GoogleWebhookHandler._window`
+    widens any interval with `end <= start` to ±1 min around the instant: Google
+    sends `startTime == endTime` for instant records (blood-glucose, weight), and
+    the Health API 400s on a zero-length filter (`INVALID_TIME_RANGE`), which made
+    every such webhook run FAILED. Upstream returns `min(starts), max(ends)` bare;
+    taking its version reintroduces guaranteed-400 syncs. Candidate for
+    upstreaming; until then keep the widening through merges.
+15. **Statement timeout and cancelled-statement recovery.** `db_statement_timeout_ms`
+    (15 s) in `config.py` and the `connect_args` `-c statement_timeout` in
+    `database.py` are fork-only — upstream sets no global timeout. Two compensations
+    hang off it: `_BULK_STATEMENT_TIMEOUT_MS` + `SET LOCAL` in
+    `DataPointSeriesRepository._insert_data_points` (the pull-lookback merge
+    rewrites tens of thousands of rows and needs minutes, not 15 s), and
+    `Sync247Run._transaction_ctx_wedged`/`_reset_session` (a statement cancelled
+    inside a savepoint's release leaves a transaction context registered over a
+    closed transaction that neither `rollback()` nor `close()` clears — unwind it
+    via `__exit__` or every later statement raises "closed transaction inside
+    context manager"). The same wedged state is what rule 13's internal commits
+    produce, so `_reset_session` also recovers savepoint steps whose handlers
+    still commit internally. Upstream's `step` only calls `rollback()`; taking it
+    drops the recovery. Keep all three through merges; if the global timeout is
+    ever dropped the two compensations go with it.
