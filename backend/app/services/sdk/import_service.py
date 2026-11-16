@@ -27,7 +27,7 @@ from app.constants.series_types.workout_detail_stats import UNDECIDED_WORKOUT_SE
 from app.constants.workout_types import get_unified_sdk_workout_type
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import DeviceType, EventCategory, SeriesType, daily_total_flag
+from app.schemas.enums import DeviceType, EventCategory, ProviderName, SeriesType, daily_total_flag, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -45,6 +45,7 @@ from app.schemas.providers.mobile_sdk import (
     WorkoutStatistic,
 )
 from app.schemas.providers.mobile_sdk.sync_request import (
+    DeletedRecord,
     MetricRecord,
     SleepRecord,
     SyncRequestData,
@@ -87,7 +88,12 @@ _FRACTION_PERCENT_SERIES = frozenset(
     }
 )
 
-_SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
+_SDK_ITEM_MODELS = (
+    ("records", MetricRecord),
+    ("sleep", SleepRecord),
+    ("workouts", Workout),
+    ("deletions", DeletedRecord),
+)
 
 
 def _sends_fraction_percentages(provider: str | None, sdk_version: str | None) -> bool:
@@ -122,6 +128,7 @@ class LoadDataResult(TypedDict):
     records_saved: int  # samples submitted
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
+    records_deleted: int  # food and water items deleted on the device
     types: list[str]  # series types written
     spans: dict[str, tuple[datetime, datetime]]  # per type the device exports itself: record series, workouts, sleep
     sleep_saved: int
@@ -171,7 +178,15 @@ def _parse_sync_request(raw: dict) -> tuple[SDKSyncRequest, list[InvalidRecord]]
     # Reconstruct via model_validate so Pydantic still rejects a bad envelope; `data` now
     # carries only the kept records.
     request = SDKSyncRequest.model_validate(
-        {**raw, "data": SyncRequestData(records=kept["records"], sleep=kept["sleep"], workouts=kept["workouts"])}
+        {
+            **raw,
+            "data": SyncRequestData(
+                records=kept["records"],
+                sleep=kept["sleep"],
+                workouts=kept["workouts"],
+                deletions=kept["deletions"],
+            ),
+        }
     )
     return request, dropped
 
@@ -575,6 +590,27 @@ class ImportService:
             metrics["energy_series"] = energy_series
         return metrics, time_series_samples, duration
 
+    @staticmethod
+    def _deleted_ids_by_type(request: SDKSyncRequest) -> dict[int, set[str]]:
+        """The ids of the food and water items deleted on the device, per series type id; deletions of other types are
+        ignored for now."""
+        ids_by_type: dict[int, set[str]] = {}
+        for deletion in request.data.deletions:
+            series_type = get_series_type_from_metric_type(deletion.type)
+            if series_type in MEAL_NUTRIENT_SERIES_TYPES:
+                ids_by_type.setdefault(get_series_type_id(series_type), set()).add(deletion.id)
+        return ids_by_type
+
+    def _delete_entries(
+        self, db_session: DbSession, request: SDKSyncRequest, user_id: str, ids_by_type: dict[int, set[str]]
+    ) -> int:
+        """Remove the stored food and water items deleted on the device."""
+        if not ids_by_type:
+            return 0
+        return self.timeseries_service.crud.delete_entries(
+            db_session, UUID(user_id), ProviderName(request.provider), ids_by_type
+        )
+
     def load_data(
         self,
         db_session: DbSession,
@@ -681,6 +717,10 @@ class ImportService:
         samples = drop_condensed_series(
             db_session, samples, {r.id: r.count for r in records if r.id and r.count is not None}
         )
+        # An item the batch also deletes is not written: it would replace another item stored at its instant before
+        # the deletion removes the row, and the timeseries webhook would report it
+        deleted_ids = self._deleted_ids_by_type(request)
+        samples = [s for s in samples if s.external_id not in deleted_ids.get(get_series_type_id(s.series_type), ())]
         if samples:
             counts = self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)
@@ -689,6 +729,8 @@ class ImportService:
             types.update(sample.series_type.value for sample in samples)
             for sample in samples:
                 widen(sample.series_type.value, sample.recorded_at, sample.recorded_at)
+
+        records_deleted = self._delete_entries(db_session, request, user_id, deleted_ids)
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()
@@ -706,6 +748,7 @@ class ImportService:
             "records_saved": records_saved,
             "records_inserted": records_inserted,
             "records_updated": records_updated,
+            "records_deleted": records_deleted,
             "types": sorted(types),
             "spans": spans,
             "sleep_saved": sleep_saved,
@@ -772,6 +815,7 @@ class ImportService:
                 records_saved=saved_counts["records_saved"],
                 records_inserted=saved_counts["records_inserted"],
                 records_updated=saved_counts["records_updated"],
+                records_deleted=saved_counts["records_deleted"],
                 workouts_saved=saved_counts["workouts_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
                 unsupported_types=saved_counts["unsupported_types"],
@@ -822,6 +866,7 @@ class ImportService:
                 records_saved=saved_counts["records_saved"],
                 records_inserted=saved_counts["records_inserted"],
                 records_updated=saved_counts["records_updated"],
+                records_deleted=saved_counts["records_deleted"],
                 types=saved_counts["types"],
                 spans=saved_counts["spans"],
                 workouts_saved=saved_counts["workouts_saved"],

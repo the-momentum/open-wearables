@@ -220,6 +220,13 @@ class Workout(BaseModel):
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 
+class DeletedRecord(BaseModel):
+    """A sample the device's health store no longer holds (a HealthKit HKDeletedObject)."""
+
+    id: str = Field(min_length=1, max_length=100)
+    type: SDKMetricType | str
+
+
 class SyncRequestData(BaseModel):
     """Inner data structure for Apple HealthKit sync request.
 
@@ -237,6 +244,13 @@ class SyncRequestData(BaseModel):
     workouts: list[Workout] = Field(
         default_factory=list,
         description="Exercise/workout sessions with optional statistics (distance, heart rate, calories, etc.)",
+    )
+    deletions: list[DeletedRecord] = Field(
+        default_factory=list,
+        description=(
+            "Samples deleted on the device since the last sync, by id and record type. Only food and water items "
+            "(dietary types and water) are removed; deletions of other types are ignored."
+        ),
     )
 
 

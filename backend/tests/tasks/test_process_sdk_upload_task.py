@@ -103,7 +103,9 @@ class TestProcessSDKUploadTask:
         assert result["status_code"] == 200
         mock_sdk_import_service.import_data_from_request.assert_called_once()
 
-    @pytest.mark.parametrize(("records_saved", "rolls_up"), [(3, True), (0, False)])
+    @pytest.mark.parametrize(
+        ("records_saved", "records_deleted", "rolls_up"), [(3, 0, True), (0, 0, False), (0, 1, True)]
+    )
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service")
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
@@ -115,6 +117,7 @@ class TestProcessSDKUploadTask:
         db: Session,
         mock_celery_app: MagicMock,
         records_saved: int,
+        records_deleted: int,
         rolls_up: bool,
     ) -> None:
         """The SDK sends no day values: its days and summaries are ours, so they wait for no 15-minute run."""
@@ -125,6 +128,7 @@ class TestProcessSDKUploadTask:
         mock_sdk_import_service.import_data_from_request.return_value.model_dump.return_value = {
             "status_code": 200,
             "records_saved": records_saved,
+            "records_deleted": records_deleted,
         }
 
         with patch("app.integrations.rollup_queue.roll_up_soon") as roll_up_soon:

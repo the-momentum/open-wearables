@@ -17,6 +17,7 @@ class UploadDataResponse(BaseModel):
     records_saved: int = Field(0, description="Time-series samples saved")
     records_inserted: int = Field(0, description="Time-series rows that did not exist before")
     records_updated: int = Field(0, description="Time-series rows refreshed in place")
+    records_deleted: int = Field(0, description="Food and water items removed as deleted on the device")
     types: list[str] = Field(
         default_factory=list,
         description=(

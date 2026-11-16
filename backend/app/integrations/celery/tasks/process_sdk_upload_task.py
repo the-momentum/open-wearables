@@ -235,6 +235,7 @@ def process_sdk_upload(
         records_saved = int(result.get("records_saved", 0) or 0)
         records_inserted = int(result.get("records_inserted", 0) or 0)
         records_updated = int(result.get("records_updated", 0) or 0)
+        records_deleted = int(result.get("records_deleted", 0) or 0)
         workouts_saved = int(result.get("workouts_saved", 0) or 0)
         sleep_saved = int(result.get("sleep_saved", 0) or 0)
         dropped_count = int(result.get("dropped_count", 0) or 0)
@@ -242,7 +243,7 @@ def process_sdk_upload(
         items_total = records_saved + workouts_saved + sleep_saved
 
         if isinstance(status_code, int) and 200 <= status_code < 300:
-            if items_total:
+            if items_total or records_deleted:
                 # The SDK sends no day values of its own: its days and summaries are ours, so roll them up now.
                 rollup_queue.roll_up_soon()
             # Same wording as webhook_push_task; records_saved counts samples submitted.
