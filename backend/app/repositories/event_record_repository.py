@@ -201,6 +201,24 @@ class EventRecordRepository(
             query = query.filter(DataSource.provider == provider)
         return {record.external_id: record for record in query if record.external_id}
 
+    def sleep_windows(
+        self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime, provider: str
+    ) -> list[tuple[datetime, datetime]]:
+        """Start and end of the user's sleep sessions from this provider that overlap [start, end]."""
+        rows = (
+            db_session.query(self.model.start_datetime, self.model.end_datetime)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.provider == provider,
+                self.model.category == EventCategory.SLEEP,
+                self.model.start_datetime < end,
+                self.model.end_datetime > start,
+            )
+            .all()
+        )
+        return [(row.start_datetime, row.end_datetime) for row in rows]
+
     def main_sleep_ended_before(
         self, db_session: DbSession, user_id: UUID, at: datetime, within: timedelta, provider: str
     ) -> EventRecord | None:
