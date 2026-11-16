@@ -44,6 +44,7 @@ from app.services.providers.google_health.data_247 import (
     UnsupportedGranularityError,
 )
 from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
+from app.services.providers.sync_247_result import error_code_of
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.exceptions import REAUTH_REQUIRED, InvalidInputError, ReauthRequiredError
@@ -177,18 +178,12 @@ class GoogleWebhookHandler(BaseWebhookHandler):
                     trace_id=trace_id,
                     **context,
                 )
-                results.append({"status": "error", "error": str(e), **context})
+                results.append({"status": "error", "error": error_code_of(e), **context})
         records = sum(int(r.get("records_saved") or 0) for r in results)
         return {"status": "processed", "notifications": len(items), "records_saved": records, "results": results}
 
     def _user_context(self, db: DbSession, item: Any) -> dict[str, str]:
-        """Best-effort user/data_type attribution for a notification that raised.
-
-        ``_process_one`` only learns the OW user after validation and the connection
-        lookup, so an exception mid-processing loses that context; re-derive it here
-        so the failed delivery can still be recorded against the right user. Returns
-        {} when it cannot be recovered (e.g. the session itself is broken).
-        """
+        """User and data type of a notification that raised, or {} when they can't be resolved."""
         try:
             notification = GoogleWebhookNotification.model_validate(item)
             connection = self.connection_repo.get_by_provider_user_id(

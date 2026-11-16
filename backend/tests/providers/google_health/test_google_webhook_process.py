@@ -1,10 +1,3 @@
-"""process_payload() attribution for failed Google webhook notifications.
-
-A notification that raises mid-processing still resolves its OW user through the
-connection lookup, so the error result carries ``user_id``/``data_type`` and the
-shared webhook task can record a FAILED run for it.
-"""
-
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -42,7 +35,7 @@ def test_a_failed_notification_is_attributed_to_its_user() -> None:
 
     item = result["results"][0]
     assert item["status"] == "error"
-    assert item["error"] == "upstream 500"
+    assert item["error"] == "RuntimeError"
     assert item["user_id"] == str(connection.user_id)
     assert item["data_type"] == "steps"
 
