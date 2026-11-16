@@ -101,9 +101,11 @@ class TestProcessSDKUploadTask:
         assert result["status_code"] == 200
         mock_sdk_import_service.import_data_from_request.assert_called_once()
 
-    @pytest.mark.parametrize(("records_saved", "rolls_up"), [(3, True), (0, False)])
+    @pytest.mark.parametrize(
+        ("records_saved", "records_deleted", "rolls_up"), [(3, 0, True), (0, 0, False), (0, 1, True)]
+    )
     def test_a_saved_batch_rolls_its_days_up_right_away(
-        self, mocker: MockerFixture, db: Session, records_saved: int, rolls_up: bool
+        self, mocker: MockerFixture, db: Session, records_saved: int, records_deleted: int, rolls_up: bool
     ) -> None:
         """The SDK sends no day values: its days and summaries are ours, so they wait for no 15-minute run."""
         mock_user_repo_class = mocker.patch(
@@ -120,13 +122,40 @@ class TestProcessSDKUploadTask:
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
         mock_user_repo_class.return_value.get.return_value = user
         mock_sdk_import_service.import_data_from_request.return_value = UploadDataResponse(
-            status_code=200, response="ok", records_saved=records_saved
+            status_code=200, response="ok", records_saved=records_saved, records_deleted=records_deleted
         )
 
         with patch("app.integrations.rollup_queue.roll_up_soon", autospec=True) as roll_up_soon:
             process_sdk_upload(content="{}", content_type="application/json", user_id=str(user.id), provider="apple")
 
         assert roll_up_soon.called is rolls_up
+
+    def test_the_completed_sync_reports_the_items_deleted(self, mocker: MockerFixture, db: Session) -> None:
+        """The upload answers before the import runs, so the count reaches clients with the completed sync."""
+        mock_user_repo_class = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True
+        )
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True
+        )
+        mock_sdk_import_service = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service", autospec=True
+        )
+        completed = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.emit_sync_completed", autospec=True
+        )
+        mocker.patch("app.integrations.rollup_queue.roll_up_soon", autospec=True)
+        user = UserFactory()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_user_repo_class.return_value.get.return_value = user
+        mock_sdk_import_service.import_data_from_request.return_value = UploadDataResponse(
+            status_code=200, response="ok", records_deleted=2
+        )
+
+        process_sdk_upload(content="{}", content_type="application/json", user_id=str(user.id), provider="apple")
+
+        assert completed.call_args.kwargs["metadata"]["deleted"] == 2
 
     def test_process_sdk_upload_user_check_uses_correct_uuid(self, mocker: MockerFixture) -> None:
         """Verify the user repository is called with the correct UUID."""
