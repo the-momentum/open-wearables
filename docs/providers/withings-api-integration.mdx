@@ -155,11 +155,16 @@ WITHINGS_WEBHOOK_TOKEN=replace-with-a-random-secret
   </Step>
 
   <Step title="Enable webhooks (optional)">
-    Withings subscriptions are **per user**: each one is created with that user's own bearer token, so there's nothing to register at the application level. Instead, you switch Withings' live-sync mode to **Webhook**, and Open Wearables subscribes every active Withings connection using its own token; any user who connects afterward is subscribed automatically at connect time.
+    Withings subscriptions are **per user**: each one is created with that user's own bearer token, so there's nothing to register at the application level. Instead, you set Withings' live-sync mode to **webhook**, and Open Wearables subscribes every active Withings connection using its own token; any user who connects afterward is subscribed automatically at connect time.
 
-    **Switch Withings to webhook mode from the dashboard:**
+    **Switch Withings to webhook mode via the provider settings API** (the portal does not expose this control - it takes a **developer JWT**, not an API key):
 
-    In your Open Wearables dashboard, go to **Settings → Providers**, find **Withings**, and switch its live-sync control from **Periodic pull** to **Webhook**.
+    ```bash
+    curl -X PUT "http://localhost:8000/api/v1/oauth/providers/withings" \
+      -H "Authorization: Bearer YOUR_DEVELOPER_JWT" \
+      -H "Content-Type: application/json" \
+      -d '{"live_sync_mode": "webhook"}'
+    ```
 
     Open Wearables derives the callback URL from your `API_BASE_URL` and `WITHINGS_WEBHOOK_TOKEN` as `{API_BASE_URL}/api/v1/providers/withings/webhooks?token={WITHINGS_WEBHOOK_TOKEN}`, and subscribes each user's connection to it via Withings' Notify API.
 

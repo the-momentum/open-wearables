@@ -12,6 +12,8 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.sync_status import SyncStatus
@@ -279,6 +281,29 @@ class TestSync247RunStep:
         run.db.begin_nested.assert_called_once()
         run.db.rollback.assert_not_called()
         assert run.result.outcomes["heart_rate"].status is SyncStatus.FAILED
+
+    def test_a_wedged_transaction_context_is_unwound_and_the_session_recovers(self, db: Session) -> None:
+        """A statement cancelled inside a savepoint's release can leave a transaction
+        context registered over a closed transaction. Neither rollback() nor close()
+        clears that registration — recovery must exit the stale context, after
+        which the session accepts statements again."""
+        ctx = db.begin_nested()
+        ctx.__enter__()
+        db.get_nested_transaction().close()  # kill the transaction out from under its context
+
+        run = Sync247Run("testprovider", db, str(uuid4()), logging.getLogger(__name__))
+
+        # The stale context makes begin_nested raise; the step records the failure
+        # and returns without yielding, so the `with` aborts the block.
+        with pytest.raises(RuntimeError, match="generator didn't yield"), run.step("heart_rate", savepoint=True):
+            pass
+
+        with run.step("sleep", savepoint=True) as step:
+            db.execute(text("SELECT 1"))
+            step.record(1)
+
+        assert run.result.outcomes["heart_rate"].status is SyncStatus.FAILED
+        assert run.result.outcomes["sleep"].status is SyncStatus.SUCCESS
 
     def test_fatal_errors_propagate_instead_of_being_recorded(self, run: Sync247Run) -> None:
         run.fatal = (ProviderConnectionError,)

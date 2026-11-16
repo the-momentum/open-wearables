@@ -1,18 +1,18 @@
 ---
 title: "Providers"
 sidebarTitle: "Providers"
-description: "Enable or disable OAuth providers and choose between periodic pull and webhook live sync from Settings → Providers in the Open Wearables developer portal."
+description: "Enable or disable OAuth providers from Settings → Providers in the Open Wearables developer portal. Live sync mode is managed through the backend API."
 keywords: ["enable oauth provider", "garmin oura whoop polar", "live sync mode", "periodic pull", "webhook sync"]
 "og:title": "Providers | Open Wearables"
-"og:description": "Enable or disable OAuth providers and choose between periodic pull and webhook live sync from Settings → Providers in the Open Wearables developer portal."
+"og:description": "Enable or disable OAuth providers from Settings → Providers in the Open Wearables developer portal. Live sync mode is managed through the backend API."
 "og:url": "https://docs.openwearables.io/developer-portal/settings/providers"
 "og:type": "article"
 "twitter:title": "Providers | Open Wearables"
-"twitter:description": "Enable or disable OAuth providers and choose between periodic pull and webhook live sync from Settings → Providers in the Open Wearables developer portal."
+"twitter:description": "Enable or disable OAuth providers from Settings → Providers in the Open Wearables developer portal. Live sync mode is managed through the backend API."
 "twitter:card": "summary_large_image"
 ---
 
-**Settings → Providers** controls which OAuth providers your end users can connect and how live data is pulled from each of them.
+**Settings → Providers** controls which OAuth providers your end users can connect.
 
 ## Enabling a provider
 
@@ -22,11 +22,4 @@ A provider still needs its OAuth client credentials configured in the backend en
 
 ## Live sync mode
 
-Providers that support both delivery methods show a two-option control:
-
-- **Periodic pull** - Open Wearables polls the provider API on a schedule.
-- **Webhook** - the provider pushes new data to your deployment as it arrives. Requires a publicly reachable backend and, for some providers, a registered webhook subscription. See [Provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions).
-
-Changing the mode is saved immediately, independently of the enable toggles.
-
-Providers that support only one method show a static badge instead (**Webhook only** or **Periodic pull only**).
+The portal does not expose the live-sync mode control. Providers that support both delivery methods keep their mode in backend settings; an instance admin changes it with `PUT /api/v1/oauth/providers/{provider}` and a developer JWT - see [Live Sync Mode](/api-reference/guides/provider-setup#live-sync-mode). Webhook mode also requires a publicly reachable backend and, for some providers, a registered webhook subscription.

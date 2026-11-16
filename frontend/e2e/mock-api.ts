@@ -40,8 +40,6 @@ import {
 	rotateApplicationSecret,
 	saveDeviceTypePriorities,
 	saveProviderPriorities,
-	setLiveSyncMode,
-	liveSyncCalls,
 	setProviderEnabled,
 	makeConnections,
 	createSubscription,
@@ -344,13 +342,6 @@ const server = Bun.serve({
 			return json(PROVIDER_SETTINGS);
 		}
 
-		const liveSyncMatch = pathname.match(/^\/api\/v1\/oauth\/providers\/([^/]+)$/);
-		if (liveSyncMatch && request.method === 'PUT') {
-			const { live_sync_mode } = await request.json();
-			const updated = setLiveSyncMode(liveSyncMatch[1], live_sync_mode);
-			return updated ? json(updated) : problem(404, 'Not found', 'NOT_FOUND');
-		}
-
 		// ------------------------------------------------------------ settings --
 
 		if (pathname === '/__sync-scans') {
@@ -365,10 +356,6 @@ const server = Bun.serve({
 		if (storedMatch) {
 			const stored = storedRun(decodeURIComponent(storedMatch[1]));
 			return stored ? json(stored) : problem(404, 'Sync run not found', 'NOT_FOUND');
-		}
-
-		if (pathname === '/__live-sync-calls') {
-			return json({ calls: liveSyncCalls() });
 		}
 
 		if (pathname === '/__last-seed') {

@@ -400,7 +400,7 @@ Subscribers live at the **project** level (`POST /v4/projects/{project}/subscrib
   </Step>
 
   <Step title="Register the subscriber">
-    Switching the provider's live sync mode to `webhook` registers the subscriber automatically. Google then performs an endpoint-verification handshake (`POST {"type":"verification"}`) against `{API_BASE_URL}/api/v1/providers/google_health/webhooks`, which must return `2xx` when authenticated. Once verified, notifications begin flowing.
+    Setting the provider's live sync mode to `webhook` via `PUT /api/v1/oauth/providers/google_health` (developer JWT - the portal does not expose this control) registers the subscriber automatically. Google then performs an endpoint-verification handshake (`POST {"type":"verification"}`) against `{API_BASE_URL}/api/v1/providers/google_health/webhooks`, which must return `2xx` when authenticated. Once verified, notifications begin flowing.
   </Step>
 </Steps>
 

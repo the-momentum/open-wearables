@@ -713,6 +713,28 @@ class TestDataPointSeriesRepository:
         assert (counts.inserted, counts.updated) == (0, 0)
         assert int(counts) == 0
 
+    def test_bulk_create_raises_the_transactions_statement_timeout(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """The 15s connection default cancels big catch-up merges, so the bulk
+        write widens its own transaction's budget (SET LOCAL)."""
+        user = UserFactory()
+        series_repo.bulk_create(
+            db,
+            [
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user.id,
+                    source="garmin",
+                    recorded_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+                    value=100,
+                    series_type=SeriesType.heart_rate,
+                )
+            ],
+        )
+
+        assert db.execute(text("SHOW statement_timeout")).scalar() == "5min"
+
     def test_bulk_create_large_batch(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """A large batch inserts every row correctly in one call.
 

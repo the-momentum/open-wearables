@@ -49,9 +49,6 @@ export const listProviderSettings = async (accessToken: string) =>
 export const saveProviderSettings = (providers: Record<string, boolean>, accessToken: string) =>
 	apiPut<ProviderSetting[]>(PROVIDERS, accessToken, { providers });
 
-export const setLiveSyncMode = (provider: string, mode: string, accessToken: string) =>
-	apiPut<ProviderSetting>(`${PROVIDERS}/${provider}`, accessToken, { live_sync_mode: mode });
-
 /** Both priority lists answer with `{ items }`, which the pages do not need. */
 export const listProviderPriorities = async (accessToken: string) =>
 	(await apiGet<{ items: ProviderPriority[] }>('/api/v1/priorities/providers', accessToken)).items;
