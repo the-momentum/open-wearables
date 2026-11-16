@@ -139,7 +139,7 @@ def backfill_whoop_strain(db: Session, *, dry_run: bool) -> int:
         print("\nDry run -- no changes made.")
         return linkable
 
-    linked = db.execute(_UPDATE).rowcount  # ty: ignore[unresolved-attribute]
+    linked = db.execute(_UPDATE).rowcount  # ty: ignore[missing-attribute]
     print(f"health_score: Linked {linked} of {eligible} unlinked Whoop workout strain score(s)")
     if eligible - linked:
         _report_unresolved(db, eligible - linked)

@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from fastapi import HTTPException
 from freezegun import freeze_time
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -15,7 +14,12 @@ from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
 from app.services.providers import api_client
 from app.services.providers.api_client import download_binary_content, get_valid_token, make_authenticated_request
-from app.utils.exceptions import ReauthRequiredError
+from app.utils.exceptions import (
+    ProviderAuthRejectedError,
+    ProviderError,
+    ProviderTokenUnavailableError,
+    ReauthRequiredError,
+)
 from tests.factories import UserConnectionFactory
 
 API_BASE_URL = "https://api.example.com"
@@ -111,7 +115,7 @@ def test_a_disconnect_made_elsewhere_is_seen_once_the_cached_token_ages(
         db.execute(text("UPDATE user_connection SET access_token = NULL WHERE id = :id"), {"id": connection.id})
         clock.monotonic.return_value = api_client.TOKEN_CACHE_TTL_SECONDS + 1
 
-        with pytest.raises(HTTPException):
+        with pytest.raises(ProviderTokenUnavailableError):
             get_valid_token(db, connection.user_id, "whoop", repo, MagicMock())
 
 
@@ -199,7 +203,7 @@ def test_a_401_after_a_successful_refresh_is_not_a_dead_grant(db: Session, conne
 
     with (
         patch("app.services.providers.api_client.httpx.Client", return_value=client),
-        pytest.raises(HTTPException) as exc_info,
+        pytest.raises(ProviderAuthRejectedError) as exc_info,
     ):
         _request(db, connection, repo, oauth)
 
@@ -216,11 +220,11 @@ def test_without_a_refresh_token_a_401_is_not_retried(db: Session, connection: A
 
     with (
         patch("app.services.providers.api_client.httpx.Client", return_value=client),
-        pytest.raises(HTTPException) as exc_info,
+        pytest.raises(ProviderAuthRejectedError) as exc_info,
     ):
         _request(db, connection, repo, oauth)
 
-    assert exc_info.value.status_code == 401
+    assert not isinstance(exc_info.value, ReauthRequiredError)
     assert client.request.call_count == 1
     oauth.revoke_connection.assert_not_called()
 
@@ -252,11 +256,11 @@ def test_a_recent_rejection_is_not_yet_a_dead_grant(db: Session, connection: Any
 
     with (
         patch("app.services.providers.api_client.httpx.Client", return_value=client),
-        pytest.raises(HTTPException) as exc_info,
+        pytest.raises(ProviderError) as exc_info,
     ):
         _request(db, connection, repo, oauth)
 
-    assert not isinstance(exc_info.value, ReauthRequiredError)
+    assert exc_info.value.upstream_status == 403
     oauth.revoke_connection.assert_not_called()
 
 

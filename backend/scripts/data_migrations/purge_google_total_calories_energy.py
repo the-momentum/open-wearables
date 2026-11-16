@@ -101,7 +101,7 @@ def _delete_batched(db: Session, stmt: TextClause, params: dict, batch: int) -> 
     """Run *stmt* until a batch comes back short, committing after each one."""
     total = 0
     while True:
-        n = db.execute(stmt, {**params, "batch": batch}).rowcount  # ty: ignore[unresolved-attribute]
+        n = db.execute(stmt, {**params, "batch": batch}).rowcount  # ty: ignore[missing-attribute]
         db.commit()
         total += n
         if n < batch:

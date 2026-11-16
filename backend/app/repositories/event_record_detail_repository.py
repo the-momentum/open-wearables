@@ -23,7 +23,6 @@ from app.schemas.model_crud.activities import (
     EventRecordDetailUpdate,
     StatColumn,
 )
-from app.utils.exceptions import handle_exceptions
 
 
 class EventRecordDetailRepository(
@@ -72,7 +71,6 @@ class EventRecordDetailRepository(
             creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
         return model(**creation_data)
 
-    @handle_exceptions
     def create(
         self,
         db_session: DbSession,
@@ -129,7 +127,6 @@ class EventRecordDetailRepository(
                 return existing
             raise
 
-    @handle_exceptions
     def bulk_create(
         self,
         db_session: DbSession,

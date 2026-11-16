@@ -14,10 +14,10 @@ def test_a_dead_grant_in_a_batch_is_reported_and_the_rest_goes_on() -> None:
 
     with (
         patch.object(GoogleWebhookHandler, "_process_one", side_effect=outcomes),
-        patch.object(webhook_handler, "log_and_capture_error") as capture,
+        patch.object(webhook_handler, "logger") as log,
     ):
         result = handler.process_payload(MagicMock(), [{}, {}], "trace")
 
-    capture.assert_not_called()
+    log.error.assert_not_called()
     assert result["records_saved"] == 2
     assert result["results"][0] == {"status": "error", "error": "reauth_required", "user_id": str(user_id)}

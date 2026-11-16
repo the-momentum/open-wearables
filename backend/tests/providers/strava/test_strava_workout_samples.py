@@ -15,6 +15,7 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
+from app.services.providers.strava.coverage import STREAM_KEY_SERIES_TYPE
 from app.services.providers.strava.oauth import StravaOAuth
 from app.services.providers.strava.workouts import StravaWorkouts
 
@@ -243,6 +244,21 @@ class TestFlagGuard:
         assert count == 0
 
 
+class TestManualActivity:
+    def test_manual_activity_makes_no_request(self, strava_workouts: StravaWorkouts, db: Session) -> None:
+        manual = _SAMPLE_ACTIVITY.model_copy(update={"manual": True})
+        with (
+            patch("app.services.providers.strava.workouts.settings", ingest_workout_samples=True),
+            patch.object(strava_workouts, "_has_stored_streams") as mock_probe,
+            patch.object(strava_workouts, "_make_api_request") as mock_api,
+        ):
+            count = strava_workouts._ingest_workout_streams(db, manual, uuid4(), MagicMock())
+
+        mock_probe.assert_not_called()
+        mock_api.assert_not_called()
+        assert count == 0
+
+
 class TestIngestionWiring:
     """Integration-level tests for the wiring in _ingest_workout_streams."""
 
@@ -265,6 +281,7 @@ class TestIngestionWiring:
             patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
             patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
         ):
+            mock_ts.has_samples_in_range.return_value = False
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
 
         mock_ts.bulk_create_samples.assert_called_once()
@@ -273,6 +290,93 @@ class TestIngestionWiring:
         assert len(saved_samples) == 6
         assert count == 6
         assert all(s.device_model == _DEVICE_MODEL for s in saved_samples)
+
+    def test_existing_samples_skip_fetch(
+        self,
+        strava_workouts: StravaWorkouts,
+        db: Session,
+    ) -> None:
+        """Samples already in the workout window: no API call, no save, 0 returned."""
+        user_id = uuid4()
+        record_mock = MagicMock()
+        record_mock.start_datetime = _START_DT
+        record_mock.end_datetime = _START_DT + timedelta(seconds=3600)
+        record_mock.zone_offset = _ZONE_OFFSET
+
+        with (
+            patch(
+                "app.services.providers.strava.workouts.settings",
+                ingest_workout_samples=True,
+            ),
+            patch.object(strava_workouts, "_make_api_request") as mock_api,
+            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+        ):
+            mock_ts.has_samples_in_range.return_value = True
+            count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
+
+        mock_api.assert_not_called()
+        mock_ts.bulk_create_samples.assert_not_called()
+        assert count == 0
+        mock_ts.has_samples_in_range.assert_called_once_with(
+            db,
+            user_id,
+            "strava",
+            _SAMPLE_ACTIVITY.device_name or None,
+            frozenset(STREAM_KEY_SERIES_TYPE.values()),
+            record_mock.start_datetime,
+            record_mock.end_datetime,
+        )
+
+    def test_failed_probe_still_fetches(
+        self,
+        strava_workouts: StravaWorkouts,
+        db: Session,
+    ) -> None:
+        """The probe failing must not cost the workout its samples."""
+        record_mock = MagicMock()
+        record_mock.start_datetime = _START_DT
+        record_mock.end_datetime = _START_DT + timedelta(seconds=3600)
+        record_mock.zone_offset = _ZONE_OFFSET
+
+        with (
+            patch(
+                "app.services.providers.strava.workouts.settings",
+                ingest_workout_samples=True,
+            ),
+            patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
+            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+        ):
+            mock_ts.has_samples_in_range.side_effect = RuntimeError("probe failed")
+            count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, uuid4(), record_mock)
+
+        mock_ts.bulk_create_samples.assert_called_once()
+        assert count == 6
+
+    def test_no_end_datetime_skips_probe_and_fetches(
+        self,
+        strava_workouts: StravaWorkouts,
+        db: Session,
+    ) -> None:
+        """Record without end_datetime: existence probe bypassed, streams fetched as before."""
+        user_id = uuid4()
+        record_mock = MagicMock()
+        record_mock.start_datetime = _START_DT
+        record_mock.end_datetime = None
+        record_mock.zone_offset = _ZONE_OFFSET
+
+        with (
+            patch(
+                "app.services.providers.strava.workouts.settings",
+                ingest_workout_samples=True,
+            ),
+            patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
+            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+        ):
+            count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
+
+        mock_ts.has_samples_in_range.assert_not_called()
+        mock_ts.bulk_create_samples.assert_called_once()
+        assert count == 6
 
     def test_save_raises_swallowed_returns_zero(
         self,
@@ -293,6 +397,7 @@ class TestIngestionWiring:
             patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
             patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
         ):
+            mock_ts.has_samples_in_range.return_value = False
             mock_ts.bulk_create_samples.side_effect = RuntimeError("db write failure")
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
 
@@ -321,6 +426,7 @@ class TestIngestionWiring:
             ),
             patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
         ):
+            mock_ts.has_samples_in_range.return_value = False
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
 
         mock_ts.bulk_create_samples.assert_not_called()
@@ -346,7 +452,8 @@ class TestIngestionWiring:
             patch.object(strava_workouts, "_make_api_request", return_value=streams_no_time),
             patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
         ):
+            mock_ts.has_samples_in_range.return_value = False
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
 
         mock_ts.bulk_create_samples.assert_not_called()
-        assert count == 0
+        assert count is None

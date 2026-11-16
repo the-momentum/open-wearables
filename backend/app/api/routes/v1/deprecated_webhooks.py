@@ -10,7 +10,8 @@ Migration status:
   Garmin  — was in production; old URLs kept until Garmin Developer Portal
             is updated to the new canonical path.
   Oura    — was not in production; old paths kept for completeness only.
-  Strava  — was not in production; old paths kept for completeness only.
+  Strava  — was not in production; old paths removed, since its callback URL
+            must carry a secret token (POST /api/v1/providers/strava/webhooks/{token}).
 """
 
 from typing import Annotated
@@ -22,7 +23,6 @@ from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 
 from .oura_webhooks import router as oura_webhooks_router
-from .strava_webhooks import router as strava_webhooks_router
 
 router = APIRouter()
 
@@ -74,7 +74,6 @@ def garmin_webhook_push_compat(
     return handler.handle(request, body, db)
 
 
-# Oura and Strava — re-registered at old paths for completeness.
-# These were never in production at these paths.
+# Oura — re-registered at the old path for completeness.
+# It was never in production at this path.
 router.include_router(oura_webhooks_router, prefix="/oura/webhooks")
-router.include_router(strava_webhooks_router, prefix="/strava/webhook")

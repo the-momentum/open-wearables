@@ -16,11 +16,9 @@ import pytest
 from app.config import settings
 from app.integrations import otel
 from app.integrations.celery import core as celery_core
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-
-logger = logging.getLogger("app.test_otel")
 
 
 class TestDisabled:
@@ -28,8 +26,9 @@ class TestDisabled:
         with patch.object(settings, "otel_enabled", False):
             otel.init_otel("open-wearables-test")
 
-        assert not any(otel.is_export_handler(handler) for handler in logging.getLogger().handlers)
-        log_structured(logger, "info", "not exported")
+        for name in ("", "app"):
+            assert not any(otel.is_export_handler(handler) for handler in logging.getLogger(name).handlers)
+        get_logger("app.test_otel_wiring").info("not exported")
 
     def test_sdk_disabled_variable_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OTEL_SDK_DISABLED", "true")

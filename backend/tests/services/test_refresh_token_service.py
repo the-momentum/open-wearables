@@ -2,13 +2,15 @@
 Unit tests for refresh token service.
 """
 
+from unittest.mock import patch
+
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import RefreshToken
 from app.schemas.auth import SDKTokenOrigin, TokenType
 from app.services.refresh_token_service import refresh_token_service
+from app.utils.exceptions import AuthenticationError, NotFoundError
 from tests.factories import ApplicationFactory, DeveloperFactory, UserFactory
 
 
@@ -125,7 +127,7 @@ class TestRefreshToken:
         invalid_token = "rt-invalidtoken12345678901234567890"
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AuthenticationError) as exc_info:
             refresh_token_service.refresh_token(db, invalid_token)
 
         assert exc_info.value.status_code == 401
@@ -139,7 +141,7 @@ class TestRefreshToken:
         refresh_token_service.revoke_token(db, refresh_token)
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(AuthenticationError) as exc_info:
             refresh_token_service.refresh_token(db, refresh_token)
 
         assert exc_info.value.status_code == 401
@@ -167,6 +169,36 @@ class TestRefreshToken:
         assert new_db_token is not None
         assert new_db_token.revoked_at is None
 
+    @pytest.mark.parametrize("token_type", [TokenType.SDK, TokenType.DEVELOPER])
+    def test_refresh_keeps_old_token_usable_when_issuing_tokens_fails(self, db: Session, token_type: TokenType) -> None:
+        """A refresh that fails to issue the new pair must not burn the old token."""
+        # Arrange
+        if token_type == TokenType.SDK:
+            old_refresh_token = refresh_token_service.create_sdk_refresh_token(
+                db, UserFactory().id, SDKTokenOrigin.ADMIN
+            )
+            failing_step = "create_sdk_refresh_token"
+        else:
+            old_refresh_token = refresh_token_service.create_developer_refresh_token(db, DeveloperFactory().id)
+            failing_step = "create_developer_refresh_token"
+
+        # Act
+        with (
+            patch.object(refresh_token_service, failing_step, side_effect=RuntimeError("db down")),
+            pytest.raises(RuntimeError),
+        ):
+            refresh_token_service.refresh_token(db, old_refresh_token)
+        db.rollback()  # what the request's session dependency does on an error
+
+        # Assert
+        old_row = db.get(RefreshToken, old_refresh_token)
+        assert old_row is not None
+        assert old_row.revoked_at is None
+        result = refresh_token_service.refresh_token(db, old_refresh_token)
+        db.refresh(old_row)
+        assert old_row.revoked_at is not None
+        assert db.get(RefreshToken, result.refresh_token) is not None
+
 
 class TestRevokeToken:
     """Tests for revoke_token method."""
@@ -192,7 +224,7 @@ class TestRevokeToken:
         invalid_token = "rt-nonexistent123456789012345678"
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             refresh_token_service.revoke_token(db, invalid_token)
 
         assert exc_info.value.status_code == 404
@@ -205,7 +237,7 @@ class TestRevokeToken:
         refresh_token_service.revoke_token(db, refresh_token)
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             refresh_token_service.revoke_token(db, refresh_token)
 
         assert exc_info.value.status_code == 404

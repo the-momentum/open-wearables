@@ -91,6 +91,12 @@ class MetricRecord(BaseModel):
         description="Ignored for ACTIVITY_INTENSITY_MODERATE and ACTIVITY_INTENSITY_VIGOROUS: "
         "their minutes are computed from startDate and endDate."
     )
+    count: int | None = Field(
+        None,
+        description=(
+            "HKQuantitySample.count. Above 1 for a quantity series, e.g. one HealthKit condensed from older samples."
+        ),
+    )
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
     @model_validator(mode="after")
@@ -122,6 +128,30 @@ class WorkoutStatistic(BaseModel):
     value: float | int
 
 
+class WorkoutLap(BaseModel):
+    """HealthKit workout event (lap, segment or marker) or Health Connect lap (no `type`)."""
+
+    type: str | None = None
+    startDate: datetime
+    endDate: datetime
+    duration: float | None = None
+    distanceM: float | None = None
+    strokeStyle: str | None = None  # freestyle | backstroke | breaststroke | butterfly | kickboard | mixed | unknown
+    strokeCount: float | None = None
+    swolf: float | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class WorkoutSegment(BaseModel):
+    """Exercise segment of a workout (Health Connect `ExerciseSegment`)."""
+
+    type: str | None = None
+    startDate: datetime
+    endDate: datetime
+    repetitions: int | None = None
+    metadata: dict[str, Any] | None = None
+
+
 class WorkoutRoutePoint(BaseModel):
     """One GPS location of a workout route. Other keys (accuracy, speed, course) are ignored."""
 
@@ -145,6 +175,14 @@ class WorkoutSample(BaseModel):
     unit: str | None = None
 
 
+_WORKOUT_ITEM_MODELS: dict[str | None, type[BaseModel]] = {
+    "route": WorkoutRoutePoint,
+    "samples": WorkoutSample,
+    "segments": WorkoutSegment,
+    "laps": WorkoutLap,
+}
+
+
 class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
@@ -160,14 +198,16 @@ class Workout(BaseModel):
     values: list[WorkoutStatistic] | None = None
     route: list[WorkoutRoutePoint] | None = None
     samples: list[WorkoutSample] | None = None
+    segments: list[WorkoutSegment] | None = None
+    laps: list[WorkoutLap] | None = None
 
-    @field_validator("route", "samples", mode="before")
+    @field_validator("route", "samples", "segments", "laps", mode="before")
     @classmethod
     def _drop_invalid_items(cls, items: Any, info: ValidationInfo) -> Any:
-        """A malformed route point or sample is dropped on its own instead of failing the workout."""
+        """A malformed item is dropped on its own instead of failing the workout."""
         if not isinstance(items, list):
             return items
-        model = WorkoutRoutePoint if info.field_name == "route" else WorkoutSample
+        model = _WORKOUT_ITEM_MODELS[info.field_name]
         valid = []
         for item in items:
             try:
@@ -177,8 +217,6 @@ class Workout(BaseModel):
         return valid
 
     # everything below is unused for now
-    segments: list[dict[str, Any]] | None = None
-    laps: list[dict[str, Any]] | None = None
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 

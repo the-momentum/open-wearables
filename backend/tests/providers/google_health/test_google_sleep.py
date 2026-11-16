@@ -56,3 +56,18 @@ def test_a_re_fetched_night_refreshes_its_details_without_a_webhook(db: Session,
     db.refresh(records[0])
     assert [stage["stage"] for stage in records[0].sleep_detail.sleep_stages] == ["light", "deep"]
     sleep_created.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("metadata", "state"),
+    [({"processed": True}, "processed"), ({"processed": False}, "processing"), ({}, None)],
+)
+def test_a_session_keeps_whether_google_finished_processing_it(
+    handler: GoogleHealthApiSleep, metadata: dict[str, Any], state: str | None
+) -> None:
+    point = _point(metadata=metadata)
+    start, end = datetime(2026, 5, 1, 22, 10, tzinfo=timezone.utc), datetime(2026, 5, 2, 5, 40, tzinfo=timezone.utc)
+
+    _, detail = handler._normalize(point, point["sleep"], INTERVAL, start, end, uuid4())
+
+    assert detail.provider_state == state

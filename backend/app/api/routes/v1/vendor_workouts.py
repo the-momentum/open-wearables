@@ -7,6 +7,7 @@ from app.database import DbSession
 from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import ProviderError
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -115,4 +116,10 @@ def get_user_workout_detail(
         "route": route,
     }
 
-    return strategy.workouts.get_workout_detail_from_api(db, user_id, workout_id, **params)
+    try:
+        return strategy.workouts.get_workout_detail_from_api(db, user_id, workout_id, **params)
+    except ProviderError as e:
+        # the provider has no workout with the client's id: not a provider failure, and no retry finds it
+        if e.upstream_status == status.HTTP_404_NOT_FOUND:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout not found") from e
+        raise

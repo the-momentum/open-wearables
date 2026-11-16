@@ -8,12 +8,22 @@ Tests the following endpoints:
 
 from typing import Generator
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
+from app.utils.exceptions import (
+    AppError,
+    ProviderAuthRejectedError,
+    ProviderError,
+    ProviderNotConnectedError,
+    ProviderRateLimitError,
+    ProviderTokenUnavailableError,
+    ReauthRequiredError,
+)
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
 
@@ -88,12 +98,8 @@ class TestVendorWorkoutsEndpoints:
         api_key = ApiKeyFactory()
         # No connection created for this user
 
-        # Configure mock to raise HTTPException for no connection
-        from fastapi import HTTPException
-
-        mock_provider_factory.get_provider.return_value.workouts.get_workouts_from_api.side_effect = HTTPException(
-            status_code=404,
-            detail="No active connection found for user",
+        mock_provider_factory.get_provider.return_value.workouts.get_workouts_from_api.side_effect = (
+            ProviderNotConnectedError("garmin")
         )
 
         # Act
@@ -104,6 +110,48 @@ class TestVendorWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 404
+        assert response.json()["detail"] == "User is not connected to Garmin."
+
+    @pytest.mark.parametrize(
+        ("error", "status", "detail"),
+        [
+            (
+                ReauthRequiredError("garmin", uuid4(), "revoked"),
+                409,
+                "Garmin authorization expired or was revoked; the user must reconnect.",
+            ),
+            (ProviderAuthRejectedError("garmin"), 502, "Garmin API error (status 401)"),
+            (ProviderTokenUnavailableError("garmin"), 400, "No Garmin API access token for this user."),
+            (
+                ProviderError("garmin", upstream_status=500, upstream_body="upstream stack trace"),
+                502,
+                "Garmin API error (status 500)",
+            ),
+            (ProviderRateLimitError("garmin", upstream_status=429), 503, "Garmin API error (status 429)"),
+        ],
+    )
+    def test_get_workouts_provider_failure(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+        error: AppError,
+        status: int,
+        detail: str,
+    ) -> None:
+        """A provider failure is never a 401, which would read as a bad API key."""
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+        mock_provider_factory.get_provider.return_value.workouts.get_workouts_from_api.side_effect = error
+
+        response = client.get(
+            f"/api/v1/providers/garmin/users/{user.id}/workouts",
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
+        )
+
+        assert response.status_code == status
+        assert response.json()["detail"] == detail
+        assert response.json()["code"] == error.code
 
     def test_get_polar_workouts_success(
         self,
@@ -247,11 +295,9 @@ class TestVendorWorkoutsEndpoints:
         workout_id = "nonexistent"
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
-        # Configure mock to raise HTTPException for not found
-        from fastapi import HTTPException
-
+        # The provider answers 404; its body is not passed through
         mock_provider_factory.get_provider.return_value.workouts.get_workout_detail_from_api.side_effect = (
-            HTTPException(status_code=404, detail="Workout not found")
+            ProviderError("garmin", upstream_status=404, upstream_body='{"message": "Workout not found"}')
         )
 
         # Act
@@ -260,11 +306,12 @@ class TestVendorWorkoutsEndpoints:
             headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
-        # Assert
+        # Assert: the client's id, so a 404 and not a 502 that reads "retry later"
         assert response.status_code == 404
+        assert response.json()["detail"] == "Workout not found"
 
     def test_invalid_provider_returns_422(self, client: TestClient, db: Session) -> None:
-        """Test that invalid provider enum value returns 400."""
+        """Test that invalid provider enum value returns 422."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -276,7 +323,7 @@ class TestVendorWorkoutsEndpoints:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_provider_not_supporting_workouts(self, client: TestClient, db: Session) -> None:
         """Test provider that doesn't support workouts returns 501."""

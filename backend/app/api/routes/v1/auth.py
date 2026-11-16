@@ -1,4 +1,3 @@
-from logging import getLogger
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,11 +9,12 @@ from app.schemas.auth import PasswordChangePrompt, TokenResponse
 from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.config_utils import EnvironmentType
+from app.utils.problem import problem_doc
 from app.utils.security import create_access_token, verify_password
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 router = APIRouter()
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _password_change_prompt(password: str) -> PasswordChangePrompt | None:
@@ -26,7 +26,14 @@ def _password_change_prompt(password: str) -> PasswordChangePrompt | None:
     return PasswordChangePrompt.RECOMMENDED
 
 
-@router.post("/login")
+@router.post(
+    "/login",
+    responses={
+        **problem_doc(
+            401, "Incorrect email or password, or a field missing from the form", "Incorrect email or password"
+        ),
+    },
+)
 def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: DbSession,
@@ -36,11 +43,8 @@ def login(
     # that only allows a password change, since whoever logs in first could set their own.
     # Checked before the account lookup so the response does not reveal who still uses it.
     if settings.environment == EnvironmentType.PRODUCTION and form_data.password == DEFAULT_ADMIN_PASSWORD:
-        log_structured(
-            logger,
-            "warning",
-            "Rejected a production login with the default admin password",
-            action="default_admin_password_login_refused",
+        logger.warning(
+            "Rejected a production login with the default admin password", action="default_admin_password_login_refused"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

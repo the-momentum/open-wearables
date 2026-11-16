@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -42,6 +41,7 @@ from app.schemas.enums import (
 from app.schemas.utils import ArchivalSettingUpdate
 from app.services.aggregate_backfill_service import aggregate_backfill_service
 from app.services.archival_service import archival_service
+from app.utils.exceptions import InvalidInputError
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -324,16 +324,16 @@ class TestHistoryRollupSwitch:
         delay.assert_not_called()
 
     def test_it_needs_the_current_rollup(self, db: Session) -> None:
-        with pytest.raises(HTTPException) as refused:
+        with pytest.raises(InvalidInputError) as refused:
             archival_service.update_settings(
                 db, ArchivalSettingUpdate(rollup_enabled=False, history_rollup_enabled=True)
             )
-        assert refused.value.status_code == 422
+        assert refused.value.status_code == 400
 
     def test_it_needs_the_saved_current_rollup_too(self, db: Session) -> None:
         archival_service.update_settings(db, ArchivalSettingUpdate(rollup_enabled=False))
 
-        with pytest.raises(HTTPException):
+        with pytest.raises(InvalidInputError):
             archival_service.update_settings(db, ArchivalSettingUpdate(history_rollup_enabled=True))
 
     @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")

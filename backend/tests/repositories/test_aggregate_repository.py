@@ -15,7 +15,12 @@ from app.integrations.rollup_queue import (
     DELETED_BEFORE_KEY,
     DIRTY_DAYS_KEY,
     IN_PROGRESS_KEY,
+    QUEUED_SOURCES_KEY,
+    clear_dirty_days,
+    finish_dirty_days,
+    mark_source_deleted_before,
     pop_dirty_days,
+    queued_days,
     recover_dirty_days,
     requeue_dirty_days,
 )
@@ -445,6 +450,72 @@ class TestDirtyDaysNewestFirst:
 
         assert [day for _, day in pop_dirty_days(2)] == [DAY + timedelta(days=9), DAY + timedelta(days=5)]
         assert sorted(day for _, day in pop_dirty_days(10)) == [DAY, DAY + timedelta(days=3)]
+
+
+class TestQueuedDaysOfASource:
+    """What a read asks: which of its sources' days the rollup has not caught up with."""
+
+    def test_a_committed_write_names_its_day_for_its_source(self, db: Session) -> None:
+        user = UserFactory()
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="garmin",
+            recorded_at=datetime(2099, 1, 1, 12, tzinfo=timezone.utc),
+            value=Decimal("70"),
+            series_type=SeriesType.heart_rate,
+        )
+        DataPointSeriesRepository(SeriesSample).bulk_create(db, [sample])
+        db.commit()
+        source_id = db.query(SeriesSample).one().data_source_id
+
+        assert queued_days([source_id], date(2099, 1, 1), date(2099, 1, 1)).days == {source_id: {date(2099, 1, 1)}}
+
+    def test_only_the_days_in_range_of_the_asked_sources(self) -> None:
+        mine, other = uuid4(), uuid4()
+        requeue_dirty_days([(mine, DAY), (mine, DAY + timedelta(days=5)), (other, DAY)])
+
+        assert queued_days([mine], DAY, DAY + timedelta(days=1)).days == {mine: {DAY}}
+
+    def test_a_day_a_run_took_stays_named_until_it_finishes(self) -> None:
+        source = uuid4()
+        requeue_dirty_days([(source, DAY)])
+        taken = pop_dirty_days(10)
+        assert queued_days([source], DAY, DAY).days == {source: {DAY}}
+
+        finish_dirty_days(taken)
+
+        assert (queued_days([source], DAY, DAY).days, get_redis_client().scard(QUEUED_SOURCES_KEY)) == ({}, 0)
+
+    def test_a_day_written_again_during_its_run_stays_named(self) -> None:
+        source = uuid4()
+        requeue_dirty_days([(source, DAY)])
+        taken = pop_dirty_days(10)
+        requeue_dirty_days([(source, DAY)])  # a write landing while the run rolls the day up
+
+        finish_dirty_days(taken)
+
+        assert queued_days([source], DAY, DAY).days == {source: {DAY}}
+
+    def test_dropping_the_queue_drops_every_source_days(self) -> None:
+        source = uuid4()
+        requeue_dirty_days([(source, DAY)])
+
+        clear_dirty_days()
+
+        assert queued_days([source], DAY, DAY).days == {}
+
+    def test_days_retention_emptied_are_not_stale(self) -> None:
+        source = uuid4()
+        requeue_dirty_days([(source, DAY), (source, DAY + timedelta(days=2))])
+        mark_source_deleted_before(source, DAY + timedelta(days=1))
+
+        queued = queued_days([source], DAY, DAY + timedelta(days=2))
+
+        assert (queued.of(source), queued.of(source, frozen_before=DAY + timedelta(days=3))) == (
+            {DAY + timedelta(days=2)},
+            set(),
+        )
 
 
 class TestDirtyDaysSurviveAKill:

@@ -90,9 +90,10 @@ class TestWebhookSync:
 
         with (
             patch.object(data_247, "sync_data_type", side_effect=UnsupportedGranularityError(DataGranularity.HOURLY)),
-            patch("app.services.providers.google_health.webhook_handler.log_and_capture_error") as capture,
+            patch("app.services.providers.google_health.webhook_handler.logger") as logger,
         ):
             saved = handler._fetch_and_save(MagicMock(), USER_ID, "steps", START, END)
 
         assert saved == 0
-        capture.assert_called_once()
+        logger.error.assert_called_once()
+        assert isinstance(logger.error.call_args.kwargs["exc_info"], UnsupportedGranularityError)
