@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations import rollup_queue
 from app.integrations.rollup_queue import finish_dirty_days, pop_dirty_days, requeue_dirty_days
-from app.models import DataSource, ProviderPriority, SeriesAggregate
+from app.models import DataSource, ProviderPriority, SeriesAggregate, SeriesTypeDefinition
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
@@ -476,6 +476,38 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Assert
         assert seen == [self._START + timedelta(minutes=m) for m in range(5)]
+
+    def test_raw_paging_returns_every_entry_of_one_instant_once(self, db: Session) -> None:
+        """Food items logged at one instant are rows of their own; a page break between them drops or repeats none."""
+        # Arrange
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        energy = db.get(SeriesTypeDefinition, get_series_type_id(SeriesType.dietary_energy_consumed))
+        for item, value in enumerate([427, 181, 17.9, 67.5]):
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=energy,
+                recorded_at=self._START,
+                value=Decimal(str(value)),
+                entry_key=f"item-{item}",
+            )
+
+        # Act - three items on the first page, one on the next
+        seen, cursor = [], None
+        for _ in range(4):
+            page = timeseries_service.get_timeseries(
+                db,
+                user.id,
+                [SeriesType.dietary_energy_consumed],
+                self._params(resolution=Resolution.RAW, limit=3, cursor=cursor),
+            )
+            seen.extend(float(s.value) for s in page.data)
+            cursor = page.pagination.next_cursor
+            if not cursor:
+                break
+
+        # Assert
+        assert sorted(seen) == [17.9, 67.5, 181.0, 427.0]
 
     def test_sparse_range_skips_to_the_first_sample(self, db: Session) -> None:
         """A wide range over sparse data must not return empty pages before reaching the data."""
