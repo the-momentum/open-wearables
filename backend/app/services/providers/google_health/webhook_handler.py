@@ -328,10 +328,12 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         if not starts or not ends:
             return None
         start, end = min(starts), max(ends)
-        if end <= start:
+        if end < start + timedelta(seconds=1):
             # Instant records (blood-glucose, weight) arrive as a point, not a span:
-            # startTime == endTime. The Health API 400s on a zero-length filter
-            # (INVALID_TIME_RANGE), so widen to a small window around the instant.
-            start = start - timedelta(minutes=1)
-            end = end + timedelta(minutes=1)
+            # startTime == endTime or a sub-second gap. The Health API 400s on a
+            # filter whose bounds collapse to the same second (INVALID_TIME_RANGE),
+            # so widen to a small window around the instant.
+            instant = start if end <= start else start + (end - start) / 2
+            start = instant - timedelta(minutes=1)
+            end = instant + timedelta(minutes=1)
         return start, end

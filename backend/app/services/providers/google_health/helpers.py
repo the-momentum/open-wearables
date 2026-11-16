@@ -82,8 +82,18 @@ def time_filter(
 
 
 def physical_interval(start: datetime, end: datetime) -> dict[str, str]:
-    """Build a google.type.Interval; ``start`` is inclusive, ``end`` is exclusive."""
-    return {"startTime": to_rfc3339(start), "endTime": to_rfc3339(end)}
+    """Build a google.type.Interval; ``start`` is inclusive, ``end`` is exclusive.
+
+    The API 400s (INVALID_TIME_RANGE) unless ``endTime`` is strictly greater than
+    ``startTime``, and ``to_rfc3339`` emits whole seconds: a sub-second, zero-length,
+    or inverted window collapses to equal bounds, so the end is lifted a second
+    past ``start`` when the emitted values would not order.
+    """
+    low = to_rfc3339(start)
+    high = to_rfc3339(end)
+    if high <= low:
+        high = to_rfc3339(start + timedelta(seconds=1))
+    return {"startTime": low, "endTime": high}
 
 
 def civil_interval(start: date, end: date) -> dict[str, Any]:

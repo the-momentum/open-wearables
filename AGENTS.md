@@ -269,12 +269,17 @@ fork divergence.
     that merge lands it widens this collision surface rather than fixing it,
     so resolve the step wrapper toward no-savepoint regardless.
 14. **Google Health webhook degenerate intervals.** `GoogleWebhookHandler._window`
-    widens any interval with `end <= start` to ±1 min around the instant: Google
-    sends `startTime == endTime` for instant records (blood-glucose, weight), and
-    the Health API 400s on a zero-length filter (`INVALID_TIME_RANGE`), which made
-    every such webhook run FAILED. Upstream returns `min(starts), max(ends)` bare;
-    taking its version reintroduces guaranteed-400 syncs. Candidate for
-    upstreaming; until then keep the widening through merges.
+    widens any window under one second (`end < start + 1s`) to ±1 min around the
+    instant, and `physical_interval` in `google_health/helpers.py` lifts the
+    emitted `endTime` a second past `startTime` when the formatted bounds would
+    not order: Google sends `startTime == endTime` and sub-second spans for
+    instant records (blood-glucose, weight), and `to_rfc3339` truncates to whole
+    seconds — a sub-second window passes `end <= start` yet collapses to equal
+    bounds in the filter, so the Health API still 400s (`INVALID_TIME_RANGE`),
+    which made every such webhook run FAILED. Upstream returns
+    `min(starts), max(ends)` bare and formats the interval unchecked; taking its
+    versions reintroduces guaranteed-400 syncs. Candidate for upstreaming; until
+    then keep both guards through merges.
 15. **Statement timeout and cancelled-statement recovery.** `db_statement_timeout_ms`
     (15 s) in `config.py` and the `connect_args` `-c statement_timeout` in
     `database.py` are fork-only — upstream sets no global timeout. Two compensations
