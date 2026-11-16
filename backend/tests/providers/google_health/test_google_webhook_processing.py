@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 import app.integrations.celery.tasks.webhook_push_task as task
 from app.schemas.sync_status import SyncStatus
 from app.services.providers.google_health import webhook_handler
+from app.services.providers.google_health.helpers import physical_interval
 from app.services.providers.google_health.webhook_handler import GoogleWebhookHandler
 
 USER_ID = "xY2kLm9PvQrStUvWzAbC3dEf4gH5"
@@ -142,6 +143,60 @@ def test_an_instant_interval_is_widened_into_a_fetchable_window() -> None:
     start, end = handler.data_247.sync_data_type.call_args.args[3:5]
     point = datetime(2026, 11, 12, 8, 0, tzinfo=timezone.utc)
     assert start < point < end
+
+
+def test_a_subsecond_interval_is_widened_into_a_fetchable_window() -> None:
+    """Instant notifications can arrive as a sub-second span; it slips past the
+    ``end <= start`` check but the emitted filter truncates to whole seconds and
+    still 400s, so the window must be widened the same way."""
+    handler = _handler()
+    instant = {
+        "data": {
+            "healthUserId": "known",
+            "operation": "UPSERT",
+            "dataType": "blood-glucose",
+            "intervals": [
+                {
+                    "physicalTimeInterval": {
+                        "startTime": "2026-11-12T08:00:00.000Z",
+                        "endTime": "2026-11-12T08:00:00.999Z",
+                    }
+                }
+            ],
+        }
+    }
+    handler.data_247.sync_data_type.return_value = 5
+
+    result = handler.process_payload(MagicMock(), [instant], "trace")
+
+    assert result["results"][0]["status"] == "processed"
+    start, end = handler.data_247.sync_data_type.call_args.args[3:5]
+    point = datetime(2026, 11, 12, 8, 0, 0, 500000, tzinfo=timezone.utc)
+    assert start < point < end
+
+
+def test_physical_interval_never_emits_a_collapsed_window() -> None:
+    """``to_rfc3339`` truncates to whole seconds, so the Health API sees equal
+    bounds — and 400s — for any span under a second; the end must be lifted."""
+    cases = [
+        # (start, end)
+        (datetime(2026, 11, 12, 8, 0, 0, tzinfo=timezone.utc),) * 2,  # instant
+        (
+            datetime(2026, 11, 12, 8, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 11, 12, 8, 0, 0, 500000, tzinfo=timezone.utc),
+        ),  # sub-second
+        (
+            datetime(2026, 11, 12, 8, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 11, 12, 8, 0, 0, 1, tzinfo=timezone.utc),
+        ),  # one microsecond — the smallest positive span
+        (
+            datetime(2026, 11, 12, 8, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 11, 12, 7, 59, 0, tzinfo=timezone.utc),
+        ),  # inverted
+    ]
+    for start, end in cases:
+        window = physical_interval(start, end)
+        assert window["endTime"] > window["startTime"], (start, end)
 
 
 def test_failure_log_message_is_stable_for_grouping() -> None:
