@@ -633,7 +633,6 @@ class ImportService:
         workout_bundles = list(self._build_workout_bundles(request, user_id))
         if workout_bundles:
             workout_records = [record for record, _, _ in workout_bundles]
-            details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
             stored = self.event_record_service.bulk_create(db_session, workout_records)
             db_session.flush()
 
@@ -647,10 +646,11 @@ class ImportService:
                         sample = sample.model_copy(update={"session": session})
                     time_series_samples.append(sample)
 
+            # Request order, so the last delivery of a workout keeps its detail
             details_to_insert = [
-                details_by_id[rid].model_copy(update={"record_id": stored_id})
-                for rid, stored_id in stored.items()
-                if rid in details_by_id
+                detail.model_copy(update={"record_id": stored[detail.record_id]})
+                for _, detail, _ in workout_bundles
+                if detail.record_id in stored
             ]
             inserted_ids = [rid for rid, stored_id in stored.items() if rid == stored_id]
 
