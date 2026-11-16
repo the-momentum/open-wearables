@@ -102,6 +102,7 @@ _NIGHT_FROM_SAMPLES = text("""
 # A night's physiology in a sleep summary, by the key its row carries.
 _SLEEP_PHYSIOLOGY = {
     "avg_hr": SeriesType.heart_rate,
+    "resting_hr": SeriesType.resting_heart_rate,
     "avg_hrv_sdnn": SeriesType.heart_rate_variability_sdnn,
     "avg_hrv_rmssd": SeriesType.heart_rate_variability_rmssd,
     "avg_resp": SeriesType.respiratory_rate,

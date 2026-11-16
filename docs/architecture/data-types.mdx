@@ -305,6 +305,12 @@ stored before this behavior was introduced may still show `0` for stages the pro
 report. In the daily sleep summary
 (`/summaries/sleep`), `stages` itself is `null` when no stage is reported.
 
+The same sleep summary carries the night's physiology: `avg_heart_rate_bpm`,
+`resting_heart_rate_bpm`, `avg_hrv_sdnn_ms`, `avg_hrv_rmssd_ms`, `avg_respiratory_rate`, and
+`avg_spo2_percent`. `resting_heart_rate_bpm` is that night's resting pulse, read from the sleep's
+`resting_heart_rate` aggregate or the samples recorded inside it — not the rolling mean that
+`/summaries/body` returns under `averaged.resting_heart_rate_bpm`.
+
 ---
 
 ## Events, Summaries and Health Scores
