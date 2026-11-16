@@ -206,7 +206,14 @@ fork divergence.
    of the chain (see `81ea20b3c94c`), not by repointing an existing revision.
 7. **`app.sh` startup.** No `alembic upgrade head` at container start; keep the
    `$PORT` fallback. Upstream additions (extension install, data-migration scripts,
-   `exec`) are fine to adopt alongside.
+   `exec`) are fine to adopt alongside. Migrations run in the deploy pipeline
+   instead: `buildspec.yml`'s post_build runs `alembic upgrade head` on the
+   build host (VPC-attached, RDS IAM token as `ow_migration`) after the image
+   pushes and before any `deploy_service` call, so a failed migration aborts
+   the deploy — a merged-but-unapplied migration otherwise rolls the release
+   back when new tasks crash on missing columns (2026-11-16, builds 44/45).
+   `buildspec.migrate.yml` stays the manual path and the only path for
+   downgrades.
 8. **Sleep latency.** `sleep_latency_seconds` is a fork-only field: the
    `sleep_details` column and its migration, `SleepSummary.sleep_latency_seconds`,
    the summaries-service population from the longest main-sleep session, the Oura
