@@ -82,6 +82,7 @@ class TimeSeriesSampleBase(BaseModel):
 class TimeSeriesSampleCreate(TimeSeriesSampleBase):
     id: UUID
     external_id: str | None = None
+    entry_key: str | None = None
     provider: str | None = None
     user_connection_id: UUID | None = None
     software_version: str | None = None

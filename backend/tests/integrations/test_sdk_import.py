@@ -5,6 +5,7 @@ Tests the full import flow for Apple HealthKit data via SDK.
 """
 
 import json
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, create_autospec, patch
@@ -17,10 +18,20 @@ from sqlalchemy.orm import Session
 
 from app.constants.celery_tasks import CeleryTask
 from app.constants.series_types.sdk import get_series_type_from_metric_type
-from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
+from app.models import (
+    DataSource,
+    EventRecord,
+    EventRecordAggregate,
+    MealDetails,
+    SeriesAggregate,
+    SeriesSample,
+    WorkoutDetails,
+)
+from app.repositories import DataPointSeriesRepository
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
 from app.schemas.enums.series_types import get_series_type_from_id
-from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.model_crud.activities import EventRecordQueryParams, TimeSeriesSampleCreate
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
 from app.services.sdk.import_service import ImportService, _parse_sync_request
@@ -1738,6 +1749,211 @@ class TestSDKImportMealCorrelation:
 
         assert db.query(MealDetails).one().nutrients == {}
         assert [s.external_id for s in self._user_samples(db, user.id)] == ["hr-1"]
+
+
+class TestSDKImportSameInstantEntries:
+    """Loose food and water items logged at one instant (two meals at 12:00) are entries of their own, kept apart by
+    their ids; any other series still keeps one value per instant."""
+
+    ENERGY = "HKQuantityTypeIdentifierDietaryEnergyConsumed"
+    PROTEIN = "HKQuantityTypeIdentifierDietaryProtein"
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService()
+
+    @staticmethod
+    def _load(db: Session, import_service: ImportService, user_id: UUID, records: list[dict[str, Any]]) -> Any:
+        payload = {
+            "provider": "apple",
+            "sdkVersion": "1.2.0",
+            "syncTimestamp": "2026-09-18T12:00:00Z",
+            "data": {"records": records},
+        }
+        return import_service.load_data(db, payload, str(user_id))
+
+    @staticmethod
+    def _values(db: Session, user_id: UUID) -> dict[str, list[float]]:
+        """Stored values per series, for one user, smallest first."""
+        values: dict[str, list[float]] = {}
+        for sample in db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user_id):
+            series = get_series_type_from_id(sample.series_type_definition_id).value
+            values.setdefault(series, []).append(float(sample.value))
+        return {series: sorted(found) for series, found in values.items()}
+
+    @staticmethod
+    def _loose(external_id: str | None, metric_type: str, value: float, unit: str) -> dict[str, Any]:
+        """A record with no parentId, all at the same instant from the same app."""
+        return {
+            "id": external_id,
+            "type": metric_type,
+            "value": value,
+            "unit": unit,
+            "startDate": "2026-09-18T12:00:00Z",
+            "endDate": "2026-09-18T12:00:00Z",
+            "source": {"name": "MyFitnessPal", "bundleIdentifier": "com.myfitnesspal.mfp"},
+        }
+
+    def _meals(self) -> list[dict[str, Any]]:
+        return [
+            self._loose("breakfast-kcal", self.ENERGY, 520, "Cal"),
+            self._loose("lunch-kcal", self.ENERGY, 610, "Cal"),
+            self._loose("snack-kcal", self.ENERGY, 180, "Cal"),
+            self._loose("dinner-kcal", self.ENERGY, 700, "Cal"),
+        ]
+
+    @staticmethod
+    def _store_as_before_entry_keys(db: Session, **fields: Any) -> None:
+        """Turn the stored rows into rows written before samples had an entry key."""
+        db.query(SeriesSample).update({SeriesSample.entry_key: None, **fields})
+        db.flush()
+
+    def test_items_logged_at_one_instant_are_each_stored(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        self._load(
+            db,
+            import_service,
+            user.id,
+            [
+                self._loose("breakfast-kcal", self.ENERGY, 520, "Cal"),
+                self._loose("lunch-kcal", self.ENERGY, 610, "Cal"),
+                self._loose("breakfast-protein", self.PROTEIN, 30, "g"),
+                self._loose("lunch-protein", self.PROTEIN, 42, "g"),
+            ],
+        )
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [520.0, 610.0], "dietary_protein": [30.0, 42.0]}
+
+    def test_each_day_rolls_up_its_own_items_at_an_instant_two_days_share(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """23:30 UTC is still the 18th at +00:00 and already the 19th at +01:00."""
+        user = UserFactory()
+        late = {"startDate": "2026-09-18T23:30:00Z", "endDate": "2026-09-18T23:30:00Z"}
+        self._load(
+            db,
+            import_service,
+            user.id,
+            [
+                {**self._loose("a-kcal", self.ENERGY, 100, "Cal"), **late, "zoneOffset": "+00:00"},
+                {**self._loose("b-kcal", self.ENERGY, 200, "Cal"), **late, "zoneOffset": "+01:00"},
+            ],
+        )
+        source_id = db.query(DataSource.id).filter(DataSource.user_id == user.id).scalar()
+
+        SeriesRollupRepository().roll_up(db, source_id, [date(2026, 9, 18), date(2026, 9, 19)])
+
+        days = db.query(SeriesAggregate).filter(SeriesAggregate.data_source_id == source_id)
+        # Each day starts at its local midnight: the 18th at 00:00 UTC, the 19th at 23:00 UTC the day before
+        assert sorted((d.period_start, float(d.sum), float(d.last), d.zone_offset) for d in days) == [
+            (datetime(2026, 9, 18, 0, tzinfo=timezone.utc), 100.0, 100.0, "+00:00"),
+            (datetime(2026, 9, 18, 23, tzinfo=timezone.utc), 200.0, 200.0, "+01:00"),
+        ]
+
+    def test_a_batch_sent_again_changes_nothing(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        records = [*self._meals(), self._loose("breakfast-kcal", self.ENERGY, 520, "Cal")]
+        self._load(db, import_service, user.id, records)
+
+        again = self._load(db, import_service, user.id, list(reversed(records)))
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [180.0, 520.0, 610.0, 700.0]}
+        assert again["records_inserted"] == 0
+
+    def test_an_item_sent_in_a_later_batch_is_added(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        self._load(db, import_service, user.id, self._meals()[:2])
+
+        later = self._load(db, import_service, user.id, [self._loose("dessert-kcal", self.ENERGY, 200, "Cal")])
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [200.0, 520.0, 610.0]}
+        assert later["records_inserted"] == 1
+
+    def test_a_row_stored_before_entry_keys_is_not_duplicated_by_a_resync(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """Before this change one item survived per instant, under its own external id."""
+        user = UserFactory()
+        self._load(db, import_service, user.id, self._meals()[1:2])
+        self._store_as_before_entry_keys(db)
+
+        resync = self._load(db, import_service, user.id, self._meals())
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [180.0, 520.0, 610.0, 700.0]}
+        assert resync["records_inserted"] == 3
+
+    def test_a_row_stored_before_entry_keys_is_kept_when_its_own_item_comes_later(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        user = UserFactory()
+        self._load(db, import_service, user.id, self._meals()[1:2])
+        self._store_as_before_entry_keys(db)
+
+        self._load(db, import_service, user.id, self._meals()[:1])
+        own = self._load(db, import_service, user.id, self._meals()[1:2])
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [520.0, 610.0]}
+        assert own["records_inserted"] == 0
+
+    def test_a_row_stored_before_entry_keys_without_an_id_is_left_beside_the_items(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """Nothing tells which item such a row holds, so it stays."""
+        user = UserFactory()
+        self._load(db, import_service, user.id, self._meals()[1:2])
+        self._store_as_before_entry_keys(db, external_id=None)
+
+        self._load(db, import_service, user.id, self._meals()[:2])
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [520.0, 610.0, 610.0]}
+
+    def test_items_without_ids_keep_the_last_value(self, db: Session, import_service: ImportService) -> None:
+        """Without ids a resent item and a second item look the same, so one value stays."""
+        user = UserFactory()
+        self._load(
+            db,
+            import_service,
+            user.id,
+            [self._loose(None, self.ENERGY, 520, "Cal"), self._loose(None, self.ENERGY, 610, "Cal")],
+        )
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [610.0]}
+
+    def test_other_series_at_one_instant_keep_the_last_value(self, db: Session, import_service: ImportService) -> None:
+        user = UserFactory()
+        self._load(
+            db,
+            import_service,
+            user.id,
+            [
+                self._loose("hr-1", "HKQuantityTypeIdentifierHeartRate", 70, "count/min"),
+                self._loose("hr-2", "HKQuantityTypeIdentifierHeartRate", 75, "count/min"),
+            ],
+        )
+
+        assert self._values(db, user.id) == {"heart_rate": [75.0]}
+
+    def test_intake_from_other_writers_keeps_the_last_value_despite_external_ids(self, db: Session) -> None:
+        """Only the SDK import sets an entry key: Google Health nutrition also sends external ids."""
+        user = UserFactory()
+        at = datetime(2026, 9, 18, 12, tzinfo=timezone.utc)
+        samples = [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                external_id=external_id,
+                user_id=user.id,
+                source="google_health",
+                provider=ProviderName.GOOGLE_HEALTH,
+                recorded_at=at,
+                value=Decimal(value),
+                series_type=SeriesType.dietary_energy_consumed,
+            )
+            for external_id, value in (("gh-1", "520"), ("gh-2", "610"))
+        ]
+
+        DataPointSeriesRepository(SeriesSample).bulk_create(db, samples)
+
+        assert self._values(db, user.id) == {"dietary_energy_consumed": [610.0]}
 
 
 class TestSDKImportAndroidFoodCorrelation:

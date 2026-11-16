@@ -15,7 +15,7 @@ Garmin epochs, which now carry external_id (a slot id) yet are FALSE, so a naive
 
 PERFORMANCE: data_source_id and series ids are resolved up front, so every
 UPDATE filters on (data_source_id, series_type_definition_id) — the leading
-columns of uq_series_sample_source_type_time — for an index range scan, no
+columns of uq_series_sample_source_type_time_entry — for an index range scan, no
 per-batch JOINs. Work is committed in --batch chunks (no long locks / no single
 giant transaction).
 

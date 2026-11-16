@@ -572,6 +572,20 @@ class TestSeriesRollup:
         # The provider's daily total is not one of the samples.
         assert (step.sum, step.count) == (Decimal("800"), 2)
 
+    def test_a_day_with_several_entries_at_one_instant_sums_them(self, db: Session) -> None:
+        """Two food items at the day's only instant, so its first and last lookups each find two rows."""
+        source = DataSourceFactory()
+        energy = db.get(SeriesTypeDefinition, get_series_type_id(SeriesType.dietary_energy_consumed))
+        noon = datetime(2099, 1, 1, 12, tzinfo=timezone.utc)
+        for entry_key, value in (("breakfast", "520"), ("lunch", "610")):
+            self._sample(source, energy, noon, value, entry_key=entry_key, zone_offset="+02:00")
+
+        SeriesRollupRepository().roll_up(db, source.id, [DAY])
+
+        day = self._day_rows(db)[energy.id]
+        assert (day.sum, day.count, day.zone_offset) == (Decimal("1130"), 2, "+02:00")
+        assert day.last in (Decimal("520"), Decimal("610"))
+
     def test_a_day_rolled_up_again_recomputes_the_series_with_samples_and_keeps_the_rest(self, db: Session) -> None:
         source = DataSourceFactory()
         steps = SeriesTypeDefinitionFactory.get_or_create_steps()
