@@ -16,11 +16,11 @@ export const load: PageServerLoad = async ({ url }) => ({
 
 export const actions: Actions = {
 	connect: async ({ params, request, url }) => {
-		// `?/connect` replaces the query string, so the return link and token travel as fields.
+		// `?/connect` replaces the query string, so the return link travels as a field.
 		const form = await request.formData();
 		const provider = String(form.get('provider') ?? '');
 		const returnUrl = String(form.get('return_url') ?? '') || null;
-		const token = String(form.get('token') ?? '');
+		const token = url.searchParams.get('t') ?? '';
 
 		if (!token) return fail(401, { provider, message: invalidLink });
 

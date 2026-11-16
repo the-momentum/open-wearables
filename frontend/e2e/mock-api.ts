@@ -280,8 +280,12 @@ const server = Bun.serve({
 			const provider = authorizeMatch[1];
 			// Like the API: the connect token is bound to the one user it was minted for.
 			const userId = new URL(request.url).searchParams.get('user_id');
-			if (request.headers.get('x-open-wearables-connect-token') !== `connect-${userId}`) {
+			const connectToken = request.headers.get('x-open-wearables-connect-token') ?? '';
+			if (!connectToken.startsWith('connect-')) {
 				return problem(401, 'Invalid or expired connect token', 'UNAUTHORIZED');
+			}
+			if (connectToken !== `connect-${userId}`) {
+				return problem(403, 'Token does not match user_id', 'FORBIDDEN');
 			}
 			// Enabled but missing its client credentials: on the pairing page, and still failing.
 			if (provider === 'suunto') {

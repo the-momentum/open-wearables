@@ -15,9 +15,13 @@
 	const submit = createSubmitFlag();
 </script>
 
-<form method="POST" action="?/connect" use:enhance={submit.enhance}>
+<!-- The token rides in the action URL so a no-JS post lands back on a page that still has it. -->
+<form
+	method="POST"
+	action="?/connect&{new URLSearchParams({ t: token })}"
+	use:enhance={submit.enhance}
+>
 	<input type="hidden" name="provider" value={provider.provider} />
-	<input type="hidden" name="token" value={token} />
 	{#if returnUrl}
 		<input type="hidden" name="return_url" value={returnUrl} />
 	{/if}
