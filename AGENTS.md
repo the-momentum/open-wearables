@@ -246,3 +246,12 @@ fork divergence.
     rounding are the per-night RHR contract Ren's wearable ingest reads as a
     fallback. Upstream has no sleep-summary field for it today; keep it through
     merges and upstream the shape rather than dropping it in a sync.
+13. **No savepoint around google sleep.** `GoogleHealth247Data.load_and_save_all`
+    runs its `"sleep"` step without `savepoint=True`:
+    `event_record_service.create_or_merge_sleep` commits internally on
+    re-ingested sessions, and under `begin_nested` that commit closes the
+    step's context — the next statement raises `InvalidRequestError`, every pull
+    re-reading a known session fails, and the sync reports `partial`. Upstream
+    still wraps the step in a savepoint; keep it off through merges until
+    upstream fixes it (candidate for upstreaming), and never re-add a savepoint
+    around any step whose handler commits internally.
