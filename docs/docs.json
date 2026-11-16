@@ -184,7 +184,8 @@
             "group": "Deployment",
             "pages": [
               "deployment/docker",
-              "deployment/railway"
+              "deployment/railway",
+              "deployment/aws-codebuild"
             ]
           },
           {

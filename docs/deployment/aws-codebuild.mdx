@@ -1,0 +1,80 @@
+---
+title: "AWS CodeBuild / ECS Deployment"
+description: "The fork's AWS deploy pipeline: push to main builds images, runs Alembic migrations on the build host, then rolls out ECS services. Covers the required IAM, VPC, and secret prerequisites and the manual migration project for downgrades."
+keywords: ["aws codebuild ecs deploy", "alembic migrations deploy", "open wearables aws deployment"]
+"og:title": "AWS CodeBuild / ECS Deployment | Open Wearables"
+"og:description": "Push-to-main deploys via CodeBuild: images, host-side Alembic upgrade, ECS rollout."
+---
+
+## Overview
+
+The fork deploys to ECS through the `open-wearables` AWS CodeBuild project (`buildspec.yml` at the repo root). Every push to `main` triggers a build that:
+
+<Steps>
+  <Step title="Build and push images">
+    Builds the backend, worker, beat, and frontend Docker images, tags them `<commit>-<build-number>` (plus `latest`), and pushes to ECR. The pinned `svix-server` image is mirrored into ECR when missing.
+  </Step>
+  <Step title="Run Alembic migrations on the build host">
+    `alembic upgrade head` executes **on the CodeBuild host**, after the image pushes and **before any ECS rollout**. A failed migration aborts the build — new task definitions are never registered and no service deploys.
+  </Step>
+  <Step title="Deploy services">
+    Registers new task definitions and updates the `open-wearables-backend`, `open-wearables-worker`, `open-wearables-beat`, and `open-wearables-frontend` ECS services with deployment circuit breaker enabled, then waits on `services-stable`. A failed rollout fails the build.
+  </Step>
+</Steps>
+
+## Why migrations run in the pipeline
+
+Containers never migrate on boot (`app.sh` does not call Alembic, and the runtime role `ow_app` has no DDL rights). Without a pipeline step, a merged-but-unapplied migration lets new tasks crash on missing columns while the circuit breaker rolls back every service — this exact failure took down builds 44/45 (2026-11-16). Running `upgrade head` before the rollout guarantees the schema reaches the commit's head revision first. The command is a no-op when the schema is already current, so re-runs are safe.
+
+<Note>
+  The migration step requires CodeBuild to reach the private RDS cluster. It runs under `set -euo pipefail`, so losing VPC connectivity fails the build and blocks the deploy — it never silently skips.
+</Note>
+
+## Prerequisites
+
+The migration step needs all of the following; the canonical definitions live in the `ren-infra` Terraform module.
+
+**CodeBuild project configuration**
+
+- `vpc_config` — attached to the VPC's private subnets with a security group that can reach the RDS cluster. RDS only accepts connections from inside the VPC.
+- `privileged_mode = true` — required for the Docker builds. Do not drop this when updating the project via `update-project` (it resets silently and the build fails on a missing docker daemon).
+
+**IAM on the deploy role (`codebuild-open-wearables-service-role`)**
+
+- `rds-db:connect` on `arn:aws:rds-db:<region>:<account>:dbuser:<cluster-resource-id>/ow_migration` — lets the build authenticate to RDS as the `ow_migration` database role via an IAM auth token (passwordless; the token lasts 15 minutes).
+- `secretsmanager:GetSecretValue` on the `SECRET_KEY` secret — Alembic's settings layer requires it at import time.
+- The managed `CodeBuildVpcPolicy-open-wearables-<region>` policy for ENI management in the VPC.
+
+**Database roles**
+
+- `ow_migration` — owns DDL; used only by the build host and the manual migrate project. Never attached to an ECS task.
+- `ow_app` — runtime role; no DDL rights.
+
+## Manual migration runs
+
+The separate `open-wearables-migrate` CodeBuild project (`buildspec.migrate.yml`) moves the schema by hand — downgrades, a specific revision, or an upgrade ahead of a deploy:
+
+```bash
+# Upgrade to head (redundant now that deploys migrate automatically)
+aws codebuild start-build --project-name open-wearables-migrate
+
+# Downgrade one revision
+aws codebuild start-build --project-name open-wearables-migrate \
+  --environment-variables-override \
+    name=MIGRATION_DIRECTION,value=downgrade \
+    name=MIGRATION_TARGET,value=-1
+```
+
+`MIGRATION_TARGET` accepts any Alembic revision (`head`, `-1`, `<rev-id>`, `base`). Downgrades are **manual only** — the deploy pipeline never runs them.
+
+## Failure behavior
+
+| Stage | Failure outcome |
+|-------|-----------------|
+| Image build/push | Build fails; nothing deployed |
+| `alembic upgrade head` | Build fails **before** any task definition registers; running services untouched |
+| ECS rollout | Deployment circuit breaker rolls the service back to the previous task definition; build fails if the rollout state stays `FAILED` |
+
+## Local development
+
+Unrelated to the pipeline: `make migrate` / `make downgrade` against the docker-compose database work exactly as before.

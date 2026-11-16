@@ -231,7 +231,8 @@ env:
     # role's {"username","password"} secret; ECS resolves individual JSON keys
     # via valueFrom "<arn>:<key>::" at task start. (ow_admin is rds_iam-only —
     # its password cannot be used for direct connections — and schema migrations
-    # run as ow_migration via IAM tokens in buildspec.migrate.yml, never here.)
+    # run as ow_migration via an RDS IAM token in post_build's alembic step, or
+    # manually via buildspec.migrate.yml.)
     # The ren-*-client-credentials secrets are {"client_id","client_secret"}
     # objects. The execution role's ren-secrets-read policy covers ren-*.
     DB_CREDENTIALS_SECRET_ARN: "arn:aws:secretsmanager:us-east-1:\
@@ -822,6 +823,53 @@ phases:
         beat_deployment_config='deploymentCircuitBreaker={enable=true,rollback=true},'
         beat_deployment_config+='maximumPercent=100,minimumHealthyPercent=0'
 
+        # --- Alembic migrations ---
+        # `alembic upgrade head` runs on the build host after the image pushes
+        # and before any deploy_service call, so the schema reaches this
+        # commit's head revision before new tasks roll out — app.sh never
+        # migrates on boot, and a merged-but-unapplied migration rolls back the
+        # whole deploy when new tasks crash on missing columns (builds 44/45,
+        # 2026-11-16). The build host reaches RDS through the project's VPC
+        # config and authenticates passwordless as the ow_migration role via an
+        # RDS IAM auth token, exactly like the manual open-wearables-migrate
+        # project (buildspec.migrate.yml, which stays the only path for
+        # downgrades). upgrade head is a no-op when the schema is already at
+        # head, so re-runs are safe; a failed migration aborts the build before
+        # any ECS rollout follows it. The token lasts 15 minutes — this
+        # schema's upgrades fit well inside that.
+        # uv comes from a pinned release tarball verified against its SHA256
+        # before anything executes — an unpinned remote installer would run
+        # with the deploy role's credentials (RDS connect, Secrets Manager).
+        UV_VERSION="0.13.7"
+        UV_SHA256="c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83"
+        curl -LsSf \
+          "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+          -o /tmp/uv.tar.gz
+        echo "${UV_SHA256}  /tmp/uv.tar.gz" | sha256sum -c -
+        mkdir -p "$HOME/.local/bin"
+        tar -xzf /tmp/uv.tar.gz -C "$HOME/.local/bin" --strip-components=1
+        export PATH="$HOME/.local/bin:$PATH"
+        export SECRET_KEY="$(aws secretsmanager get-secret-value \
+          --region "$DEPLOY_REGION" --secret-id "$SECRET_KEY_SECRET" \
+          --query SecretString --output text)"
+        MIGRATION_DB_USER="ow_migration"
+        export DB_USER="$MIGRATION_DB_USER"
+        export DB_PASSWORD="$(aws rds generate-db-auth-token \
+          --hostname "$DB_HOST" --port "$DB_PORT" --username "$MIGRATION_DB_USER" \
+          --region "$DEPLOY_REGION")"
+        pushd backend
+        uv sync --frozen
+        echo "=== alembic current (before) ==="
+        uv run alembic current || true
+        echo "=== alembic heads ==="
+        uv run alembic heads
+        echo "=== alembic upgrade head ==="
+        uv run alembic upgrade head
+        echo "=== alembic current (after) ==="
+        uv run alembic current
+        popd
+        unset SECRET_KEY DB_USER DB_PASSWORD
+
         # --- Svix (outgoing webhooks) ---
         # Deployed before the backend so the API's startup event-type sync
         # finds it up. The image's default CMD (launch-svix-server) already
@@ -870,10 +918,11 @@ phases:
             {"name":"DB_MAX_OVERFLOW","value":"5"},
             {"name":"OUTGOING_WEBHOOKS_ENABLED","value":"true"}
           ]' <<<"$SHARED_ENVIRONMENT")"
-        # app.sh runs migrations and seed scripts before uvicorn starts, so the
-        # first task on a fresh database can take a while to answer the ALB
-        # health check — hence the 300s grace period. The app has no dedicated
-        # /health route; "/" is the 200-OK endpoint used for health checks.
+        # app.sh runs seed scripts before uvicorn starts (migrations run in
+        # post_build above, never at task boot), so the first task on a fresh
+        # database can take a while to answer the ALB health check — hence the
+        # 300s grace period. The app has no dedicated /health route; "/" is the
+        # 200-OK endpoint used for health checks.
         BACKEND_HEALTH_COMMAND='python -c "import urllib.request; urllib.request.urlopen('
         BACKEND_HEALTH_COMMAND+="'http://127.0.0.1:$BACKEND_CONTAINER_PORT/', timeout=5)\""
         BACKEND_TASK_DEFINITION="$(register_task_definition \
