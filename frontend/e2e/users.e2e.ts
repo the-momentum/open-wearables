@@ -159,7 +159,7 @@ test('copies a pairing link pointing at this app', async ({ page, context }) => 
 
 	await expect(row.getByRole('button', { name: 'Pairing link copied' })).toBeVisible();
 	expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(
-		/^http:\/\/localhost:4173\/users\/[0-9a-f-]{36}\/pair$/
+		/^http:\/\/localhost:4173\/users\/([0-9a-f-]{36})\/pair\?t=connect-\1$/
 	);
 });
 

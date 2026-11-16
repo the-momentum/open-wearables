@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
@@ -20,6 +20,7 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+from app.utils.auth import ConnectAuthDep
 from app.utils.exceptions import UnsupportedProviderError, unknown_provider
 
 router = APIRouter()
@@ -50,6 +51,7 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
 )
 def authorize_provider(
     provider: str,
+    auth: ConnectAuthDep,
     user_id: Annotated[UUID, Query(description="User ID to connect")],
     redirect_uri: Annotated[str | None, Query(description="Optional redirect URI after authorization")] = None,
 ):
@@ -57,7 +59,13 @@ def authorize_provider(
     Initiate OAuth flow for a provider.
 
     Returns authorization URL where user should be redirected to log in.
+
+    Requires an API key, a developer token, or a token scoped to `user_id`: an SDK user token
+    or a connect token (`X-Open-Wearables-Connect-Token`, from `POST /users/{user_id}/connect-token`).
     """
+    if auth.auth_type in ("sdk_token", "connect_token") and auth.user_id != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Token does not match user_id")
+
     strategy = get_oauth_strategy(resolve_provider(provider))
 
     assert strategy.oauth

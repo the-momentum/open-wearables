@@ -303,6 +303,9 @@ class Settings(BaseSettings):
     # SDK INVITATION CODE SETTINGS
     user_invitation_code_expire_days: int = 7
 
+    # Lifetime of the token a shareable pairing link carries.
+    connect_token_expire_days: int = 7
+
     # AWS SETTINGS
     aws_bucket_name: str | None = None
     aws_access_key_id: str | None = None

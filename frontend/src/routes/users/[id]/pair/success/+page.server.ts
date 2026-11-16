@@ -9,6 +9,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	return {
 		provider: slug ? providerLabel(await fetchCloudProviders(), slug) : null,
 		returnUrl: safeReturnUrl(url.searchParams.get('redirect_url')),
-		pairAnother: pairingPath(params.id)
+		pairAnother: pairingPath(params.id, url.searchParams.get('t') ?? '')
 	};
 };

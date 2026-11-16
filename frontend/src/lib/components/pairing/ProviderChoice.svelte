@@ -6,13 +6,18 @@
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 	import ProviderLogo from '$lib/components/providers/ProviderLogo.svelte';
 
-	let { provider, returnUrl }: { provider: Provider; returnUrl: string | null } = $props();
+	let {
+		provider,
+		returnUrl,
+		token
+	}: { provider: Provider; returnUrl: string | null; token: string } = $props();
 
 	const submit = createSubmitFlag();
 </script>
 
 <form method="POST" action="?/connect" use:enhance={submit.enhance}>
 	<input type="hidden" name="provider" value={provider.provider} />
+	<input type="hidden" name="token" value={token} />
 	{#if returnUrl}
 		<input type="hidden" name="return_url" value={returnUrl} />
 	{/if}

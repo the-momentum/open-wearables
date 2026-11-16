@@ -844,6 +844,91 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/connect-token": {
+      "post": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Mint Connect Token",
+        "description": "Mint a token that lets an end user connect providers for this user only.\n\nSend it to `/oauth/{provider}/authorize` as `X-Open-Wearables-Connect-Token`, or share `pair_url`.",
+        "operationId": "mint_connect_token_api_v1_users__user_id__connect_token_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/personal-record": {
       "get": {
         "tags": [
@@ -4612,8 +4697,13 @@
           "External: Providers"
         ],
         "summary": "Get Provider Authorization URL",
-        "description": "Initiate OAuth flow for a provider.\n\nReturns authorization URL where user should be redirected to log in.",
+        "description": "Initiate OAuth flow for a provider.\n\nReturns authorization URL where user should be redirected to log in.\n\nRequires an API key, a developer token, or a token scoped to `user_id`: an SDK user token\nor a connect token (`X-Open-Wearables-Connect-Token`, from `POST /users/{user_id}/connect-token`).",
         "operationId": "authorize_provider_api_v1_oauth__provider__authorize_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "provider",
@@ -4653,6 +4743,38 @@
               "title": "Redirect Uri"
             },
             "description": "Optional redirect URI after authorization"
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-Connect-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Connect-Token"
+            }
           }
         ],
         "responses": {
@@ -15510,6 +15632,31 @@
         ],
         "title": "ConfigResponse",
         "description": "Instance feature flags for the admin panel. Additive-only: append new flags,\nnever remove or repurpose, so the frontend stays backward compatible."
+      },
+      "ConnectTokenResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "pair_url": {
+            "type": "string",
+            "title": "Pair Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at",
+          "pair_url"
+        ],
+        "title": "ConnectTokenResponse",
+        "description": "Token that lets an end user start provider OAuth for one user, plus the pairing link carrying it."
       },
       "ConnectionStatus": {
         "type": "string",
