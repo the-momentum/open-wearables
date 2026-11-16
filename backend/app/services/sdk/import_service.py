@@ -449,6 +449,8 @@ class ImportService:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.id,
+                # Food apps write one sample per item at the meal's time
+                entry_key=rjson.id if series_type in MEAL_NUTRIENT_SERIES_TYPES else None,
                 user_id=user_uuid,
                 source=original_source_name,
                 device_model=device_model,

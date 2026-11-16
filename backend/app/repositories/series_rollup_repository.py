@@ -28,7 +28,8 @@ _STATS = """sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s
 _SAMPLE_DAY = sample_day_sql("s")
 
 # A month of days: the last value and the first offset are read back by their instants through the unique index,
-# as ordering every day's rows inside the aggregate (array_agg ... ORDER BY) sorts the whole range on disk.
+# as ordering every day's rows inside the aggregate (array_agg ... ORDER BY) sorts the whole range on disk. An
+# instant can hold several entries (food items), so each lookup reads only the rows its day summed and takes one.
 _DAY_STATS = text(f"""
     WITH g AS (
         SELECT s.series_type_definition_id, {_SAMPLE_DAY} AS day, min(s.recorded_at) AS first_at,
@@ -42,10 +43,14 @@ _DAY_STATS = text(f"""
     )
     SELECT g.*,
         coalesce((SELECT f.zone_offset FROM series_sample f WHERE f.data_source_id = :source_id
-            AND f.series_type_definition_id = g.series_type_definition_id AND f.recorded_at = g.first_at), '+00:00')
+            AND f.series_type_definition_id = g.series_type_definition_id AND f.recorded_at = g.first_at
+            AND f.is_daily_total IS NOT TRUE AND {sample_day_sql("f")} = g.day
+            ORDER BY f.entry_key LIMIT 1), '+00:00')
             AS zone_offset,
         (SELECT l.value FROM series_sample l WHERE l.data_source_id = :source_id
-            AND l.series_type_definition_id = g.series_type_definition_id AND l.recorded_at = g.last_at) AS last
+            AND l.series_type_definition_id = g.series_type_definition_id AND l.recorded_at = g.last_at
+            AND l.is_daily_total IS NOT TRUE AND {sample_day_sql("l")} = g.day
+            ORDER BY l.entry_key LIMIT 1) AS last
     FROM g
 """)
 
