@@ -16583,6 +16583,7 @@
           "recovery",
           "readiness",
           "activity",
+          "previous_day_activity",
           "stress",
           "resilience",
           "body_battery",
