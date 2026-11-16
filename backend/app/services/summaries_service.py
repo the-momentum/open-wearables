@@ -392,6 +392,7 @@ class SummariesService:
         sort_order: str = "asc",
     ) -> PaginatedResponse[RecoverySummary]:
         """Daily recovery summaries: the day's vitals, main sleep and recovery score, best source per date."""
+        cursor_direction = decode_activity_cursor(cursor)[3] if cursor else "next"
         results = self._page_days(
             db_session, user_id, start_date, end_date, cursor, limit, sort_order, self._recovery_days, "recovery_date"
         )
@@ -399,21 +400,32 @@ class SummariesService:
         has_more = len(results) > limit
         if has_more:
             results = results[:limit]
+        if cursor_direction == "prev":
+            results.reverse()
 
         next_cursor: str | None = None
         previous_cursor: str | None = None
 
         if results:
-            if has_more:
-                last = results[-1]
+            last = results[-1]
+            first = results[0]
+            if cursor_direction == "prev":
                 next_cursor = encode_activity_cursor(
                     last["recovery_date"], last["source"] or "", last.get("device_model"), "next"
                 )
-            if cursor:
-                first = results[0]
-                previous_cursor = encode_activity_cursor(
-                    first["recovery_date"], first["source"] or "", first.get("device_model"), "prev"
-                )
+                if has_more:
+                    previous_cursor = encode_activity_cursor(
+                        first["recovery_date"], first["source"] or "", first.get("device_model"), "prev"
+                    )
+            else:
+                if has_more:
+                    next_cursor = encode_activity_cursor(
+                        last["recovery_date"], last["source"] or "", last.get("device_model"), "next"
+                    )
+                if cursor:
+                    previous_cursor = encode_activity_cursor(
+                        first["recovery_date"], first["source"] or "", first.get("device_model"), "prev"
+                    )
 
         data = [
             RecoverySummary(
@@ -479,6 +491,8 @@ class SummariesService:
             end_date=end_date.isoformat(),
         )
 
+        cursor_direction = decode_activity_cursor(cursor)[3] if cursor else "next"
+
         # Only this page's days are aggregated, so its cost follows the page, not the period.
         results = self._page_days(
             db_session, user_id, start_date, end_date, cursor, limit, sort_order, self._activity_days
@@ -488,25 +502,33 @@ class SummariesService:
         has_more = len(results) > limit
         if has_more:
             results = results[:limit]
+        if cursor_direction == "prev":
+            results.reverse()
 
         # Generate cursors
         next_cursor: str | None = None
         previous_cursor: str | None = None
 
         if results:
-            # Next cursor points to last item's compound key
-            if has_more:
-                last = results[-1]
+            last = results[-1]
+            first = results[0]
+            if cursor_direction == "prev":
                 next_cursor = encode_activity_cursor(
                     last["activity_date"], last["source"] or "unknown", last.get("device_model"), "next"
                 )
-
-            # Previous cursor if we had a cursor (not first page)
-            if cursor:
-                first = results[0]
-                previous_cursor = encode_activity_cursor(
-                    first["activity_date"], first["source"] or "unknown", first.get("device_model"), "prev"
-                )
+                if has_more:
+                    previous_cursor = encode_activity_cursor(
+                        first["activity_date"], first["source"] or "unknown", first.get("device_model"), "prev"
+                    )
+            else:
+                if has_more:
+                    next_cursor = encode_activity_cursor(
+                        last["activity_date"], last["source"] or "unknown", last.get("device_model"), "next"
+                    )
+                if cursor:
+                    previous_cursor = encode_activity_cursor(
+                        first["activity_date"], first["source"] or "unknown", first.get("device_model"), "prev"
+                    )
 
         # The per-day extras, for this page's dates only.
         page_dates = [r["activity_date"] for r in results]

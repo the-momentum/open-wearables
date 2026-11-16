@@ -1150,6 +1150,44 @@ class TestGetRecoverySummaries:
         assert backward_page.pagination.next_cursor is not None
         assert backward_page.pagination.previous_cursor is not None
 
+    def test_sort_order_asc_paginates_backward_in_order(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop")
+        for day in range(1, 6):
+            HealthScoreFactory(
+                data_source=source,
+                category=HealthScoreCategory.RECOVERY,
+                provider=ProviderName.WHOOP,
+                recorded_at=_dt(f"2026-01-{day:02d}T00:00:00+00:00"),
+            )
+
+        start = _dt("2026-01-01T00:00:00+00:00")
+        end = _dt("2026-01-10T00:00:00+00:00")
+
+        first_page = service.get_recovery_summaries(db, user.id, start, end, None, 2, "asc")
+        second_page = service.get_recovery_summaries(
+            db, user.id, start, end, first_page.pagination.next_cursor, 2, "asc"
+        )
+        third_page = service.get_recovery_summaries(
+            db, user.id, start, end, second_page.pagination.next_cursor, 2, "asc"
+        )
+
+        backward_page = service.get_recovery_summaries(
+            db, user.id, start, end, third_page.pagination.previous_cursor, 2, "asc"
+        )
+        assert [summary.date for summary in backward_page.data] == [date(2026, 1, 3), date(2026, 1, 4)]
+
+        forward_page = service.get_recovery_summaries(
+            db, user.id, start, end, backward_page.pagination.next_cursor, 2, "asc"
+        )
+        assert [summary.date for summary in forward_page.data] == [date(2026, 1, 5)]
+
+        oldest_backward = service.get_recovery_summaries(
+            db, user.id, start, end, backward_page.pagination.previous_cursor, 2, "asc"
+        )
+        assert [summary.date for summary in oldest_backward.data] == [date(2026, 1, 1), date(2026, 1, 2)]
+        assert oldest_backward.pagination.previous_cursor is None
+
 
 class TestRecoveryPagingPerDate:
     """A page holds `limit` days, however many providers scored each one."""

@@ -291,7 +291,7 @@ class TestSync247RunStep:
         ctx.__enter__()
         db.get_nested_transaction().close()  # kill the transaction out from under its context
 
-        run = Sync247Run("testprovider", db, str(uuid4()), logging.getLogger(__name__))
+        run = Sync247Run("testprovider", db, str(uuid4()))
 
         # The stale context makes begin_nested raise; the step records the failure
         # and returns without yielding, so the `with` aborts the block.
