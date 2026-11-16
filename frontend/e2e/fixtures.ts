@@ -34,17 +34,6 @@ export const setProviderEnabled = (providers: Record<string, boolean>) => {
 	return PROVIDER_SETTINGS;
 };
 
-/** Each call reconciles webhook subscriptions on the real backend, so tests count them. */
-let LIVE_SYNC_CALLS = 0;
-export const liveSyncCalls = () => LIVE_SYNC_CALLS;
-
-export const setLiveSyncMode = (provider: string, mode: string) => {
-	LIVE_SYNC_CALLS += 1;
-	const found = PROVIDER_SETTINGS.find((setting) => setting.provider === provider);
-	if (found) found.live_sync_mode = mode;
-	return found ?? null;
-};
-
 /** 47 users: enough for three pages at 20, with a memorable one to search for. */
 /** Mirrors UserRead; declared here so e2e files need no $lib alias. */
 export type MockUser = {
@@ -1555,7 +1544,6 @@ let INVITATIONS = buildInvitations();
 
 export const resetSettings = () => {
 	PROVIDER_SETTINGS = buildProviderSettings();
-	LIVE_SYNC_CALLS = 0;
 	API_KEYS = buildApiKeys();
 	APPLICATIONS = buildApplications();
 	PRIORITIES = buildPriorities();

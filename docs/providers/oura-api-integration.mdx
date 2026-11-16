@@ -36,7 +36,7 @@ Oura provides access to sleep, readiness, activity, heart rate, and workout data
 
 | Method | Description |
 |--------|-------------|
-| **Webhooks (push)** - *recommended* | Oura notifies Open Wearables in real time when sleep, readiness, activity, SpO2, or workout data is created or updated. Subscriptions are app-level and are registered automatically when you switch Oura to webhook live-sync mode. |
+| **Webhooks (push)** - *recommended* | Oura notifies Open Wearables in real time when sleep, readiness, activity, SpO2, or workout data is created or updated. Subscriptions are app-level and are registered automatically when Oura's live-sync mode is set to `webhook`. |
 | **Polling (pull)** | Open Wearables periodically fetches daily metrics via the Oura API v2 (default: every hour via Celery Beat) |
 
 <Tip>
@@ -160,11 +160,18 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
   <Step title="Enable webhooks (recommended)">
     **We recommend webhooks over polling.** They give you real-time updates instead of waiting for the next polling cycle - when Oura records new sleep, readiness, activity, SpO2, or workout data, it immediately notifies Open Wearables, which fetches and saves the record.
 
-    By default Oura runs in **pull** (polling) mode. Switching its live-sync mode to **webhook** registers the subscriptions for you automatically - Open Wearables dispatches a background task that creates a subscription for every supported data type and event type. Make sure `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, and a public `API_BASE_URL` are configured first.
+    By default Oura runs in **pull** (polling) mode. Setting its live-sync mode to **webhook** registers the subscriptions for you automatically - Open Wearables dispatches a background task that creates a subscription for every supported data type and event type. Make sure `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, and a public `API_BASE_URL` are configured first.
 
-    **Switch Oura to webhook mode from the dashboard:**
+    **Switch Oura to webhook mode via the provider settings API** (the portal does not expose this control - it takes a **developer JWT**, not an API key):
 
-    In your Open Wearables dashboard, go to **Settings → Providers**, find **Oura**, and switch its live-sync control from **Periodic pull** to **Webhook**. That's it - the subscriptions are registered in the background.
+    ```bash
+    curl -X PUT "http://localhost:8000/api/v1/oauth/providers/oura" \
+      -H "Authorization: Bearer YOUR_DEVELOPER_JWT" \
+      -H "Content-Type: application/json" \
+      -d '{"live_sync_mode": "webhook"}'
+    ```
+
+    That's it - the subscriptions are registered in the background.
 
     <Note>
     Because the callback must be publicly reachable over HTTPS, set `API_BASE_URL` to your public domain (or your [ngrok](/dev-guides/ngrok-setup) URL for local development) before switching to webhook mode.

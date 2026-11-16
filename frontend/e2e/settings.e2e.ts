@@ -104,24 +104,6 @@ test('holds provider switches as a draft until they are saved', async ({ page })
 	);
 });
 
-test('switches one provider to webhooks on the click, without a save', async ({ page }) => {
-	await page.goto('/settings/providers');
-
-	const oura = page.getByRole('group', { name: 'How Oura reports new data' });
-	await expect(oura.getByRole('button', { name: 'Periodic pull' })).toHaveAttribute(
-		'aria-pressed',
-		'true'
-	);
-
-	await oura.getByRole('button', { name: 'Webhook' }).click();
-	await expect(oura.getByRole('button', { name: 'Webhook' })).toHaveAttribute(
-		'aria-pressed',
-		'true'
-	);
-	// One provider's own setting, so no draft appears for it.
-	await expect(page.getByText('provider changed')).toHaveCount(0);
-});
-
 test('lists the providers by name, not in the order the API added them', async ({ page }) => {
 	await page.goto('/settings/providers');
 
@@ -129,34 +111,6 @@ test('lists the providers by name, not in the order the API added them', async (
 		.getByRole('switch', { name: /^Enable / })
 		.evaluateAll((switches) => switches.map((s) => s.getAttribute('aria-label')?.slice(7)));
 	expect(names).toEqual(['Garmin', 'Oura', 'Suunto', 'Whoop']);
-});
-
-test('will not send the mode a provider is already in', async ({ page, request }) => {
-	await page.goto('/settings/providers');
-	const calls = async () =>
-		(await (await request.get('http://localhost:8787/__live-sync-calls')).json()).calls;
-
-	const oura = page.getByRole('group', { name: 'How Oura reports new data' });
-	const pull = oura.getByRole('button', { name: 'Periodic pull' });
-	const webhook = oura.getByRole('button', { name: 'Webhook' });
-
-	// Each switch reconciles the provider's subscriptions, and on pull that
-	// deletes every one - so the chosen mode is not something to press again.
-	await expect(pull).toBeDisabled();
-	await pull.click({ force: true });
-	expect(await calls()).toBe(0);
-
-	await webhook.click();
-	await expect(webhook).toBeDisabled();
-	await expect(pull).toBeEnabled();
-	expect(await calls()).toBe(1);
-});
-
-test('states the mode as a fact where the provider offers no choice', async ({ page }) => {
-	await page.goto('/settings/providers');
-
-	await expect(page.getByText('Webhook only')).toBeVisible();
-	await expect(page.getByRole('group', { name: 'How Garmin reports new data' })).toHaveCount(0);
 });
 
 test('reorders providers and keeps the order after saving', async ({ page }) => {

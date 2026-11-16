@@ -4,7 +4,6 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Switch from '$lib/components/ui/Switch.svelte';
 	import { TINY } from '$lib/components/ui/typography';
-	import LiveSync from './LiveSync.svelte';
 	import type { ProviderSetting } from '$lib/settings/types';
 
 	let {
@@ -52,10 +51,4 @@
 			backend environment or disable the provider.
 		</Alert>
 	{/if}
-
-	<!-- Full width under the header: beside the logo, a third of a desktop row
-	     is too narrow for both pills. -->
-	<div class="border-t border-border/60 pt-3">
-		<LiveSync {provider} />
-	</div>
 </li>
