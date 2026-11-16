@@ -1,5 +1,6 @@
 """Processing Google Health notify-only webhook batches."""
 
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -112,6 +113,35 @@ def test_failed_query_does_not_poison_the_rest_of_the_batch(db: Session) -> None
     assert recovered["status"] == "processed"
     assert recovered["records_saved"] == 3
     assert db.execute(text("SELECT 1")).scalar() == 1
+
+
+def test_an_instant_interval_is_widened_into_a_fetchable_window() -> None:
+    """Instant records (blood-glucose & co.) notify startTime == endTime; the Health API
+    400s on a zero-length filter (INVALID_TIME_RANGE), so the window must be widened."""
+    handler = _handler()
+    instant = {
+        "data": {
+            "healthUserId": "known",
+            "operation": "UPSERT",
+            "dataType": "blood-glucose",
+            "intervals": [
+                {
+                    "physicalTimeInterval": {
+                        "startTime": "2026-11-12T08:00:00Z",
+                        "endTime": "2026-11-12T08:00:00Z",
+                    }
+                }
+            ],
+        }
+    }
+    handler.data_247.sync_data_type.return_value = 5
+
+    result = handler.process_payload(MagicMock(), [instant], "trace")
+
+    assert result["results"][0]["status"] == "processed"
+    start, end = handler.data_247.sync_data_type.call_args.args[3:5]
+    point = datetime(2026, 11, 12, 8, 0, tzinfo=timezone.utc)
+    assert start < point < end
 
 
 def test_failure_log_message_is_stable_for_grouping() -> None:

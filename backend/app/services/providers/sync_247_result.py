@@ -252,7 +252,7 @@ class Sync247Run:
                 yield step
             if not self.db.is_active:
                 # Rows the body committed before the failure stay counted; the rest is rolled back.
-                self.db.rollback()
+                self._reset_session()
                 if not commit:
                     save(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
                 self.fail(data_type, SwallowedWriteError(), capture=capture)
@@ -269,9 +269,24 @@ class Sync247Run:
                 rollback_on_error = not savepoint
             # An inactive session (failed flush/commit, savepoint never opened) must be reset regardless.
             if rollback_on_error or not self.db.is_active:
-                self.db.rollback()
+                self._reset_session()
             self.fail(data_type, e, capture=capture)
             return
+
+    def _reset_session(self) -> None:
+        """Roll back, or fully close when the session's transaction context is wedged.
+
+        A statement cancelled inside a savepoint's release (e.g. statement_timeout on a
+        bulk write) can leave a transaction context registered over a closed transaction.
+        rollback() cannot clear that registration, and every later statement raises
+        "closed transaction inside context manager". close() resets the session; it
+        reconnects on next use.
+        """
+        trans_ctx = getattr(self.db, "_trans_context_manager", None)
+        if trans_ctx is not None and not trans_ctx._transaction_is_active():
+            self.db.close()
+        else:
+            self.db.rollback()
 
     def expect(self, *data_types: str) -> None:
         """List the tasks up front, so a conditional one that never ran shows as skipped."""

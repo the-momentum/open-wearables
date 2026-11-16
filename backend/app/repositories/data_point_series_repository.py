@@ -230,6 +230,10 @@ _TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
 # Rows per avg HR query; 5 bind parameters each keeps a query far below PostgreSQL's 65535
 _MAX_WINDOW_ROWS = 2000
 
+# Budget for the staging-merge statements in _insert_data_points; matches the backfill task's
+# per-statement budget (aggregate_backfill_task.STATEMENT_TIMEOUT_SECONDS).
+_BULK_STATEMENT_TIMEOUT_MS = 300_000
+
 
 class WorkoutWindow(NamedTuple):
     """A workout's time window, its own data source and the sources to fall back on for samples."""
@@ -482,6 +486,11 @@ class DataPointSeriesRepository(
         raw_conn: PGConnection | None = db_session.connection().connection.driver_connection
         assert raw_conn is not None, "no DBAPI connection on an active Session"
         with raw_conn.cursor() as cursor:
+            # The connection default (15s) cancels the merge on large catch-up batches —
+            # a 2-day heart-rate lookback rewrites tens of thousands of rows. Give the
+            # bulk write the same 5-minute budget the aggregate backfill uses. SET LOCAL
+            # lasts for this transaction only, so other statements keep the default.
+            cursor.execute(f"SET LOCAL statement_timeout = {_BULK_STATEMENT_TIMEOUT_MS}")
             # Create the temporary staging table for bulk-importing data points.
             model_columns = SeriesSample.__table__.c
             staging_table = Table(

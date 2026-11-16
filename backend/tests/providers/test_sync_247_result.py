@@ -264,6 +264,19 @@ class TestSync247RunStep:
         run.db.rollback.assert_not_called()
         assert run.result.outcomes["heart_rate"].status is SyncStatus.FAILED
 
+    def test_a_wedged_transaction_context_closes_the_session(self, run: Sync247Run) -> None:
+        """A statement cancelled inside a savepoint's release leaves the context
+        registered over a closed transaction; rollback can't clear it, so the
+        session must be closed and reconnected on next use."""
+        run.db._trans_context_manager._transaction_is_active.return_value = False
+
+        with run.step("heart_rate"):
+            raise RuntimeError("statement timeout")
+
+        run.db.close.assert_called_once()
+        run.db.rollback.assert_not_called()
+        assert run.result.outcomes["heart_rate"].status is SyncStatus.FAILED
+
     def test_fatal_errors_propagate_instead_of_being_recorded(self, run: Sync247Run) -> None:
         run.fatal = (HTTPException,)
 
