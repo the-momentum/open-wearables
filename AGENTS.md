@@ -254,4 +254,7 @@ fork divergence.
     re-reading a known session fails, and the sync reports `partial`. Upstream
     still wraps the step in a savepoint; keep it off through merges until
     upstream fixes it (candidate for upstreaming), and never re-add a savepoint
-    around any step whose handler commits internally.
+    around any step whose handler commits internally. Upstream `76a504f5`
+    (flag naps) adds more internal commits in `reclassify_sleep_naps` — when
+    that merge lands it widens this collision surface rather than fixing it,
+    so resolve the step wrapper toward no-savepoint regardless.
