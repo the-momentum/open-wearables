@@ -27,7 +27,7 @@ The fork deploys to ECS through the `open-wearables` AWS CodeBuild project (`bui
 Containers never migrate on boot (`app.sh` does not call Alembic, and the runtime role `ow_app` has no DDL rights). Without a pipeline step, a merged-but-unapplied migration lets new tasks crash on missing columns while the circuit breaker rolls back every service — this exact failure took down builds 44/45 (2026-11-16). Running `upgrade head` before the rollout guarantees the schema reaches the commit's head revision first. The command is a no-op when the schema is already current, so re-runs are safe.
 
 <Note>
-  The migration step requires CodeBuild to reach the private RDS cluster. See prerequisites below — removing the project's VPC config silently disables migrations.
+  The migration step requires CodeBuild to reach the private RDS cluster. It runs under `set -euo pipefail`, so losing VPC connectivity fails the build and blocks the deploy — it never silently skips.
 </Note>
 
 ## Prerequisites
