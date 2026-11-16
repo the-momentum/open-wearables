@@ -1,9 +1,10 @@
 version: 0.2
 
-# Database migration runner — manual CodeBuild project open-wearables-migrate
-# only. The deploy pipeline (buildspec.yml) never runs migrations, and app.sh
-# no longer runs alembic on boot; this project is triggered by hand when an
-# operator decides to move the schema.
+# Database migration runner — manual CodeBuild project open-wearables-migrate.
+# The deploy pipeline (buildspec.yml) already runs `alembic upgrade head`
+# after the image pushes and before every ECS rollout, so this project is
+# only needed to move the schema by hand: downgrades, a specific revision,
+# or an upgrade ahead of a deploy. app.sh never migrates on boot.
 #
 #   aws codebuild start-build --project-name open-wearables-migrate
 #   downgrade: aws codebuild start-build --project-name open-wearables-migrate \

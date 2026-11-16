@@ -7,10 +7,12 @@ scripts/start/install_extensions.sh
 echo 'Ensuring svix database...'
 uv run python scripts/init/create_svix_db.py
 
-# Migrations run only via the manually triggered open-wearables-migrate
-# CodeBuild project (buildspec.migrate.yml) as the ow_migration role over RDS
-# IAM auth — the app role (ow_app) has no DDL rights, so a deploy that needs a
-# schema change must be preceded by a migrate build.
+# Migrations never run at container start — the app role (ow_app) has no DDL
+# rights. The deploy pipeline (buildspec.yml post_build) runs `alembic
+# upgrade head` on the build host as the ow_migration role over RDS IAM auth
+# before the ECS rollout, so containers always boot against a schema that is
+# already at this image's head. Downgrades and ad-hoc revision moves go
+# through the manual open-wearables-migrate project (buildspec.migrate.yml):
 #
 #   aws codebuild start-build --project-name open-wearables-migrate
 

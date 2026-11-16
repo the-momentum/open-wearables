@@ -837,7 +837,17 @@ phases:
         # head, so re-runs are safe; a failed migration aborts the build before
         # any ECS rollout follows it. The token lasts 15 minutes — this
         # schema's upgrades fit well inside that.
-        curl -LsSf https://astral.sh/uv/install.sh | sh
+        # uv comes from a pinned release tarball verified against its SHA256
+        # before anything executes — an unpinned remote installer would run
+        # with the deploy role's credentials (RDS connect, Secrets Manager).
+        UV_VERSION="0.13.7"
+        UV_SHA256="c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83"
+        curl -LsSf \
+          "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+          -o /tmp/uv.tar.gz
+        echo "${UV_SHA256}  /tmp/uv.tar.gz" | sha256sum -c -
+        mkdir -p "$HOME/.local/bin"
+        tar -xzf /tmp/uv.tar.gz -C "$HOME/.local/bin" --strip-components=1
         export PATH="$HOME/.local/bin:$PATH"
         export SECRET_KEY="$(aws secretsmanager get-secret-value \
           --region "$DEPLOY_REGION" --secret-id "$SECRET_KEY_SECRET" \
