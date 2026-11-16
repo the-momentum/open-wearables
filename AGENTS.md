@@ -330,3 +330,12 @@ fork divergence.
     test catches it. Candidate for upstreaming; until then keep the
     direction/reverse/cursor block through merges rather than resolving
     `summaries_service.py` toward upstream's shape.
+18. **Provider priorities are API-key readable.** `GET /api/v1/priorities/providers`
+    takes `ApiKeyDep` (developer JWT *or* org API key), not `DeveloperDep` — Ren's
+    DAS measurement ingest reads the configured order with the org API key so its
+    provider-precedence mirror follows dashboard edits instead of drifting on a
+    hardcoded copy. Write routes (`PUT` single and bulk) stay `DeveloperDep`-only.
+    Upstream still gates the GET on the developer JWT; taking its version silently
+    breaks every Ren ingest refresh (401s on a route the dashboard still calls
+    fine). Candidate for upstreaming; until then keep `ApiKeyDep` on the GET
+    through merges.

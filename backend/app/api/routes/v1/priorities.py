@@ -17,7 +17,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityResponse,
     ProviderPriorityUpdate,
 )
-from app.services import DeveloperDep, PriorityService
+from app.services import ApiKeyDep, DeveloperDep, PriorityService
 from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
@@ -39,7 +39,7 @@ def _with_display(item: ProviderPriorityResponse) -> ProviderPriorityResponse:
 )
 def get_provider_priorities(
     db: DbSession,
-    _developer: DeveloperDep,
+    _api_key: ApiKeyDep,
 ) -> ProviderPriorityListResponse:
     result = priority_service.get_provider_priorities(db)
     result.items = [_with_display(item) for item in result.items]
