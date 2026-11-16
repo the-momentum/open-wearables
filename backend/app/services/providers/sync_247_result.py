@@ -267,26 +267,33 @@ class Sync247Run:
         except Exception as e:
             if rollback_on_error is None:
                 rollback_on_error = not savepoint
-            # An inactive session (failed flush/commit, savepoint never opened) must be reset regardless.
-            if rollback_on_error or not self.db.is_active:
+            # An inactive session (failed flush/commit, savepoint never opened) or a wedged
+            # transaction context must be reset regardless.
+            if rollback_on_error or not self.db.is_active or self._transaction_ctx_wedged():
                 self._reset_session()
             self.fail(data_type, e, capture=capture)
             return
 
+    def _transaction_ctx_wedged(self) -> bool:
+        """A transaction context is registered on the session over a dead transaction."""
+        trans_ctx = getattr(self.db, "_trans_context_manager", None)
+        return trans_ctx is not None and not trans_ctx._transaction_is_active()
+
     def _reset_session(self) -> None:
-        """Roll back, or fully close when the session's transaction context is wedged.
+        """Roll back, first unwinding any wedged transaction-context registrations.
 
         A statement cancelled inside a savepoint's release (e.g. statement_timeout on a
         bulk write) can leave a transaction context registered over a closed transaction.
-        rollback() cannot clear that registration, and every later statement raises
-        "closed transaction inside context manager". close() resets the session; it
-        reconnects on next use.
+        Neither rollback() nor close() clears that registration, and every later statement
+        raises "closed transaction inside context manager". Exiting the stale context runs
+        its normal cleanup — closing the dead transaction and restoring the enclosing
+        context, if any — so an outer ``with`` block is preserved.
         """
-        trans_ctx = getattr(self.db, "_trans_context_manager", None)
-        if trans_ctx is not None and not trans_ctx._transaction_is_active():
-            self.db.close()
-        else:
-            self.db.rollback()
+        while self._transaction_ctx_wedged():
+            trans_ctx = getattr(self.db, "_trans_context_manager", None)
+            assert trans_ctx is not None
+            trans_ctx.__exit__(None, None, None)
+        self.db.rollback()
 
     def expect(self, *data_types: str) -> None:
         """List the tasks up front, so a conditional one that never ran shows as skipped."""
