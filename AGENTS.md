@@ -252,14 +252,26 @@ fork divergence.
     rounding are the per-night RHR contract Ren's wearable ingest reads as a
     fallback. Upstream has no sleep-summary field for it today; keep it through
     merges and upstream the shape rather than dropping it in a sync.
-13. **Google Health webhook degenerate intervals.** `GoogleWebhookHandler._window`
+13. **No savepoint around google sleep.** `GoogleHealth247Data.load_and_save_all`
+    runs its `"sleep"` step without `savepoint=True`:
+    `event_record_service.create_or_merge_sleep` commits internally on
+    re-ingested sessions, and under `begin_nested` that commit closes the
+    step's context — the next statement raises `InvalidRequestError`, every pull
+    re-reading a known session fails, and the sync reports `partial`. Upstream
+    still wraps the step in a savepoint; keep it off through merges until
+    upstream fixes it (candidate for upstreaming), and never re-add a savepoint
+    around any step whose handler commits internally. Upstream `76a504f5`
+    (flag naps) adds more internal commits in `reclassify_sleep_naps` — when
+    that merge lands it widens this collision surface rather than fixing it,
+    so resolve the step wrapper toward no-savepoint regardless.
+14. **Google Health webhook degenerate intervals.** `GoogleWebhookHandler._window`
     widens any interval with `end <= start` to ±1 min around the instant: Google
     sends `startTime == endTime` for instant records (blood-glucose, weight), and
     the Health API 400s on a zero-length filter (`INVALID_TIME_RANGE`), which made
     every such webhook run FAILED. Upstream returns `min(starts), max(ends)` bare;
     taking its version reintroduces guaranteed-400 syncs. Candidate for
     upstreaming; until then keep the widening through merges.
-14. **Statement timeout and cancelled-statement recovery.** `db_statement_timeout_ms`
+15. **Statement timeout and cancelled-statement recovery.** `db_statement_timeout_ms`
     (15 s) in `config.py` and the `connect_args` `-c statement_timeout` in
     `database.py` are fork-only — upstream sets no global timeout. Two compensations
     hang off it: `_BULK_STATEMENT_TIMEOUT_MS` + `SET LOCAL` in
@@ -269,6 +281,8 @@ fork divergence.
     inside a savepoint's release leaves a transaction context registered over a
     closed transaction that neither `rollback()` nor `close()` clears — unwind it
     via `__exit__` or every later statement raises "closed transaction inside
-    context manager"). Upstream's `step` only calls `rollback()`; taking it drops
-    the recovery. Keep all three through merges; if the global timeout is ever
-    dropped the two compensations go with it.
+    context manager"). The same wedged state is what rule 13's internal commits
+    produce, so `_reset_session` also recovers savepoint steps whose handlers
+    still commit internally. Upstream's `step` only calls `rollback()`; taking it
+    drops the recovery. Keep all three through merges; if the global timeout is
+    ever dropped the two compensations go with it.

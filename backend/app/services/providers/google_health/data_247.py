@@ -134,7 +134,10 @@ class GoogleHealth247Data(Base247DataTemplate):
             build = partial(self._daily_rollup_samples, db, user_id, daily, start_time, end_time)
             self._store_samples(run, daily.name, build)
 
-        with run.step("sleep", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
+        # No savepoint: create_or_merge_sleep commits internally on re-ingested sessions,
+        # and a nested transaction makes that commit close the step's context — every pull
+        # that re-reads a known session fails with InvalidRequestError and reports partial.
+        with run.step("sleep", commit=True, rollback_on_error=True, capture=True) as step:
             step.record(self.sleep.load_and_save(db, user_id, start_time, end_time))
 
         if self._scope_granted(db, user_id, NUTRITION_SCOPE):
