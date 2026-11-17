@@ -76,8 +76,9 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
         )
         if skipped and strategy.capabilities.webhook_inbound_secret:
             with SessionLocal() as db:
-                secret = ProviderSettingsRepository().get_webhook_secret(db, ProviderName(provider))
-            if not secret:
+                # Without decrypting it: a secret that doesn't decrypt mustn't fail a registration that worked
+                has_secret = ProviderSettingsRepository().has_webhook_secret(db, ProviderName(provider))
+            if not has_secret:
                 logger.warning(
                     "Webhook skipped but no inbound secret stored — delete and re-register to obtain a new secret",
                     provider=provider,

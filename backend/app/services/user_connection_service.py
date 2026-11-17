@@ -202,10 +202,13 @@ class UserConnectionService(
         by the time the user disconnects.
         """
         connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
-        if not connection or not connection.access_token:
+        if not connection:
             return
 
         try:
+            # Inside the try: a token that doesn't decrypt (another SECRET_KEY) must not block the disconnect
+            if not connection.access_token:
+                return
             # The disconnect revokes the connection itself; revoking here first would skip its webhook
             access_token = get_valid_token(db_session, user_id, provider, self.crud, oauth, revoke_on_failure=False)
             oauth.deregister_user(

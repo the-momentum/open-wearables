@@ -19,11 +19,13 @@ from celery.exceptions import Retry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.integrations.celery.tasks.webhook_push_task import process_webhook_push
 from app.repositories import UserConnectionRepository
 from app.schemas.auth import ConnectionStatus
 from app.services.providers.api_client import get_valid_token
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.utils.token_encryption import encrypt_token
 from tests.factories import UserConnectionFactory, UserFactory
 
 MODULE = "app.integrations.celery.tasks.webhook_push_task"
@@ -845,6 +847,39 @@ class TestGarminDeregistrationWebhook:
         mock_refresh_revoked_webhook.assert_not_called()
         mock_revoked_webhook.assert_called_once()
         assert mock_revoked_webhook.call_args.kwargs["reason"] == "deregistration"
+
+    def test_undecryptable_token_skips_its_entry_without_revoking(
+        self,
+        task_db: Session,
+        mock_external_apis: dict[str, MagicMock],
+        mock_garmin_user_id: MagicMock,
+        mock_revoked_webhook: MagicMock,
+    ) -> None:
+        # The first user's token was encrypted under another SECRET_KEY; the second one's is readable
+        unreadable = UserConnectionFactory(user=UserFactory(), provider="garmin", provider_user_id="garmin_user_a")
+        readable = UserConnectionFactory(user=UserFactory(), provider="garmin", provider_user_id="garmin_user_b")
+        with patch.object(settings, "secret_key", "b" * 64):
+            foreign = encrypt_token("access-secret")
+        task_db.execute(
+            text("UPDATE user_connection SET access_token = :token WHERE id = :id"),
+            {"token": foreign, "id": unreadable.id},
+        )
+        task_db.expire_all()
+
+        result = process_webhook_push.run(
+            "garmin", {"deregistrations": [{"userId": "garmin_user_a"}, {"userId": "garmin_user_b"}]}, "trace-041"
+        )
+
+        assert result["deregistrations"]["revoked"] == 1
+        assert len(result["deregistrations"]["errors"]) == 1
+        statuses = dict(
+            task_db.execute(
+                text("SELECT provider_user_id, status FROM user_connection WHERE id IN (:a, :b)"),
+                {"a": unreadable.id, "b": readable.id},
+            ).all()
+        )
+        assert statuses == {"garmin_user_a": ConnectionStatus.ACTIVE, "garmin_user_b": ConnectionStatus.REVOKED}
+        mock_revoked_webhook.assert_called_once()
 
     def test_push_webhook_deregistration_unknown_user(
         self,

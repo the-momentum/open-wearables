@@ -30,6 +30,7 @@ class CeleryTask(StrEnum):
     PROCESS_SDK_UPLOAD = f"{_PREFIX}.process_sdk_upload_task.process_sdk_upload"
     SAVE_SDK_SLEEP = f"{_PREFIX}.save_sdk_sleep_task.save_sdk_sleep"
     PROCESS_XML_UPLOAD = f"{_PREFIX}.process_xml_upload_task.process_xml_upload"
+    APPLY_PROVIDER_TOKEN_ENCRYPTION = f"{_PREFIX}.provider_token_encryption_task.apply_provider_token_encryption"
     RECONCILE_PROVIDER_WEBHOOKS = f"{_PREFIX}.provider_webhooks_task.reconcile_provider_webhooks"
     REFRESH_DASHBOARD_TOTAL_DATA_POINTS = f"{_PREFIX}.refresh_dashboard_stats_task.refresh_dashboard_total_data_points"
     RENEW_OURA_WEBHOOKS = f"{_PREFIX}.renew_oura_webhooks_task.renew_oura_webhooks"

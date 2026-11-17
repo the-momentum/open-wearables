@@ -28,6 +28,7 @@ from app.schemas.enums import (
 from app.schemas.model_crud.user_management import InvitationStatus
 from app.schemas.sync_status import SyncScope, SyncSource, SyncStatus
 from app.utils.mappings_meta import AutoRelMeta
+from app.utils.token_encryption import EncryptedText
 
 engine = create_engine(
     settings.db_uri,
@@ -55,8 +56,16 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         return f"{inspect(self).identity[0]}"
 
     def __repr__(self) -> str:
-        mapper = inspect(self.__class__)
-        fields = [f"{col.key}={repr(getattr(self, col.key, None))}" for col in mapper.columns]
+        state = inspect(self)
+        fields = []
+        for col in state.mapper.columns:
+            if isinstance(col.type, EncryptedText):
+                # A provider secret: left out unless loaded (loading would decrypt it, which can fail), and masked
+                if col.key in state.unloaded:
+                    continue
+                fields.append(f"{col.key}={'***' if getattr(self, col.key) is not None else None}")
+            else:
+                fields.append(f"{col.key}={repr(getattr(self, col.key, None))}")
         return f"<{self.__class__.__name__}({', '.join(fields)})>"
 
     type_annotation_map = {

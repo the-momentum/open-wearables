@@ -32,7 +32,7 @@ def parse_duration(value: str) -> timedelta:
 
 
 def derive_secret(secret_key: str, purpose: str) -> str:
-    """A secret for one purpose that doesn't reveal SECRET_KEY, for values a provider receives."""
+    """A secret for one purpose that doesn't reveal SECRET_KEY (a value a provider receives, an encryption key)."""
     return hmac.new(secret_key.encode(), purpose.encode(), hashlib.sha256).hexdigest()
 
 
