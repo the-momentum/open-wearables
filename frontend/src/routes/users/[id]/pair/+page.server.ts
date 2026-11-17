@@ -2,7 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { ApiError } from '$lib/server/api';
 import { authorizeProvider } from '$lib/server/oauth';
 import { fetchCloudProviders } from '$lib/server/providers';
-import { pairingSuccessUrl, safeReturnUrl } from '$lib/pairing/links';
+import { PAIR_TOKEN_COOKIE, pairingSuccessUrl, safeReturnUrl } from '$lib/pairing/links';
 import type { Actions, PageServerLoad } from './$types';
 
 const invalidLink = 'This link has expired or is invalid. Ask whoever sent it for a new one.';
@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ url }) => ({
 });
 
 export const actions: Actions = {
-	connect: async ({ params, request, url }) => {
+	connect: async ({ params, request, url, cookies }) => {
 		// `?/connect` replaces the query string, so the return link travels as a field.
 		const form = await request.formData();
 		const provider = String(form.get('provider') ?? '');
@@ -26,7 +26,7 @@ export const actions: Actions = {
 
 		let authorizationUrl: string;
 		try {
-			const target = pairingSuccessUrl(url.origin, params.id, provider, returnUrl, token);
+			const target = pairingSuccessUrl(url.origin, params.id, provider, returnUrl);
 			({ authorization_url: authorizationUrl } = await authorizeProvider(
 				provider,
 				params.id,
@@ -41,6 +41,13 @@ export const actions: Actions = {
 			return fail(400, { provider, message: `Could not reach ${provider}. ${detail}` });
 		}
 
+		// Not in the success URL: that is sent to the API as redirect_uri and could reach its logs.
+		cookies.set(PAIR_TOKEN_COOKIE, token, {
+			path: `/users/${params.id}/pair`,
+			httpOnly: true,
+			sameSite: 'lax',
+			maxAge: 60 * 60
+		});
 		redirect(303, authorizationUrl);
 	}
 };

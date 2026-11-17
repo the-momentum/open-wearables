@@ -19,7 +19,9 @@ test('walks the provider round trip and names what connected', async ({ page }) 
 	await page.goto(PAIR);
 	await page.getByRole('button', { name: /Garmin/ }).click();
 
-	await expect(page).toHaveURL(new RegExp(`${BASE}/success\\?provider=garmin&t=${TOKEN}$`));
+	// The mock hands redirect_uri straight back, so this is what the API received:
+	// the token must not be in it, or it lands in the API's request logs.
+	await expect(page).toHaveURL(new RegExp(`${BASE}/success\\?provider=garmin$`));
 	await expect(page.getByRole('heading', { name: 'Garmin is connected' })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Connect another device' })).toHaveAttribute(
 		'href',
