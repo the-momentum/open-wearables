@@ -1,17 +1,17 @@
 #!/bin/bash
 set -e -x
+trap 'exit 143' TERM INT
 
 scripts/start/install_extensions.sh
 
-# On a fresh database app.sh may still be migrating the core; an extension's migrations need its tables.
-# Capped, then the lookup below says why an extension is disabled.
+# Extension migrations need the core's tables, which app.sh may still be creating on a fresh database.
 for _ in $(seq 1 60); do
-    uv run alembic current 2>/dev/null | grep -q '(head)' && break
+    uv run alembic current 2>&1 | grep -qE "\(head\)|Can't locate revision" && break
     sleep "${SCHEMA_POLL_SECONDS:-2}"
 done
 
-# Queues the active extensions route their own tasks to (OWExtension.celery_queues); a third worker runs them below.
-extension_queues=$(uv run python scripts/start/extension_queues.py | sed -n 's/^EXTENSION_QUEUES=//p')
+# OWExtension.celery_queues of the active extensions, for the third worker below.
+extension_queues=$(uv run python scripts/start/extension_queues.py | tee /dev/stderr | sed -n 's/^EXTENSION_QUEUES=//p')
 
 echo "Starting I/O worker..."
 uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q default,sdk_sync,garmin_sync,webhook_sync -n io@%h &
@@ -27,9 +27,8 @@ cpu_pid=$!
 ext_pid=""
 if [ -n "$extension_queues" ]; then
     echo "Starting extension worker..."
-    # Extension tasks can run for minutes (an LLM reply): a thread pool of their own keeps them off the I/O worker.
-    # With prefetch disabled the worker fetches a task only when a thread is free, so a second worker container
-    # takes its share and a stop waits only for the replies in progress.
+    # Extension tasks can run for minutes, so they get their own pool. Prefetch is off as for the CPU worker:
+    # other worker containers take their share and a stop waits only for the tasks in progress.
     uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads --concurrency="${EXTENSION_WORKER_CONCURRENCY:-4}" --prefetch-multiplier=1 --disable-prefetch -Q "$extension_queues" -n ext@%h &
     ext_pid=$!
 fi

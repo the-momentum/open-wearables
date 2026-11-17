@@ -39,7 +39,7 @@ def test_workers_consume_every_queue_and_only_those() -> None:
     consumed = {
         queue
         for flag in re.findall(r"-Q (\S+)", worker_script.read_text())
-        # The extension worker's queues come from the extensions (collect_celery_queues), not from CeleryQueue
+        # The extension worker's -Q is a variable
         if not flag.startswith('"$')
         for queue in flag.split(",")
     }

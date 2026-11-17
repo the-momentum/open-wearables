@@ -193,7 +193,7 @@ def _broken() -> OWExtension:
 @dataclass
 class QueuesExtension(OWExtension):
     name: str = "queues"
-    celery_queues: list[str] = field(default_factory=lambda: ["queues_long", "Bad-Name", "default", "queues_long"])
+    celery_queues: list[str] = field(default_factory=lambda: ["queues_long", "default", "queues_long"])
 
 
 @dataclass
@@ -241,19 +241,22 @@ class FakeEntryPoint:
         return self._target
 
 
+def _reset() -> None:
+    get_extensions.cache_clear()
+    collect_webhook_event_types.cache_clear()
+
+
 @pytest.fixture
 def installed(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., None]]:
     """Replace the installed entry points; the discovery cache is reset around each test."""
 
     def install(*eps: FakeEntryPoint) -> None:
         monkeypatch.setattr(extensions, "entry_points", lambda group: list(eps))
-        get_extensions.cache_clear()
-        collect_webhook_event_types.cache_clear()
+        _reset()
 
-    collect_webhook_event_types.cache_clear()
+    _reset()
     yield install
-    get_extensions.cache_clear()
-    collect_webhook_event_types.cache_clear()
+    _reset()
     events.register({})
 
 
@@ -460,18 +463,23 @@ class TestBeatSchedule:
 
 
 class TestCeleryQueues:
-    def test_each_queue_is_collected_once(self, installed: Callable[..., None]) -> None:
+    def test_each_queue_is_collected_once_and_core_queues_are_skipped(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("queues", QueuesExtension), FakeEntryPoint("other_queues", OtherQueuesExtension))
 
         assert collect_celery_queues() == ("queues_long", "other_long")
 
-    def test_invalid_and_core_queue_names_are_skipped(self, installed: Callable[..., None]) -> None:
-        installed(FakeEntryPoint("queues", QueuesExtension))
+    @pytest.mark.parametrize("queues", ["queues_long", None, ["Bad-Name"]], ids=["str", "none", "invalid_name"])
+    def test_invalid_celery_queues_disable_the_extension(self, installed: Callable[..., None], queues: Any) -> None:
+        installed(
+            FakeEntryPoint("queues", lambda: OWExtension(name="queues", celery_queues=queues)),
+            FakeEntryPoint("other_queues", OtherQueuesExtension),
+        )
 
-        queues = collect_celery_queues()
+        loaded = {e.name: e for e in get_extensions()}
 
-        assert "Bad-Name" not in queues
-        assert "default" not in queues
+        assert not loaded["queues"].active
+        assert "invalid celery_queues" in (loaded["queues"].error or "")
+        assert collect_celery_queues() == ("queues_long", "other_long")
 
     def test_celery_declares_the_extension_queues(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("queues", QueuesExtension))

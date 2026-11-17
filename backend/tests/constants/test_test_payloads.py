@@ -8,4 +8,4 @@ def test_a_core_event_type_gets_its_example_payload() -> None:
 
 
 def test_an_event_type_without_an_example_gets_a_minimal_payload() -> None:
-    assert get_test_payload("agent.reply.completed") == {"type": "agent.reply.completed", "data": {}}
+    assert get_test_payload("my_extension.thing.created") == {"type": "my_extension.thing.created", "data": {}}

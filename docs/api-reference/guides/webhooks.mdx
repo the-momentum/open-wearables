@@ -248,9 +248,9 @@ Self-hosting with endpoints that filter on the old names: run `scripts/data_migr
 
 ### Extension Events
 
-Installed extensions can add event types of their own. Their names start with the extension's name (for example `agent.reply.completed` from the AI agent module), they are listed by `GET /api/v1/webhooks/event-types` after the core's, and you subscribe and filter by them like any other type. Their payloads are documented by each extension; a user's event carries `data.user_id`, as the core's do.
+Installed extensions can add event types of their own. Their names start with the extension's name (for example `my_extension.thing.created`), they are listed by `GET /api/v1/webhooks/event-types` after the core's, and you subscribe and filter by them like any other type. Their payloads are documented by each extension; a user's event carries `data.user_id`, as the core's do.
 
-Event types are registered with Svix when the API starts. If Svix wasn't reachable then (the log says so), restart the API once Svix is up, so that an endpoint can filter by a newly installed extension's types.
+Their types are registered with Svix when the API starts, like the core's; if Svix was down then (the log says so), restart the API before filtering by a new extension's types.
 
 ---
 

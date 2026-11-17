@@ -62,7 +62,7 @@ def _dispatch(
             kwargs={"channels": channels, "idempotency_key": idempotency_key},
         )
     except EncodeError as e:
-        # A payload that isn't JSON is a bug in the emitter, not an outage: don't log it as one
+        # A bug in the emitter, not an outage
         logger.error("Webhook event payload can't be serialized", event_type=event_type, exc_info=e)
     except Exception as e:
         logger.warning("Could not enqueue webhook event", event_type=event_type, exc_info=e)
@@ -453,18 +453,6 @@ def on_sync_completed(
     )
 
 
-def on_extension_event(
-    event_type: str, data: dict[str, Any], *, user_id: UUID | None, idempotency_key: str | None
-) -> None:
-    """An extension's own event; app.extensions.webhooks.emit checks that the extension declares it."""
-    _dispatch(
-        event_type,
-        {"type": event_type, "data": {**data, "user_id": str(user_id)} if user_id else data},
-        channels=[f"user.{user_id}"] if user_id else None,
-        idempotency_key=_safe_key(idempotency_key) if idempotency_key else None,
-    )
-
-
 def on_sync_failed(
     *,
     user_id: UUID,
@@ -551,4 +539,16 @@ def on_sync_data_type_finished(
         },
         idempotency_key=_safe_key(f"{event_type}.{run_id}.{data_type}"),
         channels=[f"user.{user_id}"],
+    )
+
+
+def on_extension_event(
+    event_type: str, data: dict[str, Any], *, user_id: UUID | None, idempotency_key: str | None
+) -> None:
+    """An extension's own event; app.extensions.webhooks.emit checks that the extension declares it."""
+    _dispatch(
+        event_type,
+        {"type": event_type, "data": {**data, "user_id": str(user_id)} if user_id else data},
+        channels=[f"user.{user_id}"] if user_id else None,
+        idempotency_key=_safe_key(f"{event_type}.{idempotency_key}") if idempotency_key else None,
     )

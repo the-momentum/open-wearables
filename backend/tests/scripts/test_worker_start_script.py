@@ -27,17 +27,23 @@ _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "start" / "work
 # The TERM trap is installed before "started" is logged, so a test that waits for
 # "started" can signal right away.
 _FAKE_UV = """#!/bin/bash
-# The extensions' queue lookup: some log noise, then the marker line (or a failure)
+# The extensions' queue lookup: the core's log of loading them, then the marker line (or a failure)
 if [[ "$*" == *extension_queues.py* ]]; then
-    echo '{"message": "Extension loaded"}'
+    echo '{"message": "Extension disabled", "reason": "migrations failed"}'
     [ -n "$LOOKUP_FAILS" ] && exit 1
     echo "EXTENSION_QUEUES=${EXT_QUEUES:-}"
     exit 0
 fi
 
-# The core schema check: a revision that is not head for the first NOT_HEAD_ANSWERS calls, then head
+# The core schema check: a revision that is not head for the first NOT_HEAD_ANSWERS calls, then head;
+# with UNKNOWN_REVISION it fails as alembic does on a revision missing from this image
 if [[ "$*" == *"alembic current"* ]]; then
     echo "$*" >> "$EVENTS_LOG"
+    if [ -n "$UNKNOWN_REVISION" ]; then
+        echo "ERROR [alembic.util.messaging] Can't locate revision identified by 'abc123'" >&2
+        echo "FAILED: Can't locate revision identified by 'abc123'"
+        exit 255
+    fi
     calls=$(cat "$ALEMBIC_COUNTER" 2>/dev/null || echo 0)
     echo $((calls + 1)) > "$ALEMBIC_COUNTER"
     if [ "$calls" -lt "${NOT_HEAD_ANSWERS:-0}" ]; then echo "abc123"; else echo "abc123 (head)"; fi
@@ -100,14 +106,15 @@ def run_worker_script(tmp_path: Path) -> Iterator[Callable[..., tuple[subprocess
             "SCHEMA_POLL_SECONDS": "0.1",
             **env_overrides,
         }
-        process = subprocess.Popen(
-            ["bash", str(_SCRIPT_PATH)],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            # Own process group, so teardown also reaches the fake workers.
-            start_new_session=True,
-        )
+        with (tmp_path / "container.log").open("ab") as container_log:
+            process = subprocess.Popen(
+                ["bash", str(_SCRIPT_PATH)],
+                env=env,
+                stdout=container_log,
+                stderr=subprocess.STDOUT,
+                # Own process group, so teardown also reaches the fake workers.
+                start_new_session=True,
+            )
         processes.append(process)
         return process, events_log
 
@@ -132,15 +139,16 @@ def _wait_for(events_log: Path, *expected: str) -> None:
     pytest.fail(f"Timed out waiting for {expected}; events so far: {_events(events_log)}")
 
 
-def test_sigterm_is_forwarded_to_both_workers(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script()
-    _wait_for(events_log, "io started", "cpu started")
+def test_sigterm_is_forwarded_to_every_worker(run_worker_script: Callable) -> None:
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue", SHUTDOWN_DELAY_ext="0.5")
+    _wait_for(events_log, "io started", "cpu started", "ext started")
 
     process.send_signal(signal.SIGTERM)
 
     assert process.wait(timeout=_TIMEOUT_S) == 0
     assert "io got TERM" in _events(events_log)
     assert "cpu got TERM" in _events(events_log)
+    assert "ext stopped" in _events(events_log)
 
 
 @pytest.mark.parametrize("cpu_status", ["0", "3"])
@@ -192,18 +200,28 @@ def test_second_signal_does_not_cut_a_slow_shutdown_short(run_worker_script: Cal
 
 
 @pytest.mark.parametrize("cpu_status", [2, 127, 255])
-def test_cpu_worker_exit_stops_the_io_worker_and_the_container(run_worker_script: Callable, cpu_status: int) -> None:
+def test_cpu_worker_exit_stops_the_other_workers_and_the_container(
+    run_worker_script: Callable, cpu_status: int
+) -> None:
     """The worker's own exit code is kept, including 127 and 255 that bash 5 also uses for a lost status."""
-    process, events_log = run_worker_script(EXIT_NOW_cpu=str(cpu_status), EXIT_DELAY="0.5", SHUTDOWN_DELAY_io="0.5")
-    _wait_for(events_log, "io started", "cpu started")
+    process, events_log = run_worker_script(
+        EXT_QUEUES="my_queue",
+        EXIT_NOW_cpu=str(cpu_status),
+        EXIT_DELAY="0.5",
+        SHUTDOWN_DELAY_io="0.5",
+        SHUTDOWN_DELAY_ext="0.5",
+    )
+    _wait_for(events_log, "io started", "cpu started", "ext started")
 
     assert process.wait(timeout=_TIMEOUT_S) == cpu_status
     assert "io stopped" in _events(events_log)
+    assert "ext stopped" in _events(events_log)
 
 
-def test_io_worker_crash_keeps_the_container_running(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXIT_NOW_io="1")
-    _wait_for(events_log, "io exited", "cpu started")
+@pytest.mark.parametrize("role", ["io", "ext"])
+def test_io_or_extension_worker_crash_keeps_the_container_running(run_worker_script: Callable, role: str) -> None:
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue", **{f"EXIT_NOW_{role}": "1"})
+    _wait_for(events_log, f"{role} exited", "cpu started")
 
     time.sleep(0.5)
     assert process.poll() is None
@@ -213,8 +231,11 @@ def test_io_worker_crash_keeps_the_container_running(run_worker_script: Callable
     assert "cpu got TERM" in _events(events_log)
 
 
-def test_no_extension_worker_without_extension_queues(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script()
+@pytest.mark.parametrize(
+    "env", [{}, {"EXT_QUEUES": "my_queue", "LOOKUP_FAILS": "1"}], ids=["none_declared", "lookup_failed"]
+)
+def test_only_the_core_workers_start_without_extension_queues(run_worker_script: Callable, env: dict[str, str]) -> None:
+    process, events_log = run_worker_script(**env)
     _wait_for(events_log, "io started", "cpu started")
 
     time.sleep(0.5)
@@ -222,58 +243,18 @@ def test_no_extension_worker_without_extension_queues(run_worker_script: Callabl
 
 
 def test_extension_worker_runs_the_extension_queues(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="agent,other")
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue,other")
     _wait_for(events_log, "io started", "cpu started", "ext started")
 
     [args] = [event for event in _events(events_log) if event.startswith("ext args ")]
-    assert "-Q agent,other" in args
+    assert "-Q my_queue,other" in args
     assert "--pool=threads" in args
     assert "--prefetch-multiplier=1" in args
     assert "--disable-prefetch" in args
 
 
-def test_sigterm_waits_for_the_extension_worker(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="agent", SHUTDOWN_DELAY_ext="0.5")
-    _wait_for(events_log, "io started", "cpu started", "ext started")
-
-    process.send_signal(signal.SIGTERM)
-
-    assert process.wait(timeout=_TIMEOUT_S) == 0
-    assert "ext stopped" in _events(events_log)
-
-
-def test_extension_worker_crash_keeps_the_container_running(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="agent", EXIT_NOW_ext="1")
-    _wait_for(events_log, "ext exited", "cpu started")
-
-    time.sleep(0.5)
-    assert process.poll() is None
-
-    process.send_signal(signal.SIGTERM)
-    assert process.wait(timeout=_TIMEOUT_S) == 0
-    assert "cpu got TERM" in _events(events_log)
-
-
-def test_cpu_worker_exit_stops_the_extension_worker(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(
-        EXT_QUEUES="agent", EXIT_NOW_cpu="0", EXIT_DELAY="1", SHUTDOWN_DELAY_ext="0.5"
-    )
-    _wait_for(events_log, "io started", "cpu started", "ext started")
-
-    assert process.wait(timeout=_TIMEOUT_S) == 0
-    assert "ext stopped" in _events(events_log)
-
-
-def test_failed_queue_lookup_starts_only_the_core_workers(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="agent", LOOKUP_FAILS="1")
-    _wait_for(events_log, "io started", "cpu started")
-
-    time.sleep(0.5)
-    assert "ext started" not in _events(events_log)
-
-
 def test_workers_start_only_after_the_core_schema_is_at_head(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="agent", NOT_HEAD_ANSWERS="3")
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue", NOT_HEAD_ANSWERS="3")
     _wait_for(events_log, "io started", "cpu started", "ext started")
 
     events = _events(events_log)
@@ -283,9 +264,39 @@ def test_workers_start_only_after_the_core_schema_is_at_head(run_worker_script: 
 
 
 def test_workers_start_when_the_core_schema_never_reaches_head(run_worker_script: Callable) -> None:
-    """The wait is capped, so a core that never migrates does not hang the container."""
     process, events_log = run_worker_script(NOT_HEAD_ANSWERS="1000", SCHEMA_POLL_SECONDS="0")
     _wait_for(events_log, "io started", "cpu started")
 
     schema_checks = [event for event in _events(events_log) if event.endswith("alembic current")]
     assert len(schema_checks) == 60
+
+
+def test_workers_start_at_once_when_the_database_is_at_a_revision_this_image_does_not_know(
+    run_worker_script: Callable,
+) -> None:
+    process, events_log = run_worker_script(UNKNOWN_REVISION="1", SCHEMA_POLL_SECONDS="0")
+    _wait_for(events_log, "io started", "cpu started")
+
+    schema_checks = [event for event in _events(events_log) if event.endswith("alembic current")]
+    assert len(schema_checks) == 1
+
+
+def test_a_stop_during_the_schema_wait_ends_the_script_within_one_poll(run_worker_script: Callable) -> None:
+    process, events_log = run_worker_script(NOT_HEAD_ANSWERS="1000", SCHEMA_POLL_SECONDS="1")
+    _wait_for(events_log, "run alembic current")
+
+    process.send_signal(signal.SIGTERM)
+
+    assert process.wait(timeout=_TIMEOUT_S) == 143
+    events = _events(events_log)
+    assert events.count("run alembic current") == 1
+    assert "io started" not in events
+
+
+def test_the_log_of_loading_the_extensions_reaches_the_container_log(
+    run_worker_script: Callable, tmp_path: Path
+) -> None:
+    process, events_log = run_worker_script()
+    _wait_for(events_log, "io started", "cpu started")
+
+    assert '"message": "Extension disabled"' in (tmp_path / "container.log").read_text()

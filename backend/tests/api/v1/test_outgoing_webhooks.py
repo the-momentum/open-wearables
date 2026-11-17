@@ -363,6 +363,7 @@ class TestOutgoingWebhooksAPI:
             m.is_enabled.return_value = True
             m.ensure_application.return_value = "app_uid_123"
             m.user_id_from_endpoint.return_value = None
+            m.event_types = svix_service.event_types  # calls no Svix server
             yield m
 
     def test_list_event_types(self, client: TestClient) -> None:
@@ -376,13 +377,17 @@ class TestOutgoingWebhooksAPI:
 
     def test_extension_event_types_are_listed(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "app.api.routes.v1.outgoing_webhooks.collect_webhook_event_types",
-            lambda: {"agent.reply.completed": "Done."},
+            "app.services.outgoing_webhooks.svix.collect_webhook_event_types",
+            lambda: {"my_extension.thing.created": "A thing was created."},
         )
 
         data = client.get("/api/v1/webhooks/event-types").json()
 
-        assert data[-1] == {"name": "agent.reply.completed", "description": "Done.", "child_events": None}
+        assert data[-1] == {
+            "name": "my_extension.thing.created",
+            "description": "A thing was created.",
+            "child_events": None,
+        }
         assert len(data) == len(WebhookEventType) + 1
 
     def test_create_endpoint(
@@ -958,14 +963,14 @@ def test_event_type_sync_registers_the_extensions_types() -> None:
         patch("app.services.outgoing_webhooks.svix._client", client),
         patch(
             "app.services.outgoing_webhooks.svix.collect_webhook_event_types",
-            return_value={"agent.reply.completed": "Done."},
+            return_value={"my_extension.thing.created": "A thing was created."},
         ),
     ):
         assert _register_event_types() is True
 
     client.event_type.patch.assert_not_called()
     [created] = [c.args[0] for c in client.event_type.create.call_args_list]
-    assert (created.name, created.description) == ("agent.reply.completed", "Done.")
+    assert (created.name, created.description) == ("my_extension.thing.created", "A thing was created.")
 
 
 def test_dispatch_logs_an_unserializable_payload_as_an_error_and_does_not_raise() -> None:
@@ -976,7 +981,7 @@ def test_dispatch_logs_an_unserializable_payload_as_an_error_and_does_not_raise(
     ):
         celery_app.send_task.side_effect = EncodeError("not JSON")
 
-        _dispatch("agent.reply.completed", {"type": "agent.reply.completed", "data": {"ids": {1, 2}}})
+        _dispatch("my_extension.thing.created", {"type": "my_extension.thing.created", "data": {"ids": {1, 2}}})
 
     logger.error.assert_called_once()
     assert logger.error.call_args.args[0] == "Webhook event payload can't be serialized"

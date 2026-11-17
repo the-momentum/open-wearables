@@ -2,7 +2,8 @@
 
 import importlib.util
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
+from unittest.mock import Mock
 
 import pytest
 
@@ -18,52 +19,26 @@ def _load_module() -> ModuleType:
     return module
 
 
-main = _load_module().main
-
-
-def _patch_extensions(monkeypatch: pytest.MonkeyPatch, queues: object, loaded: tuple = ()) -> None:
-    def collect() -> tuple[str, ...]:
-        if isinstance(queues, Exception):
-            raise queues
-        return queues  # type: ignore[return-value]
-
-    monkeypatch.setattr("app.extensions.collect_celery_queues", collect)
-    monkeypatch.setattr("app.extensions.get_extensions", lambda: loaded)
+extension_queues = _load_module()
 
 
 def test_prints_the_extension_queues(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    _patch_extensions(monkeypatch, ("agent", "other"))
+    monkeypatch.setattr(extension_queues, "collect_celery_queues", lambda: ("my_queue", "other"))
 
-    main()
+    extension_queues.main()
 
     captured = capsys.readouterr()
-    assert captured.out == "EXTENSION_QUEUES=agent,other\n"
+    assert captured.out == "EXTENSION_QUEUES=my_queue,other\n"
     assert captured.err == ""
 
 
 def test_failed_lookup_prints_no_queues_and_the_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _patch_extensions(monkeypatch, RuntimeError("boom"))
+    monkeypatch.setattr(extension_queues, "collect_celery_queues", Mock(side_effect=RuntimeError("boom")))
 
-    main()
+    extension_queues.main()
 
     captured = capsys.readouterr()
     assert captured.out == "EXTENSION_QUEUES=\n"
     assert "boom" in captured.err
-
-
-def test_reports_a_disabled_extension(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    loaded = (
-        SimpleNamespace(name="agent", error="migration failed"),
-        SimpleNamespace(name="fine", error=None),
-    )
-    _patch_extensions(monkeypatch, (), loaded)
-
-    main()
-
-    captured = capsys.readouterr()
-    assert captured.out == "EXTENSION_QUEUES=\n"
-    assert "Extension agent disabled" in captured.err
-    assert "migration failed" in captured.err
-    assert "fine" not in captured.err

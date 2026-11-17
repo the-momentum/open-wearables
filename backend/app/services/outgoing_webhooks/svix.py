@@ -134,6 +134,12 @@ def is_enabled() -> bool:
     return _client is not None
 
 
+def event_types() -> dict[str, str]:
+    """Name -> description of the core's event types and the active extensions'."""
+    core = {evt.value: EVENT_TYPE_DESCRIPTIONS.get(evt, "") for evt in WebhookEventType}
+    return {**core, **collect_webhook_event_types()}
+
+
 def register_event_types() -> bool:
     """Sync every core and extension event type into Svix: create the missing, update the changed (idempotent).
 
@@ -162,12 +168,8 @@ def register_event_types() -> bool:
         logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).", error=str(e))
         return False
 
-    wanted = {evt.value: EVENT_TYPE_DESCRIPTIONS.get(evt, "") for evt in WebhookEventType}
-    # Extensions' types after the core's; their names can't clash (collect_webhook_event_types)
-    wanted |= collect_webhook_event_types()
-
     all_ok = True
-    for name, description in wanted.items():
+    for name, description in event_types().items():
         current = existing.get(name)
         if current is None:
             try:

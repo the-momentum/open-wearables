@@ -36,7 +36,6 @@ logger = get_logger(__name__)
 
 ENTRY_POINT_GROUP = "open_wearables.extensions"
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
-# A webhook event type: dotted lowercase segments, e.g. "agent.reply.completed"
 _EVENT_TYPE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
 
 # The fields Celery documents for a beat_schedule entry; beat fails to start on an unknown one.
@@ -54,8 +53,7 @@ class OWExtension:
     celery_task_packages: list[str] = field(default_factory=list)
     # Alembic script location of the extension's own history, e.g. "my_extension:migrations".
     migrations: str = ""
-    # Celery queues the extension routes its own tasks to. The core's worker container runs one more worker on them
-    # (scripts/start/worker.sh), so long tasks neither wait behind the core's syncs nor hold them up.
+    # Celery queues the extension routes its tasks to; worker.sh runs them in a worker of their own.
     celery_queues: list[str] = field(default_factory=list)
 
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
@@ -74,9 +72,8 @@ class OWExtension:
         return {}
 
     def webhook_event_types(self) -> dict[str, str]:
-        """Webhook event types the extension emits, name -> description, registered in Svix next to the core's. A name
-        starts with ``<name>.``, e.g. ``{"my_extension.thing.created": "A thing was created."}``; emit them with
-        ``app.extensions.webhooks.emit``."""
+        """Event types emitted with ``app.extensions.webhooks.emit``, name -> description, e.g.
+        ``{"my_extension.thing.created": "A thing was created."}``; names start with ``<name>.``."""
         return {}
 
 
@@ -96,6 +93,14 @@ def _name_error(ext: OWExtension) -> str | None:
     if _NAME.fullmatch(ext.name):
         return None
     return f"name {ext.name!r} must be a lowercase identifier"
+
+
+def _queue_error(ext: OWExtension) -> str | None:
+    """A str would be read as one queue per character, and None breaks create_celery() in every process."""
+    queues = ext.celery_queues
+    if isinstance(queues, list) and all(isinstance(queue, str) and _NAME.fullmatch(queue) for queue in queues):
+        return None
+    return f"invalid celery_queues {queues!r}, must be a list of lowercase identifiers"
 
 
 def _compatibility_error(ext: OWExtension) -> str | None:
@@ -153,7 +158,13 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
             # Without @dataclass the inherited __init__ resets the subclass's attributes to the defaults.
             error = f"{type(ext).__name__} must be declared with @dataclass"
         else:
-            error = _name_error(ext) or _compatibility_error(ext) or _migration_error(ext) or _task_import_error(ext)
+            error = (
+                _name_error(ext)
+                or _queue_error(ext)
+                or _compatibility_error(ext)
+                or _migration_error(ext)
+                or _task_import_error(ext)
+            )
         name = getattr(ext, "name", "") or ep.name
         if error:
             logger.warning("Extension disabled", action="extension_disabled", extension=name, reason=error)
@@ -228,35 +239,16 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
 
 
 def collect_celery_queues() -> tuple[str, ...]:
-    """The queues the active extensions declare, each once. A name that isn't a lowercase identifier, or that is one of
-    the core's queues, is skipped: the core's workers already read those."""
-    core_queues = {queue.value for queue in CeleryQueue}
-    queues: list[str] = []
-    for ext in get_active_extensions():
-        for queue in ext.celery_queues:
-            if not isinstance(queue, str) or not _NAME.fullmatch(queue):
-                error = f"invalid queue name {queue!r}"
-            elif queue in core_queues:
-                error = f"{queue!r} is a core queue"
-            else:
-                if queue not in queues:
-                    queues.append(queue)
-                continue
-            logger.error(
-                "Extension queue skipped",
-                action="extension_queue_skipped",
-                extension=ext.name,
-                queue=str(queue),
-                reason=error,
-            )
-    return tuple(queues)
+    """Each declared queue once; core queues are skipped."""
+    core = {queue.value for queue in CeleryQueue}
+    return tuple(dict.fromkeys(q for ext in get_active_extensions() for q in ext.celery_queues if q not in core))
 
 
 @cache
 def collect_webhook_event_types() -> Mapping[str, str]:
     """Name -> description of the active extensions' webhook event types. A name outside the extension's ``<name>.``
-    namespace or taken by the core, or a description that isn't a string, is skipped. Cached with the extensions, so a
-    misdeclared type is logged once."""
+    namespace or taken by the core, or a description that isn't a string, is skipped. Cached: emit() checks every event
+    against it."""
     core = {evt.value for evt in WebhookEventType}
     types: dict[str, str] = {}
     for ext in get_active_extensions():

@@ -21,9 +21,9 @@ The single backend image covers every backend role. The start command selects wh
 | `scripts/start/beat.sh` | Celery beat (scheduler) |
 | `scripts/start/flower.sh` | Flower (Celery monitoring UI, port `5555`) |
 
-Once the service is running, the start commands pass `SIGTERM` on to it, so `docker stop` shuts down cleanly. The worker container stops taking new tasks and finishes the ones already running. If that takes longer than the stop timeout (10 seconds by default), Docker kills the remaining tasks; raise `stop_grace_period` on the worker service if your syncs or imports run longer. A stop during startup, while `app.sh` applies migrations and seed scripts, `worker.sh` waits for the core's migrations and loads the extensions, or `flower.sh` waits for the workers, is not passed on, so the container may keep running until the stop timeout runs out.
+Once the service is running, the start commands pass `SIGTERM` on to it, so `docker stop` shuts down cleanly. The worker container stops taking new tasks and finishes the ones already running. If that takes longer than the stop timeout (10 seconds by default), Docker kills the remaining tasks; raise `stop_grace_period` on the worker service if your syncs or imports run longer. A stop during startup, while `app.sh` applies migrations and seed scripts or `flower.sh` waits for the workers, is not passed on, so the container may keep running until the stop timeout runs out.
 
-When installed extensions declare queues of their own, the worker container runs a third worker on them, with `EXTENSION_WORKER_CONCURRENCY` threads (4 by default); if it doesn't start, the container log says which extension is disabled and why. Their tasks can take longer than the core's: the AI agent's replies take up to `AGENT_REPLY_TIMEOUT_SECONDS` (2 minutes by default), so give the worker service a `stop_grace_period` above that.
+When installed extensions declare queues of their own, the worker container runs a third worker on them, with `EXTENSION_WORKER_CONCURRENCY` threads (4 by default); if it doesn't start, the container log says which extension is disabled and why. Their tasks can run longer than the core's: set the worker service's `stop_grace_period` above the longest one, which each extension documents.
 
 ## Image tags
 
