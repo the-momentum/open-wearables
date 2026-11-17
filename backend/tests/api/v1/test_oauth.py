@@ -8,13 +8,16 @@ Tests the /api/v1/oauth endpoints including:
 """
 
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.connect_token import create_connect_token
 from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
@@ -189,6 +192,16 @@ class TestOAuthAuthorizeEndpoint:
             "/api/v1/oauth/garmin/authorize",
             params={"user_id": str(user_id)},
             headers={"X-Open-Wearables-Connect-Token": create_sdk_user_token("app_1", str(user_id))},
+        )
+        assert response.status_code == 401
+
+    def test_connect_token_signed_with_secret_key_is_rejected(self, client: TestClient, db: Session) -> None:
+        user_id = uuid4()
+        claims = {"sub": str(user_id), "scope": "connect", "exp": datetime.now(timezone.utc) + timedelta(days=1)}
+        response = client.get(
+            "/api/v1/oauth/garmin/authorize",
+            params={"user_id": str(user_id)},
+            headers={"X-Open-Wearables-Connect-Token": jwt.encode(claims, settings.secret_key, settings.algorithm)},
         )
         assert response.status_code == 401
 
