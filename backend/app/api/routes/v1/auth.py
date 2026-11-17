@@ -84,7 +84,7 @@ def login(
 
 @router.post("/logout")
 def logout(_developer: DeveloperDep):
-    """Logout developer (token invalidation should be handled client-side)."""
+    """Logout developer. Revoke the refresh token with POST /api/v1/token/revoke."""
     return {"message": "Successfully logged out"}
 
 

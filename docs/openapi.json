@@ -11048,7 +11048,7 @@
           "Internal: Auth"
         ],
         "summary": "Logout",
-        "description": "Logout developer (token invalidation should be handled client-side).",
+        "description": "Logout developer. Revoke the refresh token with POST /api/v1/token/revoke.",
         "operationId": "logout_api_v1_auth_logout_post",
         "responses": {
           "200": {
