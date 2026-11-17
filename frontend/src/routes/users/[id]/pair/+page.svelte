@@ -19,7 +19,9 @@
 			<Alert>{form.message}</Alert>
 		{/if}
 
-		{#if data.providers.length === 0}
+		{#if !data.token}
+			<Alert>{data.invalidLink}</Alert>
+		{:else if data.providers.length === 0}
 			<div class="rounded-xl border border-border bg-surface">
 				<EmptyState
 					icon={Unplug}
@@ -29,7 +31,7 @@
 			</div>
 		{:else}
 			{#each data.providers as provider (provider.provider)}
-				<ProviderChoice {provider} returnUrl={data.returnUrl} />
+				<ProviderChoice {provider} returnUrl={data.returnUrl} token={data.token} />
 			{/each}
 		{/if}
 	</div>

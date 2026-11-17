@@ -31,7 +31,9 @@
 				</LinkButton>
 			{/if}
 
-			<LinkButton href={data.pairAnother} variant="outline">Connect another device</LinkButton>
+			{#if data.pairAnother}
+				<LinkButton href={data.pairAnother} variant="outline">Connect another device</LinkButton>
+			{/if}
 		</div>
 	</div>
 </PairingShell>

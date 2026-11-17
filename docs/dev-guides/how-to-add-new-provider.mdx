@@ -655,7 +655,8 @@ Now test your implementation with these steps:
 
 <CodeGroup>
 ```bash Start OAuth
-curl -X GET "http://localhost:8000/api/v1/oauth/suunto/authorize?user_id=YOUR_USER_ID"
+curl -X GET "http://localhost:8000/api/v1/oauth/suunto/authorize?user_id=YOUR_USER_ID" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 
 ```json Response
