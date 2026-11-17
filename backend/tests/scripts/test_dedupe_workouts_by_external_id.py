@@ -79,6 +79,13 @@ class TestDedupeWorkoutsByExternalId:
         assert db.get(EventRecord, first_id) is None
         assert db.query(EventRecord).filter(EventRecord.data_source_id == ds.id).count() == 3
 
+    def test_back_to_back_workouts_are_not_duplicates(self, db: Session) -> None:
+        ds = _suunto_source()
+        _workout(ds, "0", end_ms=1_800_000)
+        _workout(ds, "0", start=START + timedelta(minutes=30), ingested=1)
+
+        assert dedupe_workouts(db, dry_run=False) == 0
+
     def test_keeper_takes_what_it_lacks(self, db: Session) -> None:
         ds = _suunto_source()
         old = _workout(ds, "6aa1")

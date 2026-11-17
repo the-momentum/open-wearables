@@ -55,7 +55,7 @@ _DUPLICATES = text("""
         FROM candidates c
     ),
     clustered AS (
-        SELECT o.*, sum(CASE WHEN o.previous_end IS NULL OR o.start_datetime > o.previous_end THEN 1 ELSE 0 END)
+        SELECT o.*, sum(CASE WHEN o.previous_end IS NULL OR o.start_datetime >= o.previous_end THEN 1 ELSE 0 END)
             OVER (PARTITION BY o.data_source_id, o.external_id ORDER BY o.start_datetime, o.id) AS cluster
         FROM ordered o
     ),
