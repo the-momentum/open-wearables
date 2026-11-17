@@ -190,20 +190,3 @@ async def get_connect_auth(
 
 
 ConnectAuthDep = Annotated[SDKAuthContext, Depends(get_connect_auth)]
-
-
-async def get_optional_combined_auth(
-    db: DbSession,
-    token: Annotated[str | None, Depends(oauth2_scheme)] = None,
-    x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
-) -> SDKAuthContext | None:
-    """Like ``get_combined_auth``, but no credentials at all is allowed and gives None.
-
-    Credentials that are sent must be valid: a wrong token is still a 401.
-    """
-    if not token and not x_open_wearables_api_key:
-        return None
-    return await get_combined_auth(db, token, x_open_wearables_api_key)
-
-
-OptionalCombinedAuthDep = Annotated[SDKAuthContext | None, Depends(get_optional_combined_auth)]

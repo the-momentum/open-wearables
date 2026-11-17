@@ -22,7 +22,7 @@ from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.utils.auth import ConnectAuthDep
-from app.utils.exceptions import UnsupportedProviderError, unknown_provider
+from app.utils.exceptions import AppError, UnsupportedProviderError, unknown_provider
 from app.utils.redirect_allowlist import is_allowed_redirect, with_result
 
 router = APIRouter()
@@ -135,8 +135,8 @@ def oauth_callback(
 
     try:
         oauth_state = strategy.oauth.handle_callback(db, code, state)
-    except HTTPException as exc:
-        return fail(str(exc.detail))
+    except AppError as exc:
+        return fail(exc.detail)
 
     # Stamp last_synced_at=now so the first periodic sync uses the connection
     # timestamp as its live-sync cursor and won't attempt to pull all history.

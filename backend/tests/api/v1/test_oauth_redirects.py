@@ -1,10 +1,9 @@
-"""Tests for the OAuth redirect_uri allowlist, optional authorize auth and callback redirects."""
+"""Tests for the OAuth redirect_uri allowlist, authorize auth and callback redirects."""
 
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.orm import Session
@@ -12,8 +11,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.schemas.model_crud.credentials import OAuthState
 from app.services.sdk_token_service import create_sdk_user_token
-from tests.factories import DeveloperFactory, UserFactory
-from tests.utils import developer_auth_headers
+from app.utils.exceptions import InvalidInputError
+from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
+from tests.utils import api_key_headers, developer_auth_headers
 
 APP_CALLBACK = "openwearables://oauth/callback"
 
@@ -24,7 +24,8 @@ def authorize(
     params = {"user_id": user_id or str(uuid4())}
     if redirect_uri is not None:
         params["redirect_uri"] = redirect_uri
-    return client.get("/api/v1/oauth/garmin/authorize", params=params, headers=headers or {})
+    headers = headers if headers is not None else api_key_headers(ApiKeyFactory().plain_key)
+    return client.get("/api/v1/oauth/garmin/authorize", params=params, headers=headers)
 
 
 class TestRedirectAllowlist:
@@ -105,7 +106,7 @@ class TestCallbackRedirects:
 
         with patch(
             "app.services.providers.templates.base_oauth.BaseOAuthTemplate._exchange_token",
-            side_effect=HTTPException(400, "Token exchange failed"),
+            side_effect=InvalidInputError("Token exchange failed"),
         ):
             response = client.get(
                 "/api/v1/oauth/garmin/callback", params={"state": state, "code": "c"}, follow_redirects=False
