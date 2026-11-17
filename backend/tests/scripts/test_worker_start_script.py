@@ -2,8 +2,8 @@
 
 The script runs two Celery workers in one container, and a third when installed extensions
 declare queues. A fake `uv` on PATH stands in for them, so the tests cover the shell logic
-only: signal forwarding, which worker decides the exit status, waiting for a worker that
-takes time to shut down, and that one worker's failure does not stop the others.
+only: the wait for the core schema, signal forwarding, which worker decides the exit status,
+waiting for a worker that takes time to shut down, and that any worker exiting stops the others.
 """
 
 import contextlib
@@ -199,36 +199,38 @@ def test_second_signal_does_not_cut_a_slow_shutdown_short(run_worker_script: Cal
     assert "io stopped" in _events(events_log)
 
 
-@pytest.mark.parametrize("cpu_status", [2, 127, 255])
-def test_cpu_worker_exit_stops_the_other_workers_and_the_container(
-    run_worker_script: Callable, cpu_status: int
+_ROLES = ("io", "cpu", "ext")
+
+
+@pytest.mark.parametrize("worker_status", [2, 127, 255])
+@pytest.mark.parametrize("role", _ROLES)
+def test_a_worker_exit_stops_the_other_workers_and_the_container(
+    run_worker_script: Callable, role: str, worker_status: int
 ) -> None:
     """The worker's own exit code is kept, including 127 and 255 that bash 5 also uses for a lost status."""
+    others = [other for other in _ROLES if other != role]
     process, events_log = run_worker_script(
         EXT_QUEUES="my_queue",
-        EXIT_NOW_cpu=str(cpu_status),
         EXIT_DELAY="0.5",
-        SHUTDOWN_DELAY_io="0.5",
-        SHUTDOWN_DELAY_ext="0.5",
+        **{f"EXIT_NOW_{role}": str(worker_status)},
+        **{f"SHUTDOWN_DELAY_{other}": "0.5" for other in others},
+        **{f"EXIT_ON_TERM_{other}": "1" for other in others},
     )
     _wait_for(events_log, "io started", "cpu started", "ext started")
 
-    assert process.wait(timeout=_TIMEOUT_S) == cpu_status
-    assert "io stopped" in _events(events_log)
-    assert "ext stopped" in _events(events_log)
+    assert process.wait(timeout=_TIMEOUT_S) == worker_status
+    for other in others:
+        assert f"{other} stopped" in _events(events_log)
 
 
 @pytest.mark.parametrize("role", ["io", "ext"])
-def test_io_or_extension_worker_crash_keeps_the_container_running(run_worker_script: Callable, role: str) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="my_queue", **{f"EXIT_NOW_{role}": "1"})
-    _wait_for(events_log, f"{role} exited", "cpu started")
+def test_a_worker_crashing_at_start_stops_the_container(run_worker_script: Callable, role: str) -> None:
+    process, _ = run_worker_script(EXT_QUEUES="my_queue", **{f"EXIT_NOW_{role}": "3"})
 
-    time.sleep(0.5)
-    assert process.poll() is None
-
-    process.send_signal(signal.SIGTERM)
-    assert process.wait(timeout=_TIMEOUT_S) == 0
-    assert "cpu got TERM" in _events(events_log)
+    assert process.wait(timeout=_TIMEOUT_S) == 3
+    # The other workers were stopped and waited for: nothing of the container is left.
+    with pytest.raises(ProcessLookupError):
+        os.killpg(process.pid, 0)
 
 
 @pytest.mark.parametrize(
@@ -263,12 +265,19 @@ def test_workers_start_only_after_the_core_schema_is_at_head(run_worker_script: 
     assert max(schema_checks) < events.index("io started")
 
 
-def test_workers_start_when_the_core_schema_never_reaches_head(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(NOT_HEAD_ANSWERS="1000", SCHEMA_POLL_SECONDS="0")
-    _wait_for(events_log, "io started", "cpu started")
+def test_the_container_exits_when_the_core_schema_never_reaches_head(
+    run_worker_script: Callable, tmp_path: Path
+) -> None:
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue", NOT_HEAD_ANSWERS="1000", SCHEMA_POLL_SECONDS="0")
 
-    schema_checks = [event for event in _events(events_log) if event.endswith("alembic current")]
-    assert len(schema_checks) == 60
+    assert process.wait(timeout=_TIMEOUT_S) != 0
+    events = _events(events_log)
+    assert len([event for event in events if event.endswith("alembic current")]) == 60
+    assert not [event for event in events if event.endswith(" started")]
+    container_log = (tmp_path / "container.log").read_text()
+    assert "core schema not at head after 60 polls; exiting so the container restarts" in container_log
+    # The extensions are not loaded either: their migrations would fail without the core's tables.
+    assert "Extension disabled" not in container_log
 
 
 def test_workers_start_at_once_when_the_database_is_at_a_revision_this_image_does_not_know(

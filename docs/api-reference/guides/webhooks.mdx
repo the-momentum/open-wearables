@@ -669,6 +669,8 @@ Every delivery includes three headers that let you confirm the payload was sent 
 
 The `svix-id` header is stable across retries — the same logical event always carries the same ID. This holds for extension events too: each gets its ID when it is queued, so a send that has to be repeated does not reach you again under a new one, and no event is dropped as a repeat of a different one. Store received IDs and skip duplicates to make your handler idempotent.
 
+An extension event's event ID is `<event_type>-<key>`, where the key is the one the extension gave the event. When that key has characters other than letters, digits, `-`, `_` and `.`, or the ID would be longer than 256 characters, the event ID is the SHA-256 hex digest of `<event_type>-<key>` instead. An event the extension sends again with the same key is not delivered again; an event without a key gets a random ID.
+
 ---
 
 ## Managing Endpoints
