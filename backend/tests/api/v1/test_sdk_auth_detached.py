@@ -1,5 +1,6 @@
 """Regression test for #2069: SDK auth must not hold the request-scoped session."""
 
+import inspect
 from collections.abc import Callable
 
 from fastapi.dependencies.models import Dependant
@@ -31,3 +32,6 @@ class TestSdkAuthHoldsNoDbSession:
         assert get_sdk_auth in deps
         assert _get_db_dependency not in deps
         assert _get_db_dependency in _dependency_calls(get_sdk_sync_status)
+
+    def test_sdk_auth_runs_in_the_threadpool(self) -> None:
+        assert not inspect.iscoroutinefunction(get_sdk_auth)

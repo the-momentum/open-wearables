@@ -134,7 +134,7 @@ def _get_sdk_auth(db: Session, token: str | None, x_open_wearables_api_key: str 
     )
 
 
-async def get_sdk_auth(
+def get_sdk_auth(
     token: Annotated[str | None, Depends(oauth2_scheme)] = None,
     x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
 ) -> SDKAuthContext:

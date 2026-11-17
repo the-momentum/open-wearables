@@ -21,7 +21,7 @@ class TestGetSDKAuth:
         token = create_sdk_user_token("app_123", user_id)
 
         with patch("app.utils.auth.SessionLocal") as mock_session_local:
-            result = await get_sdk_auth(token=token, x_open_wearables_api_key=None)
+            result = get_sdk_auth(token=token, x_open_wearables_api_key=None)
 
         assert result.auth_type == "sdk_token"
         assert str(result.user_id) == user_id
@@ -35,7 +35,7 @@ class TestGetSDKAuth:
 
         with patch("app.utils.auth.SessionLocal") as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
-            result = await get_sdk_auth(token=None, x_open_wearables_api_key=api_key.plain_key)
+            result = get_sdk_auth(token=None, x_open_wearables_api_key=api_key.plain_key)
 
         assert result.auth_type == "api_key"
         assert result.api_key_id == str(api_key.id)
@@ -47,7 +47,7 @@ class TestGetSDKAuth:
         with patch("app.utils.auth.SessionLocal") as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             with pytest.raises(HTTPException) as exc_info:
-                await get_sdk_auth(token=None, x_open_wearables_api_key=None)
+                get_sdk_auth(token=None, x_open_wearables_api_key=None)
 
         assert exc_info.value.status_code == 401
 
@@ -57,7 +57,7 @@ class TestGetSDKAuth:
         with patch("app.utils.auth.SessionLocal") as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             with pytest.raises(HTTPException) as exc_info:
-                await get_sdk_auth(token=None, x_open_wearables_api_key="invalid_key")
+                get_sdk_auth(token=None, x_open_wearables_api_key="invalid_key")
 
         assert exc_info.value.status_code == 401
 
@@ -68,7 +68,7 @@ class TestGetSDKAuth:
         user_id = "123e4567-e89b-12d3-a456-426614174001"
         token = create_sdk_user_token("app_123", user_id)
 
-        result = await get_sdk_auth(token=token, x_open_wearables_api_key=api_key.plain_key)
+        result = get_sdk_auth(token=token, x_open_wearables_api_key=api_key.plain_key)
 
         assert result.auth_type == "sdk_token"
         assert str(result.user_id) == user_id
