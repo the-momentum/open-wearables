@@ -8,7 +8,7 @@ export const load: PageServerLoad = async ({ params, url, cookies }) => {
 	const token = cookies.get(PAIR_TOKEN_COOKIE);
 
 	return {
-		connected: url.searchParams.get('status') !== 'error',
+		connected: url.searchParams.get('status') === 'success',
 		message: url.searchParams.get('message'),
 		provider: slug ? providerLabel(await fetchCloudProviders(), slug) : null,
 		returnUrl: safeReturnUrl(url.searchParams.get('redirect_url')),
