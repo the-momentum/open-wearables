@@ -45,6 +45,9 @@ class TestRedirectAllowlist:
         assert authorize(client, "openwearables://oauth/other").status_code == 400
         assert authorize(client, "javascript:alert(1)").status_code == 400
 
+    def test_malformed_uri_is_refused(self, client: TestClient, db: Session) -> None:
+        assert authorize(client, "http://[::1").status_code == 400
+
     def test_allowlist_is_configurable(self, client: TestClient, db: Session) -> None:
         with patch.object(settings, "oauth_redirect_allowlist", "acme://cb,https://partner.example.com"):
             assert authorize(client, "acme://cb?x=1").status_code == 200

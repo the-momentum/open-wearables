@@ -34,12 +34,15 @@ def _without_query(uri: str) -> str:
 
 def is_allowed_redirect(uri: str) -> bool:
     origins, callbacks = _allowed()
-    parts = urlsplit(uri)
-    if parts.scheme in _WEB_SCHEMES:
-        return _origin(uri) in origins
-    if not parts.scheme or parts.scheme in ("javascript", "data", "file", "vbscript"):
+    try:
+        parts = urlsplit(uri)
+        if parts.scheme in _WEB_SCHEMES:
+            return _origin(uri) in origins
+        if not parts.scheme or parts.scheme in ("javascript", "data", "file", "vbscript"):
+            return False
+        return _without_query(uri) in callbacks
+    except ValueError:
         return False
-    return _without_query(uri) in callbacks
 
 
 def with_result(uri: str, **params: str) -> str:

@@ -4697,7 +4697,7 @@
           "External: Providers"
         ],
         "summary": "Get Provider Authorization URL",
-        "description": "Initiate OAuth flow for a provider.\n\nReturns authorization URL where user should be redirected to log in.\n\nRequires an API key, a developer token, or a token scoped to `user_id`: an SDK user token\nor a connect token (`X-Open-Wearables-Connect-Token`, from `POST /users/{user_id}/connect-token`).\n`redirect_uri` must match `OAUTH_REDIRECT_ALLOWLIST` (default `openwearables://oauth/callback`),\nthe dashboard origin (`FRONTEND_URL`) or `CORS_ORIGINS`. After the sign-in the browser is sent\nthere with `provider`, `status` (`success` or `error`) and, on error, `message`.",
+        "description": "Initiate OAuth flow for a provider.\n\nReturns authorization URL where user should be redirected to log in.\n\nRequires an API key, a developer token, or a token scoped to `user_id`: an SDK user token\nor a connect token (`X-Open-Wearables-Connect-Token`, from `POST /users/{user_id}/connect-token`).\n`redirect_uri` must match `OAUTH_REDIRECT_ALLOWLIST` (default `openwearables://oauth/callback`),\nthe dashboard origin (`FRONTEND_URL`) or `CORS_ORIGINS`. After the sign-in the browser is sent\nthere with `provider`, `status` (`success` or `error`) and, on error, `message` in the query,\nreplacing any parameters of the same name.",
         "operationId": "authorize_provider_api_v1_oauth__provider__authorize_get",
         "security": [
           {

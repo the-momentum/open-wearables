@@ -78,7 +78,8 @@ def authorize_provider(
     or a connect token (`X-Open-Wearables-Connect-Token`, from `POST /users/{user_id}/connect-token`).
     `redirect_uri` must match `OAUTH_REDIRECT_ALLOWLIST` (default `openwearables://oauth/callback`),
     the dashboard origin (`FRONTEND_URL`) or `CORS_ORIGINS`. After the sign-in the browser is sent
-    there with `provider`, `status` (`success` or `error`) and, on error, `message`.
+    there with `provider`, `status` (`success` or `error`) and, on error, `message` in the query,
+    replacing any parameters of the same name.
     """
     if auth.auth_type in ("sdk_token", "connect_token") and auth.user_id != user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Token does not match user_id")
