@@ -362,6 +362,27 @@ class TestCoverageFollowsRemovals:
 
         assert self._span(db, user.id, "reproductive_health") == (NOW, held_until)
 
+    def test_a_removal_keeps_the_start_at_or_before_the_end(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """A record left that starts after the end held must not move the start past it."""
+        user = UserFactory()
+        ongoing, later = (
+            _event(user.id, NOW, NOW + timedelta(days=5), "reproductive_health", external_id="pregnancy"),
+            _event(user.id, NOW + timedelta(days=2), NOW + timedelta(days=3), "reproductive_health", external_id="t"),
+        )
+        event_repo.bulk_upsert_by_external_id(db, [ongoing, later])
+        held_until = NOW + timedelta(days=1)
+        db.execute(
+            text("UPDATE data_type_coverage SET coverage_end = :end WHERE user_id = :user_id"),
+            {"end": held_until, "user_id": user.id},
+        )
+        db.commit()
+
+        assert event_record_service.delete_event_record(db, user.id, ongoing.id, "reproductive_health")
+
+        assert self._span(db, user.id, "reproductive_health") == (held_until, held_until)
+
     def test_deleting_the_last_event_of_a_category_forgets_it(
         self, db: Session, event_repo: EventRecordRepository
     ) -> None:
@@ -558,6 +579,22 @@ class TestBackfillFromHeldData:
         span = _garmin_span(db, user.id, "workout", DataTypeKind.EVENT)
         assert span is not None
         assert span[1] <= datetime.now(timezone.utc)
+
+    def test_series_samples_in_the_future_are_held_up_to_now(self, db: Session) -> None:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        DataPointSeriesFactory(
+            data_source=source,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            recorded_at=datetime.now(timezone.utc) + timedelta(days=10),
+        )
+        db.flush()
+
+        data_type_coverage_repository.backfill_from_held_data(db, dry_run=False)
+
+        span = _garmin_span(db, user.id, "heart_rate", DataTypeKind.SERIES)
+        assert span is not None
+        assert span[0] <= span[1] <= datetime.now(timezone.utc)
 
     def test_dry_run_counts_and_writes_nothing(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.GARMIN)

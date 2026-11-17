@@ -44,8 +44,10 @@ _REFRESH_EVENTS = text(f"""
     -- Capped at now like record(); not in spans, where LEAST would turn an empty category's NULL into now().
     -- Only removals refresh, so the end never moves forward: a record running past it would
     -- otherwise advance syncedUntil to the moment of a deletion, past data still to come.
+    -- The start stays at or before that end, which a record starting after it would pass.
     UPDATE data_type_coverage c
-    SET coverage_start = LEAST(s.first_start, now()), coverage_end = LEAST(s.last_end, c.coverage_end, now())
+    SET coverage_start = LEAST(s.first_start, c.coverage_end, now()),
+        coverage_end = LEAST(s.last_end, c.coverage_end, now())
     FROM spans s
     WHERE {_SAME_KEY} AND s.first_start IS NOT NULL
 """)
@@ -130,7 +132,7 @@ def _pair_spans(table: str, at: str) -> str:
 
 _HELD_SERIES_SPANS = f"""
     SELECT ds.user_id, ds.provider, std.code AS data_type, CAST(:series AS varchar) AS kind,
-           min(s.first_at) AS coverage_start, max(s.last_at) AS coverage_end
+           LEAST(min(s.first_at), now()) AS coverage_start, LEAST(max(s.last_at), now()) AS coverage_end
     FROM (
         {_pair_spans("series_sample", "recorded_at")}
         UNION ALL
