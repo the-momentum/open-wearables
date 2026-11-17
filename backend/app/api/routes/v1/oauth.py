@@ -36,6 +36,14 @@ def resolve_provider(slug: str) -> ProviderName:
         raise unknown_provider(slug, ("path", "provider"), (p.value for p in ProviderName)) from None
 
 
+def _error_redirect(return_to: str | None, provider: ProviderName, message: str) -> RedirectResponse:
+    """Back to the flow's redirect_uri with the error, or to the JSON error page when it had none."""
+    if return_to:
+        url = with_result(return_to, provider=provider.value, status="error", message=message)
+        return RedirectResponse(url=url, status_code=303)
+    return RedirectResponse(url=f"/api/v1/oauth/error?{urlencode({'message': message})}", status_code=303)
+
+
 def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
     """Helper to get provider strategy and ensure it supports OAuth."""
     strategy = factory.get_provider(provider.value)
@@ -119,24 +127,18 @@ def oauth_callback(
     started = strategy.oauth.peek_state(state) if state else None
     return_to = started.redirect_uri if started else None
 
-    def fail(message: str) -> RedirectResponse:
-        if return_to:
-            url = with_result(return_to, provider=provider_name.value, status="error", message=message)
-            return RedirectResponse(url=url, status_code=303)
-        return RedirectResponse(url=f"/api/v1/oauth/error?{urlencode({'message': message})}", status_code=303)
-
     if error:
         if state:
             strategy.oauth.discard_state(state)
-        return fail(f"{error}: {error_description or 'Unknown error'}")
+        return _error_redirect(return_to, provider_name, f"{error}: {error_description or 'Unknown error'}")
 
     if not code or not state:
-        return fail("Missing OAuth parameters")
+        return _error_redirect(return_to, provider_name, "Missing OAuth parameters")
 
     try:
         oauth_state = strategy.oauth.handle_callback(db, code, state)
     except AppError as exc:
-        return fail(exc.detail)
+        return _error_redirect(return_to, provider_name, exc.detail)
 
     # Stamp last_synced_at=now so the first periodic sync uses the connection
     # timestamp as its live-sync cursor and won't attempt to pull all history.
