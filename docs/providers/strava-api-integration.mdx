@@ -30,11 +30,14 @@ Each Open Wearables user can connect their own Strava account. Strava's Standard
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Activities | Yes |
+| Workout segments (laps & km splits) | Yes |
 | Sleep | No |
 | Daily summaries (247 data) | No |
 | Body composition | No |
 
 Strava is an activity-focused platform — it does not provide continuous health monitoring data like sleep, HRV, or daily summaries.
+
+Workout **segments** are stored on `workout_details.segments` as `lap`-kind entries in the same shape as FIT-parsed segments (e.g. Garmin): an activity's manual/device `laps` when the athlete recorded more than one (intervals), otherwise Strava's auto per-kilometre `splits_metric`. Each segment carries `distance_meters`, `elapsed_seconds`, `avg_speed` and `avg_heart_rate`; laps additionally carry `max_heart_rate`, `avg_cadence`, `avg_power` and `total_ascent`. Segments come from the DetailedActivity payload, so they populate for webhook-ingested activities — the summary list used for backfills carries no laps or splits. Request them on workout endpoints with `?include=segments`.
 
 ### Data delivery
 
