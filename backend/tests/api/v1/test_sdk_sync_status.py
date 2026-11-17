@@ -200,6 +200,21 @@ class TestSDKSyncState:
         assert _types(_get(client, user.id))["reproductive_health"]["historicalSyncCompleted"] is False
 
     @pytest.mark.usefixtures("stored_runs")
+    def test_a_reproductive_type_in_flight_keeps_the_export_open(self, client: TestClient, db: Session) -> None:
+        """Mucus is still uploading, with no end event yet, while everything else has finished."""
+        user = UserFactory()
+        run_key = _open_export(user.id, "s1", _at(30))
+        _report(run_key, "heart_rate", SyncStatus.SUCCESS)
+        _report(run_key, "HKCategoryTypeIdentifierMenstrualFlow", SyncStatus.SUCCESS, DataTypeKind.EVENT)
+        _report(run_key, "HKCategoryTypeIdentifierCervicalMucusQuality", SyncStatus.IN_PROGRESS, DataTypeKind.EVENT)
+        _hold(db, user.id, _at(5), _at(30), data_type="reproductive_health", kind=DataTypeKind.EVENT)
+
+        body = _get(client, user.id)
+
+        assert body["historicalSyncCompleted"] is False
+        assert _types(body)["reproductive_health"]["historicalSyncCompleted"] is False
+
+    @pytest.mark.usefixtures("stored_runs")
     def test_reproductive_health_completes_with_its_export(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
         run_key = _open_export(user.id, "s1", _at(30))

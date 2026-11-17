@@ -8,6 +8,7 @@ from celery import shared_task
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.constants.sdk_providers import SDK_PROVIDERS
+from app.constants.series_types.sdk.reproductive_health import SDK_TYPE_TO_REPRODUCTIVE_HEALTH_TYPE
 from app.database import SessionLocal
 from app.integrations import rollup_queue
 from app.models import User
@@ -57,7 +58,7 @@ def _batch_outcomes(
 
     types holds series type slugs only, since the importer collects it from the samples it
     writes. Workouts and sleep are event records counted separately, so they would go
-    unrecorded without their own entries.
+    unrecorded without their own entries; reproductive health types come from spans.
 
     A historical export gets each type's verdict from the SDK's own end event, so a batch
     reports IN_PROGRESS and leaves the outcome to it — the two arrive in either order, and
@@ -74,6 +75,8 @@ def _batch_outcomes(
         for name, saved in (("workouts", workouts_saved), ("sleep", sleep_saved))
         if saved
     ]
+    # Under the device's own name, the one its end event uses, so the export sees each of them in flight.
+    reported += [(name, DataTypeKind.EVENT, 0) for name in spans if name in SDK_TYPE_TO_REPRODUCTIVE_HEALTH_TYPE]
     outcomes = []
     for data_type, kind, saved in reported:
         start, end = spans.get(data_type, (None, None))

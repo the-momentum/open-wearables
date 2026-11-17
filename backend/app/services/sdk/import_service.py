@@ -157,7 +157,8 @@ class LoadDataResult(TypedDict):
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
     types: list[str]  # series types written
-    spans: dict[str, tuple[datetime, datetime]]  # per type the device exports itself: record series, workouts, sleep
+    # Per type the device exports itself: record series, workouts, sleep, each reproductive health type.
+    spans: dict[str, tuple[datetime, datetime]]
     sleep_saved: int
     dropped: list[InvalidRecord]
     unsupported_types: dict[str, int]  # record types with no series mapping, skipped
@@ -673,6 +674,10 @@ class ImportService:
             reproductive_health_saved = self.event_record_service.upsert_reproductive_health(
                 db_session, reproductive_bundles
             )
+            # Under the device's own type: the export reports each of them on its own.
+            for rjson in reproductive_records:
+                if rjson.type and rjson.id:
+                    widen(rjson.type, rjson.startDate, rjson.endDate)
 
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))

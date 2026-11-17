@@ -42,8 +42,10 @@ _REFRESH_EVENTS = text(f"""
         DELETE FROM data_type_coverage c USING spans s WHERE {_SAME_KEY} AND s.first_start IS NULL
     )
     -- Capped at now like record(); not in spans, where LEAST would turn an empty category's NULL into now().
+    -- Only removals refresh, so the end never moves forward: a record running past it would
+    -- otherwise advance syncedUntil to the moment of a deletion, past data still to come.
     UPDATE data_type_coverage c
-    SET coverage_start = LEAST(s.first_start, now()), coverage_end = LEAST(s.last_end, now())
+    SET coverage_start = LEAST(s.first_start, now()), coverage_end = LEAST(s.last_end, c.coverage_end, now())
     FROM spans s
     WHERE {_SAME_KEY} AND s.first_start IS NOT NULL
 """)
@@ -160,7 +162,7 @@ def _widen_with(spans: str) -> str:
         ORDER BY user_id, provider, data_type, kind
         ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
             coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
-            coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
+            coverage_end = LEAST(GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end), now()),
             last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
     """
 
@@ -215,7 +217,10 @@ class DataTypeCoverageRepository:
                 index_elements=["user_id", "provider", "data_type", "kind"],
                 set_={
                     "coverage_start": func.least(stmt.excluded.coverage_start, DataTypeCoverage.coverage_start),
-                    "coverage_end": func.greatest(stmt.excluded.coverage_end, DataTypeCoverage.coverage_end),
+                    # Capped again: a row already held may end in the future.
+                    "coverage_end": func.least(
+                        func.greatest(stmt.excluded.coverage_end, DataTypeCoverage.coverage_end), func.now()
+                    ),
                     "last_written_at": stmt.excluded.last_written_at,
                 },
             )

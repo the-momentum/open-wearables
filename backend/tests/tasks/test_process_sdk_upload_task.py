@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.integrations.celery.tasks.process_sdk_upload_task import _batch_outcomes, process_sdk_upload
-from app.schemas.sync_status import SyncScope, SyncStatus
+from app.schemas.sync_status import DataTypeKind, SyncScope, SyncStatus
 from tests.factories import UserFactory
 
 
@@ -296,6 +296,22 @@ class TestBatchOutcomes:
         assert [(o.data_type, o.status, o.covered_start, o.covered_end) for o in outcomes] == [
             ("heart_rate", SyncStatus.IN_PROGRESS, self.START, self.END),
             ("workouts", SyncStatus.IN_PROGRESS, self.START, self.END),
+        ]
+
+    def test_reproductive_health_types_are_reported_under_their_device_names(self) -> None:
+        """Their end events use those names, so a type still uploading shows up as in flight."""
+        spans = {"HKCategoryTypeIdentifierCervicalMucusQuality": (self.START, self.END)}
+
+        outcomes = _batch_outcomes([], spans, 0, 0, SyncScope.HISTORICAL)
+
+        assert [(o.data_type, o.kind, o.status, o.covered_start, o.covered_end) for o in outcomes] == [
+            (
+                "HKCategoryTypeIdentifierCervicalMucusQuality",
+                DataTypeKind.EVENT,
+                SyncStatus.IN_PROGRESS,
+                self.START,
+                self.END,
+            ),
         ]
 
     def test_live_batch_reports_every_series_it_wrote(self) -> None:

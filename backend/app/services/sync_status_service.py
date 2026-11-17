@@ -375,7 +375,8 @@ _SDK_EVENT_TYPE_NAMES: dict[str, str] = {
     "HKWorkoutTypeIdentifier": EventCategory.WORKOUT,
     **dict.fromkeys(SDK_TYPE_TO_REPRODUCTIVE_HEALTH_TYPE, EventCategory.REPRODUCTIVE_HEALTH),
 }
-# Exported as several device types, so done only when the whole run is.
+# Exported as several device types, so done only when each of them is, and the whole run:
+# a device type not exported yet has nothing on record.
 _SDK_SPLIT_TYPES = frozenset({EventCategory.REPRODUCTIVE_HEALTH})
 
 _FINISHED_STATUSES = frozenset({SyncStatus.SUCCESS, SyncStatus.SKIPPED})
@@ -384,24 +385,33 @@ _UNFINISHED_STATUSES = frozenset({SyncStatus.FAILED, SyncStatus.UNFINISHED, Sync
 
 
 def _finished_types_by_run(rows: list[HistoricalTypeRow]) -> dict[UUID, dict[str, bool]]:
-    """Per historical run, whether each type it reported finished; a run with no types yet maps to {}."""
-    statuses: dict[UUID, dict[str, set[SyncStatus]]] = {}
+    """Per historical run, whether each type it reported finished; a run with no types yet maps to {}.
+
+    A type exported as several device types finishes once each of them has: one still in
+    flight must not hide behind another's verdict.
+    """
+    # Per run and type, the statuses of each device type. Only split types keep theirs apart:
+    # sleep and workouts are one device type each, reported under two names.
+    statuses: dict[UUID, dict[str, dict[str, set[SyncStatus]]]] = {}
     for row in rows:
         by_type = statuses.setdefault(row.run_id, {})
         if row.data_type is None or row.status is None:
             continue
         name = _SDK_EVENT_TYPE_NAMES.get(row.data_type, row.data_type)
-        by_type.setdefault(name, set()).add(SyncStatus(row.status))
+        part = row.data_type if name in _SDK_SPLIT_TYPES else name
+        by_type.setdefault(name, {}).setdefault(part, set()).add(SyncStatus(row.status))
     finished: dict[UUID, dict[str, bool]] = {}
     for run_id, by_type in statuses.items():
-        verdicts = {
-            name: bool(seen & _FINISHED_STATUSES) and not seen & _UNFINISHED_STATUSES for name, seen in by_type.items()
-        }
+        verdicts = {name: all(map(_finished, parts.values())) for name, parts in by_type.items()}
         run_done = all(verdicts.values())
         for name in _SDK_SPLIT_TYPES & verdicts.keys():
             verdicts[name] = verdicts[name] and run_done
         finished[run_id] = verdicts
     return finished
+
+
+def _finished(seen: set[SyncStatus]) -> bool:
+    return bool(seen & _FINISHED_STATUSES) and not seen & _UNFINISHED_STATUSES
 
 
 def _exported_ranges(rows: list[HistoricalTypeRow]) -> dict[str, CoveredRange]:

@@ -2117,6 +2117,13 @@ class TestSDKImportReproductiveHealth:
         assert result["reproductive_health_saved"] == 4
         assert result["unsupported_types"] == {}
         assert result["records_saved"] == 0
+        # Per device type, as the export reports them.
+        assert result["spans"].keys() == {
+            "HKCategoryTypeIdentifierMenstrualFlow",
+            "HKCategoryTypeIdentifierCervicalMucusQuality",
+            "HKCategoryTypeIdentifierOvulationTestResult",
+            "HKCategoryTypeIdentifierPregnancy",
+        }
         stored = {record.external_id: (record.type, detail.value) for record, detail in self._entries(db, user.id)}
         assert stored == {
             "flow-1": ("menstrual_flow", "medium"),
