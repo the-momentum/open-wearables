@@ -8,8 +8,9 @@ happens in the worker process.
 from __future__ import annotations
 
 import re
+from hashlib import sha256
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
 from kombu.exceptions import EncodeError
@@ -33,6 +34,7 @@ SVIX_MAX_SAMPLES_PER_EVENT = 2500
 # Svix eventId must match [a-zA-Z0-9\-_.] — colons, plus-signs, and other
 # characters in ISO 8601 timestamps are not allowed.
 _SVIX_ID_SAFE = re.compile(r"[^a-zA-Z0-9\-_.]")
+_SVIX_ID_MAX = 256  # Svix answers 422 for a longer eventId
 
 
 def _safe_key(raw: str) -> str:
@@ -546,9 +548,14 @@ def on_extension_event(
     event_type: str, data: dict[str, Any], *, user_id: UUID | None, idempotency_key: str | None
 ) -> None:
     """An extension's own event; app.extensions.webhooks.emit checks that the extension declares it."""
+    # Set before enqueueing: a retry re-sends to every developer, and only the same event id stops a second delivery.
+    key = idempotency_key or uuid4().hex
+    if _SVIX_ID_SAFE.search(key) or len(f"{event_type}.{key}") > _SVIX_ID_MAX:
+        # Not _safe_key: rec:1 and rec/1 would share an id, and Svix would drop the second event as a duplicate.
+        key = sha256(key.encode()).hexdigest()
     _dispatch(
         event_type,
         {"type": event_type, "data": {**data, "user_id": str(user_id)} if user_id else data},
         channels=[f"user.{user_id}"] if user_id else None,
-        idempotency_key=_safe_key(f"{event_type}.{idempotency_key}") if idempotency_key else None,
+        idempotency_key=f"{event_type}.{key}",
     )

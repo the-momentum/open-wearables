@@ -54,7 +54,7 @@ class OWExtension:
     # Alembic script location of the extension's own history, e.g. "my_extension:migrations".
     migrations: str = ""
     # Celery queues the extension routes its tasks to; worker.sh runs them in a worker of their own.
-    celery_queues: list[str] = field(default_factory=list)
+    celery_queues: list[str] | tuple[str, ...] = field(default_factory=list)
 
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
         return {}
@@ -98,9 +98,9 @@ def _name_error(ext: OWExtension) -> str | None:
 def _queue_error(ext: OWExtension) -> str | None:
     """A str would be read as one queue per character, and None breaks create_celery() in every process."""
     queues = ext.celery_queues
-    if isinstance(queues, list) and all(isinstance(queue, str) and _NAME.fullmatch(queue) for queue in queues):
+    if isinstance(queues, list | tuple) and all(isinstance(queue, str) and _NAME.fullmatch(queue) for queue in queues):
         return None
-    return f"invalid celery_queues {queues!r}, must be a list of lowercase identifiers"
+    return f"invalid celery_queues {queues!r}, must be a list or tuple of lowercase identifiers"
 
 
 def _compatibility_error(ext: OWExtension) -> str | None:
@@ -247,9 +247,10 @@ def collect_celery_queues() -> tuple[str, ...]:
 @cache
 def collect_webhook_event_types() -> Mapping[str, str]:
     """Name -> description of the active extensions' webhook event types. A name outside the extension's ``<name>.``
-    namespace or taken by the core, or a description that isn't a string, is skipped. Cached: emit() checks every event
-    against it."""
-    core = {evt.value for evt in WebhookEventType}
+    namespace or in one of the core's (``workout.``, ``sync.``, ...), or a description that isn't a string, is skipped.
+    Cached: emit() checks every event against it."""
+    # The core may add any type to its namespaces later, which would take over the extension's events.
+    core_namespaces = {evt.value.split(".", 1)[0] for evt in WebhookEventType}
     types: dict[str, str] = {}
     for ext in get_active_extensions():
         try:
@@ -264,8 +265,8 @@ def collect_webhook_event_types() -> Mapping[str, str]:
         for name, description in declared.items():
             if not isinstance(name, str) or not _EVENT_TYPE.fullmatch(name) or not name.startswith(f"{ext.name}."):
                 error = f"event type {name!r} is not a dotted lowercase name starting with {ext.name + '.'!r}"
-            elif name in core:
-                error = f"{name!r} is a core event type"
+            elif (namespace := name.split(".", 1)[0]) in core_namespaces:
+                error = f"{name!r} is in the core's {namespace!r} namespace"
             elif not isinstance(description, str):
                 error = f"invalid description for {name!r}"
             else:
@@ -273,6 +274,7 @@ def collect_webhook_event_types() -> Mapping[str, str]:
                 continue
             logger.error(
                 "Extension webhook event type skipped",
+                alert=True,
                 action="extension_webhook_event_type_skipped",
                 extension=ext.name,
                 event_type=str(name),

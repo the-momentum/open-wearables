@@ -667,7 +667,7 @@ Every delivery includes three headers that let you confirm the payload was sent 
 
 ### Idempotency
 
-The `svix-id` header is stable across retries — the same logical event always carries the same ID. Store received IDs and skip duplicates to make your handler idempotent.
+The `svix-id` header is stable across retries — the same logical event always carries the same ID. This holds for extension events too: each gets its ID when it is queued, so a send that has to be repeated does not reach you again under a new one, and no event is dropped as a repeat of a different one. Store received IDs and skip duplicates to make your handler idempotent.
 
 ---
 
@@ -755,7 +755,7 @@ curl "http://localhost:8000/api/v1/webhooks/messages" \
 
 ### Send a test event
 
-Send a realistic example payload for any event type to an endpoint without waiting for real data:
+Send a realistic example payload for any event type to an endpoint without waiting for real data (an extension's type gets `{"type": ..., "data": {}}`):
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7/test" \

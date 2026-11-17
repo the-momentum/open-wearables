@@ -217,7 +217,7 @@ class EventsExtension(OWExtension):
 
 @dataclass
 class CoreEventExtension(OWExtension):
-    # Named so that a core event type falls inside its namespace
+    # Named after a core namespace: the core may add any of these types later
     name: str = "workout"
 
     def webhook_event_types(self) -> dict[str, str]:
@@ -481,6 +481,12 @@ class TestCeleryQueues:
         assert "invalid celery_queues" in (loaded["queues"].error or "")
         assert collect_celery_queues() == ("queues_long", "other_long")
 
+    def test_a_tuple_of_queues_is_accepted(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("queues", lambda: OWExtension(name="queues", celery_queues=("queues_long",))))
+
+        assert [e.name for e in get_active_extensions()] == ["queues"]
+        assert collect_celery_queues() == ("queues_long",)
+
     def test_celery_declares_the_extension_queues(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("queues", QueuesExtension))
 
@@ -495,10 +501,32 @@ class TestWebhookEventTypes:
 
         assert collect_webhook_event_types() == {"events.thing.created": "A thing was created."}
 
-    def test_core_event_types_are_skipped(self, installed: Callable[..., None]) -> None:
-        installed(FakeEntryPoint("workout", CoreEventExtension))
+    def test_event_types_in_a_core_namespace_are_skipped(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("workout", CoreEventExtension), FakeEntryPoint("events", EventsExtension))
 
-        assert collect_webhook_event_types() == {"workout.rated": "Its own."}
+        assert collect_webhook_event_types() == {"events.thing.created": "A thing was created."}
+
+    def test_a_skipped_event_type_alerts(self, installed: Callable[..., None], monkeypatch: pytest.MonkeyPatch) -> None:
+        logger = MagicMock()
+        monkeypatch.setattr(extensions, "logger", logger)
+        installed(FakeEntryPoint("events", EventsExtension), FakeEntryPoint("workout", CoreEventExtension))
+
+        collect_webhook_event_types()
+
+        skipped = {
+            c.kwargs["event_type"]: c.kwargs
+            for c in logger.error.call_args_list
+            if c.args == ("Extension webhook event type skipped",)
+        }
+        assert all(kwargs["alert"] is True for kwargs in skipped.values())
+        assert set(skipped) == {
+            "other.thing.created",
+            "events.Bad Name",
+            "events.thing.failed",
+            "workout.created",
+            "workout.rated",
+        }
+        assert skipped["workout.rated"]["reason"] == "'workout.rated' is in the core's 'workout' namespace"
 
     def test_a_failing_hook_costs_only_its_own_types(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("failing_events", FailingEventsExtension), FakeEntryPoint("events", EventsExtension))
