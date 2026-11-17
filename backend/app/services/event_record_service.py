@@ -495,6 +495,16 @@ class EventRecordService(
             # of accumulating them on top of the existing ones.
             if record.external_id is not None and adjacent.external_id == record.external_id:
                 old_start, old_end, old_zone = adjacent.start_datetime, adjacent.end_datetime, adjacent.zone_offset
+                new_start = record.start_datetime if record.start_datetime is not None else adjacent.start_datetime
+                new_end = record.end_datetime if record.end_datetime is not None else adjacent.end_datetime
+                if (new_start, new_end) != (old_start, old_end):
+                    # The refreshed window is already held by a second record — the same
+                    # session stored once under another external_id. Absorb it before the
+                    # update collides with ix_event_record_source_time.
+                    conflict = self.crud.get_by_window(db_session, adjacent.data_source_id, new_start, new_end)
+                    if conflict is not None and conflict.id != adjacent.id:
+                        self.aggregate_repo.move_record(db_session, conflict.id, adjacent.id)
+                        self.crud.delete_flush(db_session, conflict)
                 for field in ("start_datetime", "end_datetime", "zone_offset"):
                     new_val = getattr(record, field, None)
                     if new_val is not None:

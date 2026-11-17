@@ -177,17 +177,23 @@ class EventRecordRepository(
         creation_data["data_source_id"] = data_source_id
         return data_source_id, provider, self.model(**creation_data)
 
-    def _fetch_existing(self, db_session: DbSession, data_source_id: UUID, creation: EventRecord) -> EventRecord | None:
+    def get_by_window(
+        self, db_session: DbSession, data_source_id: UUID, start_datetime: datetime, end_datetime: datetime
+    ) -> EventRecord | None:
+        """The non-meal record this data source already holds at exactly this window, if any."""
         return (
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id == data_source_id,
                 self.model.category != EventCategory.MEAL,
-                self.model.start_datetime == creation.start_datetime,
-                self.model.end_datetime == creation.end_datetime,
+                self.model.start_datetime == start_datetime,
+                self.model.end_datetime == end_datetime,
             )
             .one_or_none()
         )
+
+    def _fetch_existing(self, db_session: DbSession, data_source_id: UUID, creation: EventRecord) -> EventRecord | None:
+        return self.get_by_window(db_session, data_source_id, creation.start_datetime, creation.end_datetime)
 
     def get_by_external_ids(
         self, db_session: DbSession, user_id: str, external_ids: Iterable[str], provider: str | None = None
