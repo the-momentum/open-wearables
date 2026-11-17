@@ -305,6 +305,8 @@ class Settings(BaseSettings):
 
     # Lifetime of the token a shareable pairing link carries.
     connect_token_expire_days: int = 7
+    # Extra OAuth redirect_uri targets, comma-separated; FRONTEND_URL and CORS_ORIGINS are always allowed.
+    oauth_redirect_allowlist: str = "openwearables://oauth/callback"
 
     # AWS SETTINGS
     aws_bucket_name: str | None = None

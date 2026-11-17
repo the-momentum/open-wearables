@@ -78,6 +78,10 @@ curl -X GET "http://localhost:8000/api/v1/oauth/garmin/authorize?user_id=550e840
 
 Redirect the user to `authorization_url`. After they authorize, they'll be redirected back to your `redirect_uri`.
 
+<Note>
+  `redirect_uri` must be allowed by the instance: its origin must be `FRONTEND_URL` or one of `CORS_ORIGINS`, or it must be listed in `OAUTH_REDIRECT_ALLOWLIST` (comma-separated; web URLs match by origin, app schemes such as `myapp://oauth/callback` match exactly). Any other value gets a `400`. The user comes back with `provider`, `status` (`success` or `error`) and, on error, `message` in the query, replacing any parameters of the same name. Errors land there too, so check `status` rather than assuming the connection succeeded.
+</Note>
+
 <Warning>
   Provider names must be **lowercase**: `garmin`, `polar`, `suunto`, `apple`
 </Warning>

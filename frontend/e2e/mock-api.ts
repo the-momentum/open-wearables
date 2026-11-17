@@ -292,9 +292,18 @@ const server = Bun.serve({
 				return problem(400, 'Provider credentials are not configured.', 'BAD_REQUEST');
 			}
 			// A real provider sends the browser to redirect_uri once the person
-			// consents, so handing it straight back walks the same path.
-			const redirectUri = new URL(request.url).searchParams.get('redirect_uri') ?? '/';
-			return json({ authorization_url: redirectUri, state: 'state-1' });
+			// consents, and the callback adds the result, so handing it straight back walks the same path.
+			const redirectUri = new URL(
+				new URL(request.url).searchParams.get('redirect_uri') ?? '/',
+				'http://placeholder'
+			);
+			redirectUri.searchParams.set('provider', provider);
+			redirectUri.searchParams.set('status', 'success');
+			const target =
+				redirectUri.origin === 'http://placeholder'
+					? `${redirectUri.pathname}${redirectUri.search}`
+					: redirectUri.toString();
+			return json({ authorization_url: target, state: 'state-1' });
 		}
 
 		if (pathname === '/api/v1/webhooks/event-types') {

@@ -57,7 +57,7 @@ class TestOAuthAuthorizeEndpoint:
         """Test OAuth flow with optional redirect URI."""
         # Arrange
         user_id = uuid4()
-        redirect_uri = "https://myapp.com/oauth/callback"
+        redirect_uri = "openwearables://oauth/callback"
 
         # Act
         response = client.get(
