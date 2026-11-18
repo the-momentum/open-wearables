@@ -144,35 +144,30 @@ class TestPasswordHashing:
 
     def test_get_password_hash_returns_bcrypt_format(self) -> None:
         """Test that password hash is in bcrypt format."""
-        # Note: This test is skipped in regular test runs because of fast_password_hashing fixture
-        # It's here to document expected behavior in production
         # Arrange
+        password = "test_password_123"
 
         # Act
-        # In production (without fast_password_hashing fixture) -> None:
-        # hashed = get_password_hash(password)
+        hashed = get_password_hash(password)
 
         # Assert
-        # assert hashed != password
-        # assert hashed.startswith("$2b$")  # bcrypt format
-        # assert len(hashed) == 60  # bcrypt hashes are 60 characters
-        pass
+        assert hashed != password
+        assert hashed.startswith("$2b$")
+        assert len(hashed) == 60
 
     def test_get_password_hash_different_for_same_password(self) -> None:
         """Test that hashing the same password twice produces different hashes."""
-        # Note: This behavior is important for bcrypt but not tested with fast_password_hashing
         # Arrange
+        password = "test_password_123"
 
         # Act
-        # In production (without fast_password_hashing fixture) -> None:
-        # hash1 = get_password_hash(password)
-        # hash2 = get_password_hash(password)
+        hash1 = get_password_hash(password)
+        hash2 = get_password_hash(password)
 
         # Assert
-        # assert hash1 != hash2  # Different salts produce different hashes
-        pass
+        assert hash1 != hash2  # Different salts produce different hashes
 
-    def test_verify_password_correct(self, fast_password_hashing: None) -> None:
+    def test_verify_password_correct(self) -> None:
         """Test verifying correct password."""
         # Arrange
         password = "correct_password_123"
@@ -184,7 +179,7 @@ class TestPasswordHashing:
         # Assert
         assert result is True
 
-    def test_verify_password_incorrect(self, fast_password_hashing: None) -> None:
+    def test_verify_password_incorrect(self) -> None:
         """Test verifying incorrect password."""
         # Arrange
         correct_password = "correct_password_123"
@@ -197,7 +192,7 @@ class TestPasswordHashing:
         # Assert
         assert result is False
 
-    def test_verify_password_empty_password(self, fast_password_hashing: None) -> None:
+    def test_verify_password_empty_password(self) -> None:
         """Test verifying empty password."""
         # Arrange
         hashed = get_password_hash("some_password")
@@ -208,7 +203,7 @@ class TestPasswordHashing:
         # Assert
         assert result is False
 
-    def test_verify_password_case_sensitive(self, fast_password_hashing: None) -> None:
+    def test_verify_password_case_sensitive(self) -> None:
         """Test that password verification is case-sensitive."""
         # Arrange
         password = "TestPassword123"
@@ -222,7 +217,7 @@ class TestPasswordHashing:
         assert result_uppercase is False
         assert result_lowercase is False
 
-    def test_verify_password_with_special_characters(self, fast_password_hashing: None) -> None:
+    def test_verify_password_with_special_characters(self) -> None:
         """Test password verification with special characters."""
         # Arrange
         password = "P@ssw0rd!#$%^&*()"
@@ -234,7 +229,7 @@ class TestPasswordHashing:
         # Assert
         assert result is True
 
-    def test_verify_password_with_unicode(self, fast_password_hashing: None) -> None:
+    def test_verify_password_with_unicode(self) -> None:
         """Test password verification with unicode characters."""
         # Arrange
         password = "пароль🔒密码"
@@ -246,7 +241,7 @@ class TestPasswordHashing:
         # Assert
         assert result is True
 
-    def test_get_password_hash_with_long_password(self, fast_password_hashing: None) -> None:
+    def test_get_password_hash_with_long_password(self) -> None:
         """Test hashing very long password gets truncated to 72 bytes."""
         # Arrange
         password = "a" * 100  # 100 character password exceeds bcrypt's 72 byte limit
@@ -273,7 +268,7 @@ class TestPasswordHashing:
         # Assert
         assert hashed is not None
 
-    def test_get_password_hash_truncates_over_limit(self, fast_password_hashing: None) -> None:
+    def test_get_password_hash_truncates_over_limit(self) -> None:
         """Test that passwords over 72 bytes are truncated."""
         # Arrange
         password_73 = "x" * 73
@@ -294,7 +289,7 @@ class TestPasswordHashing:
 class TestPasswordWorkflow:
     """Integration tests for password hashing and verification workflow."""
 
-    def test_full_password_workflow(self, fast_password_hashing: None) -> None:
+    def test_full_password_workflow(self) -> None:
         """Test complete workflow: hash -> store -> verify."""
         # Arrange
         original_password = "user_password_123"
@@ -317,7 +312,7 @@ class TestPasswordWorkflow:
         # Assert
         assert incorrect_verification is False
 
-    def test_multiple_users_same_password(self, fast_password_hashing: None) -> None:
+    def test_multiple_users_same_password(self) -> None:
         """Test that same password for different users produces different hashes."""
         # Arrange
         password = "common_password_123"
@@ -327,9 +322,7 @@ class TestPasswordWorkflow:
         user2_hash = get_password_hash(password)
 
         # Assert - Hashes should be different (due to salt)
-        # Note: With fast_password_hashing fixture, they might be the same
-        # This test documents expected production behavior
-        # In production with bcrypt: assert user1_hash != user2_hash
+        assert user1_hash != user2_hash
 
         # Both should verify successfully
         assert verify_password(password, user1_hash) is True

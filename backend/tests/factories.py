@@ -324,9 +324,7 @@ class DeveloperFactory(BaseFactory):
     created_at = LazyFunction(lambda: datetime.now(timezone.utc))
     updated_at = LazyFunction(lambda: datetime.now(timezone.utc))
     email = factory.Faker("email")
-    hashed_password = LazyAttribute(
-        lambda o: f"hashed_{o.password}" if hasattr(o, "password") else "hashed_test_password",
-    )
+    hashed_password = LazyAttribute(lambda o: get_password_hash(o.password))
 
     class Params:
         password = "test_password"

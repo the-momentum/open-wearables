@@ -14,7 +14,7 @@ class TestCreateUserToken:
     def test_create_token_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Valid app credentials should return JWT token with refresh token."""
         developer = DeveloperFactory()
-        # Create application with known secret (factory uses "hashed_test_app_secret" as hash)
+        # Create application with known secret
         application = ApplicationFactory(developer=developer, app_secret="test_app_secret")
         user = UserFactory()  # Create real user for FK constraint
 
