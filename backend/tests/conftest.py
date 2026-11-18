@@ -11,9 +11,9 @@ import ipaddress
 import os
 import socket
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import ExitStack
-from typing import Any
+from typing import Any, Concatenate
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
@@ -182,16 +182,21 @@ def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def set_factory_session(db: Session) -> Generator[None, None, None]:
-    """Set database session for all factory-boy factories."""
-    for name, obj in vars(factories).items():
-        if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
-            obj._meta.sqlalchemy_session = db
+def set_factory_session(request: pytest.FixtureRequest) -> Generator[None]:
+    """Let all factories request the same db fixture on first use, including new subclasses."""
+    used = False
+
+    def get_session() -> Session:
+        nonlocal used
+        used = True
+        return request.getfixturevalue("db")
+
+    token = factories.session_provider.set(get_session)
     yield
-    # Clear session after test
-    for name, obj in vars(factories).items():
-        if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
-            obj._meta.sqlalchemy_session = None
+
+    factories.session_provider.reset(token)
+    if used:
+        factories.BaseFactory.reset_session()
 
 
 @pytest.fixture
@@ -247,14 +252,45 @@ def _configure_redis(_redis_url: str) -> Generator[None, None, None]:
         yield
 
 
+@pytest.fixture(scope="session")
+def redis_cleanup_client(_redis_url: str) -> Generator[redis_lib.Redis, None, None]:
+    """Reuse a connection for isolation instead of opening two connections per test."""
+    with redis_lib.from_url(_redis_url) as client:
+        yield client
+
+
 @pytest.fixture(autouse=True)
-def flush_redis(_redis_url: str) -> Generator[None, None, None]:
-    """Flush Redis state before each test to ensure isolation."""
-    redis_lib.from_url(_redis_url).flushdb()
+def flush_redis(redis_cleanup_client: redis_lib.Redis) -> Generator[None, None, None]:
+    """Clean the test Redis only if used, including pipelines and WATCH commands."""
+    used = False
+    target = redis_cleanup_client.connection_pool.connection_kwargs
+
+    def guard[T: redis_lib.Redis, R, **P](method: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
+        def execute(client: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
+            nonlocal used
+            connection = client.connection_pool.connection_kwargs
+            if not used and all(connection.get(key) == target.get(key) for key in ("host", "port", "db")):
+                used = True
+                redis_cleanup_client.flushdb()
+            return method(client, *args, **kwargs)
+
+        return execute
+
     get_redis_client.cache_clear()
-    yield
-    redis_lib.from_url(_redis_url).flushdb()
-    get_redis_client.cache_clear()
+    with (
+        patch.object(redis_lib.Redis, "execute_command", guard(redis_lib.Redis.execute_command)),
+        patch.object(redis_lib.client.Pipeline, "execute", guard(redis_lib.client.Pipeline.execute)),
+        patch.object(
+            redis_lib.client.Pipeline,
+            "immediate_execute_command",
+            guard(redis_lib.client.Pipeline.immediate_execute_command),
+        ),
+    ):
+        yield
+
+        if used:
+            redis_cleanup_client.flushdb()
+        get_redis_client.cache_clear()
 
 
 # ============================================================================
