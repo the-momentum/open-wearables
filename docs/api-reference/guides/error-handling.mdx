@@ -262,6 +262,7 @@ A failed login is the exception: `POST /api/v1/auth/login` with a missing field 
 **Solution:** Complete the OAuth flow first:
 ```bash
 GET /api/v1/oauth/garmin/authorize?user_id={user_id}
+X-Open-Wearables-API-Key: YOUR_API_KEY
 ```
 
 ### Reconnection Required (409)
@@ -280,6 +281,7 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 **Solution:** User needs to reconnect via OAuth:
 ```bash
 GET /api/v1/oauth/garmin/authorize?user_id={user_id}
+X-Open-Wearables-API-Key: YOUR_API_KEY
 ```
 
 ### No Provider API Token (400)

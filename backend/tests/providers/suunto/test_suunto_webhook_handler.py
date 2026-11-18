@@ -473,6 +473,7 @@ class TestPauseAwarePayload:
         """Forward-compat: unrecognized extension `type` routes to UnknownExtension instead of failing validation."""
         payload = {
             "workoutId": 0,
+            "workoutKey": WORKOUT_KEY,
             "activityId": 0,
             "startTime": 1700000000000,
             "totalTime": 1.0,

@@ -39,29 +39,42 @@ class TestUrlSlugMapping:
 
 
 class TestAuthorizeRoute:
+    @pytest.fixture
+    def headers(self) -> dict[str, str]:
+        return {"X-Open-Wearables-API-Key": ApiKeyFactory().plain_key}
+
     @pytest.mark.parametrize("slug", ["google", "google_health"])
-    def test_both_slugs_reach_the_provider(self, client: TestClient, api_v1_prefix: str, slug: str) -> None:
+    def test_both_slugs_reach_the_provider(
+        self, client: TestClient, api_v1_prefix: str, slug: str, headers: dict[str, str]
+    ) -> None:
         """Google redirects to whichever callback path was registered, so both must route."""
         response = client.get(
             f"{api_v1_prefix}/oauth/{slug}/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
+            headers=headers,
         )
         assert response.status_code != 404
 
-    def test_unknown_provider_is_rejected(self, client: TestClient, api_v1_prefix: str) -> None:
+    def test_unknown_provider_is_rejected(
+        self, client: TestClient, api_v1_prefix: str, headers: dict[str, str]
+    ) -> None:
         response = client.get(
             f"{api_v1_prefix}/oauth/nonsense/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
+            headers=headers,
         )
         assert response.status_code == 422
         assert response.json()["code"] == "VALIDATION_ERROR"
         assert response.json()["errors"][0]["loc"] == ["path", "provider"]
 
-    def test_sdk_provider_cannot_be_authorized(self, client: TestClient, api_v1_prefix: str) -> None:
+    def test_sdk_provider_cannot_be_authorized(
+        self, client: TestClient, api_v1_prefix: str, headers: dict[str, str]
+    ) -> None:
         """health_connect resolves but has no OAuth, so it is a 400 rather than a 404."""
         response = client.get(
             f"{api_v1_prefix}/oauth/health_connect/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
+            headers=headers,
         )
         assert response.status_code == 400
 

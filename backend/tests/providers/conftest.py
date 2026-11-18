@@ -4,9 +4,25 @@ Provider-specific test fixtures.
 These fixtures provide mock data and utilities for testing provider integrations.
 """
 
+import time
+from collections.abc import Generator
 from unittest.mock import MagicMock
 
 import pytest
+
+
+@pytest.fixture
+def non_utc_process_timezone(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Run the test with the process timezone on Europe/Warsaw rules (POSIX string, no tzdata needed)."""
+    with monkeypatch.context() as mp:
+        mp.setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3")
+        try:
+            time.tzset()
+            assert time.timezone == -3600, "process timezone did not switch away from UTC"
+            yield
+        finally:
+            mp.undo()
+            time.tzset()
 
 
 @pytest.fixture

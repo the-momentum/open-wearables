@@ -162,6 +162,7 @@ The defaults in `.env.example` are development values. Override at least these f
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |
 | `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
+| `OAUTH_REDIRECT_ALLOWLIST` | extra places the provider sign-in may return to besides `FRONTEND_URL` and `CORS_ORIGINS`, e.g. `myapp://oauth/callback` (default allows the Open Wearables Connect app) |
 | `VITE_API_URL` | URL of the API as reached from the browser |
 | `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 

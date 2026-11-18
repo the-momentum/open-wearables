@@ -363,6 +363,82 @@ class TestPolar247SleepSave:
 # ---------------------------------------------------------------------------
 
 
+class TestPolar247LateSleep:
+    """Nights that reach /sleep/available after their date left the sync window."""
+
+    WINDOW = (datetime(2024, 1, 20, tzinfo=timezone.utc), datetime(2024, 1, 21, tzinfo=timezone.utc))
+
+    @staticmethod
+    def _night(day: str) -> dict:
+        """A night from 23:00 the evening before to 07:00 on day."""
+        bed = date.fromisoformat(day) - timedelta(days=1)
+        return {
+            **TestPolar247SleepSave.NIGHT,
+            "date": day,
+            "sleep_start_time": f"{bed}T23:00:00+02:00",
+            "sleep_end_time": f"{day}T07:00:00+02:00",
+        }
+
+    def _fetch(self, db: Session, data_247: Polar247Data, user_id: UUID, available: list[str]) -> list[str]:
+        """Run get_sleep_data against a fake AccessLink; returns the nights it fetched."""
+        fetched: list[str] = []
+
+        def api(_db: Session, _user_id: UUID, path: str, **_: object) -> dict:
+            if path.endswith("/available"):
+                nights = [self._night(d) for d in available]
+                return {
+                    "available": [
+                        {"date": n["date"], "start_time": n["sleep_start_time"], "end_time": n["sleep_end_time"]}
+                        for n in nights
+                    ]
+                }
+            day = path.rsplit("/", 1)[1]
+            fetched.append(day)
+            return self._night(day)
+
+        with patch.object(data_247, "_make_api_request", side_effect=api):
+            data_247.get_sleep_data(db, user_id, *self.WINDOW)
+        return sorted(fetched)
+
+    def test_late_night_outside_the_window_is_fetched(self, db: Session, data_247: Polar247Data) -> None:
+        user = UserFactory()
+        fetched = self._fetch(db, data_247, user.id, ["2024-01-12", "2024-01-20"])
+        assert fetched == ["2024-01-12", "2024-01-20"]
+
+    def test_late_night_already_stored_is_not_fetched_again(self, db: Session, data_247: Polar247Data) -> None:
+        user = UserFactory()
+        with patch.object(data_247, "get_sleep_data", return_value=[self._night("2024-01-12")]):
+            data_247._save_sleep(db, user.id, *self.WINDOW)
+
+        fetched = self._fetch(db, data_247, user.id, ["2024-01-12", "2024-01-20"])
+        # The window night is always re-fetched (Polar may still update it); the stored late one is not.
+        assert fetched == ["2024-01-20"]
+
+    def test_another_users_night_does_not_count_as_stored(self, db: Session, data_247: Polar247Data) -> None:
+        other, user = UserFactory(), UserFactory()
+        with patch.object(data_247, "get_sleep_data", return_value=[self._night("2024-01-12")]):
+            data_247._save_sleep(db, other.id, *self.WINDOW)
+
+        assert self._fetch(db, data_247, user.id, ["2024-01-12"]) == ["2024-01-12"]
+
+    def test_late_night_merged_into_the_next_one_is_not_fetched_again(
+        self, db: Session, data_247: Polar247Data
+    ) -> None:
+        user = UserFactory()
+        late = self._night("2024-01-12")
+        next_night = {
+            **self._night("2024-01-13"),
+            "sleep_start_time": "2024-01-12T08:30:00+02:00",
+            "sleep_end_time": "2024-01-12T12:00:00+02:00",
+        }
+        with patch.object(data_247, "get_sleep_data", return_value=[late, next_night]):
+            data_247._save_sleep(db, user.id, *self.WINDOW)
+        [merged] = TestPolar247SleepSave._sleep_records(db, user.id)
+        assert merged.external_id == "sleep-2024-01-13"
+
+        assert self._fetch(db, data_247, user.id, ["2024-01-12", "2024-01-20"]) == ["2024-01-20"]
+
+
 class TestPolar247DailyActivityNormalization:
     @pytest.fixture
     def sample_activity(self) -> dict:

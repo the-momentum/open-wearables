@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     secret_key: str = ""
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    developer_refresh_token_expire_days: int = 30
     token_lifetime: int = 3600
 
     # VALIDATION SETTINGS
@@ -303,6 +304,11 @@ class Settings(BaseSettings):
 
     # SDK INVITATION CODE SETTINGS
     user_invitation_code_expire_days: int = 7
+
+    # Lifetime of the token a shareable pairing link carries.
+    connect_token_expire_days: int = 7
+    # Extra OAuth redirect_uri targets, comma-separated; FRONTEND_URL and CORS_ORIGINS are always allowed.
+    oauth_redirect_allowlist: str = "openwearables://oauth/callback"
 
     # AWS SETTINGS
     aws_bucket_name: str | None = None
