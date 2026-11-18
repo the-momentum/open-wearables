@@ -58,6 +58,7 @@ _DELETE_DAYS = text("""
         AND ((a.period_start AT TIME ZONE 'UTC') + a.zone_offset::interval)::date = recomputed.day
 """)
 
+# Locked before their rows are touched: a session deleted meanwhile would otherwise deadlock with the rollup.
 _SESSIONS = text("""
     SELECT id,
         coalesce(((start_datetime AT TIME ZONE 'UTC') + coalesce(zone_offset, '+00:00')::interval)::date
@@ -65,6 +66,8 @@ _SESSIONS = text("""
     FROM event_record
     WHERE data_source_id = :source_id AND category = ANY(:categories)
         AND start_datetime < :hi AND end_datetime >= :lo
+    ORDER BY id
+    FOR KEY SHARE
 """)
 
 # One index range per session: joined plainly, a month of sessions makes the planner hash the whole sample table.
