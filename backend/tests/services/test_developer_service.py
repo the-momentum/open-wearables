@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.schemas.model_crud.user_management import DeveloperCreate, DeveloperUpdate
 from app.services.developer_service import developer_service
 from app.utils.exceptions import NotFoundError
+from app.utils.security import verify_password
 from tests.factories import DeveloperFactory
 
 
@@ -37,7 +38,7 @@ class TestDeveloperServiceRegister:
         # Assert
         assert developer.id is not None
         assert developer.email == "dev@example.com"
-        assert developer.hashed_password == "hashed_secret_password_123"
+        assert verify_password("secret_password_123", developer.hashed_password)
         assert developer.created_at is not None
         assert developer.updated_at is not None
 
@@ -54,7 +55,7 @@ class TestDeveloperServiceRegister:
 
         # Assert
         assert developer.hashed_password != "my_secret_password"
-        assert "hashed_" in developer.hashed_password
+        assert verify_password("my_secret_password", developer.hashed_password)
 
     def test_register_developer_sets_timestamps(self, db: Session) -> None:
         """Should set created_at and updated_at timestamps."""
@@ -103,7 +104,7 @@ class TestDeveloperServiceRegister:
         db_dev = developer_service.get(db, developer.id)
         assert db_dev is not None
         assert db_dev.email == "persist@example.com"
-        assert db_dev.hashed_password == "hashed_password123"
+        assert verify_password("password123", db_dev.hashed_password)
 
 
 class TestDeveloperServiceUpdateDeveloperInfo:
@@ -135,7 +136,7 @@ class TestDeveloperServiceUpdateDeveloperInfo:
 
         # Assert
         assert updated is not None
-        assert updated.hashed_password == "hashed_new_password_123"
+        assert verify_password("new_password_123", updated.hashed_password)
         assert updated.email == developer.email  # Unchanged
 
     def test_update_developer_info_email_and_password(self, db: Session) -> None:
@@ -153,7 +154,7 @@ class TestDeveloperServiceUpdateDeveloperInfo:
         # Assert
         assert updated is not None
         assert updated.email == "new@example.com"
-        assert updated.hashed_password == "hashed_new_pass_456"
+        assert verify_password("new_pass_456", updated.hashed_password)
 
     def test_update_developer_info_sets_updated_at(self, db: Session) -> None:
         """Should update updated_at timestamp."""
@@ -261,7 +262,7 @@ class TestDeveloperServiceGet:
 
         # Assert
         assert retrieved is not None
-        assert retrieved.hashed_password == "hashed_mypass"
+        assert verify_password("mypass", retrieved.hashed_password)
 
 
 class TestDeveloperServiceDelete:

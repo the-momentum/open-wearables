@@ -7,16 +7,17 @@ Following patterns from know-how-tests.md:
 - Factory pattern for test data
 """
 
+import functools
 import ipaddress
 import os
 import socket
-import sys
 from collections.abc import Callable, Generator
 from contextlib import ExitStack
 from typing import Any, Concatenate
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
 
+import bcrypt
 import pytest
 import redis as redis_lib
 from fastapi.testclient import TestClient
@@ -473,23 +474,11 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
         yield mocks
 
 
-@pytest.fixture(autouse=True)
-def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Speed up tests by using simple password hashing."""
-
-    def simple_hash(password: str) -> str:
-        return f"hashed_{password}"
-
-    def simple_verify(plain: str, hashed: str) -> bool:
-        return hashed == f"hashed_{plain}"
-
-    # Patch in the source module
-    monkeypatch.setattr("app.utils.security.get_password_hash", simple_hash)
-    monkeypatch.setattr("app.utils.security.verify_password", simple_verify)
-    # Also patch in modules that import these functions directly (use sys.modules to avoid name shadowing)
-    if "app.services.developer_service" in sys.modules:
-        monkeypatch.setattr(sys.modules["app.services.developer_service"], "get_password_hash", simple_hash)
-    monkeypatch.setattr("app.api.routes.v1.auth.verify_password", simple_verify)
+@pytest.fixture(scope="session", autouse=True)
+def _fast_bcrypt() -> Generator[None, None, None]:
+    """Hash passwords with real bcrypt at the minimum cost of 4 rounds instead of 12."""
+    with patch.object(bcrypt, "gensalt", functools.partial(bcrypt.gensalt, rounds=4)):
+        yield
 
 
 # ============================================================================

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.services.application_service import application_service
 from app.utils.exceptions import AuthenticationError, NotFoundError
+from app.utils.security import verify_password
 from tests.factories import DeveloperFactory
 
 
@@ -34,8 +35,7 @@ class TestApplicationServiceCreate:
 
         # The stored hash should not equal the plain secret
         assert app.app_secret_hash != plain_secret
-        # Should start with hashed_ (our test mock) or be a bcrypt hash
-        assert app.app_secret_hash.startswith("hashed_") or "$2b$" in app.app_secret_hash
+        assert verify_password(plain_secret, app.app_secret_hash)
 
     def test_create_application_sets_developer_id(self, db: Session) -> None:
         """Should set developer_id correctly."""

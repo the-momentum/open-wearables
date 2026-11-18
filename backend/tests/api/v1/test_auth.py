@@ -24,6 +24,7 @@ from app.schemas.model_crud.user_management import DeveloperUpdate
 from app.services import developer_service
 from app.utils import login_throttle
 from app.utils.config_utils import EnvironmentType
+from app.utils.security import verify_password
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -398,8 +399,7 @@ class TestUpdateCurrentDeveloper:
 
         # Verify in database
         db.refresh(developer)
-        # Password is updated with the hashed_ prefix pattern from the fixture
-        assert developer.hashed_password == "hashed_new_password123"
+        assert verify_password("new_password123", developer.hashed_password)
 
     def test_update_current_developer_both_fields(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating both email and password."""
@@ -419,8 +419,7 @@ class TestUpdateCurrentDeveloper:
         # Verify in database
         db.refresh(developer)
         assert developer.email == "new@example.com"
-        # Password is updated with the hashed_ prefix pattern from the fixture
-        assert developer.hashed_password == "hashed_new_password123"
+        assert verify_password("new_password123", developer.hashed_password)
 
     def test_update_current_developer_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating with empty payload."""
