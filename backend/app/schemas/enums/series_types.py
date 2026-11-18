@@ -92,6 +92,7 @@ class SeriesType(str, Enum):
     flights_climbed = "flights_climbed"
     active_time = "active_time"  # Provider-reported daily active time (non-sedentary)
     total_energy = "total_energy"  # Provider-reported total energy (active + basal), no split available
+    basal_metabolic_rate = "basal_metabolic_rate"  # BMR estimate as a rate (kcal/day), not interval energy
 
     # =========================================================================
     # ACTIVITY - Distance (IDs 100-119)
@@ -308,6 +309,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     # 87 was average_met, merged into physical_effort; never reuse it.
     (88, SeriesType.active_time, "minutes"),
     (89, SeriesType.total_energy, "kcal"),
+    (90, SeriesType.basal_metabolic_rate, "kcal/day"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Distance (IDs 100-119)
     # -------------------------------------------------------------------------
