@@ -329,7 +329,7 @@ uv run ruff check . --fix && uv run ruff format .
 # Type check
 uv run ty check .
 
-# Run tests
+# Run tests (in parallel via pytest-xdist; add -n0 for --pdb or breakpoint())
 uv run pytest -v --cov=app
 ```
 
