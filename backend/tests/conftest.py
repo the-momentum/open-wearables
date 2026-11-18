@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 import pytest
 import redis as redis_lib
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, make_url, text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
@@ -78,15 +78,39 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         redis_url = f"redis://{r.get_container_host_ip()}:{r.get_exposed_port(6379)}/0"
 
     _infrastructure_urls.update(postgres=postgres_url, redis=redis_url)
+    os.environ["TEST_DATABASE_URL"] = postgres_url
+    os.environ["TEST_REDIS_URL"] = redis_url
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     _containers.close()
 
 
+def _xdist_worker_index() -> int | None:
+    """0 for pytest-xdist worker gw0, 1 for gw1, ...; None when tests run in a single process."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    return int(worker.removeprefix("gw")) if worker else None
+
+
 @pytest.fixture(scope="session")
-def _postgres_url() -> str:
-    return _infrastructure_urls["postgres"]
+def _postgres_url() -> Generator[str, None, None]:
+    """Each xdist worker gets its own database, so workers don't drop each other's tables."""
+    base_url = _infrastructure_urls["postgres"]
+    worker = _xdist_worker_index()
+    if worker is None:
+        yield base_url
+        return
+
+    base = make_url(base_url)
+    db_name = f"{base.database}_gw{worker}"
+    admin = create_engine(base, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))  # left over by a killed run
+        conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+    yield base.set(database=db_name).render_as_string(hide_password=False)
+    with admin.connect() as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))
+    admin.dispose()
 
 
 @pytest.fixture(scope="session")
@@ -192,7 +216,16 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 
 @pytest.fixture(scope="session")
 def _redis_url() -> str:
-    return _infrastructure_urls["redis"]
+    """Each xdist worker gets its own Redis database number, so flush_redis stays per worker."""
+    base_url = _infrastructure_urls["redis"]
+    worker = _xdist_worker_index()
+    if worker is None:
+        return base_url
+    parsed = urlparse(base_url)
+    db = int(parsed.path.lstrip("/") or 0) + worker
+    if db > 15:  # Redis ships with databases 0-15
+        pytest.exit(f"Redis has no database {db} for xdist worker gw{worker}; run with fewer workers (-n)", 2)
+    return parsed._replace(path=f"/{db}").geturl()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -207,6 +240,7 @@ def _configure_redis(_redis_url: str) -> Generator[None, None, None]:
     with (
         patch.object(settings, "redis_host", parsed.hostname or "localhost"),
         patch.object(settings, "redis_port", parsed.port or 6379),
+        patch.object(settings, "redis_db", int(parsed.path.lstrip("/") or 0)),
     ):
         yield
 

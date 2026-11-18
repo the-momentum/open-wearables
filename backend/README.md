@@ -134,7 +134,12 @@ uv run pytest --cov=app --cov-report=html
 
 # Run specific test file
 uv run pytest tests/path/to/test_file.py
+
+# Run in a single process (needed for --pdb and breakpoint())
+uv run pytest -n0 tests/path/to/test_file.py --pdb
 ```
+
+Tests run in parallel (pytest-xdist, at most 4 workers). Add `-n0` when debugging.
 
 ### Code Quality
 
