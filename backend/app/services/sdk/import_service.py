@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.config import settings
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
+    INTERVAL_MINUTE_METRIC_TYPES,
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
     get_detail_field_precedence,
@@ -438,6 +439,9 @@ class ImportService:
             if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
                 value = UnitConverter.energy(value, EnergyUnit.cal, EnergyUnit.kcal)
 
+            if record_type in INTERVAL_MINUTE_METRIC_TYPES:
+                value = Decimal(str((rjson.endDate - rjson.startDate).total_seconds() / 60))
+
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source, provider)
             device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
@@ -633,28 +637,31 @@ class ImportService:
         workout_bundles = list(self._build_workout_bundles(request, user_id))
         if workout_bundles:
             workout_records = [record for record, _, _ in workout_bundles]
-            details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
-            # Bulk create records - returns only IDs that were actually inserted
-            inserted_ids = self.event_record_service.bulk_create(db_session, workout_records)
+            stored = self.event_record_service.bulk_create(db_session, workout_records)
             db_session.flush()
 
-            # A workout already stored keeps its own id, so its statistics cannot point at the new one.
-            inserted = set(inserted_ids)
-            time_series_samples = [
-                sample
-                if sample.session is None or sample.session.record_id in inserted
-                else sample.model_copy(update={"session": None})
-                for _, _, samples in workout_bundles
-                for sample in samples
-            ]
+            # A workout matched on external_id keeps its stored id; statistics and details point at it
+            time_series_samples = []
+            for _, _, samples in workout_bundles:
+                for sample in samples:
+                    if sample.session is not None:
+                        stored_id = stored.get(sample.session.record_id)
+                        session = sample.session.model_copy(update={"record_id": stored_id}) if stored_id else None
+                        sample = sample.model_copy(update={"session": session})
+                    time_series_samples.append(sample)
 
-            # Filter details to only those records that were actually inserted (avoid FK violation)
-            details_to_insert = [details_by_id[rid] for rid in inserted_ids if rid in details_by_id]
+            # Request order, so the last delivery of a workout keeps its detail
+            details_to_insert = [
+                detail.model_copy(update={"record_id": stored[detail.record_id]})
+                for _, detail, _ in workout_bundles
+                if detail.record_id in stored
+            ]
+            inserted_ids = [rid for rid, stored_id in stored.items() if rid == stored_id]
 
             # Bulk create details (requires event_record to exist due to FK)
             if details_to_insert:
                 self.event_record_service.bulk_create_details(
-                    db_session, details_to_insert, detail_type=EventCategory.WORKOUT
+                    db_session, details_to_insert, detail_type=EventCategory.WORKOUT, created=set(inserted_ids)
                 )
             workouts_saved = len(inserted_ids)
             for record in workout_records:

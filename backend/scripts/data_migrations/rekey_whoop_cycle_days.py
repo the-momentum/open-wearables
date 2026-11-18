@@ -164,7 +164,7 @@ def _rekey(db: Session, table: _Table, *, dry_run: bool) -> int:
             FROM ({_movable(table)}) v
             WHERE tgt.id = v.id
         """)
-    ).rowcount  # ty: ignore[unresolved-attribute]
+    ).rowcount  # ty: ignore[missing-attribute]
     print(f"  re-keyed {moved}")
     return moved
 

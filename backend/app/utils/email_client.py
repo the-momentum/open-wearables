@@ -57,7 +57,7 @@ def _send_via_resend(to_email: str, subject: str, html: str, text: str) -> None:
     Since we use a single API key for the entire application,
     this is safe even in concurrent environments.
     """
-    resend.api_key = settings.resend_api_key.get_secret_value()  # ty:ignore[unresolved-attribute]
+    resend.api_key = settings.resend_api_key.get_secret_value()  # ty:ignore[missing-union-attribute]
     params = cast(Any, {"from": _get_from_address(), "to": [to_email], "subject": subject, "html": html, "text": text})
     result = resend.Emails.send(params)
     logger.info("Email sent via Resend", provider="email", email_id=result.get("id"))

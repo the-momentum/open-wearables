@@ -165,10 +165,40 @@ class Polar247Data(Base247DataTemplate):
     # Sleep - GET /v3/users/sleep, GET /v3/users/sleep/{date} and GET /v3/users/sleep/available
     # -------------------------------------------------------------------------
 
-    def _get_available_sleep_dates(self, db: DbSession, user_id: UUID) -> set[date]:
+    @staticmethod
+    def _night_window(night: dict[str, Any]) -> tuple[datetime, datetime] | None:
+        try:
+            start, end = datetime.fromisoformat(night["start_time"]), datetime.fromisoformat(night["end_time"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return (start, end) if start.tzinfo and end.tzinfo else None
+
+    def _get_available_sleep(self, db: DbSession, user_id: UUID) -> dict[date, tuple[datetime, datetime] | None]:
+        """Dates with sleep in the last 28 days, with the night's start and end when Polar gives them."""
         response = self._make_api_request(db, user_id, "/v3/users/sleep/available")
         nights = (response or {}).get("available", [])
-        return {date.fromisoformat(night["date"]) for night in nights if night.get("date")}
+        return {date.fromisoformat(night["date"]): self._night_window(night) for night in nights if night.get("date")}
+
+    @staticmethod
+    def _unstored_late_nights(
+        db: DbSession, user_id: UUID, late: dict[date, tuple[datetime, datetime] | None]
+    ) -> set[date]:
+        """Late nights with no stored Polar sleep by id or, as after a merge with the next night, by overlap."""
+        stored_ids = event_record_service.crud.get_by_external_ids(
+            db, user_id, [f"sleep-{d}" for d in late], provider=ProviderName.POLAR
+        )
+        late = {d: window for d, window in late.items() if f"sleep-{d}" not in stored_ids}
+        windows = [window for window in late.values() if window]
+        if not windows:
+            return set(late)
+        stored = event_record_service.crud.sleep_windows(
+            db, user_id, min(s for s, _ in windows), max(e for _, e in windows), ProviderName.POLAR
+        )
+        return {
+            d
+            for d, window in late.items()
+            if window is None or not any(s < window[1] and e > window[0] for s, e in stored)
+        }
 
     def get_sleep_data(
         self,
@@ -180,9 +210,12 @@ class Polar247Data(Base247DataTemplate):
         date_range = {
             start_time.date() + timedelta(days=i) for i in range((end_time.date() - start_time.date()).days + 1)
         }
-        available_dates = self._get_available_sleep_dates(db, user_id)
+        available = self._get_available_sleep(db, user_id)
+        # Nights show up in /sleep/available after the watch syncs, often after their date left the window
+        late = {d: window for d, window in available.items() if d not in date_range}
+        late_dates = self._unstored_late_nights(db, user_id, late) if late else set()
         sleep_data = []
-        for d in date_range.intersection(available_dates):
+        for d in sorted(date_range.intersection(available) | late_dates):
             response = self._make_api_request(db, user_id, f"/v3/users/sleep/{d.isoformat()}")
             if response:
                 sleep_data.append(response)
@@ -242,7 +275,7 @@ class Polar247Data(Base247DataTemplate):
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[SleepNormalized]:  # ty:ignore[invalid-method-override]
+    ) -> list[SleepNormalized]:  # ty:ignore[incompatible-method-override]
         results: list[Polar247Data.SleepNormalized] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, SleepJSON, user_id, "sleep")) is None:
@@ -371,7 +404,7 @@ class Polar247Data(Base247DataTemplate):
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[TimeSeriesSampleCreate]:  # ty:ignore[invalid-method-override]
+    ) -> list[TimeSeriesSampleCreate]:  # ty:ignore[incompatible-method-override]
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, DailyActivityJSON, user_id, "daily_activity")) is None:

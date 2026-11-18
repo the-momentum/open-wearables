@@ -290,7 +290,7 @@ class DataTypeCoverageRepository:
                 if dry_run:
                     found[kind] += db_session.execute(_BACKFILL_COUNTS[kind], params).scalar() or 0
                 else:
-                    found[kind] += db_session.execute(_BACKFILL_WRITES[kind], params).rowcount  # ty: ignore[unresolved-attribute]
+                    found[kind] += db_session.execute(_BACKFILL_WRITES[kind], params).rowcount  # ty: ignore[missing-attribute]
             db_session.commit()
             after = sources[-1]
         return found

@@ -56,7 +56,8 @@ class TestSuuntoWorkouts:
     def sample_workout_data(self) -> dict:
         """Sample Suunto workout data for testing."""
         return {
-            "workoutId": 123456789,
+            "workoutId": 0,
+            "workoutKey": "6aa10da139e69418a2fa8db1",
             "activityId": 1,  # Running
             "startTime": 1705309200000,  # 2024-01-15T09:00:00Z in milliseconds
             "stopTime": 1705312800000,  # 2024-01-15T10:00:00Z in milliseconds
@@ -217,7 +218,7 @@ class TestSuuntoWorkouts:
         assert record.duration_seconds == 3600
         assert record.start_datetime == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
         assert record.end_datetime == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        assert record.external_id == "123456789"
+        assert record.external_id == "6aa10da139e69418a2fa8db1"
         assert record.user_id == user_id
 
     def test_normalize_workout_without_device(

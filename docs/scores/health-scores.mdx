@@ -43,6 +43,8 @@ This means you can surface both in your application - the OW scores for a consis
 
 A provider's nightly sleep score is recorded at the end of the night it scores, the user's wake-up, with that night's `zone_offset`, so it belongs to the day the user wakes up. Polar's circadian bedtime score, also in the sleep category, is recorded at the start of its period.
 
+An activity score of the previous day can only be computed once that day is over, so it is recorded on the day after it, in a category of its own, `previous_day_activity`: a client never shows it as the same `activity` as a provider's score, which is dated by the day it scores.
+
 ### Which OW score the API returns
 
 OW can compute a score from each of a user's data sources. `GET /api/v1/users/{user_id}/health-scores` returns one OW score per category and day: the one from the source ranked highest in the [provider and device type priorities](/developer-portal/settings/priorities), the same ranking the summaries use. If one source has more than one sleep score on a day, for example an unflagged nap, the longest sleep is returned. Each score's `source` tells which source it came from. The pick is made over the whole day, so with a `start_date` or `end_date` inside a day, that day's score is returned only if it falls within the range. Provider scores are always returned as they are.

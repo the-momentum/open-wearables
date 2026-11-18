@@ -32,6 +32,7 @@ const CATEGORIES: Record<string, CategorySpec> = {
 	recovery: { label: 'Recovery', icon: HeartPulse },
 	readiness: { label: 'Readiness', icon: Zap },
 	activity: { label: 'Activity', icon: Activity },
+	previous_day_activity: { label: 'Previous day activity', icon: Activity },
 	stress: { label: 'Stress', icon: Flame },
 	body_battery: { label: 'Body battery', icon: BatteryCharging },
 	strain: { label: 'Strain', icon: Dumbbell },

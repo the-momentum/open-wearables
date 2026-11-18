@@ -206,7 +206,7 @@ class SensorBio247Data(Base247DataTemplate):
             stages.append(SleepStage(stage=stage, start_time=start, end_time=end))
         return sorted(stages, key=lambda s: s.start_time) or None
 
-    def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
+    def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[incompatible-method-override]
         """Validate + normalise a single /v1/sleep record.
 
         Returns None if the record fails Pydantic validation so the caller can skip it.
@@ -375,7 +375,7 @@ class SensorBio247Data(Base247DataTemplate):
 
         return all_scores
 
-    def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
+    def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[incompatible-method-override]
         """Validate + normalise a /v1/scores record (recovery + activity + sleep scores).
 
         Returns None on validation failure so the caller can skip cleanly.
@@ -679,7 +679,7 @@ class SensorBio247Data(Base247DataTemplate):
             current_date += timedelta(days=1)
         return all_stats
 
-    def normalize_daily_activity(self, raw_stats: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
+    def normalize_daily_activity(self, raw_stats: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[incompatible-method-override]
         """Validate + normalise a StepDetailsResponseBody into our internal shape."""
         parsed = self._parse(raw_stats, StepDetailsResponse, "step_details", user_id)
         if parsed is None:

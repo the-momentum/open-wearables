@@ -137,7 +137,7 @@ _PP_UPDATE = text("UPDATE provider_priority SET provider = :api WHERE provider =
 
 
 def _rowcount(db: Session, query: TextClause) -> int:
-    return db.execute(query, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
+    return db.execute(query, _PARAMS).rowcount  # ty: ignore[missing-attribute]
 
 
 def _fold_or_rename(db: Session, fold: TextClause, delete_legacy: TextClause, rename: TextClause) -> int:

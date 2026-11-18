@@ -264,17 +264,46 @@ const server = Bun.serve({
 				: problem(401, 'Unauthorized', 'UNAUTHORIZED');
 		}
 
+		const connectTokenMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)\/connect-token$/);
+		if (connectTokenMatch && request.method === 'POST') {
+			const token = request.headers.get('authorization')?.replace('Bearer ', '') ?? '';
+			if (!validAccessTokens.has(token)) return problem(401, 'Unauthorized', 'UNAUTHORIZED');
+			return json({
+				token: `connect-${connectTokenMatch[1]}`,
+				expires_at: '2099-01-01T00:00:00Z',
+				pair_url: ''
+			});
+		}
+
 		const authorizeMatch = pathname.match(/^\/api\/v1\/oauth\/([^/]+)\/authorize$/);
 		if (authorizeMatch) {
 			const provider = authorizeMatch[1];
+			// Like the API: the connect token is bound to the one user it was minted for.
+			const userId = new URL(request.url).searchParams.get('user_id');
+			const connectToken = request.headers.get('x-open-wearables-connect-token') ?? '';
+			if (!connectToken.startsWith('connect-')) {
+				return problem(401, 'Invalid or expired connect token', 'UNAUTHORIZED');
+			}
+			if (connectToken !== `connect-${userId}`) {
+				return problem(403, 'Token does not match user_id', 'FORBIDDEN');
+			}
 			// Enabled but missing its client credentials: on the pairing page, and still failing.
 			if (provider === 'suunto') {
 				return problem(400, 'Provider credentials are not configured.', 'BAD_REQUEST');
 			}
 			// A real provider sends the browser to redirect_uri once the person
-			// consents, so handing it straight back walks the same path.
-			const redirectUri = new URL(request.url).searchParams.get('redirect_uri') ?? '/';
-			return json({ authorization_url: redirectUri, state: 'state-1' });
+			// consents, and the callback adds the result, so handing it straight back walks the same path.
+			const redirectUri = new URL(
+				new URL(request.url).searchParams.get('redirect_uri') ?? '/',
+				'http://placeholder'
+			);
+			redirectUri.searchParams.set('provider', provider);
+			redirectUri.searchParams.set('status', 'success');
+			const target =
+				redirectUri.origin === 'http://placeholder'
+					? `${redirectUri.pathname}${redirectUri.search}`
+					: redirectUri.toString();
+			return json({ authorization_url: target, state: 'state-1' });
 		}
 
 		if (pathname === '/api/v1/webhooks/event-types') {

@@ -30,8 +30,8 @@ def set_trace_id(user_id: str | UUID) -> str:
 def get_trace_id(user_id: str | UUID, data_type: str | None = None) -> str | None:
     """Return the active backfill trace ID for a user, optionally per-type."""
     if data_type:
-        return get_redis_client().get(_get_key(user_id, "types", data_type, "trace_id"))  # ty:ignore[invalid-return-type]
-    return get_redis_client().get(_get_key(user_id, "trace_id"))  # ty:ignore[invalid-return-type]
+        return get_redis_client().get(_get_key(user_id, "types", data_type, "trace_id"))  # ty:ignore[invalid-explicit-return]
+    return get_redis_client().get(_get_key(user_id, "trace_id"))  # ty:ignore[invalid-explicit-return]
 
 
 def set_type_trace_id(user_id: str | UUID, data_type: str) -> str:

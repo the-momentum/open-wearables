@@ -258,6 +258,19 @@ class BaseOAuthTemplate(ABC):
 
         return code_verifier, code_challenge
 
+    def peek_state(self, state: str) -> OAuthState | None:
+        """The stored state without consuming it, to know where to send the user if the flow fails."""
+        state_data = self.redis_client.get(f"oauth_state:{state}")
+        if not state_data:
+            return None
+        state_dict = json.loads(state_data.decode("utf-8") if isinstance(state_data, bytes) else str(state_data))
+        state_dict.pop("code_verifier", None)
+        return OAuthState.model_validate(state_dict)
+
+    def discard_state(self, state: str) -> None:
+        """Drop a state the provider ended with an error; it can never complete."""
+        self.redis_client.delete(f"oauth_state:{state}")
+
     def _validate_state(self, state: str) -> tuple[OAuthState, str | None]:
         """Validates and consumes the OAuth state from Redis."""
         redis_key = f"oauth_state:{state}"
@@ -430,6 +443,6 @@ class BaseOAuthTemplate(ABC):
             on_connection_created(
                 user_id=user_id,
                 provider=self.provider_name,
-                connection_id=new_connection.id,  # ty:ignore[unresolved-attribute]
-                connected_at=new_connection.created_at.isoformat(),  # ty:ignore[unresolved-attribute]
+                connection_id=new_connection.id,  # ty:ignore[missing-union-attribute]
+                connected_at=new_connection.created_at.isoformat(),  # ty:ignore[missing-union-attribute]
             )

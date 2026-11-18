@@ -16,6 +16,7 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.dates import offset_to_iso, parse_iso_datetime
 
 _MAX_PAGE_SIZE = 100
@@ -81,7 +82,11 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         # Suunto requires subscription key header
         headers = self._get_suunto_headers()
 
-        return self._make_api_request(db, user_id, "/v3/workouts/", params=params, headers=headers)
+        response = self._make_api_request(db, user_id, "/v3/workouts/", params=params, headers=headers)
+        store_raw_payload(
+            source="api_response", provider="suunto", payload=response, user_id=str(user_id), trace_id="/v3/workouts/"
+        )
+        return response
 
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
         """Get detailed workout data from Suunto API."""
@@ -199,7 +204,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             end_datetime=end_date,
             zone_offset=zone_offset,
             id=workout_id,
-            external_id=str(raw_workout.workoutId),
+            external_id=raw_workout.workoutKey,
             source=self.provider_name,  # Provider name for mapping (e.g., "suunto")
             user_id=user_id,
         )
@@ -276,7 +281,12 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         params: dict[str, str] | None = None
         if extensions:
             params = {"extensions": ",".join(extensions)}
-        return self._make_api_request(db, user_id, f"/v3/workouts/{workout_key}", params=params, headers=headers)
+        endpoint = f"/v3/workouts/{workout_key}"
+        response = self._make_api_request(db, user_id, endpoint, params=params, headers=headers)
+        store_raw_payload(
+            source="api_response", provider="suunto", payload=response, user_id=str(user_id), trace_id=endpoint
+        )
+        return response
 
     def process_push_activity(self, db: DbSession, user_id: UUID, raw_workout: Any) -> UUID | None:
         """Save a single workout received via the live webhook push path.
