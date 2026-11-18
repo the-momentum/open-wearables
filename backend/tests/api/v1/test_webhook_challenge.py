@@ -14,7 +14,8 @@ CALLBACK_TOKEN = callback_token("strava").get_secret_value()
 
 
 def test_provider_without_a_challenge_gets_501(client: TestClient, db: Session) -> None:
-    response = client.get("/api/v1/providers/garmin/webhooks")
+    garmin_token = callback_token("garmin").get_secret_value()
+    response = client.get(f"/api/v1/providers/garmin/webhooks/{garmin_token}")
 
     assert response.status_code == 501
     assert response.json()["detail"] == "Provider 'garmin' does not support webhook subscription verification via GET."

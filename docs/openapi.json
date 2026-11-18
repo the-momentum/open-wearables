@@ -14521,7 +14521,7 @@
           "System: Provider Webhooks (Deprecated)"
         ],
         "summary": "Garmin Webhook Ping Compat",
-        "description": "Deprecated: POST /api/v1/garmin/webhooks/ping.\n\nUse POST /api/v1/providers/garmin/webhooks instead.",
+        "description": "Deprecated: POST /api/v1/garmin/webhooks/ping.\n\nUse POST /api/v1/providers/garmin/webhooks/{callback token} instead.",
         "operationId": "garmin_webhook_ping_compat_api_v1_garmin_webhooks_ping_post",
         "responses": {
           "200": {
@@ -14566,7 +14566,7 @@
           "System: Provider Webhooks (Deprecated)"
         ],
         "summary": "Garmin Webhook Push Compat",
-        "description": "Deprecated: POST /api/v1/garmin/webhooks/push.\n\nUse POST /api/v1/providers/garmin/webhooks instead.",
+        "description": "Deprecated: POST /api/v1/garmin/webhooks/push.\n\nUse POST /api/v1/providers/garmin/webhooks/{callback token} instead.",
         "operationId": "garmin_webhook_push_compat_api_v1_garmin_webhooks_push_post",
         "responses": {
           "200": {
