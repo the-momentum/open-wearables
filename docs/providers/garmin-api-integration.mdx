@@ -218,7 +218,7 @@ GARMIN_CLIENT_SECRET=your_client_secret_here
     3. In [API Endpoints](https://apis.garmin.com/tools/endpoints), change the URL of **every** data type to the one the script printed, **Deregistrations** and **User Permissions** included.
     4. Set `GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN=false` and restart the backend. Only then are the old URLs closed.
 
-    While old URLs are accepted, the backend logs a warning (`garmin_webhook_without_token_accepted`) with the URL to set for every notification that arrives without the token: when they stop, every data type has been switched.
+    While old URLs are accepted, the backend logs a warning (`garmin_webhook_without_token_accepted`) with the URL to set for every notification that arrives without the token. A data type that sends nothing logs nothing, so the warnings stopping is only a hint: check the URL of every data type in the portal before step 4.
 
     Once old URLs are off, the backend logs an error with the URL to set (the token shown as a placeholder) and the command that prints it, for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token. Garmin retries a rejected notification with backoff, usually for long enough to fix the URL; to be sure nothing is lost, turn **On Hold** on for the affected data types while you fix them. The client ID is public, so others can trigger this error too. The URL is set per data type, so one type can stop while the others still arrive. Before acting on the error, check whether new data of some type has stopped arriving or a data type in the portal has another URL, and don't rotate `SECRET_KEY` because of it alone.
     </Warning>
