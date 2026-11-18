@@ -26,7 +26,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test successful sync of vendor data."""
         # Arrange
@@ -72,7 +71,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test sync with specific date range."""
         # Arrange
@@ -115,7 +113,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test sync with multiple provider connections."""
         # Arrange
@@ -153,7 +150,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test sync with specific provider filter."""
         # Arrange
@@ -187,7 +183,6 @@ class TestSyncVendorDataTask:
         self,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test sync when user has no active connections."""
         # Arrange
@@ -217,7 +212,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test handling of provider API errors."""
         # Arrange
@@ -256,7 +250,6 @@ class TestSyncVendorDataTask:
         mock_session_local: MagicMock,
         mock_record: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
@@ -281,7 +274,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """A consumer acting on sync.completed reads the per-type outcomes from the history."""
         user = UserFactory()
@@ -312,7 +304,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test handling when provider sync returns False."""
         # Arrange
@@ -346,7 +337,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test handling when provider doesn't support workouts."""
         # Arrange
@@ -380,7 +370,6 @@ class TestSyncVendorDataTask:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test that push-based providers (no cloud API) are filtered out entirely."""
         # Arrange
@@ -402,7 +391,7 @@ class TestSyncVendorDataTask:
         assert result["errors"] == {}
         assert result["message"] == "No active provider connections found"
 
-    def test_sync_vendor_data_invalid_user_id(self, mock_celery_app: MagicMock) -> None:
+    def test_sync_vendor_data_invalid_user_id(self) -> None:
         """Test handling of invalid user ID format."""
         # Act
         result = sync_vendor_data("not-a-valid-uuid")
@@ -448,7 +437,6 @@ class TestSyncVendorDataLinkedSkip:
         mock_get_provider: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         user = UserFactory()
         holder = UserFactory()
