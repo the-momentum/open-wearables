@@ -69,6 +69,8 @@ def pytest_sessionstart(session: pytest.Session) -> None:
                 dbname="open_wearables_test",
                 driver="psycopg",
             )
+            .with_command("postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off")
+            .with_tmpfs_mount("/var/lib/postgresql", size="size=1g")
         )
         postgres_url = pg.get_connection_url()
 
