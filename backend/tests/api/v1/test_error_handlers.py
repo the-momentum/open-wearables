@@ -46,8 +46,9 @@ INTERNAL_ERROR = _problem(500, "Internal server error", "INTERNAL_ERROR")
 def lenient_client(db: Session) -> Generator[TestClient, None, None]:
     """A client that returns the 500 response instead of raising the server exception."""
     api.dependency_overrides[_get_db_dependency] = lambda: db
-    with TestClient(api, raise_server_exceptions=False) as test_client:
-        yield test_client
+    test_client = TestClient(api, raise_server_exceptions=False)
+    yield test_client
+    test_client.close()  # Avoid `with`, which runs app lifespan on every test.
     api.dependency_overrides.clear()
 
 

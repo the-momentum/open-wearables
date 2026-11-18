@@ -201,18 +201,15 @@ def set_factory_session(request: pytest.FixtureRequest) -> Generator[None]:
 
 @pytest.fixture
 def client(db: Session) -> Generator[TestClient, None, None]:
-    """
-    Create a test client with database dependency override.
-    """
-
+    """Create a test client with database dependency override."""
     def override_get_db() -> Generator[Session, None, None]:
         yield db
 
     api.dependency_overrides[_get_db_dependency] = override_get_db
 
-    with TestClient(api) as test_client:
-        yield test_client
-
+    test_client = TestClient(api)
+    yield test_client
+    test_client.close()  # Avoid `with`, which runs app lifespan on every test.
     api.dependency_overrides.clear()
 
 
