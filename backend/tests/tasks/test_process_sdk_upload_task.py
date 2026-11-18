@@ -72,7 +72,6 @@ class TestProcessSDKUploadTask:
         mock_session_local: MagicMock,
         mock_sdk_import_service: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test successful processing with apple provider."""
         # Arrange
@@ -113,7 +112,6 @@ class TestProcessSDKUploadTask:
         mock_session_local: MagicMock,
         mock_sdk_import_service: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
         records_saved: int,
         rolls_up: bool,
     ) -> None:
@@ -260,24 +258,24 @@ def _run_offloaded_batch(db: Session, user: Any, *, archival: str, status_code: 
 class TestTransportedPayloadCleanup:
     """With archival off the S3 object only carries the payload, so it is dropped once saved."""
 
-    def test_deleted_when_archival_is_disabled(self, db: Session, mock_celery_app: MagicMock) -> None:
+    def test_deleted_when_archival_is_disabled(self, db: Session) -> None:
         mock_delete = _run_offloaded_batch(db, UserFactory(), archival="disabled")
 
         mock_delete.assert_called_once_with(_PAYLOAD_REF)
 
-    def test_kept_when_archival_uses_s3(self, db: Session, mock_celery_app: MagicMock) -> None:
+    def test_kept_when_archival_uses_s3(self, db: Session) -> None:
         """That same object is the archive, so deleting it would throw the archive away."""
         mock_delete = _run_offloaded_batch(db, UserFactory(), archival="s3")
 
         mock_delete.assert_not_called()
 
-    def test_kept_when_archival_uses_log(self, db: Session, mock_celery_app: MagicMock) -> None:
+    def test_kept_when_archival_uses_log(self, db: Session) -> None:
         """The offload path skips the stdout write, so S3 holds the only copy."""
         mock_delete = _run_offloaded_batch(db, UserFactory(), archival="log")
 
         mock_delete.assert_not_called()
 
-    def test_kept_when_the_import_fails(self, db: Session, mock_celery_app: MagicMock) -> None:
+    def test_kept_when_the_import_fails(self, db: Session) -> None:
         """A failed batch keeps its payload so it can be diagnosed and replayed."""
         mock_delete = _run_offloaded_batch(db, UserFactory(), archival="disabled", status_code=500)
 

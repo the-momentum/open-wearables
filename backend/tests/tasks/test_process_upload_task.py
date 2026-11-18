@@ -40,7 +40,6 @@ class TestProcessUploadTask:
         mock_get_s3_client: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test successful processing of uploaded XML file."""
         # Arrange
@@ -86,7 +85,6 @@ class TestProcessUploadTask:
         mock_get_s3_client: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test that the S3 response stream is closed after processing."""
         # Arrange
@@ -118,7 +116,6 @@ class TestProcessUploadTask:
         mock_get_s3_client: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test handling of S3 download errors."""
         # Arrange
@@ -150,7 +147,6 @@ class TestProcessUploadTask:
         mock_get_s3_client: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test that database transaction is rolled back on import error."""
         # Arrange
@@ -191,7 +187,6 @@ class TestProcessUploadTask:
         mock_get_s3_client: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test that user ID is correctly extracted from object key."""
         # Arrange
@@ -220,7 +215,6 @@ class TestProcessUploadTask:
         self,
         mock_multipart_service: MagicMock,
         mock_process: MagicMock,
-        mock_celery_app: MagicMock,
     ) -> None:
         key = "user-123/raw/export.xml"
         mock_process.return_value = {"status": "success"}
@@ -247,7 +241,6 @@ class TestProcessUploadTask:
     def test_success_marker_suppresses_duplicate_processing(
         self,
         mock_process: MagicMock,
-        mock_celery_app: MagicMock,
     ) -> None:
         mock_process.return_value = {
             "bucket": "test-bucket",
@@ -269,7 +262,6 @@ class TestProcessUploadTask:
         self,
         mock_multipart_service: MagicMock,
         mock_process: MagicMock,
-        mock_celery_app: MagicMock,
     ) -> None:
         key = "user-123/raw/export.xml"
         success = {"status": "success", "message": "Import completed successfully"}
@@ -303,7 +295,6 @@ class TestProcessUploadTask:
         mock_get_s3_client: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """A user deleted before the import is skipped without downloading the export."""
         # Arrange
@@ -334,7 +325,6 @@ class TestProcessUploadTask:
         mock_multipart_service: MagicMock,
         mock_get_s3_client: MagicMock,
         mock_process: MagicMock,
-        mock_celery_app: MagicMock,
     ) -> None:
         """A duplicate delivery finds the upload already completed (404) but the object
         present, so it must still process instead of failing on the consumed upload id."""
@@ -367,7 +357,6 @@ class TestProcessUploadTask:
         mock_multipart_service: MagicMock,
         mock_get_s3_client: MagicMock,
         mock_process: MagicMock,
-        mock_celery_app: MagicMock,
     ) -> None:
         """A genuine 404 (no finalized object) must not be swallowed, and must not process."""
         key = "user-123/raw/export.xml"

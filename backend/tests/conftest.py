@@ -12,6 +12,7 @@ import os
 import socket
 import sys
 from collections.abc import Generator
+from contextlib import ExitStack
 from typing import Any
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlparse
@@ -27,7 +28,7 @@ from testcontainers.redis import RedisContainer
 from app.config import Settings, settings
 from app.database import BaseDbModel, _get_db_dependency
 from app.integrations.redis_client import get_redis_client
-from app.main import api
+from app.main import api, celery_app
 from app.models import SeriesTypeDefinition
 from app.schemas.enums import SERIES_TYPE_DEFINITIONS
 from app.utils.structured_logging import strict_attributes
@@ -41,27 +42,51 @@ strict_attributes(True)
 Settings.model_config["env_file"] = None
 
 
-@pytest.fixture(scope="session")
-def _postgres_url() -> Generator[str, None, None]:
-    """
-    Provide a PostgreSQL connection URL for tests.
+# ============================================================================
+# Infrastructure: containers
+# ============================================================================
 
-    - If TEST_DATABASE_URL is set (e.g. in CI), use it directly.
-    - Otherwise, spin up a PostgreSQL container via testcontainers.
+_containers = ExitStack()
+_infrastructure_urls: dict[str, str] = {}
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Start the containers before the first test.
+
+    - TEST_DATABASE_URL / TEST_REDIS_URL (e.g. in CI) are used directly.
+    - Otherwise Postgres and Redis run in containers via testcontainers.
     """
-    explicit_url = os.environ.get("TEST_DATABASE_URL")
-    if explicit_url:
-        yield explicit_url
+    if session.config.option.collectonly:
         return
 
-    with PostgresContainer(
-        image="postgres:18",
-        username="open-wearables",
-        password="open-wearables",
-        dbname="open_wearables_test",
-        driver="psycopg",
-    ) as pg:
-        yield pg.get_connection_url()
+    postgres_url = os.environ.get("TEST_DATABASE_URL")
+    if not postgres_url:
+        pg = _containers.enter_context(
+            PostgresContainer(
+                image="postgres:18",
+                username="open-wearables",
+                password="open-wearables",
+                dbname="open_wearables_test",
+                driver="psycopg",
+            )
+        )
+        postgres_url = pg.get_connection_url()
+
+    redis_url = os.environ.get("TEST_REDIS_URL")
+    if not redis_url:
+        r = _containers.enter_context(RedisContainer(image="redis:7"))
+        redis_url = f"redis://{r.get_container_host_ip()}:{r.get_exposed_port(6379)}/0"
+
+    _infrastructure_urls.update(postgres=postgres_url, redis=redis_url)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    _containers.close()
+
+
+@pytest.fixture(scope="session")
+def _postgres_url() -> str:
+    return _infrastructure_urls["postgres"]
 
 
 @pytest.fixture(scope="session")
@@ -166,22 +191,8 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture(scope="session")
-def _redis_url() -> Generator[str, None, None]:
-    """
-    Provide a Redis connection URL for tests.
-
-    - If TEST_REDIS_URL is set (e.g. in CI), use it directly.
-    - Otherwise, spin up a Redis container via testcontainers.
-    """
-    explicit_url = os.environ.get("TEST_REDIS_URL")
-    if explicit_url:
-        yield explicit_url
-        return
-
-    with RedisContainer(image="redis:7") as r:
-        host = r.get_container_host_ip()
-        port = r.get_exposed_port(6379)
-        yield f"redis://{host}:{port}/0"
+def _redis_url() -> str:
+    return _infrastructure_urls["redis"]
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -305,58 +316,11 @@ def mock_svix_lifespan() -> Generator[MagicMock, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def mock_webhook_dispatch() -> Generator[MagicMock, None, None]:
-    """Prevent outgoing webhook tasks from attempting real Redis/Celery connections.
-
-    Patches the Celery app used for dispatch so tests that don't care about webhook
-    emission never hang on a missing broker.  Tests that DO verify dispatch
-    behaviour override this via their own @patch decorator (innermost wins).
+def _celery_in_memory_broker() -> None:
+    """Keep task dispatch inside the process.
+    Re-applied per test because ``create_celery()`` resets the broker URL.
     """
-    with patch("app.services.outgoing_webhooks.events.celery_app") as mock:
-        yield mock
-
-
-@pytest.fixture(autouse=True)
-def mock_dashboard_stats_refresh() -> Generator[MagicMock, None, None]:
-    """Prevent the on-demand dashboard stats refresh task from hitting a real broker.
-
-    ``get_total_data_points`` dispatches this task on a cold/stale cache; without this patch the
-    dispatch would try to connect to a missing broker and hang the test.
-    """
-    with patch("app.services.dashboard_stats_cache.celery_app") as mock:
-        yield mock
-
-
-@pytest.fixture(autouse=True)
-def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
-    """Mock Celery tasks to run synchronously."""
-    mock_task = MagicMock()
-    mock_task.delay.return_value = MagicMock()
-    mock_task.apply_async.return_value = MagicMock()
-
-    mock_handler_celery = MagicMock()
-    mock_handler_celery.send_task.return_value.id = "mock-task-id"
-
-    with (
-        patch("celery.current_app") as mock_celery,
-        # Prevent webhook handler from dispatching the backfill Celery task
-        patch("app.services.providers.garmin.webhook_handler.celery_app", mock_handler_celery),
-    ):
-        # Configure Celery to use in-memory broker and result backend
-        # We Mock the conf object to return our test settings
-        mock_conf = MagicMock()
-        mock_conf.__getitem__ = lambda s, k: {
-            "task_always_eager": True,
-            "task_eager_propagates": True,
-            "broker_url": "memory://",
-            "result_backend": "cache+memory://",
-        }.get(k)
-
-        # When update is called, we don't want to actually connect to Redis
-        mock_conf.update = MagicMock()
-        mock_celery.conf = mock_conf
-
-        yield mock_task
+    celery_app.conf.update(broker_url="memory://", result_backend="cache+memory://")
 
 
 @pytest.fixture(autouse=True)

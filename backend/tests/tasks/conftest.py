@@ -4,28 +4,11 @@ Pytest configuration for Celery task tests.
 Provides fixtures specific to testing asynchronous tasks.
 """
 
-from collections.abc import Generator
 from typing import Callable
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.orm import Session
-
-
-@pytest.fixture
-def mock_celery_app() -> Generator[MagicMock, None, None]:
-    """
-    Configure Celery for synchronous test execution.
-
-    Sets up Celery to run tasks eagerly (synchronously) during tests
-    and propagate exceptions immediately.
-    """
-    with patch("celery.current_app") as mock:
-        mock.conf = {
-            "task_always_eager": True,
-            "task_eager_propagates": True,
-        }
-        yield mock
 
 
 @pytest.fixture

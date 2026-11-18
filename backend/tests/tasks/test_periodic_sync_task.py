@@ -24,7 +24,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test syncing all users with active connections."""
         # Arrange
@@ -59,7 +58,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test syncing all users with specific date range."""
         # Arrange
@@ -90,7 +88,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test that users without active connections are not synced."""
         # Arrange
@@ -124,7 +121,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test syncing when no users have active connections."""
         # Arrange - no users with connections
@@ -145,7 +141,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test that users with multiple connections are only queued once."""
         # Arrange
@@ -174,7 +169,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test syncing users with mixed connection statuses."""
         # Arrange
@@ -214,7 +208,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test that sync tasks are queued asynchronously with delay."""
         # Arrange
@@ -239,7 +232,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         """Test syncing a large number of users."""
         # Arrange - create 10 users with connections
@@ -271,7 +263,6 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data: MagicMock,
         mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app: MagicMock,
     ) -> None:
         pull_user = UserFactory()
         push_only_user = UserFactory()
