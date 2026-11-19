@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from redis.exceptions import RedisError
@@ -51,6 +52,14 @@ from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_garmin_url(url: str) -> bool:
+    """Only Garmin gets the user's bearer token."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    return parsed.scheme == "https" and (host == "garmin.com" or host.endswith(".garmin.com"))
+
 
 # Series types to skip when parsing FIT files — already present from activityDetails.
 # Derived from ACTIVITY_SAMPLE_SERIES so additions to the map are automatically
@@ -1902,6 +1911,16 @@ class Garmin247Data(Base247DataTemplate):
                         if not callback_url:
                             continue
                         activity_id = str(item.get("activityId", ""))
+                        if not _is_garmin_url(callback_url):
+                            logger.warning(
+                                "Skipped FIT download from a non-Garmin host",
+                                provider="garmin",
+                                task="process_items_batch",
+                                user_id=str(user_id),
+                                activity_id=activity_id,
+                                host=urlparse(callback_url).hostname,
+                            )
+                            continue
                         try:
                             fit_bytes = download_binary_content(
                                 db=db,
