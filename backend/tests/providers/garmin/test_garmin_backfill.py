@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
+import pytest
 import redis
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
@@ -47,7 +48,7 @@ class TestGarminBackfillConfig:
         assert DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
         assert SUMMARY_DAYS == 0  # No summary coverage gap (REST endpoints removed)
 
-    def test_backfill_endpoints_mapping(self) -> None:
+    def test_backfill_endpoints_mapping(self, subtests: pytest.Subtests) -> None:
         """Test that all backfill endpoints are mapped."""
         expected_endpoints = [
             "sleeps",
@@ -69,8 +70,9 @@ class TestGarminBackfillConfig:
         ]
 
         for endpoint in expected_endpoints:
-            assert endpoint in BACKFILL_ENDPOINTS
-            assert BACKFILL_ENDPOINTS[endpoint].startswith("/wellness-api/rest/backfill/")
+            with subtests.test(endpoint=endpoint):
+                assert endpoint in BACKFILL_ENDPOINTS
+                assert BACKFILL_ENDPOINTS[endpoint].startswith("/wellness-api/rest/backfill/")
 
     def test_default_data_types(self) -> None:
         """Test default data types for backfill."""
@@ -101,10 +103,11 @@ class TestGarminBackfillConfig:
         assert expected == BACKFILL_DATA_TYPES
         assert len(BACKFILL_DATA_TYPES) == 5
 
-    def test_backfill_types_are_subset_of_all_types(self) -> None:
+    def test_backfill_types_are_subset_of_all_types(self, subtests: pytest.Subtests) -> None:
         """Test that all backfill types exist in ALL_DATA_TYPES."""
         for data_type in BACKFILL_DATA_TYPES:
-            assert data_type in ALL_DATA_TYPES
+            with subtests.test(data_type=data_type):
+                assert data_type in ALL_DATA_TYPES
 
     def test_rate_limit_constants(self) -> None:
         """Test rate limit constants."""
@@ -227,7 +230,7 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    def test_401_fails_all_types_with_status_code(self, mocker: MockerFixture) -> None:
+    def test_401_fails_all_types_with_status_code(self, mocker: MockerFixture, subtests: pytest.Subtests) -> None:
         """401 on first type should fail all remaining types with status code preserved."""
         mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response("garmin", 401, "authorization expired")
@@ -244,10 +247,10 @@ class TestGarminBackfillServiceResults:
         )
 
         # Both types should fail with status code preserved
-        assert "sleeps" in result["failed"]
-        assert result["failed_status_codes"]["sleeps"] == 401
-        assert "dailies" in result["failed"]
-        assert result["failed_status_codes"]["dailies"] == 401
+        for data_type in ["sleeps", "dailies"]:
+            with subtests.test(data_type=data_type):
+                assert data_type in result["failed"]
+                assert result["failed_status_codes"][data_type] == 401
         # Neither should be in triggered or duplicate
         assert result["triggered"] == []
         assert result["duplicate"] == []
@@ -275,7 +278,7 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    def test_412_fails_all_types_with_status_code(self, mocker: MockerFixture) -> None:
+    def test_412_fails_all_types_with_status_code(self, mocker: MockerFixture, subtests: pytest.Subtests) -> None:
         """412 on first type should fail all remaining types with status code preserved."""
         mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response(
@@ -294,8 +297,9 @@ class TestGarminBackfillServiceResults:
         )
 
         for data_type in ["sleeps", "dailies", "activities"]:
-            assert data_type in result["failed"]
-            assert result["failed_status_codes"][data_type] == 412
+            with subtests.test(data_type=data_type):
+                assert data_type in result["failed"]
+                assert result["failed_status_codes"][data_type] == 412
         assert result["triggered"] == []
         assert result["duplicate"] == []
 
