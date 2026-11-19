@@ -144,8 +144,12 @@ export async function revokeToken(refreshToken: string): Promise<void> {
 }
 
 /** The token is optional: a few endpoints, and the pairing page, have no session. */
-export async function apiGet<T>(path: string, accessToken?: string): Promise<T> {
-	const response = await authorized(path, {}, accessToken);
+export async function apiGet<T>(
+	path: string,
+	accessToken?: string,
+	headers?: Record<string, string>
+): Promise<T> {
+	const response = await authorized(path, { headers }, accessToken);
 
 	if (!response.ok) await raiseFor(response);
 	return response.json();

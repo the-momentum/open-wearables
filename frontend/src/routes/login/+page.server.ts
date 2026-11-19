@@ -32,6 +32,9 @@ export const actions: Actions = {
 			if (error instanceof ApiError && error.status === 403) {
 				return fail(403, { email, message: error.message });
 			}
+			if (error instanceof ApiError && error.status === 429) {
+				return fail(429, { email, message: error.message });
+			}
 			return fail(503, { email, message: 'Could not reach the server. Try again.' });
 		}
 

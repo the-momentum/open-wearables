@@ -844,6 +844,91 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/connect-token": {
+      "post": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Mint Connect Token",
+        "description": "Mint a token that lets an end user connect providers for this user only.\n\nSend it to `/oauth/{provider}/authorize` as `X-Open-Wearables-Connect-Token`, or share `pair_url`.",
+        "operationId": "mint_connect_token_api_v1_users__user_id__connect_token_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectTokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/personal-record": {
       "get": {
         "tags": [
@@ -4612,8 +4697,13 @@
           "External: Providers"
         ],
         "summary": "Get Provider Authorization URL",
-        "description": "Initiate OAuth flow for a provider.\n\nReturns authorization URL where user should be redirected to log in.",
+        "description": "Initiate OAuth flow for a provider.\n\nReturns authorization URL where user should be redirected to log in.\n\nRequires an API key, a developer token, or a token scoped to `user_id`: an SDK user token\nor a connect token (`X-Open-Wearables-Connect-Token`, from `POST /users/{user_id}/connect-token`).\n`redirect_uri` must match `OAUTH_REDIRECT_ALLOWLIST` (default `openwearables://oauth/callback`),\nthe dashboard origin (`FRONTEND_URL`) or `CORS_ORIGINS`. After the sign-in the browser is sent\nthere with `provider`, `status` (`success` or `error`) and, on error, `message` in the query,\nreplacing any parameters of the same name.",
         "operationId": "authorize_provider_api_v1_oauth__provider__authorize_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "provider",
@@ -4649,10 +4739,42 @@
                   "type": "null"
                 }
               ],
-              "description": "Optional redirect URI after authorization",
+              "description": "Where to send the browser after the provider sign-in; must be on the allowlist",
               "title": "Redirect Uri"
             },
-            "description": "Optional redirect URI after authorization"
+            "description": "Where to send the browser after the provider sign-in; must be on the allowlist"
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-Connect-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Connect-Token"
+            }
           }
         ],
         "responses": {
@@ -4764,7 +4886,7 @@
           "System: OAuth"
         ],
         "summary": "Oauth Callback",
-        "description": "OAuth callback endpoint.\n\nProvider redirects here after user authorizes. Exchanges code for tokens.",
+        "description": "OAuth callback endpoint.\n\nProvider redirects here after user authorizes. Exchanges code for tokens. When the\nflow was started with a redirect_uri, the browser goes back there on success and on\nfailure, so an app's sign-in sheet never ends on a JSON page.",
         "operationId": "oauth_callback_api_v1_oauth__provider__callback_get",
         "parameters": [
           {
@@ -11019,6 +11141,22 @@
               }
             }
           },
+          "429": {
+            "description": "Too many failed attempts for this email",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Too Many Requests",
+                  "status": 429,
+                  "detail": "Too many failed login attempts",
+                  "code": "TOO_MANY_REQUESTS"
+                }
+              }
+            }
+          },
           "4XX": {
             "description": "Client error",
             "content": {
@@ -11048,7 +11186,7 @@
           "Internal: Auth"
         ],
         "summary": "Logout",
-        "description": "Logout developer (token invalidation should be handled client-side).",
+        "description": "Logout developer. Revoke the refresh token with POST /api/v1/token/revoke.",
         "operationId": "logout_api_v1_auth_logout_post",
         "responses": {
           "200": {
@@ -14399,7 +14537,7 @@
           "System: Provider Webhooks (Deprecated)"
         ],
         "summary": "Garmin Webhook Ping Compat",
-        "description": "Deprecated: POST /api/v1/garmin/webhooks/ping.\n\nUse POST /api/v1/providers/garmin/webhooks instead.",
+        "description": "Deprecated: POST /api/v1/garmin/webhooks/ping.\n\nUse POST /api/v1/providers/garmin/webhooks/{callback token} instead.",
         "operationId": "garmin_webhook_ping_compat_api_v1_garmin_webhooks_ping_post",
         "responses": {
           "200": {
@@ -14444,7 +14582,7 @@
           "System: Provider Webhooks (Deprecated)"
         ],
         "summary": "Garmin Webhook Push Compat",
-        "description": "Deprecated: POST /api/v1/garmin/webhooks/push.\n\nUse POST /api/v1/providers/garmin/webhooks instead.",
+        "description": "Deprecated: POST /api/v1/garmin/webhooks/push.\n\nUse POST /api/v1/providers/garmin/webhooks/{callback token} instead.",
         "operationId": "garmin_webhook_push_compat_api_v1_garmin_webhooks_push_post",
         "responses": {
           "200": {
@@ -15510,6 +15648,31 @@
         ],
         "title": "ConfigResponse",
         "description": "Instance feature flags for the admin panel. Additive-only: append new flags,\nnever remove or repurpose, so the frontend stays backward compatible."
+      },
+      "ConnectTokenResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "pair_url": {
+            "type": "string",
+            "title": "Pair Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at",
+          "pair_url"
+        ],
+        "title": "ConnectTokenResponse",
+        "description": "Token that lets an end user start provider OAuth for one user, plus the pairing link carrying it."
       },
       "ConnectionStatus": {
         "type": "string",

@@ -546,6 +546,35 @@ class TestAppleSDKImport:
         assert details.steps_count == 4500
         assert details.distance == Decimal("3200")
 
+    def test_last_delivery_of_a_workout_in_one_request_keeps_its_details(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        user = UserFactory()
+
+        def delivery(end: str, steps: int) -> dict[str, Any]:
+            return {
+                "id": "ABAB0000-1111-2222-3333-444455556666",
+                "type": "walking",
+                "startDate": "2025-01-29T12:00:00Z",
+                "endDate": end,
+                "source": {"name": "Apple Watch", "bundleIdentifier": "com.apple.health"},
+                "values": [{"type": "stepCount", "unit": "count", "value": steps}],
+            }
+
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {"workouts": [delivery("2025-01-29T12:40:00Z", 4000), delivery("2025-01-29T12:45:00Z", 4500)]},
+        }
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["workouts_saved"] == 1
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+        assert details.steps_count == 4500
+
     def test_import_workout_with_fractional_steps(
         self,
         db: Session,

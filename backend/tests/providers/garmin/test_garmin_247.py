@@ -667,6 +667,27 @@ class TestGarmin247Data:
     # HRV Data Tests
     # -------------------------------------------------------------------------
 
+    @pytest.mark.parametrize(
+        ("callback_url", "downloaded"),
+        [
+            ("https://apis.garmin.com/wellness-api/rest/activityFile?id=1&token=t", True),
+            ("https://attacker.example/collect", False),
+            ("https://apis.garmin.com.attacker.example/x", False),
+            ("http://apis.garmin.com/wellness-api/rest/activityFile?id=1", False),
+        ],
+    )
+    def test_fit_file_downloaded_only_from_garmin(
+        self, garmin_247: Garmin247Data, db: Session, callback_url: str, downloaded: bool
+    ) -> None:
+        item = {"userId": "garmin_user_123", "activityId": 1, "fileType": "FIT", "callbackURL": callback_url}
+
+        with patch(
+            "app.services.providers.garmin.data_247.download_binary_content", side_effect=RuntimeError
+        ) as download:
+            garmin_247.process_items_batch(db, UserFactory().id, "activityFiles", [item])
+
+        assert download.called is downloaded
+
     def test_process_items_batch_hrv(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data."""
         user = UserFactory()
@@ -1111,7 +1132,7 @@ class TestGarmin247Data:
         sleep2 = {**sample_sleep, "summaryId": "sleep_456"}
 
         # Make bulk_create return the actual record IDs that were passed in
-        mock_bulk_create.side_effect = lambda db_session, records: [r.id for r in records]
+        mock_bulk_create.side_effect = lambda db_session, records: {r.id: r.id for r in records}
 
         count = garmin_247.process_items_batch(db, user.id, "sleeps", [sample_sleep, sleep2])
 
@@ -1187,7 +1208,7 @@ class TestGarmin247Data:
                 }
             ],
         }
-        mock_bulk_create.side_effect = lambda db_session, records: [r.id for r in records]
+        mock_bulk_create.side_effect = lambda db_session, records: {r.id: r.id for r in records}
 
         count = garmin_247.process_items_batch(db, user.id, "sleeps", [sleep_with_nap])
 

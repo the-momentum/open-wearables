@@ -7,8 +7,8 @@ New integrations must use:
   POST /api/v1/providers/{provider}/webhooks
 
 Migration status:
-  Garmin  — was in production; old URLs kept until Garmin Developer Portal
-            is updated to the new canonical path.
+  Garmin  — was in production; old URLs cannot carry the callback token, so they
+            work only while GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN is on.
   Oura    — was not in production; old paths kept for completeness only.
   Strava  — was not in production; old paths removed, since its callback URL
             must carry a secret token (POST /api/v1/providers/strava/webhooks/{token}).
@@ -42,7 +42,8 @@ async def _read_body(request: Request) -> bytes:
 
 # ---------------------------------------------------------------------------
 # Garmin — canonical path changed from /garmin/webhooks/{ping,push}
-#          to /providers/garmin/webhooks in commit e458cdeb.
+#          to /providers/garmin/webhooks in commit e458cdeb, and then to
+#          /providers/garmin/webhooks/{callback token}.
 # ---------------------------------------------------------------------------
 
 
@@ -54,7 +55,7 @@ def garmin_webhook_ping_compat(
 ) -> dict:
     """Deprecated: POST /api/v1/garmin/webhooks/ping.
 
-    Use POST /api/v1/providers/garmin/webhooks instead.
+    Use POST /api/v1/providers/garmin/webhooks/{callback token} instead.
     """
     handler = _get_garmin_handler()
     return handler.handle(request, body, db)
@@ -68,7 +69,7 @@ def garmin_webhook_push_compat(
 ) -> dict:
     """Deprecated: POST /api/v1/garmin/webhooks/push.
 
-    Use POST /api/v1/providers/garmin/webhooks instead.
+    Use POST /api/v1/providers/garmin/webhooks/{callback token} instead.
     """
     handler = _get_garmin_handler()
     return handler.handle(request, body, db)

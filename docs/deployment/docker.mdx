@@ -168,10 +168,11 @@ The defaults in `.env.example` are development values. Override at least these f
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |
 | `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
+| `OAUTH_REDIRECT_ALLOWLIST` | extra places the provider sign-in may return to besides `FRONTEND_URL` and `CORS_ORIGINS`, e.g. `myapp://oauth/callback` (default allows the Open Wearables Connect app) |
 | `VITE_API_URL` | URL of the API as reached from the browser |
 | `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 
-Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again and update the secret in the Suunto portal.
+Replacing an existing `SECRET_KEY` (e.g. one shorter than 32 characters, which no longer starts) signs everyone out, invalidates issued SDK tokens and changes the webhook secrets that default to it: register those webhooks again, update the secret in the Suunto portal, and set the new Garmin webhook URL for every data type in the Garmin portal (see [Garmin API Integration](/providers/garmin-api-integration)).
 
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 

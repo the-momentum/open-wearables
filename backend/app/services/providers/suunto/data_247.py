@@ -35,6 +35,7 @@ from app.services.providers.suunto.coverage import ACTIVITY_SERIES, DAILY_STAT_S
 from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import as_int, seconds_to_minutes, sum_optional
 from app.utils.dates import align_tz_awareness, offset_of, parse_iso_datetime
@@ -101,7 +102,7 @@ class Suunto247Data(Base247DataTemplate):
         if headers:
             all_headers.update(headers)
 
-        return make_authenticated_request(
+        response = make_authenticated_request(
             db=db,
             user_id=user_id,
             connection_repo=self.connection_repo,
@@ -113,6 +114,10 @@ class Suunto247Data(Base247DataTemplate):
             params=params,
             headers=all_headers,
         )
+        store_raw_payload(
+            source="api_response", provider="suunto", payload=response, user_id=str(user_id), trace_id=endpoint
+        )
+        return response
 
     @staticmethod
     def _epoch_ms(dt: datetime) -> int:
