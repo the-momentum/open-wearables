@@ -15,7 +15,7 @@ from collections.abc import Callable, Generator
 from contextlib import ExitStack
 from typing import Any, Concatenate
 from unittest.mock import MagicMock, patch
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import bcrypt
 import pytest
@@ -214,15 +214,16 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 @pytest.fixture(scope="session")
 def _redis_url() -> str:
     """Each xdist worker gets its own Redis database number, so flush_redis stays per worker."""
-    base_url = _infrastructure_urls["redis"]
+    parsed = urlparse(_infrastructure_urls["redis"])
+    query = parse_qs(parsed.query)
+    db_param = query.pop("db", None)  # redis-py lets ?db= override the path, so fold it into the path
+    db = int(db_param[0] if db_param else parsed.path.lstrip("/") or 0)
     worker = _xdist_worker_index()
-    if worker is None:
-        return base_url
-    parsed = urlparse(base_url)
-    db = int(parsed.path.lstrip("/") or 0) + worker
-    if db > 15:  # Redis ships with databases 0-15
-        pytest.exit(f"Redis has no database {db} for xdist worker gw{worker}; run with fewer workers (-n)", 2)
-    return parsed._replace(path=f"/{db}").geturl()
+    if worker is not None:
+        db += worker
+        if db > 15:  # Redis ships with databases 0-15
+            pytest.exit(f"Redis has no database {db} for xdist worker gw{worker}; run with fewer workers (-n)", 2)
+    return parsed._replace(path=f"/{db}", query=urlencode(query, doseq=True)).geturl()
 
 
 @pytest.fixture(scope="session", autouse=True)
