@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from fastapi import Request
 from pydantic import SecretStr
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
@@ -77,16 +78,16 @@ def test_probe_rejects_an_unauthenticated_head_request() -> None:
         ({"userid": "42", "appli": 46, "action": "update"}, "profile_change"),
     ],
 )
-@patch("app.services.providers.withings.webhook_handler.store_raw_payload", autospec=True)
-def test_dispatch_ignores_unusable_notifications(mock_store: MagicMock, payload: dict, reason: str) -> None:
+def test_dispatch_ignores_unusable_notifications(mocker: MockerFixture, payload: dict, reason: str) -> None:
     # Asserted through dispatch rather than the guards themselves: an ignored
     # notification must never reach the queue.
+    mock_store = mocker.patch("app.services.providers.withings.webhook_handler.store_raw_payload", autospec=True)
     assert _handler().dispatch(MagicMock(spec=Session), payload)["reason"] == reason
     mock_store.assert_called_once()
 
 
-@patch("app.services.providers.withings.webhook_handler.store_raw_payload", autospec=True)
-def test_dispatch_ignores_data_notifications_while_in_pull_mode(mock_store: MagicMock) -> None:
+def test_dispatch_ignores_data_notifications_while_in_pull_mode(mocker: MockerFixture) -> None:
+    mocker.patch("app.services.providers.withings.webhook_handler.store_raw_payload", autospec=True)
     payload = {"userid": "42", "appli": 1, "startdate": 100, "enddate": 200}
 
     result = _handler(LiveSyncMode.PULL).dispatch(MagicMock(spec=Session), payload)
@@ -94,9 +95,9 @@ def test_dispatch_ignores_data_notifications_while_in_pull_mode(mock_store: Magi
     assert result["reason"] == "live_sync_mode_not_webhook"
 
 
-@patch("app.services.providers.withings.webhook_handler.store_raw_payload", autospec=True)
-@patch("app.services.providers.withings.webhook_handler.celery_app.send_task", autospec=True)
-def test_dispatch_acknowledges_and_defers_the_fetch(mock_send: MagicMock, mock_store: MagicMock) -> None:
+def test_dispatch_acknowledges_and_defers_the_fetch(mocker: MockerFixture) -> None:
+    mock_send = mocker.patch("app.services.providers.withings.webhook_handler.celery_app.send_task", autospec=True)
+    mock_store = mocker.patch("app.services.providers.withings.webhook_handler.store_raw_payload", autospec=True)
     handler = _handler()
     handler.connection_repo = create_autospec(UserConnectionRepository, instance=True)
 
@@ -107,9 +108,9 @@ def test_dispatch_acknowledges_and_defers_the_fetch(mock_send: MagicMock, mock_s
     assert mock_send.call_args.kwargs["queue"] == "webhook_sync"
 
 
-@patch("app.services.providers.withings.webhook_handler.on_connection_revoked", autospec=True)
-def test_profile_delete_revokes_every_local_connection_for_that_account(mock_revoked: MagicMock) -> None:
+def test_profile_delete_revokes_every_local_connection_for_that_account(mocker: MockerFixture) -> None:
     # One Withings account can back several local profiles; all lose access together.
+    mock_revoked = mocker.patch("app.services.providers.withings.webhook_handler.on_connection_revoked", autospec=True)
     handler = _handler()
     handler.connection_repo = create_autospec(UserConnectionRepository, instance=True)
     connections = [
@@ -189,10 +190,12 @@ def test_reconcile_user_skips_when_the_webhook_token_is_unconfigured(
     assert results == [{"status": "skipped", "reason": "webhook_token_unconfigured"}]
 
 
-@patch("app.services.providers.withings.webhook_service.WithingsWebhookService.sync_user", autospec=True)
-@patch("app.services.providers.withings.oauth.SessionLocal", autospec=True)
-def test_deregister_user_revokes_only_when_it_is_the_last_link(mock_session: MagicMock, mock_sync: MagicMock) -> None:
+def test_deregister_user_revokes_only_when_it_is_the_last_link(mocker: MockerFixture) -> None:
     # Subscriptions belong to the Withings account, so a sibling profile keeps them.
+    mocker.patch("app.services.providers.withings.oauth.SessionLocal", autospec=True)
+    mock_sync = mocker.patch(
+        "app.services.providers.withings.webhook_service.WithingsWebhookService.sync_user", autospec=True
+    )
     oauth = WithingsOAuth(
         user_repo=create_autospec(UserRepository, instance=True),
         connection_repo=create_autospec(UserConnectionRepository, instance=True),

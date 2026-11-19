@@ -7,6 +7,7 @@ Tests database health check endpoint and pool status monitoring.
 from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import QueuePool
 
@@ -16,9 +17,9 @@ from app.utils.healthcheck import database_health, get_pool_status
 class TestGetPoolStatus:
     """Test suite for get_pool_status function."""
 
-    @patch("app.utils.healthcheck.engine", autospec=True)
-    def test_get_pool_status_returns_all_fields(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_returns_all_fields(self, mocker: MockerFixture) -> None:
         """Test that get_pool_status returns all required pool fields."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
         mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 10
@@ -36,9 +37,9 @@ class TestGetPoolStatus:
         assert "active_connections" in result
         assert "overflow" in result
 
-    @patch("app.utils.healthcheck.engine", autospec=True)
-    def test_get_pool_status_returns_string_values(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_returns_string_values(self, mocker: MockerFixture) -> None:
         """Test that all pool status values are returned as strings."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
         mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 10
@@ -57,9 +58,9 @@ class TestGetPoolStatus:
         assert result["overflow"] == "0"
         assert all(isinstance(v, str) for v in result.values())
 
-    @patch("app.utils.healthcheck.engine", autospec=True)
-    def test_get_pool_status_with_zero_connections(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_with_zero_connections(self, mocker: MockerFixture) -> None:
         """Test pool status when no connections are active."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
         mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 5
@@ -75,9 +76,9 @@ class TestGetPoolStatus:
         assert result["active_connections"] == "0"
         assert result["connections_ready_for_reuse"] == "5"
 
-    @patch("app.utils.healthcheck.engine", autospec=True)
-    def test_get_pool_status_with_overflow(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_with_overflow(self, mocker: MockerFixture) -> None:
         """Test pool status when overflow connections exist."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
         mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 10

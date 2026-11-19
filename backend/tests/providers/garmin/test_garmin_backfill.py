@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import redis
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.garmin.backfill_task import start_full_backfill
@@ -166,9 +167,9 @@ class TestGarminBackfillServiceResults:
             oauth=oauth,
         )
 
-    @patch.object(GarminBackfillService, "_make_api_request", autospec=True)
-    def test_409_duplicate_goes_to_duplicate_list(self, mock_api: MagicMock) -> None:
+    def test_409_duplicate_goes_to_duplicate_list(self, mocker: MockerFixture) -> None:
         """409 responses should land in 'duplicate', not 'triggered'."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response("garmin", 409, "duplicate backfill")
         service = self._make_service()
         db = MagicMock(spec=Session)
@@ -186,9 +187,9 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result.get("failed", {})
 
-    @patch.object(GarminBackfillService, "_make_api_request", autospec=True)
-    def test_202_accepted_goes_to_triggered(self, mock_api: MagicMock) -> None:
+    def test_202_accepted_goes_to_triggered(self, mocker: MockerFixture) -> None:
         """Successful 202 responses should land in 'triggered'."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.return_value = None  # 202 returns empty body
         service = self._make_service()
         db = MagicMock(spec=Session)
@@ -205,9 +206,9 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    @patch.object(GarminBackfillService, "_make_api_request", autospec=True)
-    def test_401_goes_to_failed(self, mock_api: MagicMock) -> None:
+    def test_401_goes_to_failed(self, mocker: MockerFixture) -> None:
         """401 responses should land in 'failed'."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response("garmin", 401, "authorization expired")
         service = self._make_service()
         db = MagicMock(spec=Session)
@@ -226,9 +227,9 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    @patch.object(GarminBackfillService, "_make_api_request", autospec=True)
-    def test_401_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
+    def test_401_fails_all_types_with_status_code(self, mocker: MockerFixture) -> None:
         """401 on first type should fail all remaining types with status code preserved."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response("garmin", 401, "authorization expired")
         service = self._make_service()
         db = MagicMock(spec=Session)
@@ -251,9 +252,9 @@ class TestGarminBackfillServiceResults:
         assert result["triggered"] == []
         assert result["duplicate"] == []
 
-    @patch.object(GarminBackfillService, "_make_api_request", autospec=True)
-    def test_412_goes_to_failed(self, mock_api: MagicMock) -> None:
+    def test_412_goes_to_failed(self, mocker: MockerFixture) -> None:
         """412 responses should land in 'failed' with status code preserved."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response(
             "garmin", 412, "Access denied for consumer required HISTORICAL_DATA_EXPORT"
         )
@@ -274,9 +275,9 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    @patch.object(GarminBackfillService, "_make_api_request", autospec=True)
-    def test_412_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
+    def test_412_fails_all_types_with_status_code(self, mocker: MockerFixture) -> None:
         """412 on first type should fail all remaining types with status code preserved."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response(
             "garmin", 412, "Access denied for consumer required HISTORICAL_DATA_EXPORT"
         )

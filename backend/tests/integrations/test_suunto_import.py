@@ -18,6 +18,7 @@ import pytest
 import redis
 import respx
 from jose import jwt
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
@@ -188,21 +189,24 @@ class TestSuuntoImport:
             assert result["payload"][0]["activityId"] == 1  # Running
             assert result["payload"][1]["activityId"] == 2  # Cycling
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_load_data_creates_event_records(
         self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
+        mocker: MockerFixture,
         suunto_strategy: SuuntoStrategy,
         db: Session,
         sample_suunto_api_response: dict[str, Any],
     ) -> None:
         """Should load data and create event records in database."""
+        mock_ensure_data_source = mocker.patch(
+            "app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True
+        )
+        mock_create_detail = mocker.patch(
+            "app.services.event_record_service.event_record_service.create_detail", autospec=True
+        )
+        mock_create = mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
@@ -232,14 +236,13 @@ class TestSuuntoImport:
         assert get_unified_workout_type(74) == WorkoutType.TRIATHLON
         assert get_unified_workout_type(999) == WorkoutType.OTHER  # Unknown activity
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
     def test_get_workout_detail_from_api(
-        self,
-        mock_request: MagicMock,
-        suunto_strategy: SuuntoStrategy,
-        db: Session,
+        self, mocker: MockerFixture, suunto_strategy: SuuntoStrategy, db: Session
     ) -> None:
         """Should fetch detailed workout data from API."""
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
@@ -305,14 +308,13 @@ class TestSuuntoImport:
         assert connection.access_token == "new_access_token"
         assert connection.refresh_token == "new_refresh_token"
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
     def test_subscription_key_included_in_requests(
-        self,
-        mock_request: MagicMock,
-        suunto_strategy: SuuntoStrategy,
-        db: Session,
+        self, mocker: MockerFixture, suunto_strategy: SuuntoStrategy, db: Session
     ) -> None:
         """Should include subscription key in API requests."""
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
@@ -337,14 +339,11 @@ class TestSuuntoImport:
             assert "Ocp-Apim-Subscription-Key" in headers
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
-    def test_error_response_handling(
-        self,
-        mock_request: MagicMock,
-        suunto_strategy: SuuntoStrategy,
-        db: Session,
-    ) -> None:
+    def test_error_response_handling(self, mocker: MockerFixture, suunto_strategy: SuuntoStrategy, db: Session) -> None:
         """Should handle API error responses gracefully."""
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)

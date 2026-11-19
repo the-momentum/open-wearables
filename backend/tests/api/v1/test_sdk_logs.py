@@ -1,7 +1,6 @@
 """Tests for SDK logs endpoint."""
 
-from unittest.mock import MagicMock, patch
-
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
@@ -64,8 +63,8 @@ def _payload(*events: dict) -> dict:
 
 
 class TestSDKLogsHappyPath:
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_all_event_types_accepted(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_all_event_types_accepted(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mock_store = mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -76,8 +75,8 @@ class TestSDKLogsHappyPath:
         assert response.json()["user_id"] == USER_ID
         mock_store.assert_called_once()
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_sync_start_only(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_sync_start_only(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -86,8 +85,8 @@ class TestSDKLogsHappyPath:
         )
         assert response.status_code == 202
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_per_type_sync_end(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_per_type_sync_end(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -96,8 +95,8 @@ class TestSDKLogsHappyPath:
         )
         assert response.status_code == 202
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_device_state_only(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_device_state_only(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -106,8 +105,8 @@ class TestSDKLogsHappyPath:
         )
         assert response.status_code == 202
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_provider_omitted_defaults_to_unknown(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_provider_omitted_defaults_to_unknown(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mock_store = mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -118,11 +117,11 @@ class TestSDKLogsHappyPath:
         mock_store.assert_called_once()
         assert mock_store.call_args.kwargs["provider"] == "unknown"
 
-    @patch("app.api.routes.v1.sdk_logs.emit_sync_started", autospec=True)
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
     def test_provider_alias_opens_the_run_under_the_canonical_slug(
-        self, mock_store: MagicMock, mock_started: MagicMock, client: TestClient, db: Session
+        self, mocker: MockerFixture, client: TestClient, db: Session
     ) -> None:
+        mock_store = mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
+        mock_started = mocker.patch("app.api.routes.v1.sdk_logs.emit_sync_started", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -133,11 +132,11 @@ class TestSDKLogsHappyPath:
         assert mock_started.call_args.args[1] == "health_connect"
         assert mock_store.call_args.kwargs["provider"] == "health_connect"
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
     def test_time_range_without_start_date_accepted(
-        self, mock_store: MagicMock, client: TestClient, db: Session
+        self, mocker: MockerFixture, client: TestClient, db: Session
     ) -> None:
         """Full-history sync: the SDK omits startDate when no day limit is configured."""
+        mock_store = mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         event = {
             **SYNC_START_EVENT,
@@ -151,8 +150,8 @@ class TestSDKLogsHappyPath:
         assert response.status_code == 202
         mock_store.assert_called_once()
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_android_data_types_accepted(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_android_data_types_accepted(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         event = {
             "eventType": "historical_data_sync_start",
@@ -169,11 +168,9 @@ class TestSDKLogsHappyPath:
         )
         assert response.status_code == 202
 
-    @patch("app.api.routes.v1.sdk_logs.logger", autospec=True)
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_attribution_headers_are_logged(
-        self, mock_store: MagicMock, mock_log: MagicMock, client: TestClient, db: Session
-    ) -> None:
+    def test_attribution_headers_are_logged(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
+        mock_log = mocker.patch("app.api.routes.v1.sdk_logs.logger", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -191,11 +188,9 @@ class TestSDKLogsHappyPath:
         assert attributes["sdk_platform"] == "ios"
         assert attributes["request_id"] == "req-1"
 
-    @patch("app.api.routes.v1.sdk_logs.logger", autospec=True)
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_body_version_logged_without_headers(
-        self, mock_store: MagicMock, mock_log: MagicMock, client: TestClient, db: Session
-    ) -> None:
+    def test_body_version_logged_without_headers(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
+        mock_log = mocker.patch("app.api.routes.v1.sdk_logs.logger", autospec=True)
         api_key = ApiKeyFactory()
         client.post(_url(), headers={"X-Open-Wearables-API-Key": api_key.plain_key}, json=_payload(DEVICE_STATE_EVENT))
         attributes = mock_log.info.call_args.kwargs
@@ -261,8 +256,8 @@ class TestSDKLogsEventFields:
 
 
 class TestSDKLogsAuth:
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_sdk_token_accepted(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_sdk_token_accepted(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         token = create_sdk_user_token("app_123", USER_ID)
         response = client.post(
             _url(),
@@ -271,8 +266,8 @@ class TestSDKLogsAuth:
         )
         assert response.status_code == 202
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_api_key_accepted(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_api_key_accepted(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
@@ -288,8 +283,8 @@ class TestSDKLogsAuth:
         )
         assert response.status_code == 401
 
-    @patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
-    def test_token_user_id_mismatch_returns_403(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
+    def test_token_user_id_mismatch_returns_403(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
+        mocker.patch("app.api.routes.v1.sdk_logs.store_raw_payload", autospec=True)
         token = create_sdk_user_token("app_123", "00000000-0000-0000-0000-000000000000")
         response = client.post(
             _url(),

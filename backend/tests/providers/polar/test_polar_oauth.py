@@ -5,12 +5,13 @@ Tests the PolarOAuth class for OAuth 2.0 authentication flow with Polar API.
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
 import redis
 import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.schemas.model_crud.credentials import OAuthTokenResponse
@@ -116,9 +117,9 @@ class TestPolarOAuthConfiguration:
 class TestPolarOAuthAuthorization:
     """Tests for Polar OAuth authorization URL generation."""
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
-    def test_get_authorization_url(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_get_authorization_url(self, mocker: MockerFixture, db: Session) -> None:
         """Test generating authorization URL for Polar."""
+        mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         # Arrange
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
@@ -159,9 +160,9 @@ class TestPolarOAuthAuthorization:
         assert call_args[0][1] == 900  # TTL
         assert str(user.id) in call_args[0][2]  # State contains user_id
 
-    @patch("app.integrations.redis_client.get_redis_client", autospec=True)
-    def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_authorization_url_includes_scope(self, mocker: MockerFixture, db: Session) -> None:
         """Test authorization URL includes default scope."""
+        mock_redis_client = mocker.patch("app.integrations.redis_client.get_redis_client", autospec=True)
         # Arrange
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository

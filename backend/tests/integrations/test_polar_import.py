@@ -5,7 +5,7 @@ Tests end-to-end import flows for Polar exercise data through API endpoints.
 """
 
 from typing import Any
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest.mock import MagicMock, create_autospec
 
 import httpx
 import pytest
@@ -13,6 +13,7 @@ import redis
 import respx
 from celery.result import AsyncResult
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from tests.factories import ApiKeyFactory, DeveloperFactory, UserConnectionFactory, UserFactory
@@ -50,14 +51,9 @@ def sample_polar_exercise() -> dict[str, Any]:
 class TestPolarOAuthFlow:
     """Tests for Polar OAuth authorization and callback flow."""
 
-    @patch("app.integrations.redis_client.get_redis_client", autospec=True)
-    def test_get_polar_authorization_url(
-        self,
-        mock_redis_client: MagicMock,
-        client: TestClient,
-        db: Session,
-    ) -> None:
+    def test_get_polar_authorization_url(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
         """Test getting Polar authorization URL."""
+        mock_redis_client = mocker.patch("app.integrations.redis_client.get_redis_client", autospec=True)
         # Arrange
         user = UserFactory()
         developer = DeveloperFactory()
@@ -80,17 +76,12 @@ class TestPolarOAuthFlow:
             data = response.json()
             assert "authorization_url" in data or "url" in data
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
-    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
     def test_polar_oauth_callback_success(
-        self,
-        mock_redis_client: MagicMock,
-        mock_celery_task: MagicMock,
-        respx_mock: respx.MockRouter,
-        client: TestClient,
-        db: Session,
+        self, mocker: MockerFixture, respx_mock: respx.MockRouter, client: TestClient, db: Session
     ) -> None:
         """Test successful Polar OAuth callback."""
+        mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
+        mock_celery_task = mocker.patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
         # Arrange
         user = UserFactory()
         developer = DeveloperFactory()
@@ -141,15 +132,13 @@ class TestPolarOAuthFlow:
 class TestPolarWorkoutsAPI:
     """Tests for Polar workouts API endpoints."""
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
     def test_get_polar_workouts_list(
-        self,
-        mock_request: MagicMock,
-        client: TestClient,
-        db: Session,
-        sample_polar_exercise: dict[str, Any],
+        self, mocker: MockerFixture, client: TestClient, db: Session, sample_polar_exercise: dict[str, Any]
     ) -> None:
         """Test getting list of Polar workouts."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="polar")
@@ -168,15 +157,13 @@ class TestPolarWorkoutsAPI:
         # Assert
         assert response.status_code in [200, 404, 422]
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
     def test_get_polar_workout_detail(
-        self,
-        mock_request: MagicMock,
-        client: TestClient,
-        db: Session,
-        sample_polar_exercise: dict[str, Any],
+        self, mocker: MockerFixture, client: TestClient, db: Session, sample_polar_exercise: dict[str, Any]
     ) -> None:
         """Test getting detailed Polar workout data."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="polar")
@@ -196,9 +183,11 @@ class TestPolarWorkoutsAPI:
         # Assert
         assert response.status_code in [200, 404, 422]
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
-    def test_get_polar_workouts_with_samples(self, mock_request: MagicMock, client: TestClient, db: Session) -> None:
+    def test_get_polar_workouts_with_samples(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
         """Test getting Polar workouts with samples parameter."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="polar")
@@ -239,19 +228,15 @@ class TestPolarWorkoutsAPI:
 class TestPolarDataSync:
     """Tests for syncing Polar data."""
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
     def test_sync_polar_data_success(
-        self,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
-        client: TestClient,
-        db: Session,
-        sample_polar_exercise: dict[str, Any],
+        self, mocker: MockerFixture, client: TestClient, db: Session, sample_polar_exercise: dict[str, Any]
     ) -> None:
         """Test successful Polar data sync."""
+        mocker.patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
+        mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="polar")
@@ -270,9 +255,11 @@ class TestPolarDataSync:
         # Assert
         assert response.status_code in [200, 201, 202, 404, 422]
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
-    def test_sync_polar_data_with_date_range(self, mock_request: MagicMock, client: TestClient, db: Session) -> None:
+    def test_sync_polar_data_with_date_range(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
         """Test syncing Polar data with specific date range."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="polar")

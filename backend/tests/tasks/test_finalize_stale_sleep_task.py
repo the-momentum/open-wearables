@@ -6,10 +6,11 @@ inactive in Redis for longer than the configured threshold.
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import redis
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
@@ -21,15 +22,14 @@ from app.services.sdk.sleep_service import active_users_key
 class TestFinalizeStaleSleepsTask:
     """Test suite for finalize_stale_sleeps task."""
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_no_active_users(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_no_active_users(self, mocker: MockerFixture, db: Session) -> None:
         """Verify task completes successfully when no active sleep sessions exist."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
         # Arrange
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -45,19 +45,20 @@ class TestFinalizeStaleSleepsTask:
         assert result is None  # Task should complete without errors
         mock_redis.smembers.assert_called_once()
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_with_stale_session(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        mock_load_state: MagicMock,
-        mock_finish_sleep: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_with_stale_session(self, mocker: MockerFixture, db: Session) -> None:
         """Verify task finalizes sleep sessions older than threshold."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
+        mock_load_state = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True
+        )
+        mock_finish_sleep = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True
+        )
         # Arrange
         user_id = str(uuid4())
         now = datetime.now(timezone.utc)
@@ -96,19 +97,20 @@ class TestFinalizeStaleSleepsTask:
         mock_load_state.assert_called_once_with(user_id)
         mock_finish_sleep.assert_called_once_with(db, user_id, mock_sleep_state)
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_skips_recent_session(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        mock_load_state: MagicMock,
-        mock_finish_sleep: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_skips_recent_session(self, mocker: MockerFixture, db: Session) -> None:
         """Verify task does not finalize recent sleep sessions."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
+        mock_load_state = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True
+        )
+        mock_finish_sleep = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True
+        )
         # Arrange
         user_id = str(uuid4())
         now = datetime.now(timezone.utc)
@@ -147,19 +149,20 @@ class TestFinalizeStaleSleepsTask:
         mock_load_state.assert_called_once_with(user_id)
         mock_finish_sleep.assert_not_called()  # Should not finalize recent sessions
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_closes_a_quiet_apple_watch_session(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        mock_load_state: MagicMock,
-        mock_finish_sleep: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_closes_a_quiet_apple_watch_session(self, mocker: MockerFixture, db: Session) -> None:
         """An Apple Watch night closes once its uploads go quiet; another app's session waits for the end gap."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
+        mock_load_state = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True
+        )
+        mock_finish_sleep = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True
+        )
         user_id = str(uuid4())
         now = datetime.now(timezone.utc)
         woke_up = now - timedelta(minutes=40)
@@ -192,17 +195,17 @@ class TestFinalizeStaleSleepsTask:
 
         mock_finish_sleep.assert_called_once_with(db, user_id, mock_sleep_state)
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_handles_missing_state(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        mock_load_state: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_handles_missing_state(self, mocker: MockerFixture, db: Session) -> None:
         """Verify task gracefully handles users with no sleep state."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
+        mock_load_state = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True
+        )
         # Arrange
         user_id = str(uuid4())
 
@@ -223,19 +226,20 @@ class TestFinalizeStaleSleepsTask:
         mock_load_state.assert_called_once_with(user_id)
         mock_redis.srem.assert_called_once_with(active_users_key(), user_id)
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_handles_multiple_users(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        mock_load_state: MagicMock,
-        mock_finish_sleep: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_handles_multiple_users(self, mocker: MockerFixture, db: Session) -> None:
         """Verify task processes multiple users with stale sessions."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
+        mock_load_state = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True
+        )
+        mock_finish_sleep = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True
+        )
         # Arrange
         user_id_1 = str(uuid4())
         user_id_2 = str(uuid4())
@@ -299,21 +303,21 @@ class TestFinalizeStaleSleepsTask:
         mock_finish_sleep.assert_any_call(db, user_id_1, state_1)
         mock_finish_sleep.assert_any_call(db, user_id_3, state_3)
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.logger", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_handles_finish_error(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        mock_load_state: MagicMock,
-        mock_finish_sleep: MagicMock,
-        mock_log_error: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_handles_finish_error(self, mocker: MockerFixture, db: Session) -> None:
         """Verify task continues processing other users if one finalization fails."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
+        mock_load_state = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True
+        )
+        mock_finish_sleep = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep", autospec=True
+        )
+        mock_log_error = mocker.patch("app.integrations.celery.tasks.finalize_stale_sleep_task.logger", autospec=True)
         # Arrange
         user_id_1 = str(uuid4())
         user_id_2 = str(uuid4())
@@ -377,17 +381,17 @@ class TestFinalizeStaleSleepsTask:
         # Verify user 2 was still processed despite user 1 error
         mock_finish_sleep.assert_any_call(db, user_id_2, state_2)
 
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True)
-    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True)
-    def test_finalize_stale_sleeps_handles_malformed_state(
-        self,
-        mock_session_local: MagicMock,
-        mock_redis_client_func: MagicMock,
-        mock_load_state: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finalize_stale_sleeps_handles_malformed_state(self, mocker: MockerFixture, db: Session) -> None:
         """Verify task skips users whose sleep state cannot be parsed from Redis."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        mock_redis_client_func = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client", autospec=True
+        )
+        mock_load_state = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_states", autospec=True
+        )
         # Arrange
         user_id = str(uuid4())
 

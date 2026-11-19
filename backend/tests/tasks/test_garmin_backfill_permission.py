@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import pytest
 import redis
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.garmin.backfill_task import start_full_backfill
@@ -43,9 +44,9 @@ def _patch_session() -> Generator[MagicMock, None, None]:
 class TestBackfillPermissionCheck:
     """Ensure start_full_backfill respects HISTORICAL_DATA_EXPORT scope."""
 
-    @patch(f"{MODULE}.UserConnectionRepository", autospec=True)
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
-    def test_skips_without_historical_data_export(self, mock_repo_cls: MagicMock) -> None:
+    def test_skips_without_historical_data_export(self, mocker: MockerFixture) -> None:
+        mock_repo_cls = mocker.patch(f"{MODULE}.UserConnectionRepository", autospec=True)
         mock_repo_cls.return_value.get_by_user_and_provider.return_value = _make_connection(
             "ACTIVITY_EXPORT HEALTH_EXPORT"
         )
@@ -55,10 +56,10 @@ class TestBackfillPermissionCheck:
         assert result["status"] == "skipped"
         assert "HISTORICAL_DATA_EXPORT" in result["reason"]
 
-    @patch(f"{MODULE}.UserConnectionRepository", autospec=True)
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
-    def test_proceeds_when_scope_is_none(self, mock_repo_cls: MagicMock) -> None:
+    def test_proceeds_when_scope_is_none(self, mocker: MockerFixture) -> None:
         """scope=None means permissions fetch failed during OAuth — treat as unknown and proceed."""
+        mock_repo_cls = mocker.patch(f"{MODULE}.UserConnectionRepository", autospec=True)
         mock_repo_cls.return_value.get_by_user_and_provider.return_value = _make_connection(None)
 
         with (
@@ -73,9 +74,9 @@ class TestBackfillPermissionCheck:
 
         assert result["status"] == "started"
 
-    @patch(f"{MODULE}.UserConnectionRepository", autospec=True)
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
-    def test_proceeds_with_historical_data_export(self, mock_repo_cls: MagicMock) -> None:
+    def test_proceeds_with_historical_data_export(self, mocker: MockerFixture) -> None:
+        mock_repo_cls = mocker.patch(f"{MODULE}.UserConnectionRepository", autospec=True)
         mock_repo_cls.return_value.get_by_user_and_provider.return_value = _make_connection(
             "ACTIVITY_EXPORT HISTORICAL_DATA_EXPORT"
         )

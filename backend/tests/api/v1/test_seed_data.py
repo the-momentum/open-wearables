@@ -6,10 +6,11 @@ Tests cover:
 - POST /api/v1/settings/seed - dispatch seed data generation task
 """
 
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest.mock import create_autospec
 
 from celery.result import AsyncResult
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from tests.factories import DeveloperFactory
@@ -57,10 +58,10 @@ class TestListPresets:
 class TestDispatchSeedGeneration:
     """Tests for POST /api/v1/settings/seed."""
 
-    @patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
     def test_dispatch_default_config(
-        self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
+        mock_task = mocker.patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
 
@@ -80,10 +81,10 @@ class TestDispatchSeedGeneration:
         assert data["status"] == "dispatched"
         mock_task.delay.assert_called_once()
 
-    @patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
     def test_dispatch_with_preset_profile(
-        self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
+        mock_task = mocker.patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
 
@@ -122,10 +123,10 @@ class TestDispatchSeedGeneration:
         )
         assert response.status_code == 401
 
-    @patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
     def test_dispatch_validates_num_users(
-        self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
+        mocker.patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
 

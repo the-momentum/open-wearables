@@ -9,11 +9,12 @@ Tests cover:
 """
 
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -54,10 +55,10 @@ class TestArchivalDisabled:
 
         assert response.status_code == 401
 
-    @patch("app.api.routes.v1.archival.run_daily_archival", autospec=True)
     def test_enabled_passes_through(
-        self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
+        mock_task = mocker.patch("app.api.routes.v1.archival.run_daily_archival", autospec=True)
         mock_task.delay.return_value.id = "task-123"
         headers = developer_auth_headers(DeveloperFactory().id)
 

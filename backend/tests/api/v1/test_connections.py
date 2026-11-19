@@ -10,13 +10,13 @@ Tests the /api/v1/users/{user_id}/connections endpoint including:
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import httpx
 import pytest
 import respx
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, EventRecord, HealthScore, SeriesSample, User, UserConnection, WorkoutDetails
@@ -618,11 +618,13 @@ class TestDisconnectWithSDKToken:
         # Assert
         assert response.status_code == 404
 
-    @patch("app.api.routes.v1.connections.user_connection_service.disconnect", autospec=True)
     def test_sdk_path_skips_provider_deregistration(
-        self, mock_disconnect: MagicMock, client: TestClient, db: Session
+        self, mocker: MockerFixture, client: TestClient, db: Session
     ) -> None:
         """Signing out of an app must not deregister the user from the provider's API."""
+        mock_disconnect = mocker.patch(
+            "app.api.routes.v1.connections.user_connection_service.disconnect", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(
