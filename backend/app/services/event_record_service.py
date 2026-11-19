@@ -535,6 +535,7 @@ class EventRecordService(
                     user_id,
                     {
                         self._local_sleep_date(old_start, old_zone),
+                        self._local_sleep_date(old_end, old_zone),
                         self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset),
                     },
                 )

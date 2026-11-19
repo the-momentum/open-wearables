@@ -2011,10 +2011,16 @@ class Garmin247Data(Base247DataTemplate):
 
             inserted_set = {record_id for record_id, stored_id in stored.items() if record_id == stored_id}
 
-            # Bulk create sleep details for actually inserted records
-            sleep_details = [d for d in all_sleep_details if d.record_id in inserted_set]
+            # Sleep details also refresh the stored nights matched on external_id
+            sleep_details = [
+                d.model_copy(update={"record_id": stored[d.record_id]})
+                for d in all_sleep_details
+                if d.record_id in stored
+            ]
             if sleep_details:
-                event_record_service.bulk_create_details(db, sleep_details, detail_type=EventCategory.SLEEP)
+                event_record_service.bulk_create_details(
+                    db, sleep_details, detail_type=EventCategory.SLEEP, created=inserted_set
+                )
 
             # Workout details also refresh the stored workouts matched on external_id
             workout_details = [

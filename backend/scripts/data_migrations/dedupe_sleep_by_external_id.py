@@ -6,8 +6,8 @@ night re-delivered with times moved past the merge threshold was stored a second
 now looks a night up by (user, provider, external_id) first; this removes the copies stored before.
 
 Garmin naps were stored under their parent sleep's summary id, which the lookup would take for the
-night itself. Each nap that isn't the longest session under its id gets "<id>-nap-<start epoch>",
-the id ingest now gives it, before the dedupe runs, so naps are not taken for copies.
+night itself. Each gets "<id>-nap-<start epoch>", the id ingest now gives it, before the dedupe runs,
+so naps are not taken for copies. Garmin flags only its naps: the night itself is never one.
 
 Copies of one night are the sessions of one (user, provider, external_id) starting within a day of
 the newest; a shared id further apart is left alone. Health scores, session aggregates and details
@@ -23,8 +23,9 @@ Usage (inside Docker), with --dry-run to preview without changes:
 
 import argparse
 from collections.abc import Sequence
+from typing import cast
 
-from sqlalchemy import Row, text
+from sqlalchemy import CursorResult, Row, text
 from sqlalchemy.orm import Session
 
 from app.database import engine
@@ -36,27 +37,12 @@ from app.services.data_migration_service import data_migration_service
 _BATCH_SIZE = 1_000
 
 _RENAME_GARMIN_NAPS = text("""
-    WITH shared AS (
-        SELECT e.id, e.start_datetime, sd.is_nap, rank() OVER (
-            PARTITION BY e.data_source_id, e.external_id ORDER BY e.end_datetime - e.start_datetime DESC
-        ) AS by_length
-        FROM event_record e
-        JOIN data_source ds ON ds.id = e.data_source_id
-        JOIN sleep_details sd ON sd.record_id = e.id
-        WHERE ds.provider = 'garmin' AND e.category = 'sleep' AND e.external_id IS NOT NULL
-          AND e.external_id NOT LIKE '%-nap-%'
-          AND (e.data_source_id, e.external_id) IN (
-              SELECT data_source_id, external_id
-              FROM event_record
-              WHERE category = 'sleep' AND external_id IS NOT NULL
-              GROUP BY data_source_id, external_id
-              HAVING count(*) > 1
-          )
-    )
     UPDATE event_record e
-    SET external_id = e.external_id || '-nap-' || extract(epoch FROM s.start_datetime)::bigint
-    FROM shared s
-    WHERE e.id = s.id AND s.is_nap AND s.by_length > 1
+    SET external_id = e.external_id || '-nap-' || extract(epoch FROM e.start_datetime)::bigint
+    FROM data_source ds, sleep_details sd
+    WHERE ds.id = e.data_source_id AND sd.record_id = e.id
+      AND ds.provider = 'garmin' AND e.category = 'sleep' AND sd.is_nap
+      AND e.external_id IS NOT NULL AND e.external_id NOT LIKE '%-nap-%'
 """)
 
 _DUPLICATES = text("""
@@ -156,7 +142,7 @@ def _remove(db: Session, rows: Sequence[Row]) -> int:
 def dedupe_sleep(db: Session, *, dry_run: bool) -> int:
     """Commits the nap ids, then after each batch. Returns the number of duplicates found."""
     preview = db.begin_nested()
-    renamed = db.execute(_RENAME_GARMIN_NAPS).rowcount
+    renamed = cast(CursorResult, db.execute(_RENAME_GARMIN_NAPS)).rowcount
     print(f"Garmin naps given their own id: {renamed}")
     rows = db.execute(_DUPLICATES).fetchall()
     if dry_run:
