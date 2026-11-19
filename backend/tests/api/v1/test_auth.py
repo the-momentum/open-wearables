@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy.orm import Session
 
 from app.config import DEFAULT_ADMIN_PASSWORD, settings
@@ -23,6 +24,10 @@ from app.services import developer_service
 from app.utils.config_utils import EnvironmentType
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
+
+
+def _login(client: TestClient, api_v1_prefix: str, email: str, password: str) -> Response:
+    return client.post(f"{api_v1_prefix}/auth/login", data={"username": email, "password": password})
 
 
 class TestLogin:
@@ -47,6 +52,34 @@ class TestLogin:
         assert data["expires_in"] == settings.access_token_expire_minutes * 60
         assert isinstance(data["access_token"], str)
         assert len(data["access_token"]) > 0
+
+    @patch.object(settings, "login_max_failed_attempts", 3)
+    def test_login_locked_after_failed_attempts(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        DeveloperFactory(email="test@example.com", password="test1234")
+
+        statuses = [_login(client, api_v1_prefix, "Test@Example.com ", "wrong").status_code for _ in range(3)]
+        locked = _login(client, api_v1_prefix, "test@example.com", "test1234")
+
+        assert statuses == [401, 401, 401]
+        assert locked.status_code == 429
+        assert 0 < int(locked.headers["Retry-After"]) <= settings.login_lockout_seconds
+
+    @patch.object(settings, "login_max_failed_attempts", 3)
+    def test_login_locks_unknown_emails_too(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        statuses = [_login(client, api_v1_prefix, "nobody@example.com", "x").status_code for _ in range(4)]
+
+        assert statuses == [401, 401, 401, 429]
+
+    @patch.object(settings, "login_max_failed_attempts", 3)
+    def test_login_success_resets_failed_attempts(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        DeveloperFactory(email="test@example.com", password="test1234")
+        for _ in range(2):
+            _login(client, api_v1_prefix, "test@example.com", "wrong")
+
+        assert _login(client, api_v1_prefix, "test@example.com", "test1234").status_code == 200
+        statuses = [_login(client, api_v1_prefix, "test@example.com", "wrong").status_code for _ in range(3)]
+
+        assert statuses == [401, 401, 401]
 
     def test_login_invalid_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test login fails with incorrect password."""
