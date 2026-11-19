@@ -13,7 +13,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
+import respx
 
 from app.schemas.enums import WorkoutType
 from app.services.providers.api_client import make_authenticated_request
@@ -325,7 +327,7 @@ def test_data_247_make_api_request_uses_http2(data_247: SensorBio247Data) -> Non
     assert kwargs.get("http2") is True, "http2=True must be passed for Sensor Bio 247 data"
 
 
-def test_api_client_http2_flag_forwarded() -> None:
+def test_api_client_http2_flag_forwarded(respx_mock: respx.MockRouter) -> None:
     """make_authenticated_request must forward http2 to the httpx.Client."""
     client_req = make_authenticated_request
 
@@ -337,18 +339,11 @@ def test_api_client_http2_flag_forwarded() -> None:
 
     mock_oauth = MagicMock()
 
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client_instance = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"ok": True}
-        mock_resp.raise_for_status.return_value = None
-        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
-        mock_client_instance.__exit__ = MagicMock(return_value=False)
-        mock_client_instance.request.return_value = mock_resp
-        mock_client_cls.return_value = mock_client_instance
+    route = respx_mock.get("https://api.sensorbio.com/v1/activities").respond(200, json={"ok": True})
 
-        client_req(
+    # respx can't see constructor kwargs, so the real client is wrapped to record them
+    with patch("httpx.Client", wraps=httpx.Client) as mock_client_cls:
+        result = client_req(
             db=MagicMock(info={}),  # real dict: get_valid_token caches the token in Session.info
             user_id=USER_ID,
             connection_repo=mock_repo,
@@ -360,3 +355,5 @@ def test_api_client_http2_flag_forwarded() -> None:
         )
 
     mock_client_cls.assert_called_once_with(http2=True)
+    assert result == {"ok": True}
+    assert route.calls.last.request.headers["Authorization"] == "Bearer tok"

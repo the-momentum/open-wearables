@@ -34,6 +34,7 @@ from app.models import SeriesTypeDefinition
 from app.schemas.enums import SERIES_TYPE_DEFINITIONS
 from app.utils.structured_logging import strict_attributes
 from tests import factories
+from tests.utils import RecordingRouter
 
 # An unserializable or clashing log attribute fails the test instead of being printed with str().
 strict_attributes(True)
@@ -357,7 +358,7 @@ def _block_network(_postgres_url: str, _redis_url: str) -> Generator[None, None,
 def _fail_on_network_access(_block_network: None) -> Generator[None, None, None]:
     """Fail a test that tried to reach the network, even if the code under test swallowed the error.
 
-    Mock the HTTP call (e.g. ``@patch("httpx.delete")``) in tests that exercise provider APIs.
+    Register the expected HTTP calls on the ``respx_mock`` router in tests that exercise provider APIs.
     """
     _blocked_connections.clear()
     yield
@@ -387,12 +388,25 @@ def _celery_in_memory_broker() -> None:
 
 
 @pytest.fixture(autouse=True)
+def respx_mock() -> Generator[RecordingRouter, None, None]:
+    """Serve every httpx request from respx routes; a request no route matches fails the test.
+
+    Register the calls a test expects with full URLs, e.g. ``respx_mock.get(url).respond(200, json={...})``.
+    Overrides respx's own fixture of the same name, so ``@pytest.mark.respx(...)`` (e.g. ``base_url``)
+    has no effect here.
+    """
+    with RecordingRouter() as router:
+        yield router
+    if router.unmatched:
+        pytest.fail(f"Unmocked HTTP request: {', '.join(f'{r.method} {r.url}' for r in router.unmatched)}")
+
+
+@pytest.fixture(autouse=True)
 def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
-    """Block outgoing HTTP calls and stub Garmin backfill state for every test."""
+    """Block outgoing ``requests`` calls and stub Garmin backfill state for every test."""
     garmin_handler = "app.services.providers.garmin.webhook_handler"
 
     with (
-        patch("httpx.AsyncClient") as mock_httpx,
         patch("requests.Session") as mock_requests,
         patch(f"{garmin_handler}.mark_type_success", return_value=False),
         patch(
@@ -400,7 +414,7 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
             return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
         ),
     ):
-        yield {"httpx": mock_httpx, "requests": mock_requests}
+        yield {"requests": mock_requests}
 
 
 @pytest.fixture

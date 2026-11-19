@@ -13,7 +13,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+import respx
 from jose import jwt
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,8 @@ from app.schemas.auth import ConnectionStatus
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
+
+SUUNTO_TOKEN_URL = "https://cloudapi-oauth.suunto.com/oauth/token"
 
 
 class TestSuuntoImport:
@@ -90,10 +94,9 @@ class TestSuuntoImport:
             ],
         }
 
-    @patch("httpx.post")
     def test_oauth_token_exchange_with_jwt(
         self,
-        mock_post: MagicMock,
+        respx_mock: respx.MockRouter,
         suunto_strategy: SuuntoStrategy,
         db: Session,
     ) -> None:
@@ -109,16 +112,15 @@ class TestSuuntoImport:
         }
         access_token = jwt.encode(test_payload, "secret", algorithm="HS256")
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": access_token,
-            "refresh_token": "test_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        token = respx_mock.post(SUUNTO_TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": access_token,
+                "refresh_token": "test_refresh_token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
         # Mock Redis state
         assert suunto_strategy.oauth is not None
@@ -149,6 +151,8 @@ class TestSuuntoImport:
             assert connection is not None
             assert connection.provider_user_id == "suunto_user_12345"
             assert connection.provider_username == "test_suunto_athlete"
+            assert token.call_count == 1
+            assert httpx.QueryParams(token.calls.last.request.content.decode())["code"] == "test_code"
 
     def test_fetch_workouts_from_api(
         self,
@@ -253,10 +257,9 @@ class TestSuuntoImport:
         assert "samples" in result
         mock_request.assert_called_once()
 
-    @patch("httpx.post")
     def test_token_refresh_flow(
         self,
-        mock_post: MagicMock,
+        respx_mock: respx.MockRouter,
         suunto_strategy: SuuntoStrategy,
         db: Session,
     ) -> None:
@@ -270,16 +273,15 @@ class TestSuuntoImport:
             refresh_token="old_refresh_token",
         )
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "new_access_token",
-            "refresh_token": "new_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        token = respx_mock.post(SUUNTO_TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": "new_access_token",
+                "refresh_token": "new_refresh_token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
         assert suunto_strategy.oauth is not None
 
         # Act
@@ -288,6 +290,9 @@ class TestSuuntoImport:
         # Assert
         assert token_response.access_token == "new_access_token"
         assert token_response.refresh_token == "new_refresh_token"
+        assert token.call_count == 1
+        form = httpx.QueryParams(token.calls.last.request.content.decode())
+        assert form["refresh_token"] == "old_refresh_token"
 
         # Verify connection was updated
         db.refresh(connection)
