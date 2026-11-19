@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+import respx
 
 from app.schemas.auth import LiveSyncMode
 from app.schemas.model_crud.credentials import OAuthTokenResponse
@@ -18,6 +19,8 @@ from app.utils.exceptions import (
     ReauthRequiredError,
 )
 
+TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2"
+
 
 def _oauth() -> WithingsOAuth:
     return WithingsOAuth(
@@ -28,23 +31,24 @@ def _oauth() -> WithingsOAuth:
     )
 
 
-def _envelope(status: int, body: dict | None = None) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {"status": status, "body": body or {}}
-    response.raise_for_status.return_value = None
-    return response
+def _envelope(status: int, body: dict | None = None) -> dict:
+    """Withings answers HTTP 200 and reports the outcome in the ``status`` of this envelope."""
+    return {"status": status, "body": body or {}}
 
 
-@patch("app.services.providers.withings.oauth.httpx.post")
-def test_exchange_token_unwraps_the_envelope_body(mock_post: MagicMock) -> None:
-    mock_post.return_value = _envelope(
-        0, {"access_token": "at", "token_type": "Bearer", "refresh_token": "rt", "expires_in": 10800, "userid": 4242}
+def test_exchange_token_unwraps_the_envelope_body(respx_mock: respx.MockRouter) -> None:
+    route = respx_mock.post(TOKEN_URL).respond(
+        200,
+        json=_envelope(
+            0,
+            {"access_token": "at", "token_type": "Bearer", "refresh_token": "rt", "expires_in": 10800, "userid": 4242},
+        ),
     )
 
     token = _oauth()._exchange_token("code-123", None)
 
     assert token.access_token == "at"
-    payload = mock_post.call_args.kwargs["data"]
+    payload = httpx.QueryParams(route.calls.last.request.content.decode())
     assert payload["action"] == "requesttoken"
     assert payload["grant_type"] == "authorization_code"
 
@@ -57,15 +61,14 @@ def test_exchange_token_unwraps_the_envelope_body(mock_post: MagicMock) -> None:
         (247, ProviderError, 502, False),
     ],
 )
-@patch("app.services.providers.withings.oauth.httpx.post")
 def test_refresh_classifies_provider_statuses(
-    mock_post: MagicMock,
+    respx_mock: respx.MockRouter,
     withings_status: int,
     error_class: type[AppError],
     http_status: int,
     invalid_grant: bool,
 ) -> None:
-    mock_post.return_value = _envelope(withings_status)
+    respx_mock.post(TOKEN_URL).respond(200, json=_envelope(withings_status))
     oauth = _oauth()
 
     with patch.object(oauth, "revoke_connection") as mock_revoke, pytest.raises(AppError) as exc_info:
@@ -80,10 +83,10 @@ def test_refresh_classifies_provider_statuses(
 
 
 @pytest.mark.parametrize(("http_status", "request_rejected"), [(403, True), (404, True), (503, False)])
-@patch("app.services.providers.withings.oauth.httpx.post")
-def test_refresh_http_4xx_is_a_refused_request(mock_post: MagicMock, http_status: int, request_rejected: bool) -> None:
-    request = httpx.Request("POST", "https://wbsapi.withings.net/v2/oauth2")
-    mock_post.return_value = httpx.Response(http_status, text="error", request=request)
+def test_refresh_http_4xx_is_a_refused_request(
+    respx_mock: respx.MockRouter, http_status: int, request_rejected: bool
+) -> None:
+    respx_mock.post(TOKEN_URL).respond(http_status, text="error")
     oauth = _oauth()
 
     with patch.object(oauth, "revoke_connection") as mock_revoke, pytest.raises(ProviderError) as exc_info:
@@ -97,17 +100,17 @@ def test_refresh_http_4xx_is_a_refused_request(mock_post: MagicMock, http_status
 
 
 @pytest.mark.parametrize("withings_status", [100, 247])
-@patch("app.services.providers.withings.oauth.httpx.post")
-def test_rejected_authorization_code_is_a_client_error(mock_post: MagicMock, withings_status: int) -> None:
-    mock_post.return_value = _envelope(withings_status)
+def test_rejected_authorization_code_is_a_client_error(respx_mock: respx.MockRouter, withings_status: int) -> None:
+    respx_mock.post(TOKEN_URL).respond(200, json=_envelope(withings_status))
 
     with pytest.raises(InvalidInputError):
         _oauth()._exchange_token("expired-code", None)
 
 
-@patch("app.services.providers.withings.oauth.httpx.post")
-def test_refresh_keeps_the_old_refresh_token_when_withings_omits_one(mock_post: MagicMock) -> None:
-    mock_post.return_value = _envelope(0, {"access_token": "new-at", "token_type": "Bearer", "expires_in": 10800})
+def test_refresh_keeps_the_old_refresh_token_when_withings_omits_one(respx_mock: respx.MockRouter) -> None:
+    respx_mock.post(TOKEN_URL).respond(
+        200, json=_envelope(0, {"access_token": "new-at", "token_type": "Bearer", "expires_in": 10800})
+    )
     oauth = _oauth()
     connection = MagicMock()
     oauth.connection_repo.get_by_user_and_provider.return_value = connection

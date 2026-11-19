@@ -7,12 +7,17 @@ Tests end-to-end import flows for Polar exercise data through API endpoints.
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from tests.factories import ApiKeyFactory, DeveloperFactory, UserConnectionFactory, UserFactory
 from tests.utils import api_key_headers
+
+POLAR_TOKEN_URL = "https://polarremote.com/v2/oauth2/token"
+POLAR_REGISTER_URL = "https://www.polaraccesslink.com/v3/users"
 
 
 @pytest.fixture
@@ -75,12 +80,11 @@ class TestPolarOAuthFlow:
 
     @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
     @patch("app.services.providers.templates.base_oauth.get_redis_client")
-    @patch("httpx.post")
     def test_polar_oauth_callback_success(
         self,
-        mock_post: MagicMock,
         mock_redis_client: MagicMock,
         mock_celery_task: MagicMock,
+        respx_mock: respx.MockRouter,
         client: TestClient,
         db: Session,
     ) -> None:
@@ -103,17 +107,18 @@ class TestPolarOAuthFlow:
         mock_redis.delete.return_value = True
         mock_redis_client.return_value = mock_redis
 
-        # Mock OAuth token exchange
-        mock_token_response = MagicMock()
-        mock_token_response.status_code = 200
-        mock_token_response.json.return_value = {
-            "access_token": "polar_access_token",
-            "refresh_token": "polar_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-            "x_user_id": 12345,
-        }
-        mock_post.return_value = mock_token_response
+        # Mock OAuth token exchange and the user registration that follows it
+        token = respx_mock.post(POLAR_TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": "polar_access_token",
+                "refresh_token": "polar_refresh_token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+                "x_user_id": 12345,
+            },
+        )
+        register = respx_mock.post(POLAR_REGISTER_URL).respond(200)
 
         # Mock Celery task
         mock_celery_task.return_value = MagicMock()
@@ -126,6 +131,9 @@ class TestPolarOAuthFlow:
 
         # Assert - May redirect or return connection info (303 is most common for OAuth redirects)
         assert response.status_code in [200, 302, 303, 307, 422]
+        assert token.call_count == 1
+        assert httpx.QueryParams(token.calls.last.request.content.decode())["code"] == "test_code"
+        assert register.call_count == 1
 
 
 class TestPolarWorkoutsAPI:

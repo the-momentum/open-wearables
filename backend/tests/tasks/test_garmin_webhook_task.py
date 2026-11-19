@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import respx
 from celery.exceptions import Retry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ MODULE = "app.integrations.celery.tasks.webhook_push_task"
 HANDLER_MODULE = "app.services.providers.garmin.webhook_handler"
 LIFECYCLE_MODULE = "app.services.providers.garmin.handlers.lifecycle"
 BASE_OAUTH_MODULE = "app.services.providers.templates.base_oauth"
+GARMIN_TOKEN_URL = "https://diauth.garmin.com/di-oauth2-service/oauth/token"
 
 
 @pytest.fixture
@@ -816,6 +818,7 @@ class TestGarminDeregistrationWebhook:
     def test_dead_refresh_token_revokes_once_as_deregistration(
         self,
         task_db: Session,
+        respx_mock: respx.MockRouter,
         mock_external_apis: dict[str, MagicMock],
         mock_garmin_user_id: MagicMock,
         mock_revoked_webhook: MagicMock,
@@ -828,16 +831,14 @@ class TestGarminDeregistrationWebhook:
             provider_user_id="garmin_user_123",
             token_expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
-        request = httpx.Request("POST", "https://diauth.garmin.com/di-oauth2-service/oauth/token")
+        refresh = respx_mock.post(GARMIN_TOKEN_URL).respond(400)
 
-        with (
-            patch("httpx.post", return_value=httpx.Response(400, request=request)),
-            patch(f"{BASE_OAUTH_MODULE}.on_connection_revoked") as mock_refresh_revoked_webhook,
-        ):
+        with patch(f"{BASE_OAUTH_MODULE}.on_connection_revoked") as mock_refresh_revoked_webhook:
             result = process_webhook_push.run(
                 "garmin", {"deregistrations": [{"userId": "garmin_user_123"}]}, "trace-039"
             )
 
+        assert refresh.call_count == 1
         assert result["deregistrations"]["revoked"] == 1
         task_db.refresh(connection)
         assert connection.status == ConnectionStatus.REVOKED

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -133,10 +134,11 @@ class TestRouting:
         assert response.json() == {"subscriptions": []}
         listed.assert_awaited_once()
 
-    def test_subscription_list_hides_the_token(self, client: TestClient, auth_headers: dict[str, str]) -> None:
-        strava_response = httpx.Response(
+    def test_subscription_list_hides_the_token(
+        self, client: TestClient, auth_headers: dict[str, str], respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.get("https://www.strava.com/api/v3/push_subscriptions").respond(
             200,
-            request=httpx.Request("GET", "https://www.strava.com/api/v3/push_subscriptions"),
             json=[
                 {
                     "id": 382914,
@@ -150,9 +152,7 @@ class TestRouting:
         with (
             patch.object(settings, "strava_client_id", "293960"),
             patch.object(settings, "strava_client_secret", SecretStr("client-secret")),
-            patch("httpx.AsyncClient") as client_class,
         ):
-            client_class.return_value.__aenter__.return_value.get = AsyncMock(return_value=strava_response)
             response = client.get(f"{BASE}/subscriptions", headers=auth_headers)
 
         assert response.status_code == 200

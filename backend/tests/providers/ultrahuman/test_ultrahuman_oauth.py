@@ -7,6 +7,7 @@ Tests the UltrahumanOAuth class for OAuth 2.0 authentication flow with Ultrahuma
 from unittest.mock import MagicMock, patch
 
 import httpx
+import respx
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -168,8 +169,7 @@ class TestUltrahumanOAuthAuthorization:
 class TestUltrahumanOAuthUserInfo:
     """Tests for extracting Ultrahuman user info from token response."""
 
-    @patch("httpx.get")
-    def test_get_provider_user_info_with_user_id(self, mock_get: MagicMock, db: Session) -> None:
+    def test_get_provider_user_info_with_user_id(self, respx_mock: respx.MockRouter, db: Session) -> None:
         """Test extracting user info when user_id is present."""
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
@@ -193,11 +193,9 @@ class TestUltrahumanOAuthUserInfo:
             token_type="Bearer",
         )
 
-        # Mock the profile API call
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"user_id": "test_user_123", "email": "test@example.com"}
-        mock_get.return_value = mock_response
+        profile = respx_mock.get("https://partner.ultrahuman.com/user_data/user_info").respond(
+            200, json={"user_id": "test_user_123", "email": "test@example.com"}
+        )
 
         # Act
         user_info = oauth._get_provider_user_info(token_response, str(user.id))
@@ -205,10 +203,10 @@ class TestUltrahumanOAuthUserInfo:
         # Assert
         assert user_info["user_id"] == "test_user_123"
         assert user_info["username"] == "test@example.com"
-        mock_get.assert_called_once()
+        assert profile.call_count == 1
+        assert profile.calls.last.request.headers["Authorization"] == "Bearer test_access_token"
 
-    @patch("httpx.get")
-    def test_get_provider_user_info_handles_failure(self, mock_get: MagicMock, db: Session) -> None:
+    def test_get_provider_user_info_handles_failure(self, respx_mock: respx.MockRouter, db: Session) -> None:
         """Test extracting user info when API call fails."""
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
@@ -232,8 +230,9 @@ class TestUltrahumanOAuthUserInfo:
             token_type="Bearer",
         )
 
-        # Mock a failed API call
-        mock_get.side_effect = httpx.RequestError("Network error")
+        respx_mock.get("https://partner.ultrahuman.com/user_data/user_info").mock(
+            side_effect=httpx.ConnectError("Network error")
+        )
 
         # Act
         user_info = oauth._get_provider_user_info(token_response, str(user.id))

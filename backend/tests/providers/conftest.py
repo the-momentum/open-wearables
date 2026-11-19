@@ -6,7 +6,6 @@ These fixtures provide mock data and utilities for testing provider integrations
 
 import time
 from collections.abc import Generator
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -23,16 +22,6 @@ def non_utc_process_timezone(monkeypatch: pytest.MonkeyPatch) -> Generator[None,
         finally:
             mp.undo()
             time.tzset()
-
-
-@pytest.fixture
-def mock_httpx_response() -> MagicMock:
-    """Mock httpx response for provider API calls."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {}
-    mock_response.raise_for_status.return_value = None
-    return mock_response
 
 
 @pytest.fixture
