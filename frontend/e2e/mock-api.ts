@@ -246,7 +246,11 @@ const server = Bun.serve({
 			const form = await request.formData();
 			const password = form.get('password');
 			if (form.get('username') === LOCKED_OUT_EMAIL) {
-				return problem(429, 'Too many failed login attempts. Try again later.', 'TOO_MANY_REQUESTS');
+				return problem(
+					429,
+					'Too many failed login attempts. Try again later.',
+					'TOO_MANY_REQUESTS'
+				);
 			}
 			// Like the API: refused before the account lookup, so any email gets the same answer.
 			if (password === DEFAULT_PASSWORD && PASSWORD_CHANGE === 'refused') {
