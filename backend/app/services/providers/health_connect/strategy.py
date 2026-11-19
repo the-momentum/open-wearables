@@ -2,6 +2,7 @@ from app.services.providers.base_strategy import BaseProviderStrategy, ProviderC
 from app.services.providers.health_connect.coverage import (
     HEALTH_SCORES,
     MEAL_FIELDS,
+    REPRODUCTIVE_HEALTH_TYPES,
     SLEEP_FIELDS,
     TIMESERIES,
     WORKOUT_FIELDS,
@@ -38,5 +39,6 @@ class HealthConnectStrategy(BaseProviderStrategy):
             workout_fields=WORKOUT_FIELDS,
             sleep_fields=SLEEP_FIELDS,
             meal_fields=MEAL_FIELDS,
+            reproductive_health_types=REPRODUCTIVE_HEALTH_TYPES,
             health_scores=HEALTH_SCORES,
         )

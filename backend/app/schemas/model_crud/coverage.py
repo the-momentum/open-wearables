@@ -37,6 +37,11 @@ class MealField(BaseModel):
     providers: list[str]
 
 
+class ReproductiveHealthEntryType(BaseModel):
+    code: str
+    providers: list[str]
+
+
 class HealthScore(BaseModel):
     code: str
     description: str = Field(default="", description=_DESCRIPTION_DOC)
@@ -50,4 +55,5 @@ class CoverageResponse(BaseModel):
     sleep_fields: list[SleepField]
     menstrual_cycle_fields: list[MenstrualCycleField]
     meal_fields: list[MealField]
+    reproductive_health_types: list[ReproductiveHealthEntryType]
     health_scores: list[HealthScore]

@@ -19,6 +19,7 @@ from app.schemas.model_crud.coverage import (
     HealthScore,
     MealField,
     MenstrualCycleField,
+    ReproductiveHealthEntryType,
     SleepField,
     TimeseriesCategory,
     TimeseriesMetric,
@@ -114,6 +115,17 @@ def _build_coverage() -> CoverageResponse:
 
     meal_fields = [MealField(code=f, providers=sorted(prov_list)) for f, prov_list in sorted(meal_to_providers.items())]
 
+    # --- Reproductive health entry types ---
+    reproductive_to_providers: dict[str, list[str]] = {}
+    for provider, cov in coverage_by_provider.items():
+        for entry_type in cov.reproductive_health_types:
+            reproductive_to_providers.setdefault(entry_type.value, []).append(provider)
+
+    reproductive_health_types = [
+        ReproductiveHealthEntryType(code=code, providers=sorted(prov_list))
+        for code, prov_list in sorted(reproductive_to_providers.items())
+    ]
+
     # --- Health scores ---
     score_to_providers: dict[str, list[str]] = {}
     for provider, cov in coverage_by_provider.items():
@@ -136,6 +148,7 @@ def _build_coverage() -> CoverageResponse:
         sleep_fields=sleep_fields,
         menstrual_cycle_fields=menstrual_cycle_fields,
         meal_fields=meal_fields,
+        reproductive_health_types=reproductive_health_types,
         health_scores=health_scores,
     )
 

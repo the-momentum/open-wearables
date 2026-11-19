@@ -41,7 +41,13 @@ _REFRESH_EVENTS = text(f"""
     ), emptied AS (
         DELETE FROM data_type_coverage c USING spans s WHERE {_SAME_KEY} AND s.first_start IS NULL
     )
-    UPDATE data_type_coverage c SET coverage_start = s.first_start, coverage_end = s.last_end
+    -- Capped at now like record(); not in spans, where LEAST would turn an empty category's NULL into now().
+    -- Only removals refresh, so the end never moves forward: a record running past it would
+    -- otherwise advance syncedUntil to the moment of a deletion, past data still to come.
+    -- The start stays at or before that end, which a record starting after it would pass.
+    UPDATE data_type_coverage c
+    SET coverage_start = LEAST(s.first_start, c.coverage_end, now()),
+        coverage_end = LEAST(s.last_end, c.coverage_end, now())
     FROM spans s
     WHERE {_SAME_KEY} AND s.first_start IS NOT NULL
 """)
@@ -126,7 +132,7 @@ def _pair_spans(table: str, at: str) -> str:
 
 _HELD_SERIES_SPANS = f"""
     SELECT ds.user_id, ds.provider, std.code AS data_type, CAST(:series AS varchar) AS kind,
-           min(s.first_at) AS coverage_start, max(s.last_at) AS coverage_end
+           LEAST(min(s.first_at), now()) AS coverage_start, LEAST(max(s.last_at), now()) AS coverage_end
     FROM (
         {_pair_spans("series_sample", "recorded_at")}
         UNION ALL
@@ -139,7 +145,8 @@ _HELD_SERIES_SPANS = f"""
 
 _HELD_EVENT_SPANS = """
     SELECT ds.user_id, ds.provider, er.category AS data_type, CAST(:event AS varchar) AS kind,
-           min(er.start_datetime) AS coverage_start, max(er.end_datetime) AS coverage_end
+           LEAST(min(er.start_datetime), now()) AS coverage_start,
+           LEAST(max(er.end_datetime), now()) AS coverage_end
     FROM event_record er
     JOIN data_source ds ON ds.id = er.data_source_id
     WHERE er.data_source_id > :after AND er.data_source_id <= :upto
@@ -157,7 +164,7 @@ def _widen_with(spans: str) -> str:
         ORDER BY user_id, provider, data_type, kind
         ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
             coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
-            coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
+            coverage_end = LEAST(GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end), now()),
             last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
     """
 
@@ -186,15 +193,19 @@ class DataTypeCoverageRepository:
         Ranges only ever widen, so batches of one type arriving out of order still add up
         to a single span. Runs in the caller's transaction and does not commit, so a
         rollback takes the coverage with the rows it described.
+
+        Spans end at now at the latest: a pregnancy logged up to its due date would otherwise
+        move syncedUntil past data still to come, for good.
         """
+        # In SQL: some providers pass naive datetimes, which Postgres reads as it stores them.
         rows = [
             {
                 "user_id": user_id,
                 "provider": provider,
                 "data_type": data_type,
                 "kind": kind,
-                "coverage_start": start,
-                "coverage_end": end,
+                "coverage_start": func.least(start, func.now()),
+                "coverage_end": func.least(end, func.now()),
                 "last_written_at": datetime.now(timezone.utc),
             }
             for (user_id, provider, data_type, kind), (start, end) in sorted(_merge(spans).items())
@@ -208,7 +219,10 @@ class DataTypeCoverageRepository:
                 index_elements=["user_id", "provider", "data_type", "kind"],
                 set_={
                     "coverage_start": func.least(stmt.excluded.coverage_start, DataTypeCoverage.coverage_start),
-                    "coverage_end": func.greatest(stmt.excluded.coverage_end, DataTypeCoverage.coverage_end),
+                    # Capped again: a row already held may end in the future.
+                    "coverage_end": func.least(
+                        func.greatest(stmt.excluded.coverage_end, DataTypeCoverage.coverage_end), func.now()
+                    ),
                     "last_written_at": stmt.excluded.last_written_at,
                 },
             )

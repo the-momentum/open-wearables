@@ -8,6 +8,7 @@ NORMALIZED_DATA_PATHS = [
     "/api/v1/users/{user_id}/events/workouts",
     "/api/v1/users/{user_id}/events/sleep",
     "/api/v1/users/{user_id}/events/menstrual-cycles",
+    "/api/v1/users/{user_id}/events/reproductive-health",
     "/api/v1/users/{user_id}/summaries/activity",
     "/api/v1/users/{user_id}/summaries/sleep",
     "/api/v1/users/{user_id}/summaries/recovery",

@@ -12,7 +12,7 @@ from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LiveSyncMode
-from app.schemas.enums import SeriesType
+from app.schemas.enums import ReproductiveHealthType, SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -38,12 +38,13 @@ class HistoricalSyncResult:
 class ProviderCoverage:
     """Declares what data a provider actually delivers, grouped by API layer.
 
-    timeseries:             SeriesType values available via /timeseries endpoint
-    workout_fields:         EventRecordDetail fields populated in workout records
-    sleep_fields:           EventRecordDetail fields populated in sleep records
-    menstrual_cycle_fields: EventRecordDetail fields populated in menstrual-cycle records
-    health_scores:          HealthScoreCategory values produced by this provider
-    meal_fields:            EventRecordDetail fields populated in meal records
+    timeseries:                SeriesType values available via /timeseries endpoint
+    workout_fields:            EventRecordDetail fields populated in workout records
+    sleep_fields:              EventRecordDetail fields populated in sleep records
+    menstrual_cycle_fields:    EventRecordDetail fields populated in menstrual-cycle records
+    health_scores:             HealthScoreCategory values produced by this provider
+    meal_fields:               EventRecordDetail fields populated in meal records
+    reproductive_health_types: ReproductiveHealthType values of reproductive-health records
 
     Define the frozensets in the provider's coverage.py and assign here in
     strategy.py — keeps implementation files free of metadata declarations.
@@ -57,6 +58,7 @@ class ProviderCoverage:
     menstrual_cycle_fields: frozenset[str] = field(default_factory=frozenset)
     health_scores: frozenset[HealthScoreCategory] = field(default_factory=frozenset)
     meal_fields: frozenset[str] = field(default_factory=frozenset)
+    reproductive_health_types: frozenset[ReproductiveHealthType] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)

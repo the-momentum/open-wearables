@@ -33,6 +33,7 @@ from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.integrations.rollup_queue import mark_dirty_days
 from app.models import DataSource, EventRecord, EventRecordAggregate, SleepDetails, WorkoutDetails
+from app.models.event_record import EXTERNAL_ID_KEYED_CATEGORIES, EXTERNAL_ID_KEYED_WHERE, TIME_KEYED_WHERE
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.local_day import utc_midnight
@@ -178,7 +179,7 @@ class EventRecordRepository(
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id == data_source_id,
-                self.model.category != EventCategory.MEAL,
+                self.model.category.not_in(EXTERNAL_ID_KEYED_CATEGORIES),
                 self.model.start_datetime == creation.start_datetime,
                 self.model.end_datetime == creation.end_datetime,
             )
@@ -239,7 +240,7 @@ class EventRecordRepository(
             db_session.refresh(record)
             holder = db_session.query(self.model).filter(
                 self.model.data_source_id == record.data_source_id,
-                self.model.category != EventCategory.MEAL,
+                self.model.category.not_in(EXTERNAL_ID_KEYED_CATEGORIES),
                 self.model.start_datetime == creator.start_datetime,
                 self.model.end_datetime == creator.end_datetime,
                 self.model.external_id == record.external_id,
@@ -448,7 +449,8 @@ class EventRecordRepository(
         db_session: DbSession,
         creators: list[EventRecordCreate],
     ) -> dict[UUID, UUID]:
-        """Insert non-meal records, skipping existing ones. Meals go through bulk_upsert_meals.
+        """Insert time-keyed records, skipping existing ones. EXTERNAL_ID_KEYED_CATEGORIES go through
+        bulk_upsert_by_external_id.
 
         Returns creator id -> stored record id, for the records inserted and the workouts matched on external_id.
         """
@@ -483,7 +485,7 @@ class EventRecordRepository(
                 .values(chunk)
                 .on_conflict_do_nothing(
                     index_elements=["data_source_id", "start_datetime", "end_datetime"],
-                    index_where=text(f"category <> '{EventCategory.MEAL}'"),
+                    index_where=text(TIME_KEYED_WHERE),
                 )
             )
             result = db_session.execute(stmt.returning(self.model.id))
@@ -527,12 +529,15 @@ class EventRecordRepository(
             ),
         )
 
-    def bulk_upsert_meals(
+    def bulk_upsert_by_external_id(
         self,
         db_session: DbSession,
         creators: list[EventRecordCreate],
     ) -> dict[UUID, tuple[UUID, bool]]:
-        """Insert or update meals by (data source, external_id). Returns {creator id: (record id, is_inserted)}."""
+        """Insert or update records of EXTERNAL_ID_KEYED_CATEGORIES by (data source, external_id).
+
+        Returns {creator id: (record id, is_inserted)}.
+        """
         values_by_key: dict[tuple[UUID, str], tuple[EventRecordCreate, dict]] = {}
         resolved = self._resolve_values(db_session, [c for c in creators if c.external_id])
         creators_by_id = {c.id: c for c in creators}
@@ -549,7 +554,7 @@ class EventRecordRepository(
             stmt = insert(self.model).values([values for _, values in chunk])
             stmt = stmt.on_conflict_do_update(
                 index_elements=["data_source_id", "external_id"],
-                index_where=text(f"category = '{EventCategory.MEAL}'"),
+                index_where=text(EXTERNAL_ID_KEYED_WHERE),
                 set_={
                     column: stmt.excluded[column]
                     for column in (
@@ -615,6 +620,9 @@ class EventRecordRepository(
         if query_params.workout_type:
             filters.append(EventRecord.type == query_params.workout_type)
 
+        if query_params.reproductive_health_type:
+            filters.append(EventRecord.type == query_params.reproductive_health_type)
+
         if query_params.source_name:
             filters.append(EventRecord.source_name.ilike(f"%{query_params.source_name}%"))
 
@@ -623,11 +631,17 @@ class EventRecordRepository(
 
         filters.extend(source_filter_conditions(query_params, EventRecord.data_source_id))
 
-        if query_params.start_datetime:
-            filters.append(EventRecord.start_datetime >= query_params.start_datetime)
-
-        if query_params.end_datetime:
-            filters.append(EventRecord.end_datetime < query_params.end_datetime)
+        if query_params.overlapping:
+            # An entry at a single moment on start_datetime still counts, hence >=.
+            if query_params.start_datetime:
+                filters.append(EventRecord.end_datetime >= query_params.start_datetime)
+            if query_params.end_datetime:
+                filters.append(EventRecord.start_datetime < query_params.end_datetime)
+        else:
+            if query_params.start_datetime:
+                filters.append(EventRecord.start_datetime >= query_params.start_datetime)
+            if query_params.end_datetime:
+                filters.append(EventRecord.end_datetime < query_params.end_datetime)
 
         if query_params.min_duration is not None:
             filters.append(EventRecord.duration_seconds >= query_params.min_duration)

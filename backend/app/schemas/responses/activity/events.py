@@ -1,10 +1,17 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import EntrySource, WorkoutIntensity
+from app.schemas.enums import (
+    REPRODUCTIVE_HEALTH_VALUE_ENUMS,
+    CervicalMucusSensation,
+    EntrySource,
+    ReproductiveHealthType,
+    WorkoutIntensity,
+)
 from app.schemas.model_crud.activities import SleepStage
 from app.schemas.model_crud.activities.zones import HRZones, PowerZones
 from app.schemas.utils import SourceMetadata
@@ -93,6 +100,38 @@ class Meal(BaseModel):
         default_factory=dict,
         description="All nutrient values recorded for the meal, keyed by series type (e.g. dietary_sugar)",
         example={"dietary_sugar": {"value": 12.5, "unit": "g"}},
+    )
+
+
+def _values(enum: type[StrEnum]) -> str:
+    return ", ".join(member.value for member in enum)
+
+
+_REPRODUCTIVE_HEALTH_VALUE_DOC = (
+    "Normalized value, by `type`: "
+    + "; ".join(f"`{t}`: {_values(enum)}" for t, enum in REPRODUCTIVE_HEALTH_VALUE_ENUMS.items())
+    + ". Null for the other types, where the entry itself is the signal."
+)
+
+
+class ReproductiveHealthRecord(BaseModel):
+    """One reproductive health entry, as the phone's health store recorded it."""
+
+    id: UUID
+    type: ReproductiveHealthType = Field(..., description="What the entry records", example="menstrual_flow")
+    start_time: datetime
+    end_time: datetime = Field(..., description="Equal to `start_time` for an entry at a single moment")
+    zone_offset: str | None = None
+    source: SourceMetadata
+    value: str | None = Field(None, description=_REPRODUCTIVE_HEALTH_VALUE_DOC, example="light")
+    cycle_start: bool | None = Field(
+        None, description="`menstrual_flow` only: whether this is the first day of a period (HealthKit only)"
+    )
+    protection_used: bool | None = Field(
+        None, description="`sexual_activity` only: whether protection was used; null when not recorded"
+    )
+    cervical_mucus_sensation: str | None = Field(
+        None, description=f"`cervical_mucus` only: {_values(CervicalMucusSensation)} (Health Connect only)"
     )
 
 

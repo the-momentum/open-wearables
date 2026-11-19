@@ -46,6 +46,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.body_mass_index: AggregationMethod.AVG,
     SeriesType.lean_body_mass: AggregationMethod.AVG,
     SeriesType.body_temperature: AggregationMethod.AVG,
+    SeriesType.basal_body_temperature: AggregationMethod.AVG,
     SeriesType.skin_temperature: AggregationMethod.AVG,
     SeriesType.waist_circumference: AggregationMethod.AVG,
     SeriesType.bone_mass: AggregationMethod.AVG,

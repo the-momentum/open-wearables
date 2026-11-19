@@ -117,11 +117,16 @@ class EventRecordDetailRepository(
         db_session: DbSession,
         creators: list[EventRecordDetailCreate],
         detail_type: DetailType = EventCategory.WORKOUT,
+        replace: bool = False,
     ) -> None:
-        """Bulk create detail records using batch insert."""
+        """Bulk create detail records using batch insert.
+
+        An existing row keeps a value this write does not carry, unless `replace`: then the
+        write is the whole record, and a value it no longer has is cleared.
+        """
         if not creators:
             return
-        self._upsert(db_session, [self._row(creator, detail_type) for creator in creators], detail_type)
+        self._upsert(db_session, [self._row(creator, detail_type) for creator in creators], detail_type, replace)
         self._mirror_workout_stats(db_session, creators, detail_type)
         # NOTE: Caller should commit - allows batching multiple operations
 
@@ -144,7 +149,7 @@ class EventRecordDetailRepository(
             if k in columns
         }
 
-    def _upsert(self, db_session: DbSession, rows: list[dict], detail_type: DetailType) -> None:
+    def _upsert(self, db_session: DbSession, rows: list[dict], detail_type: DetailType, replace: bool = False) -> None:
         child_table = self._table(detail_type)
         child_stmt = insert(child_table).values(rows)
         # record_id is the conflict key; created_at is an immutable audit column and
@@ -153,7 +158,9 @@ class EventRecordDetailRepository(
         # steps from one endpoint and its speed from another.
         immutable_on_upsert = {"record_id", "created_at"}
         update_dict = {
-            col_name: func.coalesce(child_stmt.excluded[col_name], child_table.c[col_name])
+            col_name: child_stmt.excluded[col_name]
+            if replace
+            else func.coalesce(child_stmt.excluded[col_name], child_table.c[col_name])
             for col_name in rows[0]
             if col_name not in immutable_on_upsert
         }

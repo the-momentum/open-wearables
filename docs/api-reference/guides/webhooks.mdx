@@ -207,6 +207,7 @@ Fired once when a complete session is saved or merged.
 | `sleep.created` | A new (or merged) sleep session was saved. |
 | `meal.created` | A new meal or nutrition-log entry was saved. |
 | `menstrual_cycle.created` | A new menstrual cycle record was saved. |
+| `reproductive_health.created` | A new reproductive health entry (menstrual flow, ovulation test, ...) was saved. |
 | `activity.created` | A new generic activity session was saved. |
 
 ### Timeseries Events
@@ -221,7 +222,7 @@ Fired per ingestion batch — one event per distinct `(user, provider, series_ty
 | `calories.created` | `active_energy`, `basal_energy`, `total_energy` |
 | `spo2.created` | `oxygen_saturation`, `peripheral_perfusion_index` |
 | `respiratory_rate.created` | `respiratory_rate`, `sleeping_breathing_disturbances` |
-| `body_temperature.created` | `body_temperature`, `skin_temperature`, `skin_temperature_deviation` |
+| `body_temperature.created` | `body_temperature`, `basal_body_temperature`, `skin_temperature`, `skin_temperature_deviation` |
 | `stress.created` | `garmin_stress_level`, `electrodermal_activity` |
 | `blood_glucose.created` | `blood_glucose`, `blood_alcohol_content`, `insulin_delivery` |
 | `blood_pressure.created` | `blood_pressure_systolic`, `blood_pressure_diastolic` |
@@ -451,6 +452,34 @@ For providers that don't flag naps, `is_nap` is derived by Open Wearables and ca
 
 <Note>
   `pregnancy_snapshot` is populated (as a list with one entry) when the user is tracking a pregnancy. Garmin reuses the same summary ID for daily cycle updates — Open Wearables deduplicates by `external_id`, so the event fires only when a new record is first inserted.
+</Note>
+
+### `reproductive_health.created`
+
+```json
+{
+  "type": "reproductive_health.created",
+  "data": {
+    "id": "e5f6a7b8-c9d0-1234-efab-234567890123",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "menstrual_flow",
+    "start_time": "2025-12-01T00:00:00+00:00",
+    "end_time": "2025-12-02T00:00:00+00:00",
+    "zone_offset": "+01:00",
+    "source": {
+      "provider": "apple",
+      "device": "iPhone15,2"
+    },
+    "value": "medium",
+    "cycle_start": true,
+    "protection_used": null,
+    "cervical_mucus_sensation": null
+  }
+}
+```
+
+<Note>
+  One event per entry, sent when it is first saved. A synced edit updates the entry in place without a new event. `type`, `value` and the three flags mean the same as in `GET /events/reproductive-health`; see [Reproductive Health Entries](/architecture/data-types#reproductive-health-entries) for every value. Subscribe only if you use this data: the payload carries sensitive health information.
 </Note>
 
 ### `activity.created`

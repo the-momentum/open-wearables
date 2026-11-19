@@ -96,7 +96,7 @@ def _data_type_outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
         outcomes.append(
             DataTypeOutcome(
                 data_type=series_type.value if series_type else event.dataType,
-                # The identifiers with no series type are sleep and workout, both events.
+                # The identifiers with no series type are events: sleep, workouts, reproductive health.
                 kind=DataTypeKind.SERIES if series_type else DataTypeKind.EVENT,
                 native_type=event.dataType,
                 status=status,

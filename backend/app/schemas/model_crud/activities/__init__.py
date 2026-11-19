@@ -43,6 +43,7 @@ from .personal_record import (
     PersonalRecordUpdate,
     sex_to_db,
 )
+from .reproductive_health import ReproductiveHealthDetailCreate
 from .sleep import SleepStage
 
 __all__ = [
@@ -81,6 +82,8 @@ __all__ = [
     "MenstrualCycleDetailCreate",
     # Meal
     "MealDetailCreate",
+    # Reproductive health
+    "ReproductiveHealthDetailCreate",
     # Sleep
     "SleepStage",
     # HealthScore

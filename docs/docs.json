@@ -289,7 +289,9 @@
               "GET /api/v1/users/{user_id}/events/sleep/totals",
               "DELETE /api/v1/users/{user_id}/events/sleep/{sleep_id}",
               "GET /api/v1/users/{user_id}/events/meals",
-              "DELETE /api/v1/users/{user_id}/events/meals/{meal_id}"
+              "DELETE /api/v1/users/{user_id}/events/meals/{meal_id}",
+              "GET /api/v1/users/{user_id}/events/reproductive-health",
+              "DELETE /api/v1/users/{user_id}/events/reproductive-health/{entry_id}"
             ]
           },
           {

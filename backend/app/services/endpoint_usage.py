@@ -30,7 +30,7 @@ UNRESOLVED = "unresolved"
 
 _COUNTED_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
 # Routes whose mere usage says something sensitive about an instance's users.
-_EXCLUDED_ROUTE_MARKERS = ("/menstrual-cycles",)
+_EXCLUDED_ROUTE_MARKERS = ("/menstrual-cycles", "/reproductive-health")
 # `{provider}` is the one path parameter worth keeping: a closed enum, not an ID.
 _PROVIDERS = frozenset(provider.value for provider in ProviderName)
 

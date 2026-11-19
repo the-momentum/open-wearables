@@ -28,4 +28,5 @@ class UploadDataResponse(BaseModel):
     spans: dict[str, tuple[datetime, datetime]] = Field(default_factory=dict, exclude=True)
     workouts_saved: int = Field(0, description="Workouts saved")
     meals_saved: int = Field(0, description="Meal correlations saved")
+    reproductive_health_saved: int = Field(0, description="Reproductive health entries saved")
     sleep_saved: int = Field(0, description="Sleep records saved")

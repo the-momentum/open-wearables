@@ -4,11 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
-from app.schemas.enums import EventCategory, ProviderName, SourceSelection, WorkoutType
+from app.schemas.enums import EventCategory, ProviderName, ReproductiveHealthType, SourceSelection, WorkoutType
 from app.schemas.model_crud.activities import EventRecordQueryParams, SleepInclude, WorkoutInclude
 from app.schemas.responses.activity import (
     Meal,
     MenstrualCycleRecord,
+    ReproductiveHealthRecord,
     SleepSession,
     SleepTotals,
     Workout,
@@ -257,6 +258,47 @@ def list_meals(
     return event_record_service.get_meals(db, user_id, params)
 
 
+@router.get("/users/{user_id}/events/reproductive-health")
+def list_reproductive_health(
+    user_id: UUID,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    entry_type: Annotated[
+        ReproductiveHealthType | None, Query(alias="type", description="Return only entries of this type.")
+    ] = None,
+    cursor: str | None = None,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
+    provider: ProviderName | None = None,
+    source: str | None = None,
+    device_model: str | None = None,
+    data_source_id: UUID | None = None,
+) -> PaginatedResponse[ReproductiveHealthRecord]:
+    """Returns reproductive health entries from phone health stores (Apple Health, Health Connect).
+
+    Each entry is one record the user or an app logged: menstrual flow, a menstrual period, spotting,
+    cervical mucus, an ovulation, pregnancy or progesterone test, sexual activity, contraceptive use,
+    pregnancy, lactation, or a cycle deviation Apple Health detected. This is sensitive data: it reaches
+    Open Wearables only for the types your app requested and the user allowed on the phone.
+
+    An entry is returned when it overlaps the date range, so a period that started before
+    `start_date` or a pregnancy that ends after `end_date` is still included.
+    """
+    params = EventRecordQueryParams(
+        start_datetime=parse_query_datetime(start_date),
+        end_datetime=parse_query_end_datetime(end_date),
+        cursor=cursor,
+        limit=limit,
+        provider=provider,
+        source=source,
+        device_model=device_model,
+        data_source_id=data_source_id,
+        reproductive_health_type=entry_type,
+    )
+    return event_record_service.get_reproductive_health(db, user_id, params)
+
+
 @router.delete("/users/{user_id}/events/workouts/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_workout(
     user_id: UUID,
@@ -303,3 +345,15 @@ def delete_meal(
     """Delete a meal together with its nutrients."""
     if not event_record_service.delete_event_record(db, user_id, meal_id, EventCategory.MEAL):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")
+
+
+@router.delete("/users/{user_id}/events/reproductive-health/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_reproductive_health_entry(
+    user_id: UUID,
+    entry_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> None:
+    """Delete a reproductive health entry."""
+    if not event_record_service.delete_event_record(db, user_id, entry_id, EventCategory.REPRODUCTIVE_HEALTH):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reproductive health entry not found")

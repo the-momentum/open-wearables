@@ -62,6 +62,22 @@ def _event(
     )
 
 
+def _hold_until(db: Session, user_id: UUID, provider: str, data_type: str, end: datetime) -> None:
+    """A coverage row as written before spans were capped at now."""
+    db.add(
+        DataTypeCoverage(
+            user_id=user_id,
+            provider=provider,
+            data_type=data_type,
+            kind=DataTypeKind.EVENT,
+            coverage_start=NOW,
+            coverage_end=end,
+            last_written_at=NOW,
+        )
+    )
+    db.flush()
+
+
 class TestSeriesCoverage:
     @pytest.fixture
     def series_repo(self) -> DataPointSeriesRepository:
@@ -168,6 +184,34 @@ class TestEventCoverage:
         sleep = rows[0]
         assert sleep.coverage_start == NOW - timedelta(hours=9)
         assert sleep.coverage_end == NOW - timedelta(hours=1)
+
+    def test_a_record_ending_in_the_future_is_held_up_to_now(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """A pregnancy logged up to its due date must not move the newest data held past today."""
+        user = UserFactory()
+        due = datetime.now(timezone.utc) + timedelta(days=200)
+        event_repo.bulk_create(db, [_event(user.id, NOW, due, "reproductive_health")])
+        db.commit()
+
+        (row,) = data_type_coverage_repository.list_for_user(db, user.id)
+
+        assert row.coverage_start == NOW
+        assert row.coverage_end <= datetime.now(timezone.utc)
+
+    def test_a_held_row_ending_in_the_future_is_capped_on_the_next_write(self, db: Session) -> None:
+        user = UserFactory()
+        _hold_until(db, user.id, "oura", "reproductive_health", datetime.now(timezone.utc) + timedelta(days=200))
+
+        data_type_coverage_repository.record(
+            db, [CoverageSpan(user.id, "oura", "reproductive_health", DataTypeKind.EVENT, NOW, NOW)]
+        )
+        db.flush()
+        db.expire_all()
+
+        row = data_type_coverage_repository.get(db, user.id, "oura", "reproductive_health", DataTypeKind.EVENT)
+        assert row is not None
+        assert row.coverage_end <= datetime.now(timezone.utc)
 
     def test_create_and_flush_records_coverage_without_committing(
         self, db: Session, event_repo: EventRecordRepository
@@ -280,6 +324,64 @@ class TestCoverageFollowsRemovals:
         assert event_record_service.delete_event_record(db, user.id, late.id, "workout")
 
         assert self._span(db, user.id, "workout") == (early.start_datetime, early.end_datetime)
+
+    def test_recomputed_end_stays_at_now(self, db: Session, event_repo: EventRecordRepository) -> None:
+        user = UserFactory()
+        due = datetime.now(timezone.utc) + timedelta(days=200)
+        ongoing, past = (
+            _event(user.id, NOW, due, "reproductive_health", external_id="pregnancy"),
+            _event(user.id, NOW - timedelta(days=2), NOW - timedelta(days=1), "reproductive_health", external_id="t"),
+        )
+        event_repo.bulk_upsert_by_external_id(db, [ongoing, past])
+        db.commit()
+
+        assert event_record_service.delete_event_record(db, user.id, past.id, "reproductive_health")
+
+        span = self._span(db, user.id, "reproductive_health")
+        assert span is not None
+        assert span[0] == NOW
+        assert span[1] <= datetime.now(timezone.utc)
+
+    def test_a_removal_never_moves_the_end_forward(self, db: Session, event_repo: EventRecordRepository) -> None:
+        """Only removals recompute, so a record running past the end held must not advance it to now."""
+        user = UserFactory()
+        due = datetime.now(timezone.utc) + timedelta(days=200)
+        ongoing, past = (
+            _event(user.id, NOW, due, "reproductive_health", external_id="pregnancy"),
+            _event(user.id, NOW - timedelta(days=2), NOW - timedelta(days=1), "reproductive_health", external_id="t"),
+        )
+        event_repo.bulk_upsert_by_external_id(db, [ongoing, past])
+        held_until = NOW + timedelta(days=1)
+        db.execute(
+            text("UPDATE data_type_coverage SET coverage_end = :end WHERE user_id = :user_id"),
+            {"end": held_until, "user_id": user.id},
+        )
+        db.commit()
+
+        assert event_record_service.delete_event_record(db, user.id, past.id, "reproductive_health")
+
+        assert self._span(db, user.id, "reproductive_health") == (NOW, held_until)
+
+    def test_a_removal_keeps_the_start_at_or_before_the_end(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """A record left that starts after the end held must not move the start past it."""
+        user = UserFactory()
+        ongoing, later = (
+            _event(user.id, NOW, NOW + timedelta(days=5), "reproductive_health", external_id="pregnancy"),
+            _event(user.id, NOW + timedelta(days=2), NOW + timedelta(days=3), "reproductive_health", external_id="t"),
+        )
+        event_repo.bulk_upsert_by_external_id(db, [ongoing, later])
+        held_until = NOW + timedelta(days=1)
+        db.execute(
+            text("UPDATE data_type_coverage SET coverage_end = :end WHERE user_id = :user_id"),
+            {"end": held_until, "user_id": user.id},
+        )
+        db.commit()
+
+        assert event_record_service.delete_event_record(db, user.id, ongoing.id, "reproductive_health")
+
+        assert self._span(db, user.id, "reproductive_health") == (held_until, held_until)
 
     def test_deleting_the_last_event_of_a_category_forgets_it(
         self, db: Session, event_repo: EventRecordRepository
@@ -463,6 +565,36 @@ class TestBackfillFromHeldData:
         data_type_coverage_repository.backfill_from_held_data(db, dry_run=False)
 
         assert _garmin_span(db, user.id, "heart_rate", DataTypeKind.SERIES) == (NOW, later)
+
+    def test_a_held_row_ending_in_the_future_is_capped(self, db: Session) -> None:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        EventRecordFactory(
+            data_source=source, category="workout", start_datetime=NOW, end_datetime=NOW + timedelta(hours=1)
+        )
+        _hold_until(db, user.id, "garmin", "workout", datetime.now(timezone.utc) + timedelta(days=200))
+
+        data_type_coverage_repository.backfill_from_held_data(db, dry_run=False)
+
+        span = _garmin_span(db, user.id, "workout", DataTypeKind.EVENT)
+        assert span is not None
+        assert span[1] <= datetime.now(timezone.utc)
+
+    def test_series_samples_in_the_future_are_held_up_to_now(self, db: Session) -> None:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        DataPointSeriesFactory(
+            data_source=source,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            recorded_at=datetime.now(timezone.utc) + timedelta(days=10),
+        )
+        db.flush()
+
+        data_type_coverage_repository.backfill_from_held_data(db, dry_run=False)
+
+        span = _garmin_span(db, user.id, "heart_rate", DataTypeKind.SERIES)
+        assert span is not None
+        assert span[0] <= span[1] <= datetime.now(timezone.utc)
 
     def test_dry_run_counts_and_writes_nothing(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.GARMIN)

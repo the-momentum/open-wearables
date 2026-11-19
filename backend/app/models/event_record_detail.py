@@ -13,6 +13,7 @@ DetailType = Literal[
     EventCategory.SLEEP,
     EventCategory.MENSTRUAL_CYCLE,
     EventCategory.MEAL,
+    EventCategory.REPRODUCTIVE_HEALTH,
 ]
 
 
