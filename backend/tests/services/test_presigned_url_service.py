@@ -19,6 +19,7 @@ def _patch_client_accessors(monkeypatch: pytest.MonkeyPatch) -> None:
     _clients["public"] = None
     monkeypatch.setattr(presign_module, "get_s3_client", lambda: _clients["internal"])
     monkeypatch.setattr(presign_module, "get_public_s3_client", lambda: _clients["public"])
+    monkeypatch.setattr(settings, "aws_bucket_name", "test-bucket")
 
 
 def _service(client: MagicMock) -> PresignedURLService:
