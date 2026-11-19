@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.config import settings
 from app.integrations.redis_client import get_redis_client
 from app.schemas.sync_status import (
     SyncRunSummary,
@@ -78,8 +79,12 @@ def emit(event: SyncStatusEvent) -> None:
     """Persist and broadcast a sync status event.
 
     Failures are logged but never raised — sync flow must not be blocked
-    by Redis problems.
+    by Redis problems. When sync status is disabled (Redis-free deploys) this is
+    a no-op, which also short-circuits the outgoing-webhook dispatch below.
     """
+    if not settings.sync_status_enabled:
+        return
+
     try:
         client = get_redis_client()
         payload = event.model_dump_json()

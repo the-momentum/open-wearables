@@ -17,6 +17,7 @@ from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
 from .menstrual_cycle_details import MenstrualCycleDetails
 from .sleep_details import SleepDetails
+from .sleep_session import SleepSession
 from .user import User
 from .user_connection import UserConnection
 from .user_invitation_code import UserInvitationCode
@@ -41,6 +42,7 @@ __all__ = [
     "EventRecordDetail",
     "MenstrualCycleDetails",
     "SleepDetails",
+    "SleepSession",
     "WorkoutDetails",
     "PersonalRecord",
     "DataPointSeries",

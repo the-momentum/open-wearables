@@ -1,0 +1,31 @@
+# Copy to Pulumi.<stack>.yaml, then set secret values with:
+#   pulumi config set --secret dbPassword '...'
+#   pulumi config set --secret secretKey '...'
+#   pulumi config set --secret adminPassword '...'
+#
+# Keep real Pulumi.<stack>.yaml files private unless you are certain they contain
+# no encrypted secrets tied to your Pulumi backend.
+config:
+  gcp:project: your-gcp-project-id
+  gcp:region: europe-west1
+  open-wearables-cloudrun:location: europe-west1
+  open-wearables-cloudrun:serviceName: open-wearables
+  open-wearables-cloudrun:image: europe-west1-docker.pkg.dev/your-gcp-project-id/open-wearables/open-wearables-backend:latest
+  open-wearables-cloudrun:dbHost: 10.0.0.3
+  open-wearables-cloudrun:dbPort: "5432"
+  open-wearables-cloudrun:dbName: open-wearables
+  open-wearables-cloudrun:dbUser: open-wearables
+  open-wearables-cloudrun:adminEmail: admin@admin.com
+  open-wearables-cloudrun:frontendUrl: https://your-frontend.example.com
+  open-wearables-cloudrun:apiBaseUrl: https://your-cloud-run-url-or-custom-domain
+  open-wearables-cloudrun:corsOrigins: '["https://your-frontend.example.com"]'
+  open-wearables-cloudrun:minInstances: "0"
+  open-wearables-cloudrun:maxInstances: "4"
+  open-wearables-cloudrun:concurrency: "1"
+  open-wearables-cloudrun:timeoutSeconds: "600"
+  open-wearables-cloudrun:memory: 1Gi
+  open-wearables-cloudrun:cpu: "1"
+  open-wearables-cloudrun:allowUnauthenticated: "true"
+  # Set this when DB_HOST is a private IP reachable through a Serverless VPC connector.
+  # open-wearables-cloudrun:vpcConnector: projects/your-gcp-project-id/locations/europe-west1/connectors/open-wearables
+  # open-wearables-cloudrun:vpcEgress: PRIVATE_RANGES_ONLY

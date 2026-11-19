@@ -1,8 +1,9 @@
 import uuid
 from logging import getLogger
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 
+from app.integrations.celery.dispatch import dispatch, is_inline
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
@@ -19,6 +20,7 @@ def sync_sdk_data(
     user_id: str,
     body: SyncRequest,
     auth: SDKAuthDep,
+    response: Response,
 ) -> UploadDataResponse:
     """Import health data from SDK provider asynchronously via Celery.
 
@@ -97,7 +99,8 @@ def sync_sdk_data(
         trace_id=batch_id,
     )
 
-    process_sdk_upload.delay(
+    result = dispatch(
+        process_sdk_upload,
         content=content_str,
         content_type="application/json",
         user_id=user_id,
@@ -105,4 +108,43 @@ def sync_sdk_data(
         batch_id=batch_id,
     )
 
+    if is_inline():
+        # Task ran synchronously; surface the real import outcome.
+        body_status = _result_status_code(result)
+        response.status_code = body_status
+        return UploadDataResponse(
+            status_code=body_status,
+            response=_result_message(result, body_status),
+            user_id=user_id,
+        )
+
     return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
+
+
+def _result_status_code(result: object) -> int:
+    if not isinstance(result, dict):
+        return status.HTTP_500_INTERNAL_SERVER_ERROR
+
+    try:
+        status_code = int(result.get("status_code", status.HTTP_500_INTERNAL_SERVER_ERROR))
+    except (TypeError, ValueError):
+        return status.HTTP_500_INTERNAL_SERVER_ERROR
+
+    if 100 <= status_code <= 599:
+        return status_code
+
+    return status.HTTP_500_INTERNAL_SERVER_ERROR
+
+
+def _result_message(result: object, status_code: int) -> str:
+    if not isinstance(result, dict):
+        return "Import failed: task returned an invalid result"
+
+    message = result.get("response") or result.get("message")
+    if message:
+        return str(message)
+
+    if 200 <= status_code < 300:
+        return "Import completed"
+
+    return "Import failed"

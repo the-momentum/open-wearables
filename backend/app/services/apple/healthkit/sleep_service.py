@@ -1,9 +1,12 @@
 import contextlib
-import json
+import time
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from logging import getLogger
 from uuid import UUID, uuid4
+
+from sqlalchemy import delete, select, text
 
 from app.config import settings
 from app.constants.series_types.sdk import (
@@ -11,8 +14,9 @@ from app.constants.series_types.sdk import (
     get_apple_sleep_phase,
 )
 from app.constants.sleep import SleepStageType
-from app.database import DbSession
+from app.database import DbSession, engine
 from app.integrations.redis_client import get_redis_client
+from app.models.sleep_session import SleepSession
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -28,6 +32,7 @@ from app.schemas.providers.mobile_sdk import (
 )
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -41,6 +46,16 @@ _STAGE_TO_METRIC: dict[str, str] = {
 }
 
 
+def _use_postgres() -> bool:
+    """Whether in-progress sleep sessions live in Postgres instead of Redis.
+
+    Inline mode (``task_execution_mode="inline"``) is the Redis-free deployment
+    profile, so sleep state is stored in the ``sleep_session`` table and serialized
+    with a Postgres advisory lock. Default (``"celery"``) keeps the Redis backend.
+    """
+    return settings.task_execution_mode == "inline"
+
+
 def key(user_id: str) -> str:
     """Generate a key for the sleep state."""
     return f"sleep:active:{user_id}"
@@ -51,10 +66,19 @@ def active_users_key() -> str:
     return "sleep:active_users"
 
 
-def load_sleep_state(user_id: str) -> SleepState | None:
-    """Load the sleep state from Redis."""
-    sleep_state_key = key(user_id)
-    state = get_redis_client().get(sleep_state_key)
+def load_sleep_state(db_session: DbSession, user_id: str) -> SleepState | None:
+    """Load the in-progress sleep state for a user (Postgres or Redis)."""
+    if _use_postgres():
+        row = db_session.get(SleepSession, UUID(str(user_id)))
+        if row is None:
+            return None
+        try:
+            return SleepState.model_validate(row.state)
+        except Exception as e:
+            logger.error(f"Failed to parse sleep state for user {user_id}: {e}; session will be dropped")
+            return None
+
+    state = get_redis_client().get(key(user_id))
     if not state:
         return None
     try:
@@ -62,24 +86,139 @@ def load_sleep_state(user_id: str) -> SleepState | None:
             state = state.decode("utf-8")
         return SleepState.model_validate_json(state)
     except Exception as e:
-        logger.error(f"Failed to parse sleep state for user {user_id}: {e}")
-        try:
-            raw = json.loads(state)
-            return SleepState.model_validate(raw)
-        except Exception as fallback_e:
-            logger.error(f"Legacy state migration failed for user {user_id}: {fallback_e}; session will be dropped")
-            return None
+        logger.error(f"Failed to parse sleep state for user {user_id}: {e}; session will be dropped")
+        return None
 
 
-def save_sleep_state(user_id: str, state: SleepState) -> None:
+def save_sleep_state(db_session: DbSession, user_id: str, state: SleepState) -> None:
+    if _use_postgres():
+        user_uuid = UUID(str(user_id))
+        payload = state.model_dump(mode="json")
+        row = db_session.get(SleepSession, user_uuid)
+        if row is None:
+            row = SleepSession(
+                user_id=user_uuid,
+                state=payload,
+                start_time=state.start_time,
+                end_time=state.end_time,
+            )
+            db_session.add(row)
+        else:
+            row.state = payload
+            row.start_time = state.start_time
+            row.end_time = state.end_time
+        db_session.commit()
+        return
+
     get_redis_client().set(key(user_id), state.model_dump_json())
     get_redis_client().expire(key(user_id), settings.redis_sleep_ttl_seconds)
     get_redis_client().sadd(active_users_key(), user_id)
 
 
-def delete_sleep_state(user_id: str) -> None:
+def delete_sleep_state(db_session: DbSession, user_id: str) -> None:
+    if _use_postgres():
+        db_session.execute(delete(SleepSession).where(SleepSession.user_id == UUID(str(user_id))))
+        db_session.commit()
+        return
+
     get_redis_client().delete(key(user_id))
     get_redis_client().srem(active_users_key(), user_id)
+
+
+def iter_active_user_ids(db_session: DbSession) -> list[str]:
+    """Return the user ids that currently have an in-progress sleep session."""
+    if _use_postgres():
+        rows = db_session.execute(select(SleepSession.user_id)).scalars().all()
+        return [str(uid) for uid in rows]
+
+    return [str(uid) for uid in get_redis_client().smembers(active_users_key())]
+
+
+def _advisory_lock_param(user_id: str) -> str:
+    return f"sleep:{user_id}"
+
+
+@contextlib.contextmanager
+def user_sleep_lock(user_id: str, wait_seconds: float = 15.0) -> Iterator[bool]:
+    """Serialize concurrent sleep processing for a single user.
+
+    Yields ``True`` if the lock was acquired, ``False`` otherwise (caller should
+    skip the batch). In Postgres mode a session-level advisory lock is held on a
+    dedicated connection so it survives the commits ``finish_sleep`` performs on
+    the request's session; it is always released in ``finally``. In Redis mode the
+    existing redis-py lock is used.
+    """
+    if _use_postgres():
+        conn = engine.connect()
+        # Non-Postgres dialects (e.g. SQLite in some tests) have no advisory locks.
+        if conn.dialect.name != "postgresql":
+            try:
+                yield True
+            finally:
+                conn.close()
+            return
+
+        acquired = False
+        param = {"k": _advisory_lock_param(user_id)}
+        try:
+            deadline = time.monotonic() + wait_seconds
+            while True:
+                acquired = bool(conn.execute(text("SELECT pg_try_advisory_lock(hashtext(:k)::bigint)"), param).scalar())
+                if acquired or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.25)
+            yield acquired
+        finally:
+            if acquired:
+                with contextlib.suppress(Exception):
+                    conn.execute(text("SELECT pg_advisory_unlock(hashtext(:k)::bigint)"), param)
+            conn.close()
+        return
+
+    lock = get_redis_client().lock(f"sleep:lock:{user_id}", timeout=30, blocking_timeout=wait_seconds)
+    acquired = False
+    try:
+        acquired = bool(lock.acquire(blocking=wait_seconds > 0))
+        yield acquired
+    finally:
+        if acquired:
+            with contextlib.suppress(Exception):
+                lock.release()
+
+
+def finalize_stale_sleep_for_user(db_session: DbSession, user_id: UUID | str) -> bool:
+    """Finalize one user's in-progress sleep session if it has gone stale.
+
+    This is used by read paths in inline/serverless deployments where there is no
+    Celery beat to wake up later and close a quiet sleep session.
+    """
+    user_id_str = str(user_id)
+    try:
+        with user_sleep_lock(user_id_str, wait_seconds=0) as acquired:
+            if not acquired:
+                return False
+
+            state = load_sleep_state(db_session, user_id_str)
+            if not state:
+                return False
+
+            session_end = state.end_time
+            if session_end.tzinfo is None:
+                session_end = session_end.replace(tzinfo=timezone.utc)
+
+            if datetime.now(timezone.utc) - session_end < timedelta(minutes=settings.sleep_end_gap_minutes):
+                return False
+
+            finish_sleep(db_session, user_id_str, state)
+            return True
+    except Exception as e:
+        log_and_capture_error(
+            e,
+            logger,
+            f"Failed to finalize stale sleep session for user {user_id_str}: {e}",
+            extra={"action": "sleep_finalize_stale_on_read_failed", "user_id": user_id_str},
+        )
+        return False
 
 
 def _create_new_sleep_state(
@@ -199,14 +338,15 @@ def handle_sleep_data(
     user_id: str,
 ) -> None:
     """
-    Process SDK sleep data and track sleep sessions using Redis state.
+    Process SDK sleep data and track in-progress sleep sessions.
 
-    Sleep sessions are tracked in Redis and automatically finalized to the database when
-    a gap of more than 2 hours (configurable) is detected between consecutive sleep records.
+    Sleep sessions are tracked in the configured backend (Postgres in inline mode,
+    Redis otherwise) and automatically finalized to the database when a gap of more
+    than 2 hours (configurable) is detected between consecutive sleep records.
 
-    A per-user Redis lock serializes concurrent calls so that parallel Celery tasks
-    (e.g. from a bulk historical upload) accumulate stages into the same session instead
-    of overwriting each other's state.
+    A per-user lock serializes concurrent calls so that parallel uploads
+    (e.g. from a bulk historical upload) accumulate stages into the same session
+    instead of overwriting each other's state.
 
     Stale detection uses ``end_time`` (the last sleep-sample timestamp).  When a bulk
     historical upload finalizes a session whose ``end_time`` is in the past, the new
@@ -220,24 +360,20 @@ def handle_sleep_data(
         user_id: User identifier for associating sleep data
 
     Flow:
-        - Acquire a per-user Redis lock to prevent concurrent state corruption
+        - Acquire a per-user lock to prevent concurrent state corruption
         - Deduplicate incoming data based on start/end/stage/source
-        - If no active session exists: Create new session in Redis (only for valid start states)
+        - If no active session exists: Create new session (only for valid start states)
         - If active session exists: Check gap between new sample and the session window
           * Gap > 2 hours: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
-        - Persist state once after the whole batch; dispatch the stale-sleep task
+        - Persist state once after the whole batch; finalize stale sessions
     """
-    redis_client = get_redis_client()
-    lock = redis_client.lock(f"sleep:lock:{user_id}", timeout=30, blocking_timeout=15)
-
-    try:
-        acquired = lock.acquire()
+    with user_sleep_lock(user_id, wait_seconds=15) as acquired:
         if not acquired:
             logger.warning("Could not acquire sleep processing lock for user %s; skipping batch", user_id)
             return
 
-        current_state = load_sleep_state(user_id)
+        current_state = load_sleep_state(db_session, user_id)
         provider = request.provider
 
         # Deduplicate and sort
@@ -294,9 +430,9 @@ def handle_sleep_data(
                 sjson.zoneOffset,
             )
 
-        # Persist the accumulated state to Redis only once after processing the entire batch
+        # Persist the accumulated state only once after processing the entire batch
         if current_state:
-            save_sleep_state(user_id, current_state)
+            save_sleep_state(db_session, user_id, current_state)
 
         # Finalise synchronously if the session is already stale.  Historical
         # uploads have end_time far in the past so this fires immediately, but
@@ -310,16 +446,15 @@ def handle_sleep_data(
             if datetime.now(timezone.utc) - session_end >= timedelta(minutes=settings.sleep_end_gap_minutes):
                 finish_sleep(db_session, user_id, current_state)
 
-    finally:
-        with contextlib.suppress(Exception):
-            lock.release()
+    # In celery mode, dispatch the stale-sleep task so sessions that have gone quiet
+    # (including other users' sessions) are finalised promptly without waiting for the
+    # next beat. In inline mode there is no beat: a user's own stale session is
+    # finalised by the synchronous check above on their next upload.
+    if settings.task_execution_mode != "inline":
+        # import not at module level in order to avoid circular import
+        from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 
-    # import not at module level in order to avoid circular import
-    from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
-
-    # Dispatch the stale-sleep task so sessions that have gone quiet (including
-    # other users' sessions) are finalised promptly without waiting for the next beat.
-    finalize_stale_sleeps.delay()
+        finalize_stale_sleeps.delay()
 
 
 def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[SleepStage]]:
@@ -525,9 +660,9 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         # Always use the returned record's ID (whether newly created or existing)
         detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
         event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")
-        # Delete from Redis only after a successful DB write so a transient error
-        # keeps the session available for the next periodic finalization attempt.
-        delete_sleep_state(user_id)
+        # Delete the in-progress session only after a successful DB write so a transient
+        # error keeps the session available for the next finalization attempt.
+        delete_sleep_state(db_session, user_id)
     except Exception as e:
         log_structured(
             logger,

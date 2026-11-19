@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
+from app.config import settings
 from app.services.sdk_token_service import create_sdk_user_token
 from tests.factories import ApiKeyFactory, DeveloperFactory
 from tests.utils import developer_auth_headers
@@ -69,6 +70,45 @@ class TestSDKSyncWithSDKToken:
 
         # Should not be 401
         assert response.status_code != 401
+
+    def test_inline_task_error_propagates_http_status(
+        self,
+        client: TestClient,
+        api_v1_prefix: str,
+        mock_celery_tasks: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Inline task failures should be returned as API failures, not success."""
+        monkeypatch.setattr(settings, "task_execution_mode", "inline")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
+        token = create_sdk_user_token("app_123", user_id)
+        mock_celery_tasks.run.return_value = {
+            "status_code": 404,
+            "response": "User not found",
+            "status": "skipped",
+            "reason": "user_not_found",
+        }
+
+        response = client.post(
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "provider": "apple",
+                "sdkVersion": "1.0.0",
+                "syncTimestamp": "2021-01-01T00:00:00Z",
+                "data": {
+                    "workouts": [],
+                    "records": [],
+                    "sleep": [],
+                },
+            },
+        )
+
+        assert response.status_code == 404
+        data = response.json()
+        assert data["status_code"] == 404
+        assert data["response"] == "User not found"
+        assert data["user_id"] == user_id
 
     def test_no_auth_returns_401(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """No authentication should return 401."""

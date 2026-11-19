@@ -9,6 +9,8 @@ from celery import shared_task
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.integrations.celery.dispatch import is_inline
+from app.integrations.celery.tasks.score_inline import score_user_inline
 from app.schemas.providers.apple.apple_xml import XMLParseStats
 from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services import event_record_service
@@ -62,6 +64,10 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                 f.write(file_contents)
 
             stats = _import_xml_data(db, temp_xml_file, user_id)
+
+            # No Celery beat in inline mode — compute this user's scores now.
+            if user_uuid is not None and is_inline():
+                score_user_inline(db, user_uuid)
 
             if user_uuid is not None:
                 completed(

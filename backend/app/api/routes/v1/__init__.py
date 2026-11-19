@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.config import settings
+
 from .api_keys import router as api_keys_router
 from .applications import router as applications_router
 from .archival import router as archival_router
@@ -43,7 +45,9 @@ v1_router.include_router(events_router, tags=["External: Events"])
 v1_router.include_router(health_scores_router, tags=["External: Health Scores"])
 v1_router.include_router(oauth_router, prefix="/oauth")
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["External: Data Sync"])
-v1_router.include_router(sync_status_router, tags=["External: Sync Status"])
+# Live sync-status (SSE + history) is backed by Redis; only mount it when enabled.
+if settings.sync_status_enabled:
+    v1_router.include_router(sync_status_router, tags=["External: Sync Status"])
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["System: Vendor Workouts"])
 v1_router.include_router(import_xml_router, tags=["External: Apple Health Import"])
 v1_router.include_router(sdk_logs_router, tags=["External: Mobile SDK"])

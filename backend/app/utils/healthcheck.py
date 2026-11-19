@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
 
 from app.database import DbSession, engine
@@ -30,7 +30,10 @@ async def database_health(db: DbSession) -> dict[str, str | dict[str, str]]:
             "pool": pool_status,
         }
     except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-        }
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "status": "unhealthy",
+                "error": str(e),
+            },
+        ) from e

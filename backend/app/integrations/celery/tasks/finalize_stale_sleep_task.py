@@ -1,17 +1,15 @@
-import contextlib
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
-from typing import cast
 
 from celery import shared_task
 
 from app.config import settings
 from app.database import SessionLocal
-from app.integrations.redis_client import get_redis_client
 from app.services.apple.healthkit.sleep_service import (
-    active_users_key,
     finish_sleep,
+    iter_active_user_ids,
     load_sleep_state,
+    user_sleep_lock,
 )
 from app.utils.sentry_helpers import log_and_capture_error
 
@@ -21,18 +19,16 @@ logger = getLogger(__name__)
 @shared_task
 def finalize_stale_sleeps() -> None:
     now = datetime.now(timezone.utc)
-    redis_client = get_redis_client()
 
     with SessionLocal() as db:
-        for user_id in cast(set[str], redis_client.smembers(active_users_key())):
+        for user_id in iter_active_user_ids(db):
             try:
-                # Skip users whose upload is currently in progress.
-                lock = redis_client.lock(f"sleep:lock:{user_id}", timeout=30, blocking_timeout=0)
-                if not lock.acquire(blocking=False):
-                    continue
+                # Skip users whose upload is currently in progress (non-blocking).
+                with user_sleep_lock(user_id, wait_seconds=0) as acquired:
+                    if not acquired:
+                        continue
 
-                try:
-                    state = load_sleep_state(user_id)
+                    state = load_sleep_state(db, user_id)
                     if not state:
                         continue
 
@@ -42,9 +38,6 @@ def finalize_stale_sleeps() -> None:
 
                     if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
                         finish_sleep(db, user_id, state)
-                finally:
-                    with contextlib.suppress(Exception):
-                        lock.release()
 
             except Exception as e:
                 log_and_capture_error(

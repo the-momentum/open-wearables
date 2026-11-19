@@ -43,6 +43,8 @@ class TestProcessSDKUploadTask:
         )
 
         # Assert
+        assert result["status_code"] == 404
+        assert result["response"] == "User not found"
         assert result["status"] == "skipped"
         assert result["reason"] == "user_not_found"
 
@@ -55,6 +57,8 @@ class TestProcessSDKUploadTask:
             provider="apple",
         )
 
+        assert result["status_code"] == 400
+        assert result["response"] == "Invalid user_id"
         assert result["status"] == "error"
         assert result["reason"] == "invalid_user_id"
 

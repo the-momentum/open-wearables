@@ -7,6 +7,7 @@ Tests database health check endpoint and pool status monitoring.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException, status
 
 from app.utils.healthcheck import database_health, get_pool_status
 
@@ -153,14 +154,12 @@ class TestDatabaseHealth:
         error_message = "Connection refused"
         mock_db.execute.side_effect = Exception(error_message)
 
-        # Act
-        result = await database_health(mock_db)
+        # Act / Assert
+        with pytest.raises(HTTPException) as exc_info:
+            await database_health(mock_db)
 
-        # Assert
-        assert result["status"] == "unhealthy"
-        assert "error" in result
-        assert result["error"] == error_message
-        assert "pool" not in result
+        assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert exc_info.value.detail == {"status": "unhealthy", "error": error_message}
 
     @pytest.mark.asyncio
     async def test_database_health_with_connection_timeout(self) -> None:
@@ -169,12 +168,12 @@ class TestDatabaseHealth:
         mock_db = MagicMock()
         mock_db.execute.side_effect = TimeoutError("Connection timeout")
 
-        # Act
-        result = await database_health(mock_db)
+        # Act / Assert
+        with pytest.raises(HTTPException) as exc_info:
+            await database_health(mock_db)
 
-        # Assert
-        assert result["status"] == "unhealthy"
-        assert "Connection timeout" in result["error"]
+        assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert exc_info.value.detail == {"status": "unhealthy", "error": "Connection timeout"}
 
     @pytest.mark.asyncio
     async def test_database_health_with_database_error(self) -> None:
@@ -183,12 +182,12 @@ class TestDatabaseHealth:
         mock_db = MagicMock()
         mock_db.execute.side_effect = Exception("Database is shutting down")
 
-        # Act
-        result = await database_health(mock_db)
+        # Act / Assert
+        with pytest.raises(HTTPException) as exc_info:
+            await database_health(mock_db)
 
-        # Assert
-        assert result["status"] == "unhealthy"
-        assert result["error"] == "Database is shutting down"
+        assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert exc_info.value.detail == {"status": "unhealthy", "error": "Database is shutting down"}
 
     @pytest.mark.asyncio
     async def test_database_health_includes_pool_status_on_success(self) -> None:

@@ -1,0 +1,4 @@
+name: open-wearables-cloudrun
+runtime:
+  name: python
+description: Deploy Open Wearables backend to Google Cloud Run in Redis-free inline mode.

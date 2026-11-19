@@ -72,6 +72,19 @@ class Settings(BaseSettings):
     redis_username: str | None = None  # Redis 6.0+ ACL
     redis_ssl: bool = False  # True for TLS (e.g. ElastiCache transit_encryption_enabled)
 
+    # EXECUTION MODE / DEPLOYMENT FEATURE FLAGS
+    # How background tasks run. "celery" enqueues via the broker (default, upstream
+    # behaviour). "inline" runs the task body synchronously in the current process —
+    # enables a single-service, Redis-free deploy (e.g. Cloud Run scale-to-zero).
+    task_execution_mode: str = "celery"  # celery | inline
+    # Live sync-status events (SSE stream + recent/run history), backed by Redis
+    # pub/sub. Set false to run without Redis: emit() becomes a no-op and the
+    # sync-status routes are not mounted.
+    sync_status_enabled: bool = True
+    # Outgoing developer webhooks (Svix). Set false to skip Svix registration at
+    # startup and never dispatch outgoing webhook events.
+    outgoing_webhooks_enabled: bool = True
+
     # ADMIN ACCOUNT SEED
     admin_email: str = "admin@admin.com"
     admin_password: SecretStr = SecretStr("your-secure-password")

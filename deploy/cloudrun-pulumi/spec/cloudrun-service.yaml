@@ -1,0 +1,74 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: open-wearables
+  annotations:
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "4"
+        run.googleapis.com/execution-environment: gen2
+        # Uncomment when DB_HOST is a private IP reachable through this connector.
+        # run.googleapis.com/vpc-access-connector: projects/PROJECT_ID/locations/REGION/connectors/CONNECTOR_NAME
+        # run.googleapis.com/vpc-access-egress: private-ranges-only
+    spec:
+      serviceAccountName: open-wearables-run@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 1
+      timeoutSeconds: 600
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/open-wearables-backend:TAG
+          command: ["bash"]
+          args: ["scripts/start/app_cloudrun.sh"]
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: API_PORT
+              value: "8080"
+            - name: TASK_EXECUTION_MODE
+              value: inline
+            - name: SYNC_STATUS_ENABLED
+              value: "false"
+            - name: OUTGOING_WEBHOOKS_ENABLED
+              value: "false"
+            - name: RAW_PAYLOAD_STORAGE
+              value: disabled
+            - name: DB_HOST
+              value: DB_HOST_OR_PRIVATE_IP
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: open-wearables
+            - name: DB_USER
+              value: open-wearables
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: open-wearables-db-password
+                  key: latest
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-wearables-secret-key
+                  key: latest
+            - name: ADMIN_EMAIL
+              value: admin@admin.com
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: open-wearables-admin-password
+                  key: latest
+            - name: CORS_ORIGINS
+              value: '["https://your-frontend.example.com"]'
+  traffic:
+    - percent: 100
+      latestRevision: true

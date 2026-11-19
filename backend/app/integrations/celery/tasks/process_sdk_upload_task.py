@@ -3,8 +3,11 @@ from logging import getLogger
 from uuid import UUID
 
 from celery import shared_task
+from fastapi import status
 
 from app.database import SessionLocal
+from app.integrations.celery.dispatch import is_inline
+from app.integrations.celery.tasks.score_inline import score_user_inline
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
@@ -65,7 +68,13 @@ def process_sdk_upload(
             batch_id=batch_id,
             user_id=user_id,
         )
-        return {"status": "error", "reason": "invalid_user_id", "batch_id": batch_id}
+        return {
+            "status_code": status.HTTP_400_BAD_REQUEST,
+            "response": "Invalid user_id",
+            "status": "error",
+            "reason": "invalid_user_id",
+            "batch_id": batch_id,
+        }
 
     # Validate user exists before processing
     with SessionLocal() as db:
@@ -80,7 +89,13 @@ def process_sdk_upload(
                 batch_id=batch_id,
                 user_id=user_id,
             )
-            return {"status": "skipped", "reason": "user_not_found", "batch_id": batch_id}
+            return {
+                "status_code": status.HTTP_404_NOT_FOUND,
+                "response": "User not found",
+                "status": "skipped",
+                "reason": "user_not_found",
+                "batch_id": batch_id,
+            }
 
     # Log task start
     log_structured(
@@ -138,6 +153,10 @@ def process_sdk_upload(
         items_total = records_saved + workouts_saved + sleep_saved
 
         if isinstance(status_code, int) and 200 <= status_code < 300:
+            # No Celery beat in inline mode — compute this user's scores now.
+            if is_inline():
+                score_user_inline(db, user_uuid)
+
             completed(
                 user_uuid,
                 provider,

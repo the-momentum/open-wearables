@@ -1,6 +1,8 @@
-# Open Wearables
+# Open Wearables Serverless
 
 Open Wearables is a health/wearable data aggregation platform with a Python/FastAPI backend and React/TypeScript frontend.
+
+Open Wearables Serverless is a set of patches on top of Open Wearables that makes it support running in serverless archictecure like Cloud Run. The expectation is that we will have lower volume and limited functionality.
 
 ## Documentation Structure
 
@@ -30,6 +32,9 @@ open-wearables/
 | PostgreSQL | Tailwind + shadcn/ui | |
 | Celery + Redis | Vitest | |
 | Ruff + ty | oxlint + Prettier | Ruff + ty |
+
+
+For serverless running celery and redis makes it hard to scale to zero, so we will find alternatives.
 
 ## Development Workflow
 

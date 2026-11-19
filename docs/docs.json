@@ -137,7 +137,8 @@
             "group": "Deployment",
             "pages": [
               "deployment/docker-images",
-              "deployment/railway"
+              "deployment/railway",
+              "deployment/google-cloud-run"
             ]
           },
           {

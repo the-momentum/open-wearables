@@ -18,6 +18,7 @@ from app.middlewares import add_cors_middleware
 from app.services import raw_payload_storage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
+from app.utils.healthcheck import healthcheck_router
 
 # Configure logging to use stdout instead of stderr
 # Some platforms convert stderr logs to level.error automatically, so we must use stdout
@@ -36,9 +37,17 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _logger.propagate = True
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    svix_service.register_event_types()
+    # Best-effort: a missing/unreachable Svix must not prevent the app from booting
+    # (e.g. Redis-free Cloud Run deploys with outgoing webhooks disabled).
+    try:
+        svix_service.register_event_types()
+    except Exception:
+        logger.warning("Svix event-type registration skipped/failed at startup", exc_info=True)
     yield
 
 
@@ -85,3 +94,5 @@ async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) 
 
 
 api.include_router(head_router)
+# Liveness is GET / (above); /healthz/db is a DB readiness probe for Cloud Run.
+api.include_router(healthcheck_router, prefix="/healthz", tags=["System: Health"])

@@ -1,0 +1,121 @@
+---
+title: "Deploy Open Wearables to Google Cloud Run"
+sidebarTitle: "Google Cloud Run"
+description: "Run Open Wearables on Google Cloud Run with scale-to-zero — no Redis, no Celery. A single FastAPI service backed by your own PostgreSQL, ideal for Apple Health–only deployments."
+keywords: ["open wearables cloud run", "open wearables scale to zero", "open wearables without redis", "open wearables without celery", "apple health server"]
+---
+
+## Overview
+
+Open Wearables normally runs as several always-on services (API, Celery worker, Celery
+beat, Flower, Redis, Svix). For a small, low-traffic deployment — for example ingesting
+**Apple Health data only** — you can collapse this to a **single FastAPI service that
+scales to zero** on Cloud Run, backed by a PostgreSQL instance you already run. No Redis
+and no Celery are required.
+
+This is enabled by three settings:
+
+| Setting | Value | Effect |
+| --- | --- | --- |
+| `TASK_EXECUTION_MODE` | `inline` | SDK upload and XML import run **synchronously in the request** instead of being queued to a Celery worker. Also stores in-progress sleep sessions in PostgreSQL (a `sleep_session` table + advisory locks) instead of Redis, and computes sleep/resilience scores inline right after each import (no Celery beat). |
+| `SYNC_STATUS_ENABLED` | `false` | Disables the Redis-backed live sync-status stream (SSE) and history. The dashboard's live sync page is unavailable. |
+| `OUTGOING_WEBHOOKS_ENABLED` | `false` | Skips Svix registration at startup and never dispatches outgoing developer webhooks. |
+
+With all three set, the app never connects to Redis or Svix.
+
+<Note>
+This profile targets **Apple Health ingestion** (HealthKit SDK uploads and Apple Health
+XML export). Providers that rely on Celery for webhooks or historical backfill (Garmin,
+Polar, Whoop, Strava, Oura, Suunto) are **not** supported in this mode.
+</Note>
+
+## Architecture
+
+```
+Cloud Run service (min-instances=0)   ← API, scales to zero
+  └─ inline import + inline scoring (no worker, no beat)
+Cloud SQL / your PostgreSQL 16+        ← data, sleep-session state, advisory locks
+```
+
+## Prerequisites
+
+- A PostgreSQL instance reachable from Cloud Run (Cloud SQL, or your own). **PostgreSQL 16+.**
+- The backend container image (see [Docker images](/deployment/docker-images)).
+- `gcloud` CLI authenticated to your project.
+
+## Pulumi and Spec Files
+
+This repository includes deployable Cloud Run examples in `deploy/cloudrun-pulumi/`:
+
+- `__main__.py` is a generic Pulumi program for the Cloud Run service, Secret Manager secrets, service account, and init job.
+- `spec/cloudrun-service.yaml` and `spec/cloudrun-init-job.yaml` are spec-only Cloud Run manifests.
+- `deploy-to-gcp.sh` is an account-oriented wrapper that fills Pulumi config from environment variables and runs `pulumi up`.
+
+Use the Pulumi package when you want repeatable infrastructure. Use the spec files when
+you only need the Cloud Run resource shape or want to adapt it to another IaC tool.
+
+## Step 1 — Run database migrations and seeds (once per deploy)
+
+Cold starts must stay fast, so the serving container does **not** run migrations. Run the
+init script once at rollout — for example as a Cloud Run Job using the same image:
+
+```bash
+gcloud run jobs create open-wearables-init \
+  --image YOUR_IMAGE \
+  --region YOUR_REGION \
+  --set-env-vars "DB_HOST=...,DB_PORT=5432,DB_NAME=open-wearables,DB_USER=...,DB_PASSWORD=...,SECRET_KEY=...,ADMIN_EMAIL=you@example.com,ADMIN_PASSWORD=..." \
+  --command bash --args scripts/start/init_cloudrun.sh
+
+gcloud run jobs execute open-wearables-init --region YOUR_REGION --wait
+```
+
+`scripts/start/init_cloudrun.sh` applies Alembic migrations and seeds the minimum
+reference data (provider settings, device priorities, admin account, series types,
+archival settings). It skips the Svix database, webhook event-type registration, and
+provider-specific data migrations.
+
+## Step 2 — Deploy the serving container (scale-to-zero)
+
+```bash
+gcloud run deploy open-wearables \
+  --image YOUR_IMAGE \
+  --region YOUR_REGION \
+  --command bash --args scripts/start/app_cloudrun.sh \
+  --min-instances 0 \
+  --max-instances 4 \
+  --memory 1Gi \
+  --timeout 600 \
+  --allow-unauthenticated \
+  --set-env-vars "\
+TASK_EXECUTION_MODE=inline,\
+SYNC_STATUS_ENABLED=false,\
+OUTGOING_WEBHOOKS_ENABLED=false,\
+RAW_PAYLOAD_STORAGE=disabled,\
+DB_HOST=...,DB_PORT=5432,DB_NAME=open-wearables,DB_USER=...,DB_PASSWORD=...,\
+SECRET_KEY=...,CORS_ORIGINS=https://your-frontend.example.com"
+```
+
+`scripts/start/app_cloudrun.sh` starts only the FastAPI app and listens on the port Cloud
+Run provides via `$PORT`.
+
+### Health checks
+
+- **Liveness:** `GET /` returns `200`.
+- **Readiness:** `GET /healthz/db` checks database connectivity.
+
+## Sizing the instance
+
+Because work runs inline, a large Apple Health **XML export** (often 100 MB+) is parsed
+within a single request and written to `/tmp` (in-memory on Cloud Run). Size `--memory`
+for the largest export you expect, and keep `--timeout` generous (up to 3600s). If you
+need to ingest very large exports routinely, consider moving XML import off-request (e.g.
+Cloud Tasks or a Cloud Run Job) in a later iteration.
+
+## What you give up in this mode
+
+- **Live sync-status page** in the dashboard (SSE) — disabled.
+- **Outgoing developer webhooks** (Svix) — disabled.
+- **Non-Apple providers** — unsupported here; they require Celery/Redis.
+
+To restore any of these, run the standard multi-service stack (see
+[Railway](/deployment/railway)) with Redis and Celery.

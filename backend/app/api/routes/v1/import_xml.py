@@ -1,9 +1,11 @@
 import json
 from json import JSONDecodeError
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
 
+from app.integrations.celery.dispatch import dispatch, is_inline
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas.providers.apple.apple_xml import (
     PresignedURLRequest,
@@ -33,16 +35,20 @@ def import_xml_file(
     user_id: str,
     file: UploadFile,
     _api_key: ApiKeyDep,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Import XML file into the database."""
     file_contents = file.file.read()
     filename = file.filename or "upload.xml"
 
-    task = process_xml_upload.delay(file_contents=file_contents, filename=filename, user_id=user_id)
+    result = dispatch(process_xml_upload, file_contents=file_contents, filename=filename, user_id=user_id)
+
+    if is_inline():
+        # Task ran synchronously; return the import stats directly.
+        return result
 
     return {
         "status": "processing",
-        "task_id": task.id,
+        "task_id": result.id,
         "user_id": user_id,
     }
 

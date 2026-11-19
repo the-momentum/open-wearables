@@ -12,6 +12,7 @@ from app.schemas.responses.activity import (
 )
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
+from app.services.apple.healthkit.sleep_service import finalize_stale_sleep_for_user
 from app.services.event_record_service import event_record_service
 from app.utils.dates import DateTimeQueryParam, parse_query_datetime
 
@@ -51,6 +52,7 @@ def list_sleep_sessions(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
+    finalize_stale_sleep_for_user(db, user_id)
     params = EventRecordQueryParams(
         start_datetime=parse_query_datetime(start_date),
         end_datetime=parse_query_datetime(end_date),

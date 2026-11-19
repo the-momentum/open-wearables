@@ -105,7 +105,7 @@ _client: Svix | None = _build_client()
 
 
 def is_enabled() -> bool:
-    return _client is not None
+    return settings.outgoing_webhooks_enabled and _client is not None
 
 
 def register_event_types() -> None:
