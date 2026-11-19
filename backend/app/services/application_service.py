@@ -116,7 +116,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         # Directly update the hash since it's not in the update schema
         application.app_secret_hash = new_hash
         application.updated_at = datetime.now(timezone.utc)
-        db.flush()
+        db.commit()
 
         logger.debug("Rotated application secret", app_id=app_id, developer_id=str(developer_id))
         return application, new_secret
