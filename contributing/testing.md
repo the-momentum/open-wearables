@@ -33,7 +33,7 @@ uv run pytest -v
 uv run pytest -n0 tests/api/v1/test_users.py --pdb
 ```
 
-Tests run in parallel with [pytest-xdist](https://pytest-xdist.readthedocs.io/): one worker per CPU, at most 4. Each worker gets its own PostgreSQL database and Redis database number. The debugger does not work inside xdist workers, so add `-n0` when you use `--pdb` or `breakpoint()`.
+Tests run in parallel with [pytest-xdist](https://pytest-xdist.readthedocs.io/): one worker per CPU, at most 4. Each worker gets its own PostgreSQL database and Redis database number. The debugger does not work inside xdist workers, so add `-n0` when you use `--pdb` or `breakpoint()`. Worker databases are created on the fly, so a `TEST_DATABASE_URL` role needs the `CREATEDB` privilege; without it, run with `-n0`.
 
 ### Frontend Tests
 

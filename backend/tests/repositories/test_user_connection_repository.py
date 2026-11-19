@@ -316,14 +316,13 @@ class TestUserConnectionRepository:
                 refresh_token="new_refresh",
                 expires_in=3600,
             )
+            expected_expiry = datetime.now(timezone.utc) + timedelta(seconds=3600)
 
         # Assert
         assert result.access_token == "new_access"
         assert result.refresh_token == "new_refresh"
         assert result.updated_at > original_updated_at
-        # Token should expire in approximately 1 hour
-        expected_expiry = datetime.now(timezone.utc) + timedelta(seconds=3600)
-        assert abs((result.token_expires_at - expected_expiry).total_seconds()) < 5
+        assert result.token_expires_at == expected_expiry
 
     def test_update_tokens_with_none_refresh_token(
         self,
