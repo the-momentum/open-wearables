@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from inline_snapshot import snapshot
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
@@ -316,13 +317,45 @@ class TestOura247ActivityNormalization:
         ]
         samples, _ = data_247.normalize_activity_samples(raw, user_id)
 
-        assert len(samples["steps"]) == 1
-        assert samples["steps"][0]["value"] == 8500
-        assert len(samples["energy"]) == 1
-        assert samples["energy"][0]["value"] == 350
-        assert samples["basal_energy"][0]["value"] == 1450
-        assert len(samples["distance"]) == 1
-        assert samples["distance"][0]["value"] == 6500
+        assert samples == snapshot(
+            {
+                "steps": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 8500,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "energy": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 350,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "basal_energy": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 1450,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "distance": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 6500,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "active_time": [],
+                "exercise_time": [],
+                "met": [],
+            }
+        )
 
     def test_normalize_activity_empty(self, data_247: Oura247Data) -> None:
         user_id = uuid4()

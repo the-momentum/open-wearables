@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 import pytest
+from inline_snapshot import snapshot
 
 from app.constants.workout_types.oura import get_unified_workout_type
 from app.schemas.enums import EntrySource, WorkoutIntensity, WorkoutType
@@ -72,13 +73,34 @@ class TestOuraWorkoutsNormalization:
         user_id = uuid4()
         record, detail = workouts._normalize_workout(sample_oura_workout, user_id)
 
-        assert record.category == "workout"
-        assert record.type == WorkoutType.RUNNING.value
-        assert record.source_name == "Oura"
-        assert record.source == "oura"
         assert record.user_id == user_id
-        assert record.external_id == "oura-workout-abc123"
-        assert record.duration_seconds == 3600
+        assert detail.record_id == record.id
+        assert {
+            "record": record.model_dump(mode="json", exclude={"id", "user_id"}, exclude_none=True),
+            "detail": detail.model_dump(mode="json", exclude={"record_id"}, exclude_none=True),
+        } == snapshot(
+            {
+                "record": {
+                    "category": "workout",
+                    "type": "running",
+                    "source_name": "Oura",
+                    "duration_seconds": 3600,
+                    "start_datetime": "2024-01-15T08:00:00Z",
+                    "end_datetime": "2024-01-15T09:00:00Z",
+                    "zone_offset": "+00:00",
+                    "external_id": "oura-workout-abc123",
+                    "source": "oura",
+                },
+                "detail": {
+                    "energy_burned": "350.5",
+                    "distance": "5000.0",
+                    "moving_time_seconds": 3600,
+                    "entry_source": "automatic",
+                    "intensity": "moderate",
+                    "label": "Morning Run",
+                },
+            }
+        )
 
     def test_normalize_workout_metrics(self, workouts: OuraWorkouts, sample_oura_workout: OuraWorkoutJSON) -> None:
         user_id = uuid4()

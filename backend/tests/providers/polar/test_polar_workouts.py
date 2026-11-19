@@ -8,6 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+from inline_snapshot import snapshot
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
@@ -199,10 +200,14 @@ class TestPolarWorkoutsMetricsBuilding:
         metrics = workouts._build_metrics(exercise)
 
         # Assert
-        assert metrics["heart_rate_avg"] == Decimal("145")
-        assert metrics["heart_rate_max"] == 175
-        assert metrics["energy_burned"] == Decimal("650")
-        assert metrics["distance"] == Decimal("10000")
+        assert metrics == snapshot(
+            {
+                "heart_rate_max": 175,
+                "heart_rate_avg": Decimal("145"),
+                "energy_burned": Decimal("650"),
+                "distance": Decimal("10000"),
+            }
+        )
 
     def test_build_metrics_without_heart_rate_data(self, db: Session) -> None:
         """Test building metrics when heart rate data is missing."""
@@ -284,15 +289,29 @@ class TestPolarWorkoutsNormalization:
         record, detail = workouts._normalize_workout(exercise, user.id)
 
         # Assert
-        assert record.category == "workout"
-        assert record.type == WorkoutType.RUNNING.value
-        assert record.source_name == "Polar Vantage V2"
-        assert record.device_model == "Polar Vantage V2"
-        assert record.duration_seconds == 3600
-        assert record.external_id == "ABC123"
         assert record.user_id == user.id
-        assert detail.heart_rate_avg == Decimal("145")
-        assert detail.heart_rate_max == 175
+        assert detail.record_id == record.id
+        assert {
+            "record": record.model_dump(mode="json", exclude={"id", "user_id"}, exclude_none=True),
+            "detail": detail.model_dump(mode="json", exclude={"record_id"}, exclude_none=True),
+        } == snapshot(
+            {
+                "record": {
+                    "category": "workout",
+                    "type": "running",
+                    "source_name": "Polar Vantage V2",
+                    "device_model": "Polar Vantage V2",
+                    "duration_seconds": 3600,
+                    "start_datetime": "2024-01-15T07:00:00",
+                    "end_datetime": "2024-01-15T08:00:00",
+                    "zone_offset": "+01:00",
+                    "external_id": "ABC123",
+                    "source": "polar",
+                    "device_id": "12345678",
+                },
+                "detail": {"heart_rate_max": 175, "heart_rate_avg": "145", "energy_burned": "650", "distance": "10000"},
+            }
+        )
 
     def test_normalize_workout_workout_type_mapping(self, db: Session) -> None:
         """Test workout type is correctly mapped from Polar sport type."""
