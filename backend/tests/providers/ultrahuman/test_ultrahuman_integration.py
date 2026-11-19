@@ -43,6 +43,7 @@ class TestUltrahumanSleepDataIntegration:
         with patch.object(
             provider_impl,
             "_make_api_request",
+            autospec=True,
             return_value=sample_ultrahuman_api_response,
         ) as mock_request:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
@@ -69,7 +70,9 @@ class TestUltrahumanSleepDataIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -132,7 +135,9 @@ class TestUltrahumanSleepDataIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -171,7 +176,9 @@ class TestUltrahumanSleepDataIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -218,7 +225,9 @@ class TestUltrahumanSleepDataIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -264,7 +273,9 @@ class TestUltrahumanActivitySamplesIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -288,7 +299,9 @@ class TestUltrahumanActivitySamplesIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -329,7 +342,9 @@ class TestUltrahumanActivitySamplesIntegration:
         provider_impl = ProviderFactory().get_provider("ultrahuman").data_247
         assert isinstance(provider_impl, Ultrahuman247Data)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(
                 db,
                 user.id,
@@ -364,7 +379,9 @@ class TestUltrahumanActivitySamplesIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -395,7 +412,9 @@ class TestUltrahumanActivitySamplesIntegration:
         provider_impl = ProviderFactory().get_provider("ultrahuman").data_247
         assert isinstance(provider_impl, Ultrahuman247Data)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(
                 db,
                 user.id,
@@ -428,7 +447,9 @@ class TestUltrahumanActivitySamplesIntegration:
         provider_impl = ProviderFactory().get_provider("ultrahuman").data_247
         assert isinstance(provider_impl, Ultrahuman247Data)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(
                 db,
                 user.id,
@@ -461,7 +482,9 @@ class TestUltrahumanActivitySamplesIntegration:
         provider_impl = ProviderFactory().get_provider("ultrahuman").data_247
         assert isinstance(provider_impl, Ultrahuman247Data)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(
                 db,
                 user.id,
@@ -500,7 +523,9 @@ class TestUltrahumanActivitySamplesIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -536,7 +561,9 @@ class TestUltrahumanActivitySamplesIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -570,7 +597,9 @@ class TestUltrahumanActivitySamplesIntegration:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -601,7 +630,9 @@ class TestUltrahumanAPIEndpoints:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -634,7 +665,9 @@ class TestUltrahumanAPIEndpoints:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -665,7 +698,7 @@ class TestUltrahumanErrorHandling:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 14, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=empty_response):
+        with patch.object(provider_impl, "_make_api_request", autospec=True, return_value=empty_response):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -714,7 +747,7 @@ class TestUltrahumanErrorHandling:
         end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 14, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=partial_response):
+        with patch.object(provider_impl, "_make_api_request", autospec=True, return_value=partial_response):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -738,7 +771,9 @@ class TestUltrahumanErrorHandling:
         end_time = datetime(2024, 1, 17, tzinfo=timezone.utc)
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -789,7 +824,9 @@ class TestUltrahumanSyncCountContract:
         start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
         end_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
@@ -831,7 +868,7 @@ class TestUltrahumanSyncCountContract:
         }
         day = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-        with patch.object(provider_impl, "_make_api_request", return_value=response):
+        with patch.object(provider_impl, "_make_api_request", autospec=True, return_value=response):
             results = provider_impl.load_and_save_all(db, user.id, start_time=day, end_time=day)
 
         assert not results.failures
@@ -861,7 +898,9 @@ class TestUltrahumanSyncCountContract:
                 .count()
             )
 
-        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+        with patch.object(
+            provider_impl, "_make_api_request", autospec=True, return_value=sample_ultrahuman_api_response
+        ):
             first = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
             rows_after_first = _sample_rows()

@@ -14,7 +14,7 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, PropertyMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
@@ -23,7 +23,9 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.enums import WorkoutType
+from app.schemas.model_crud.credentials import ProviderCredentials
 from app.schemas.providers.suunto import HeartRateJSON
 from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.providers.suunto.oauth import SuuntoOAuth
@@ -39,7 +41,7 @@ class TestSuuntoWorkouts:
         workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
         oauth = SuuntoOAuth(
-            user_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
             connection_repo=connection_repo,
             provider_name="suunto",
             api_base_url="https://cloudapi.suunto.com",
@@ -266,8 +268,13 @@ class TestSuuntoWorkouts:
         """Should include subscription key in headers when available."""
         # Arrange
         # Mock credentials property using PropertyMock
-        mock_creds = MagicMock()
-        mock_creds.subscription_key = "test_subscription_key"
+        mock_creds = ProviderCredentials(
+            client_id="id",
+            client_secret="secret",
+            redirect_uri="https://example.com/callback",
+            default_scope="workout",
+            subscription_key="test_subscription_key",
+        )
         with patch.object(type(suunto_workouts.oauth), "credentials", new_callable=PropertyMock) as mock_prop:
             mock_prop.return_value = mock_creds
 
@@ -278,7 +285,7 @@ class TestSuuntoWorkouts:
             assert "Ocp-Apim-Subscription-Key" in headers
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
+    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
     def test_get_workouts_from_api(
         self,
         mock_request: MagicMock,
@@ -305,13 +312,13 @@ class TestSuuntoWorkouts:
         # Assert
         mock_request.assert_called_once()
         call_args = mock_request.call_args
-        # endpoint is third positional argument (db, user_id, endpoint)
-        assert call_args[0][2] == "/v3/workouts/"
+        # endpoint is fourth positional argument (self, db, user_id, endpoint)
+        assert call_args[0][3] == "/v3/workouts/"
         assert call_args[1]["params"]["since"] == 1705309200
         assert call_args[1]["params"]["limit"] == 50
         assert result["payload"] == [sample_workout_data]
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
+    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
     def test_get_workouts_respects_max_limit(
         self,
         mock_request: MagicMock,
@@ -332,7 +339,7 @@ class TestSuuntoWorkouts:
         call_args = mock_request.call_args
         assert call_args[1]["params"]["limit"] == 100  # Capped at 100
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
+    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
     def test_get_workout_detail(self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session) -> None:
         """Should fetch detailed workout data from API."""
         # Arrange
@@ -348,14 +355,14 @@ class TestSuuntoWorkouts:
         # Assert
         mock_request.assert_called_once()
         call_args = mock_request.call_args
-        # endpoint is third positional argument (db, user_id, endpoint)
-        assert call_args[0][2] == f"/v3/workouts/{workout_key}"
+        # endpoint is fourth positional argument (self, db, user_id, endpoint)
+        assert call_args[0][3] == f"/v3/workouts/{workout_key}"
         assert result["workoutKey"] == workout_key
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
+    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
+    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_load_data_creates_records(
         self,
         mock_ensure_data_source: MagicMock,
@@ -383,10 +390,10 @@ class TestSuuntoWorkouts:
         # Verify data source creation was attempted
         mock_ensure_data_source.assert_called_once()
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
+    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
+    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_load_data_walks_every_page(
         self,
         mock_ensure_data_source: MagicMock,
@@ -414,9 +421,9 @@ class TestSuuntoWorkouts:
         assert [(page["offset"], page["limit"]) for page in pages] == [(0, 100), (100, 100), (200, 100)]
         assert {page["since"] for page in pages} == {1735689600000}
 
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
+    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
+    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_process_push_activity_creates_record_and_detail(
         self,
         mock_ensure_data_source: MagicMock,

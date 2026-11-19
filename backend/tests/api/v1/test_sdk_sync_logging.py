@@ -21,10 +21,10 @@ _BODY = {
 @pytest.fixture
 def mock_log() -> Generator[MagicMock, None, None]:
     with (
-        patch("app.api.routes.v1.sdk_sync.process_sdk_upload"),
-        patch("app.api.routes.v1.sdk_sync.store_raw_payload"),
+        patch("app.api.routes.v1.sdk_sync.process_sdk_upload", autospec=True),
+        patch("app.api.routes.v1.sdk_sync.store_raw_payload", autospec=True),
         patch.object(settings, "sdk_payload_s3_offload", False),
-        patch("app.api.routes.v1.sdk_sync.logger") as mock,
+        patch("app.api.routes.v1.sdk_sync.logger", autospec=True) as mock,
     ):
         yield mock
 

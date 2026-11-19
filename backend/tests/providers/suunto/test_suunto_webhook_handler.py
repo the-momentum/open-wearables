@@ -14,7 +14,7 @@ Bugs fixed:
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 from uuid import uuid4
 
 import pytest
@@ -25,7 +25,9 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.providers.suunto.workout_import import WorkoutJSON as SuuntoWorkoutJSON
+from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.webhook_handler import SuuntoWebhookHandler
 from app.services.providers.suunto.workouts import SuuntoWorkouts
@@ -262,7 +264,10 @@ class TestFindConnection:
     """The id from ``extract_user_id`` is the payload username, not the JWT ``sub``."""
 
     def test_resolves_by_username_not_provider_user_id(self, db: Session) -> None:
-        handler = SuuntoWebhookHandler(suunto_workouts=MagicMock(), suunto_247=MagicMock())
+        handler = SuuntoWebhookHandler(
+            suunto_workouts=create_autospec(SuuntoWorkouts, instance=True),
+            suunto_247=create_autospec(Suunto247Data, instance=True),
+        )
         connection = UserConnectionFactory(
             user=UserFactory(),
             provider="suunto",
@@ -283,7 +288,10 @@ class TestProcessPayloadLastSyncedAt:
 
     @pytest.fixture
     def handler(self) -> SuuntoWebhookHandler:
-        return SuuntoWebhookHandler(suunto_workouts=MagicMock(), suunto_247=MagicMock())
+        return SuuntoWebhookHandler(
+            suunto_workouts=create_autospec(SuuntoWorkouts, instance=True),
+            suunto_247=create_autospec(Suunto247Data, instance=True),
+        )
 
     def _connection(self) -> Any:
         return UserConnectionFactory(
@@ -328,7 +336,10 @@ class TestProcessWorkoutPayloadShapes:
 
     @pytest.fixture
     def handler(self) -> SuuntoWebhookHandler:
-        return SuuntoWebhookHandler(suunto_workouts=MagicMock(), suunto_247=MagicMock())
+        return SuuntoWebhookHandler(
+            suunto_workouts=create_autospec(SuuntoWorkouts, instance=True),
+            suunto_247=create_autospec(Suunto247Data, instance=True),
+        )
 
     @pytest.fixture
     def webhook_payload(self) -> dict:
@@ -344,7 +355,7 @@ class TestProcessWorkoutPayloadShapes:
         """Single-dict `payload` (real webhook shape) is processed exactly once with the dict itself."""
         handler.suunto_workouts.get_workout_detail.return_value = live_response
 
-        result = handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
+        result = handler._process_workout(MagicMock(spec=Session), uuid4(), webhook_payload, TRACE_ID)
 
         handler.suunto_workouts.get_workout_detail.assert_called_once()
         requested_extensions = handler.suunto_workouts.get_workout_detail.call_args.kwargs["extensions"]
@@ -370,7 +381,7 @@ class TestProcessWorkoutPayloadShapes:
             "metadata": {"ts": "1779025734324"},
         }
 
-        result = handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
+        result = handler._process_workout(MagicMock(spec=Session), uuid4(), webhook_payload, TRACE_ID)
 
         assert handler.suunto_workouts.process_push_activity.call_count == 2
         processed = [c.args[2] for c in handler.suunto_workouts.process_push_activity.call_args_list]
@@ -379,7 +390,7 @@ class TestProcessWorkoutPayloadShapes:
 
     def test_missing_workout_key_returns_error(self, handler: SuuntoWebhookHandler) -> None:
         """`WORKOUT_CREATED` without a workoutKey/workoutId is rejected without an API call."""
-        result = handler._process_workout(MagicMock(), uuid4(), {"workout": {}}, TRACE_ID)
+        result = handler._process_workout(MagicMock(spec=Session), uuid4(), {"workout": {}}, TRACE_ID)
 
         assert result == {"status": "error", "error": "Missing workoutKey in WORKOUT_CREATED payload"}
         handler.suunto_workouts.get_workout_detail.assert_not_called()
@@ -398,7 +409,7 @@ class TestProcessWorkoutPayloadShapes:
         )
 
         with pytest.raises(IntegrityError):
-            handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
+            handler._process_workout(MagicMock(spec=Session), uuid4(), webhook_payload, TRACE_ID)
 
     def test_duplicate_workout_returns_ignored_status(
         self,
@@ -407,7 +418,7 @@ class TestProcessWorkoutPayloadShapes:
         live_response: dict,
     ) -> None:
         """IntegrityError on save is caught, rolled back, and returned as an `ignored` status."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         handler.suunto_workouts.get_workout_detail.return_value = live_response
         handler.suunto_workouts.process_push_activity.side_effect = IntegrityError(
             statement="INSERT INTO event_record ...",
@@ -493,7 +504,7 @@ class TestNormalizeWithPauses:
     def suunto_workouts(self) -> SuuntoWorkouts:
         connection_repo = UserConnectionRepository()
         oauth = SuuntoOAuth(
-            user_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
             connection_repo=connection_repo,
             provider_name="suunto",
             api_base_url="https://cloudapi.suunto.com",

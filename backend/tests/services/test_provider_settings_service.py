@@ -423,7 +423,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Should hand the new mode to the provider's strategy in both directions."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "oura", ProviderSettingUpdate(live_sync_mode=mode))
 
         send_task.assert_called_once_with(
@@ -434,7 +434,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Per-user providers take the same path; their fan-out handles the revoke."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "withings", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.PULL))
 
         send_task.assert_called_once_with(
@@ -445,7 +445,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Should stay quiet for providers whose subscriptions are not managed by API."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "suunto", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK))
 
         send_task.assert_not_called()
@@ -454,7 +454,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Should leave subscriptions alone when live_sync_mode is unchanged."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "oura", ProviderSettingUpdate(is_enabled=False))
 
         send_task.assert_not_called()

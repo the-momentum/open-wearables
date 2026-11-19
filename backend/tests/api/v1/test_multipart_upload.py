@@ -1,9 +1,10 @@
 """Tests for the Apple XML S3/MinIO multipart upload endpoints."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from celery.result import AsyncResult
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -118,8 +119,8 @@ class TestCompleteMultipart:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         key = f"{user.id}/raw/export.xml"
 
-        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload") as mock_task:
-            mock_task.delay.return_value = MagicMock(id="task-123")
+        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload", autospec=True) as mock_task:
+            mock_task.delay.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
             response = client.post(
                 BASE.format(user_id=user.id) + "/complete",
                 headers=headers,
@@ -152,7 +153,7 @@ class TestCompleteMultipart:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         key = f"{user.id}/raw/export.xml"
 
-        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload") as mock_task:
+        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload", autospec=True) as mock_task:
             mock_task.delay.side_effect = RuntimeError("broker unavailable")
             response = client.post(
                 BASE.format(user_id=user.id) + "/complete",
@@ -176,7 +177,7 @@ class TestCompleteMultipart:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         key = f"{user.id}/raw/export.xml"
 
-        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload") as mock_task:
+        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload", autospec=True) as mock_task:
             response = client.post(
                 BASE.format(user_id=user.id) + "/complete",
                 headers=headers,

@@ -5,11 +5,13 @@ Tests end-to-end import flows for Polar exercise data through API endpoints.
 """
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import httpx
 import pytest
+import redis
 import respx
+from celery.result import AsyncResult
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -48,7 +50,7 @@ def sample_polar_exercise() -> dict[str, Any]:
 class TestPolarOAuthFlow:
     """Tests for Polar OAuth authorization and callback flow."""
 
-    @patch("app.integrations.redis_client.get_redis_client")
+    @patch("app.integrations.redis_client.get_redis_client", autospec=True)
     def test_get_polar_authorization_url(
         self,
         mock_redis_client: MagicMock,
@@ -62,7 +64,7 @@ class TestPolarOAuthFlow:
         api_key = ApiKeyFactory(developer=developer)
         headers = api_key_headers(api_key.plain_key)
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -78,8 +80,8 @@ class TestPolarOAuthFlow:
             data = response.json()
             assert "authorization_url" in data or "url" in data
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
+    @patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
+    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
     def test_polar_oauth_callback_success(
         self,
         mock_redis_client: MagicMock,
@@ -95,7 +97,7 @@ class TestPolarOAuthFlow:
         ApiKeyFactory(developer=developer)
 
         # Mock Redis for state validation - must return proper state data
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         import json
 
         state_data = {
@@ -121,7 +123,7 @@ class TestPolarOAuthFlow:
         register = respx_mock.post(POLAR_REGISTER_URL).respond(200)
 
         # Mock Celery task
-        mock_celery_task.return_value = MagicMock()
+        mock_celery_task.return_value = create_autospec(AsyncResult, instance=True)
 
         # Act - Endpoint is /oauth/polar/callback
         response = client.get(
@@ -139,7 +141,7 @@ class TestPolarOAuthFlow:
 class TestPolarWorkoutsAPI:
     """Tests for Polar workouts API endpoints."""
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
     def test_get_polar_workouts_list(
         self,
         mock_request: MagicMock,
@@ -166,7 +168,7 @@ class TestPolarWorkoutsAPI:
         # Assert
         assert response.status_code in [200, 404, 422]
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
     def test_get_polar_workout_detail(
         self,
         mock_request: MagicMock,
@@ -194,7 +196,7 @@ class TestPolarWorkoutsAPI:
         # Assert
         assert response.status_code in [200, 404, 422]
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
     def test_get_polar_workouts_with_samples(self, mock_request: MagicMock, client: TestClient, db: Session) -> None:
         """Test getting Polar workouts with samples parameter."""
         # Arrange
@@ -237,9 +239,9 @@ class TestPolarWorkoutsAPI:
 class TestPolarDataSync:
     """Tests for syncing Polar data."""
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
     def test_sync_polar_data_success(
         self,
         mock_create_detail: MagicMock,
@@ -268,7 +270,7 @@ class TestPolarDataSync:
         # Assert
         assert response.status_code in [200, 201, 202, 404, 422]
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True)
     def test_sync_polar_data_with_date_range(self, mock_request: MagicMock, client: TestClient, db: Session) -> None:
         """Test syncing Polar data with specific date range."""
         # Arrange

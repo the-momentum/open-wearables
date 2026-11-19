@@ -618,7 +618,7 @@ class TestDisconnectWithSDKToken:
         # Assert
         assert response.status_code == 404
 
-    @patch("app.api.routes.v1.connections.user_connection_service.disconnect")
+    @patch("app.api.routes.v1.connections.user_connection_service.disconnect", autospec=True)
     def test_sdk_path_skips_provider_deregistration(
         self, mock_disconnect: MagicMock, client: TestClient, db: Session
     ) -> None:

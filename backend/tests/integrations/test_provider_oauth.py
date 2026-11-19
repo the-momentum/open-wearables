@@ -120,7 +120,7 @@ class TestPolarOAuth:
         # Assert
         assert response.status_code in [200, 302, 307, 422]
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
+    @patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
     def test_polar_callback_success(
         self,
         mock_sync_task: MagicMock,

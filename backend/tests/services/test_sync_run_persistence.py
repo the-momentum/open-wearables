@@ -52,7 +52,7 @@ def _event(user_id: UUID, **overrides: Any) -> SyncStatusEvent:
 
 
 class TestTryPersistRun:
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_historical_run_is_stored(self, mock_session_local: MagicMock, db: Session) -> None:
         mock_session_local.return_value.__enter__.return_value = db
         user = UserFactory()
@@ -65,7 +65,7 @@ class TestTryPersistRun:
         assert run.status == SyncStatus.IN_PROGRESS
         assert run.ended_at is None
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_live_run_is_skipped_by_default(self, mock_session_local: MagicMock, db: Session) -> None:
         """Live runs are one row per webhook or batch, so they are opt-in."""
         mock_session_local.return_value.__enter__.return_value = db
@@ -77,7 +77,7 @@ class TestTryPersistRun:
         assert db.query(SyncRun).filter(SyncRun.run_key == event.run_id).one_or_none() is None
 
     @patch("app.services.sync_status_service.settings")
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_live_run_stored_when_opted_in(
         self, mock_session_local: MagicMock, mock_settings: MagicMock, db: Session
     ) -> None:
@@ -92,7 +92,7 @@ class TestTryPersistRun:
         assert db.query(SyncRun).filter(SyncRun.run_key == event.run_id).one().scope == SyncScope.LIVE
 
     @patch("app.services.sync_status_service.settings")
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_tracking_disabled_stores_nothing(
         self, mock_session_local: MagicMock, mock_settings: MagicMock, db: Session
     ) -> None:
@@ -105,7 +105,7 @@ class TestTryPersistRun:
 
         assert db.query(SyncRun).filter(SyncRun.run_key == event.run_id).one_or_none() is None
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_terminal_event_updates_the_same_row(self, mock_session_local: MagicMock, db: Session) -> None:
         """Both events share a run_id, so the run must end up as one row."""
         mock_session_local.return_value.__enter__.return_value = db
@@ -133,7 +133,7 @@ class TestTryPersistRun:
         # started_at describes the run's intent and must survive the update
         assert run.started_at == started_at
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_batched_run_accumulates_counts_and_keeps_its_end(self, mock_session_local: MagicMock, db: Session) -> None:
         """A historical SDK export reports per batch, so the run must hold the total."""
         mock_session_local.return_value.__enter__.return_value = db
@@ -161,7 +161,7 @@ class TestTryPersistRun:
         assert run.items_inserted == 147
         assert run.ended_at is not None
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_late_event_cannot_reopen_a_closed_run(self, mock_session_local: MagicMock, db: Session) -> None:
         """A start event arriving after the terminal one must not clear the outcome."""
         mock_session_local.return_value.__enter__.return_value = db
@@ -188,7 +188,7 @@ class TestTryPersistRun:
         assert run.ended_at is not None
         assert run.items_inserted == 120
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_storage_failure_does_not_raise(self, mock_session_local: MagicMock, db: Session) -> None:
         """A sync must not fail because run tracking did."""
         mock_session_local.side_effect = RuntimeError("db gone")
@@ -197,7 +197,7 @@ class TestTryPersistRun:
 
 
 class TestTryRecordDataTypes:
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_outcomes_are_stored_against_the_run(self, mock_session_local: MagicMock, db: Session) -> None:
         mock_session_local.return_value.__enter__.return_value = db
         user = UserFactory()
@@ -231,7 +231,7 @@ class TestTryRecordDataTypes:
         # spo2 is a provider task name, not a series type
         assert rows["spo2"].series_type is None
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_repeated_outcomes_accumulate(self, mock_session_local: MagicMock, db: Session) -> None:
         """Several batches of one type fold into a single row with a widening range."""
         mock_session_local.return_value.__enter__.return_value = db
@@ -263,7 +263,7 @@ class TestTryRecordDataTypes:
         assert row.covered_end == late
         assert row.attempt == 2
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_late_batch_cannot_bury_a_reported_failure(self, mock_session_local: MagicMock, db: Session) -> None:
         """An upload batch reports what it wrote, so it must not overwrite a verdict.
 
@@ -314,7 +314,7 @@ class TestTryRecordDataTypes:
         # What the batch did write is still recorded against the type.
         assert row.items_inserted == 3
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_no_run_row_means_no_op(self, mock_session_local: MagicMock, db: Session) -> None:
         """A historical run whose parent row is missing must not create orphan rows."""
         mock_session_local.return_value.__enter__.return_value = db
@@ -327,7 +327,7 @@ class TestTryRecordDataTypes:
 
         assert db.query(SyncRunDataType).count() == 0
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_live_scope_skips_the_lookup(self, mock_session_local: MagicMock) -> None:
         """Live runs are never stored, so their outcomes must not cost a query."""
         try_record_data_types(
@@ -340,8 +340,8 @@ class TestTryRecordDataTypes:
 
 
 class TestCloseStaleSyncRuns:
-    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.SessionLocal")
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.SessionLocal", autospec=True)
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_only_old_in_progress_runs_are_closed(
         self, mock_emit_session: MagicMock, mock_task_session: MagicMock, db: Session
     ) -> None:
@@ -360,9 +360,9 @@ class TestCloseStaleSyncRuns:
         assert db.query(SyncRun).filter(SyncRun.run_key == "pull_stale").one().status == SyncStatus.STALE
         assert db.query(SyncRun).filter(SyncRun.run_key == "pull_recent").one().status == SyncStatus.IN_PROGRESS
 
-    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.last_event_at")
-    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.SessionLocal")
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.last_event_at", autospec=True)
+    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.SessionLocal", autospec=True)
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_run_still_emitting_progress_is_left_open(
         self, mock_emit_session: MagicMock, mock_task_session: MagicMock, mock_last_event: MagicMock, db: Session
     ) -> None:
@@ -388,7 +388,7 @@ class TestListStoredRunsFilters:
 
     MARCH = (datetime(2026, 3, 1, tzinfo=timezone.utc), datetime(2026, 4, 1, tzinfo=timezone.utc))
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_provider_filter(self, mock_session_local: MagicMock, db: Session) -> None:
         mock_session_local.return_value.__enter__.return_value = db
         user = UserFactory()
@@ -399,7 +399,7 @@ class TestListStoredRunsFilters:
 
         assert [r.run_key for r in runs] == ["pull_garmin"]
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_backfill_requested_until_counts_only_accepted_windows(
         self, mock_session_local: MagicMock, db: Session
     ) -> None:
@@ -421,7 +421,7 @@ class TestListStoredRunsFilters:
 
         assert last_backfill_requested_until(db, user.id, "garmin") == now - timedelta(days=2)
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_covered_range_matches_the_window_not_the_run_time(
         self, mock_session_local: MagicMock, db: Session
     ) -> None:
@@ -447,7 +447,7 @@ class TestListStoredRunsFilters:
 
         assert [r.run_key for r in runs] == ["backfill_march"]
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_run_without_any_recorded_window_is_excluded(self, mock_session_local: MagicMock, db: Session) -> None:
         """Whether an unknown window overlaps the range is undecidable, so it is not a match."""
         mock_session_local.return_value.__enter__.return_value = db
@@ -457,7 +457,7 @@ class TestListStoredRunsFilters:
         assert list_stored_runs(db, user.id, covered_from=self.MARCH[0], covered_to=self.MARCH[1]) == []
         assert [r.run_key for r in list_stored_runs(db, user.id)] == ["pull_no_window"]
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_per_data_type_covered_span_matches_without_a_run_window(
         self, mock_session_local: MagicMock, db: Session
     ) -> None:
@@ -500,8 +500,8 @@ class TestDataTypeWebhooks:
 
     def _record(self, db: Session, user_id: UUID, outcomes: list[DataTypeOutcome], run_id: str) -> MagicMock:
         with (
-            patch("app.services.sync_status_service.SessionLocal") as session_local,
-            patch("app.services.sync_status_service.outgoing.on_sync_data_type_finished") as emit,
+            patch("app.services.sync_status_service.SessionLocal", autospec=True) as session_local,
+            patch("app.services.sync_status_service.outgoing.on_sync_data_type_finished", autospec=True) as emit,
         ):
             session_local.return_value.__enter__.return_value = db
             try_persist_run(_event(user_id, run_id=run_id))
@@ -555,8 +555,8 @@ class TestDataTypeWebhooks:
     def test_a_finished_export_reports_what_all_its_batches_wrote(self, db: Session) -> None:
         user = UserFactory()
         with (
-            patch("app.services.sync_status_service.SessionLocal") as session_local,
-            patch("app.services.sync_status_service.outgoing.on_sync_data_type_finished") as emit,
+            patch("app.services.sync_status_service.SessionLocal", autospec=True) as session_local,
+            patch("app.services.sync_status_service.outgoing.on_sync_data_type_finished", autospec=True) as emit,
         ):
             session_local.return_value.__enter__.return_value = db
             try_persist_run(_event(user.id, run_id="sdk_export", source=SyncSource.SDK))

@@ -5,17 +5,21 @@ fails the sync; the webhook only logs, because a 5xx there is retried by Google.
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import DataGranularity
 from app.services.providers.google_health.data_247 import (
     GoogleHealth247Data,
     UnsupportedGranularityError,
 )
+from app.services.providers.google_health.oauth import GoogleOAuth
 from app.services.providers.google_health.webhook_handler import GoogleWebhookHandler
+from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 
 USER_ID = uuid4()
 END = datetime(2026, 9, 10, tzinfo=timezone.utc)
@@ -25,8 +29,8 @@ START = END - timedelta(days=1)
 @pytest.fixture
 def data_247() -> GoogleHealth247Data:
     return GoogleHealth247Data(
-        oauth=MagicMock(),
-        connection_repo=MagicMock(),
+        oauth=create_autospec(GoogleOAuth, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
         api_base_url="https://health.googleapis.com",
     )
 
@@ -41,14 +45,15 @@ def _drive(data_247: GoogleHealth247Data, granularity: DataGranularity, calls: l
     with (
         patch(
             "app.services.providers.google_health.data_247.make_authenticated_request",
+            autospec=True,
             side_effect=fake_request,
         ),
-        patch.object(data_247.sleep, "load_and_save", return_value=3),
-        patch.object(data_247.nutrition, "load_and_save", return_value=0),
-        patch.object(data_247.settings_repo, "get_data_granularity", return_value=granularity),
-        patch("app.services.providers.google_health.data_247.store_raw_payload"),
+        patch.object(data_247.sleep, "load_and_save", autospec=True, return_value=3),
+        patch.object(data_247.nutrition, "load_and_save", autospec=True, return_value=0),
+        patch.object(data_247.settings_repo, "get_data_granularity", autospec=True, return_value=granularity),
+        patch("app.services.providers.google_health.data_247.store_raw_payload", autospec=True),
     ):
-        data_247.load_and_save_all(MagicMock(), USER_ID, START, END)
+        data_247.load_and_save_all(MagicMock(spec=Session), USER_ID, START, END)
 
 
 class TestPullSync:
@@ -77,22 +82,29 @@ class TestWebhookSync:
     @pytest.mark.parametrize("granularity", [DataGranularity.HOURLY, DataGranularity.DAILY])
     def test_a_notification_fetches_nothing(self, data_247: GoogleHealth247Data, granularity: DataGranularity) -> None:
         with (
-            patch("app.services.providers.google_health.data_247.make_authenticated_request") as request,
-            patch.object(data_247.settings_repo, "get_data_granularity", return_value=granularity),
+            patch("app.services.providers.google_health.data_247.make_authenticated_request", autospec=True) as request,
+            patch.object(data_247.settings_repo, "get_data_granularity", autospec=True, return_value=granularity),
             pytest.raises(UnsupportedGranularityError, match=granularity.value),
         ):
-            data_247.sync_data_type(MagicMock(), USER_ID, "steps", START, END)
+            data_247.sync_data_type(MagicMock(spec=Session), USER_ID, "steps", START, END)
 
         request.assert_not_called()
 
     def test_the_handler_reports_it_instead_of_returning_a_5xx(self, data_247: GoogleHealth247Data) -> None:
-        handler = GoogleWebhookHandler(data_247=data_247, workouts=MagicMock())
+        handler = GoogleWebhookHandler(
+            data_247=data_247, workouts=create_autospec(GoogleHealthApiWorkouts, instance=True)
+        )
 
         with (
-            patch.object(data_247, "sync_data_type", side_effect=UnsupportedGranularityError(DataGranularity.HOURLY)),
-            patch("app.services.providers.google_health.webhook_handler.logger") as logger,
+            patch.object(
+                data_247,
+                "sync_data_type",
+                autospec=True,
+                side_effect=UnsupportedGranularityError(DataGranularity.HOURLY),
+            ),
+            patch("app.services.providers.google_health.webhook_handler.logger", autospec=True) as logger,
         ):
-            saved = handler._fetch_and_save(MagicMock(), USER_ID, "steps", START, END)
+            saved = handler._fetch_and_save(MagicMock(spec=Session), USER_ID, "steps", START, END)
 
         assert saved == 0
         logger.error.assert_called_once()

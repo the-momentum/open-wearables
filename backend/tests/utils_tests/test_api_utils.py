@@ -6,12 +6,29 @@ to API responses.
 """
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
+from urllib.parse import urlsplit
 
 import pytest
+from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from app.database import BaseDbModel
 from app.utils.api_utils import format_response
+
+
+def _request(url: str) -> Request:
+    """A real request for ``url``; its base_url keeps the trailing slash format_response strips."""
+    parts = urlsplit(url)
+    scope = {
+        "type": "http",
+        "scheme": parts.scheme,
+        "server": (parts.hostname, parts.port),
+        "path": parts.path,
+        "query_string": parts.query.encode(),
+        "headers": [],
+    }
+    return Request(scope)
 
 
 class TestFormatResponseDecorator:
@@ -24,16 +41,14 @@ class TestFormatResponseDecorator:
         # Arrange
         @format_response()
         async def test_endpoint(**kwargs) -> Any:
-            mock_item = MagicMock()
+            mock_item = create_autospec(BaseDbModel, instance=True)
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
             return mock_item
 
-        mock_request = MagicMock()
-        mock_request.base_url = "http://localhost:8000/"
-        mock_request.url = "http://localhost:8000/api/v1/users/123"
+        request = _request("http://localhost:8000/api/v1/users/123")
 
-        with patch("app.utils.api_utils.get_hateoas_item") as mock_hateoas:
+        with patch("app.utils.api_utils.get_hateoas_item", autospec=True) as mock_hateoas:
             mock_hateoas.return_value = {
                 "id": "123",
                 "name": "Test User",
@@ -41,7 +56,7 @@ class TestFormatResponseDecorator:
             }
 
             # Act
-            result = await test_endpoint(request=mock_request)
+            result = await test_endpoint(request=request)
 
         # Assert
         assert isinstance(result, JSONResponse)
@@ -52,27 +67,25 @@ class TestFormatResponseDecorator:
     async def test_format_response_list(self) -> None:
         """Should format list response with HATEOAS links."""
         # Arrange
-        mock_item1 = MagicMock()
+        mock_item1 = create_autospec(BaseDbModel, instance=True)
         mock_item1.__tablename__ = "user"
-        mock_item2 = MagicMock()
+        mock_item2 = create_autospec(BaseDbModel, instance=True)
         mock_item2.__tablename__ = "user"
 
         @format_response()
         async def test_endpoint(**kwargs) -> Any:
             return [mock_item1, mock_item2]
 
-        mock_request = MagicMock()
-        mock_request.base_url = "http://localhost:8000/"
-        mock_request.url = "http://localhost:8000/api/v1/users?page=1&limit=10"
+        request = _request("http://localhost:8000/api/v1/users?page=1&limit=10")
 
-        with patch("app.utils.api_utils.get_hateoas_list") as mock_hateoas:
+        with patch("app.utils.api_utils.get_hateoas_list", autospec=True) as mock_hateoas:
             mock_hateoas.return_value = {
                 "items": [{"id": "1"}, {"id": "2"}],
                 "_links": [{"rel": "self", "href": "http://localhost:8000/api/v1/users?page=1&limit=10"}],
             }
 
             # Act
-            result = await test_endpoint(request=mock_request, page=1, limit=10)
+            result = await test_endpoint(request=request, page=1, limit=10)
 
         # Assert
         assert isinstance(result, JSONResponse)
@@ -86,20 +99,18 @@ class TestFormatResponseDecorator:
         # Arrange
         @format_response(status_code=201)
         async def test_endpoint(**kwargs) -> Any:
-            mock_item = MagicMock()
+            mock_item = create_autospec(BaseDbModel, instance=True)
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
             return mock_item
 
-        mock_request = MagicMock()
-        mock_request.base_url = "http://localhost:8000/"
-        mock_request.url = "http://localhost:8000/api/v1/users/123"
+        request = _request("http://localhost:8000/api/v1/users/123")
 
-        with patch("app.utils.api_utils.get_hateoas_item") as mock_hateoas:
+        with patch("app.utils.api_utils.get_hateoas_item", autospec=True) as mock_hateoas:
             mock_hateoas.return_value = {"id": "123", "_links": []}
 
             # Act
-            result = await test_endpoint(request=mock_request)
+            result = await test_endpoint(request=request)
 
         # Assert
         assert result.status_code == 201
@@ -112,16 +123,14 @@ class TestFormatResponseDecorator:
 
         @format_response(extra_rels=extra_rels)
         async def test_endpoint(**kwargs) -> Any:
-            mock_item = MagicMock()
+            mock_item = create_autospec(BaseDbModel, instance=True)
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
             return mock_item
 
-        mock_request = MagicMock()
-        mock_request.base_url = "http://localhost:8000/"
-        mock_request.url = "http://localhost:8000/api/v1/users/123"
+        request = _request("http://localhost:8000/api/v1/users/123")
 
-        with patch("app.utils.api_utils.get_hateoas_item") as mock_hateoas:
+        with patch("app.utils.api_utils.get_hateoas_item", autospec=True) as mock_hateoas:
             mock_hateoas.return_value = {
                 "id": "123",
                 "_links": [
@@ -135,7 +144,7 @@ class TestFormatResponseDecorator:
             }
 
             # Act
-            await test_endpoint(request=mock_request)
+            await test_endpoint(request=request)
 
         # Assert
         mock_hateoas.assert_called_once()
@@ -150,7 +159,7 @@ class TestFormatResponseDecorator:
         # Arrange
         @format_response()
         async def test_endpoint() -> Any:
-            return MagicMock()
+            return create_autospec(BaseDbModel, instance=True)
 
         # Act & Assert
         with pytest.raises(ValueError, match="Request object not found in kwargs"):
@@ -163,20 +172,18 @@ class TestFormatResponseDecorator:
         # Arrange
         @format_response()
         async def test_endpoint(**kwargs) -> Any:
-            mock_item = MagicMock()
+            mock_item = create_autospec(BaseDbModel, instance=True)
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
             return mock_item
 
-        mock_request = MagicMock()
-        mock_request.base_url = "http://localhost:8000/"  # Has trailing slash
-        mock_request.url = "http://localhost:8000/api/v1/users/123"
+        request = _request("http://localhost:8000/api/v1/users/123")
 
-        with patch("app.utils.api_utils.get_hateoas_item") as mock_hateoas:
+        with patch("app.utils.api_utils.get_hateoas_item", autospec=True) as mock_hateoas:
             mock_hateoas.return_value = {"id": "123", "_links": []}
 
             # Act
-            await test_endpoint(request=mock_request)
+            await test_endpoint(request=request)
 
         # Assert
         call_args = mock_hateoas.call_args
@@ -192,7 +199,7 @@ class TestFormatResponseDecorator:
         @format_response()
         async def test_endpoint(**kwargs) -> Any:
             """Test endpoint docstring."""
-            mock_item = MagicMock()
+            mock_item = create_autospec(BaseDbModel, instance=True)
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
             return mock_item
@@ -210,18 +217,16 @@ class TestFormatResponseDecorator:
         async def test_endpoint(**kwargs) -> Any:
             return []
 
-        mock_request = MagicMock()
-        mock_request.base_url = "http://localhost:8000/"
-        mock_request.url = "http://localhost:8000/api/v1/users?page=1&limit=10"
+        request = _request("http://localhost:8000/api/v1/users?page=1&limit=10")
 
-        with patch("app.utils.api_utils.get_hateoas_list") as mock_hateoas:
+        with patch("app.utils.api_utils.get_hateoas_list", autospec=True) as mock_hateoas:
             mock_hateoas.return_value = {
                 "items": [],
                 "_links": [{"rel": "self", "href": "http://localhost:8000/api/v1/users?page=1&limit=10"}],
             }
 
             # Act
-            result = await test_endpoint(request=mock_request, page=1, limit=10)
+            result = await test_endpoint(request=request, page=1, limit=10)
 
         # Assert
         assert isinstance(result, JSONResponse)
@@ -244,16 +249,14 @@ class TestFormatResponseDecorator:
 
         @format_response(extra_rels=extra_rels)
         async def test_endpoint(**kwargs) -> Any:
-            mock_item = MagicMock()
+            mock_item = create_autospec(BaseDbModel, instance=True)
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
             return mock_item
 
-        mock_request = MagicMock()
-        mock_request.base_url = "http://localhost:8000/"
-        mock_request.url = "http://localhost:8000/api/v1/users/123"
+        request = _request("http://localhost:8000/api/v1/users/123")
 
-        with patch("app.utils.api_utils.get_hateoas_item") as mock_hateoas:
+        with patch("app.utils.api_utils.get_hateoas_item", autospec=True) as mock_hateoas:
             mock_hateoas.return_value = {
                 "id": "123",
                 "_links": [
@@ -274,7 +277,7 @@ class TestFormatResponseDecorator:
             }
 
             # Act
-            await test_endpoint(request=mock_request)
+            await test_endpoint(request=request)
 
         # Assert
         mock_hateoas.assert_called_once()

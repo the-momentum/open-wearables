@@ -6,14 +6,18 @@ as a bad API key), and a failed call keeps the provider's status and body out of
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import httpx
 import pytest
 import respx
+from sqlalchemy.orm import Session
 
+from app.models import UserConnection
+from app.repositories import UserConnectionRepository
 from app.services.providers import api_client
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.exceptions import (
     ProviderAuthRejectedError,
     ProviderError,
@@ -27,23 +31,23 @@ URL = "https://api.provider.test/v1/data"
 
 
 def _token_args(connection: Any) -> dict[str, Any]:
-    connection_repo = MagicMock()
+    connection_repo = create_autospec(UserConnectionRepository, instance=True)
     connection_repo.get_by_user_and_provider.return_value = connection
     return {
-        "db": MagicMock(info={}),
+        "db": MagicMock(spec=Session, info={}),
         "user_id": uuid4(),
         "provider_name": "garmin",
         "connection_repo": connection_repo,
-        "oauth": MagicMock(),
+        "oauth": create_autospec(BaseOAuthTemplate, instance=True),
     }
 
 
 def _request_args() -> dict[str, Any]:
     return {
-        "db": MagicMock(info={}),
+        "db": MagicMock(spec=Session, info={}),
         "user_id": uuid4(),
-        "connection_repo": MagicMock(),
-        "oauth": MagicMock(),
+        "connection_repo": create_autospec(UserConnectionRepository, instance=True),
+        "oauth": create_autospec(BaseOAuthTemplate, instance=True),
         "api_base_url": "https://api.provider.test",
         "provider_name": "garmin",
         "endpoint": "/v1/data",
@@ -60,12 +64,12 @@ class TestGetValidToken:
 
     def test_connection_without_a_token(self) -> None:
         with pytest.raises(ProviderTokenUnavailableError) as exc_info:
-            api_client.get_valid_token(**_token_args(MagicMock(access_token=None)))
+            api_client.get_valid_token(**_token_args(UserConnection(access_token=None)))
 
         assert exc_info.value.status_code == 400
 
     def test_expired_token_without_a_refresh_token(self) -> None:
-        connection = MagicMock(
+        connection = UserConnection(
             access_token="at",
             refresh_token=None,
             token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
@@ -77,9 +81,9 @@ class TestGetValidToken:
         assert exc_info.value.status_code == 409
 
 
-@patch("app.services.providers.api_client.get_valid_token", return_value="token")
+@patch("app.services.providers.api_client.get_valid_token", autospec=True, return_value="token")
 class TestMakeAuthenticatedRequest:
-    @patch("app.services.providers.api_client._reload_token_after_401", return_value=None)
+    @patch("app.services.providers.api_client._reload_token_after_401", autospec=True, return_value=None)
     def test_a_rejected_token_is_an_upstream_error_not_a_reconnect(
         self, mock_reload: MagicMock, mock_token: MagicMock, respx_mock: respx.MockRouter
     ) -> None:
@@ -104,7 +108,7 @@ class TestMakeAuthenticatedRequest:
         assert error.detail == "Garmin API error (status 404)"
         assert error.upstream_body == '{"message": "user 42 not found"}'
 
-    @patch("app.services.providers.api_client.time.sleep")
+    @patch("app.services.providers.api_client.time.sleep", autospec=True)
     def test_throttle_that_persists_is_a_503(
         self, mock_sleep: MagicMock, mock_token: MagicMock, respx_mock: respx.MockRouter
     ) -> None:
@@ -162,7 +166,7 @@ class TestMakeAuthenticatedRequest:
         assert exc_info.value.upstream_status == 503
 
 
-@patch("app.services.providers.api_client.get_valid_token", return_value="token")
+@patch("app.services.providers.api_client.get_valid_token", autospec=True, return_value="token")
 class TestDownloadBinaryContent:
     def _download(self) -> bytes:
         args = _request_args()

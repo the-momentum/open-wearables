@@ -1,7 +1,7 @@
 """Tests for Apple XML object-store configuration helpers."""
 
 from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from pydantic import SecretStr
@@ -15,6 +15,11 @@ from app.services.providers.apple.apple_xml.aws_service import (
     require_bucket_name,
 )
 from app.utils.exceptions import AppError
+from tests.utils.aws import mock_s3_client
+
+# botocore builds client methods at runtime, so mocks are specced from a real (never called) client.
+# spec= instead of create_autospec: botocore methods take (*args, **kwargs), so autospec adds no
+# signature checks, yet costs ~28 ms per mock.
 
 
 def test_build_object_key_is_unique_for_same_user_and_filename() -> None:
@@ -66,10 +71,10 @@ def test_require_bucket_name_rejects_missing_configuration(monkeypatch: pytest.M
 @pytest.mark.usefixtures("_with_credentials")
 def test_internal_s3_client_is_created_once(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "aws_endpoint_url", "http://minio:9000")
-    client = MagicMock()
+    client = mock_s3_client()
 
     with patch(
-        "app.services.providers.apple.apple_xml.aws_service.create_s3_client", return_value=client
+        "app.services.providers.apple.apple_xml.aws_service.create_s3_client", autospec=True, return_value=client
     ) as create_client:
         assert get_s3_client() is client
         assert get_s3_client() is client
@@ -81,10 +86,11 @@ def test_internal_s3_client_is_created_once(monkeypatch: pytest.MonkeyPatch) -> 
 def test_public_s3_client_is_cached_separately(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "aws_endpoint_url", "http://minio:9000")
     monkeypatch.setattr(settings, "aws_public_endpoint_url", "http://localhost:8333")
-    public_client = MagicMock()
+    public_client = mock_s3_client()
 
     with patch(
         "app.services.providers.apple.apple_xml.aws_service.create_s3_client",
+        autospec=True,
         return_value=public_client,
     ) as create_client:
         assert get_public_s3_client() is public_client
@@ -101,8 +107,10 @@ def test_missing_credentials_are_not_cached_and_recover(monkeypatch: pytest.Monk
 
     assert get_s3_client() is None
 
-    client = MagicMock()
+    client = mock_s3_client()
     monkeypatch.setattr(settings, "aws_access_key_id", "test-key")
     monkeypatch.setattr(settings, "aws_secret_access_key", SecretStr("test-secret"))
-    with patch("app.services.providers.apple.apple_xml.aws_service.create_s3_client", return_value=client):
+    with patch(
+        "app.services.providers.apple.apple_xml.aws_service.create_s3_client", autospec=True, return_value=client
+    ):
         assert get_s3_client() is client

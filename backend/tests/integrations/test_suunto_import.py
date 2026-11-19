@@ -15,11 +15,13 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import redis
 import respx
 from jose import jwt
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
+from app.schemas.model_crud.credentials.oauth import ProviderCredentials
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
@@ -133,11 +135,13 @@ class TestSuuntoImport:
         import json
 
         # Create a mock redis client
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = json.dumps(state_data).encode("utf-8")
 
         # Patch get_redis_client to return our mock
-        with patch("app.services.providers.templates.base_oauth.get_redis_client", return_value=mock_redis):
+        with patch(
+            "app.services.providers.templates.base_oauth.get_redis_client", autospec=True, return_value=mock_redis
+        ):
             # Act
             assert suunto_strategy.oauth is not None
             oauth_state = suunto_strategy.oauth.handle_callback(db, "test_code", "test_state")
@@ -167,7 +171,9 @@ class TestSuuntoImport:
 
         # Mock the get_workouts_from_api method directly on the instance
         assert suunto_strategy.workouts is not None
-        with patch.object(suunto_strategy.workouts, "get_workouts_from_api", return_value=sample_suunto_api_response):
+        with patch.object(
+            suunto_strategy.workouts, "get_workouts_from_api", autospec=True, return_value=sample_suunto_api_response
+        ):
             # Act
             result = suunto_strategy.workouts.get_workouts_from_api(
                 db,
@@ -182,10 +188,10 @@ class TestSuuntoImport:
             assert result["payload"][0]["activityId"] == 1  # Running
             assert result["payload"][1]["activityId"] == 2  # Cycling
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
+    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
+    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
+    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_load_data_creates_event_records(
         self,
         mock_ensure_data_source: MagicMock,
@@ -226,7 +232,7 @@ class TestSuuntoImport:
         assert get_unified_workout_type(74) == WorkoutType.TRIATHLON
         assert get_unified_workout_type(999) == WorkoutType.OTHER  # Unknown activity
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
+    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
     def test_get_workout_detail_from_api(
         self,
         mock_request: MagicMock,
@@ -299,7 +305,7 @@ class TestSuuntoImport:
         assert connection.access_token == "new_access_token"
         assert connection.refresh_token == "new_refresh_token"
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
+    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
     def test_subscription_key_included_in_requests(
         self,
         mock_request: MagicMock,
@@ -312,8 +318,9 @@ class TestSuuntoImport:
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         # Mock the credentials property to return a mock with subscription_key
-        mock_creds = MagicMock()
-        mock_creds.subscription_key = "test_subscription_key"
+        mock_creds = ProviderCredentials(
+            client_id="", client_secret="", redirect_uri="", default_scope="", subscription_key="test_subscription_key"
+        )
         mock_request.return_value = {"payload": []}
 
         # Patch the credentials property using PropertyMock
@@ -330,7 +337,7 @@ class TestSuuntoImport:
             assert "Ocp-Apim-Subscription-Key" in headers
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
+    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True)
     def test_error_response_handling(
         self,
         mock_request: MagicMock,

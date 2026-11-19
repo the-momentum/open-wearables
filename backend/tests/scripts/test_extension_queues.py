@@ -3,7 +3,7 @@
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import Mock
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -35,7 +35,11 @@ def test_prints_the_extension_queues(monkeypatch: pytest.MonkeyPatch, capsys: py
 def test_failed_lookup_prints_no_queues_and_the_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(extension_queues, "collect_celery_queues", Mock(side_effect=RuntimeError("boom")))
+    monkeypatch.setattr(
+        extension_queues,
+        "collect_celery_queues",
+        create_autospec(extension_queues.collect_celery_queues, side_effect=RuntimeError("boom")),
+    )
 
     extension_queues.main()
 

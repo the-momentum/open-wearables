@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Request
+from sqlalchemy.orm import Session
 
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.utils.exceptions import WebhookVerificationError
@@ -56,7 +57,7 @@ def test_handle_rejects_a_request_without_the_token_before_anything_else(path_pa
     handler = _TokenHandler()
 
     with pytest.raises(WebhookVerificationError):
-        handler.handle(_request(path_params), b"{}", MagicMock())
+        handler.handle(_request(path_params), b"{}", MagicMock(spec=Session))
 
     assert not handler.signature_checked
 
@@ -64,7 +65,7 @@ def test_handle_rejects_a_request_without_the_token_before_anything_else(path_pa
 def test_handle_accepts_a_request_with_the_token() -> None:
     handler = _TokenHandler()
 
-    result = handler.handle(_request({CALLBACK_TOKEN_PARAM: TOKEN}), b"{}", MagicMock())
+    result = handler.handle(_request({CALLBACK_TOKEN_PARAM: TOKEN}), b"{}", MagicMock(spec=Session))
 
     assert result == {"status": "dispatched"}
     assert handler.signature_checked

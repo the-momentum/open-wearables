@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import redis
 import respx
 from sqlalchemy.orm import Session
 
@@ -115,7 +116,7 @@ class TestPolarOAuthConfiguration:
 class TestPolarOAuthAuthorization:
     """Tests for Polar OAuth authorization URL generation."""
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
+    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
     def test_get_authorization_url(self, mock_redis_client: MagicMock, db: Session) -> None:
         """Test generating authorization URL for Polar."""
         # Arrange
@@ -128,7 +129,7 @@ class TestPolarOAuthAuthorization:
         connection_repo = UserConnectionRepository()
 
         # Setup mock redis before creating OAuth instance
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -158,7 +159,7 @@ class TestPolarOAuthAuthorization:
         assert call_args[0][1] == 900  # TTL
         assert str(user.id) in call_args[0][2]  # State contains user_id
 
-    @patch("app.integrations.redis_client.get_redis_client")
+    @patch("app.integrations.redis_client.get_redis_client", autospec=True)
     def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
         """Test authorization URL includes default scope."""
         # Arrange
@@ -170,7 +171,7 @@ class TestPolarOAuthAuthorization:
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 

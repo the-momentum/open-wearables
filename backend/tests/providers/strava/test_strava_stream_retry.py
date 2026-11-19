@@ -1,13 +1,17 @@
 """Tests for the delayed Strava stream re-fetch when the webhook beats stream processing."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.integrations.celery.tasks.strava_stream_retry_task import retry_strava_stream_ingest
+from app.models import EventRecord
+from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
+from app.services.providers.strava.oauth import StravaOAuth
 from app.services.providers.strava.workouts import StravaWorkouts, schedule_stream_retry
 from app.utils.exceptions import ProviderError, ReauthRequiredError
 
@@ -26,11 +30,11 @@ _ACTIVITY = StravaActivityJSON(
 @pytest.fixture
 def workouts() -> StravaWorkouts:
     return StravaWorkouts(
-        workout_repo=MagicMock(),
-        connection_repo=MagicMock(),
+        workout_repo=create_autospec(EventRecordRepository, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
         provider_name="strava",
         api_base_url="https://www.strava.com",
-        oauth=MagicMock(),
+        oauth=create_autospec(StravaOAuth, instance=True),
     )
 
 
@@ -42,13 +46,13 @@ class TestWebhookSchedulesRetry:
         attempt: int = 1,
     ) -> MagicMock:
         with (
-            patch("app.services.providers.strava.workouts.event_record_service") as mock_service,
-            patch.object(workouts, "_ingest_workout_streams", return_value=ingested),
-            patch("app.services.providers.strava.workouts.schedule_stream_retry") as mock_schedule,
+            patch("app.services.providers.strava.workouts.event_record_service", autospec=True) as mock_service,
+            patch.object(workouts, "_ingest_workout_streams", autospec=True, return_value=ingested),
+            patch("app.services.providers.strava.workouts.schedule_stream_retry", autospec=True) as mock_schedule,
         ):
-            mock_service.create.return_value = MagicMock(id=uuid4())
+            mock_service.create.return_value = EventRecord(id=uuid4())
             workouts.process_push_activity(
-                db=MagicMock(), activity=_ACTIVITY, user_id=uuid4(), stream_retry_attempt=attempt
+                db=MagicMock(spec=Session), activity=_ACTIVITY, user_id=uuid4(), stream_retry_attempt=attempt
             )
         return mock_schedule
 
@@ -78,11 +82,13 @@ class TestRetryTask:
     """The task must reuse the regular workouts-module flow, not reimplement it."""
 
     def _run(self, activity_data: dict | None, attempt: int = 1) -> MagicMock:
-        mock_workouts = MagicMock()
+        mock_workouts = create_autospec(StravaWorkouts, instance=True)
         mock_workouts.get_workout_detail_from_api.return_value = activity_data
         with (
-            patch("app.integrations.celery.tasks.strava_stream_retry_task.StravaStrategy") as mock_strategy,
-            patch("app.integrations.celery.tasks.strava_stream_retry_task.SessionLocal"),
+            patch(
+                "app.integrations.celery.tasks.strava_stream_retry_task.StravaStrategy", autospec=True
+            ) as mock_strategy,
+            patch("app.integrations.celery.tasks.strava_stream_retry_task.SessionLocal", autospec=True),
         ):
             mock_strategy.return_value.workouts = mock_workouts
             retry_strava_stream_ingest(str(uuid4()), str(_ACTIVITY.id), attempt=attempt)
@@ -103,9 +109,13 @@ class TestRetryTask:
 class TestFailureReschedule:
     def _run_with_error(self, error: Exception, attempt: int = 1) -> MagicMock:
         with (
-            patch("app.integrations.celery.tasks.strava_stream_retry_task._retry_ingest", side_effect=error),
-            patch("app.integrations.celery.tasks.strava_stream_retry_task.SessionLocal"),
-            patch("app.integrations.celery.tasks.strava_stream_retry_task.schedule_stream_retry") as mock_schedule,
+            patch(
+                "app.integrations.celery.tasks.strava_stream_retry_task._retry_ingest", autospec=True, side_effect=error
+            ),
+            patch("app.integrations.celery.tasks.strava_stream_retry_task.SessionLocal", autospec=True),
+            patch(
+                "app.integrations.celery.tasks.strava_stream_retry_task.schedule_stream_retry", autospec=True
+            ) as mock_schedule,
         ):
             retry_strava_stream_ingest(str(uuid4()), "a-1", attempt=attempt)
         return mock_schedule
@@ -137,7 +147,7 @@ class TestFailureReschedule:
 
 class TestScheduleStreamRetry:
     def test_uses_configured_backoff_per_attempt(self) -> None:
-        with patch("app.services.providers.strava.workouts.celery_app.send_task") as mock_send:
+        with patch("app.services.providers.strava.workouts.celery_app.send_task", autospec=True) as mock_send:
             schedule_stream_retry("u-1", "a-1", attempt=2)
         kwargs = mock_send.call_args.kwargs
         assert kwargs["countdown"] == settings.strava_stream_retry_base_delay_seconds * 3

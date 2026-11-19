@@ -127,7 +127,7 @@ class TestClassifySleepNaps:
                 raise RuntimeError("boom")
             return original(session, user_id, source_id, wake_dates)
 
-        with patch.object(event_record_service, "reclassify_sleep_naps", side_effect=flaky):
+        with patch.object(event_record_service, "reclassify_sleep_naps", autospec=True, side_effect=flaky):
             assert _classify(db)[1:] == (1, True)
 
         assert _is_nap(db, other_nap) is True
@@ -179,7 +179,7 @@ class TestClassifySleepNaps:
 
 
 def _session(db: Session) -> MagicMock:
-    session = MagicMock()
+    session = MagicMock(spec=Session)
     session.__enter__.return_value = db
     return session
 
@@ -188,7 +188,11 @@ class TestClassifySleepNapsTask:
     def test_records_the_migration_once_every_source_is_done(self, db: Session) -> None:
         _, _, nap = _night_and_nap(ProviderName.APPLE)
 
-        with patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)):
+        with patch(
+            "app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal",
+            autospec=True,
+            return_value=_session(db),
+        ):
             assert classify_sleep_naps() == {"finished": True, "failed": 0}
             assert classify_sleep_naps() == {"skipped": "done"}
 
@@ -200,8 +204,14 @@ class TestClassifySleepNapsTask:
         db.commit()
 
         with (
-            patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)),
-            patch.object(event_record_service, "reclassify_sleep_naps", side_effect=RuntimeError("boom")),
+            patch(
+                "app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal",
+                autospec=True,
+                return_value=_session(db),
+            ),
+            patch.object(
+                event_record_service, "reclassify_sleep_naps", autospec=True, side_effect=RuntimeError("boom")
+            ),
         ):
             assert classify_sleep_naps() == {"finished": True, "failed": 1}
 
@@ -211,9 +221,13 @@ class TestClassifySleepNapsTask:
         source, _, _ = _night_and_nap(ProviderName.APPLE)
 
         with (
-            patch("app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal", return_value=_session(db)),
+            patch(
+                "app.integrations.celery.tasks.classify_sleep_naps_task.SessionLocal",
+                autospec=True,
+                return_value=_session(db),
+            ),
             patch("app.integrations.celery.tasks.classify_sleep_naps_task._BUDGET_SECONDS", 0),
-            patch.object(classify_sleep_naps, "apply_async") as apply_async,
+            patch.object(classify_sleep_naps, "apply_async", autospec=True) as apply_async,
         ):
             assert classify_sleep_naps() == {"finished": False, "failed": 0}
 
@@ -228,9 +242,9 @@ class TestClassifySleepNapsTask:
 class TestScript:
     def test_queues_the_task_until_it_is_done(self, db: Session) -> None:
         with (
-            patch.object(_script, "SessionLocal", return_value=_session(db)),
-            patch.object(_script, "create_celery"),
-            patch.object(_script.classify_sleep_naps, "delay") as delay,
+            patch.object(_script, "SessionLocal", autospec=True, return_value=_session(db)),
+            patch.object(_script, "create_celery", autospec=True),
+            patch.object(_script.classify_sleep_naps, "delay", autospec=True) as delay,
         ):
             _script.main(dry_run=False)
             DataMigrationRepository().mark_completed(db, MIGRATION)

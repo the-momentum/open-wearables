@@ -6,8 +6,9 @@ for both individual items and collections.
 """
 
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 
+from app.database import BaseDbModel
 from app.utils.hateoas import (
     _build_query,
     _generate_collection_links,
@@ -211,7 +212,7 @@ class TestGetHateoasItem:
     def test_get_hateoas_item_basic(self) -> None:
         """Should create HATEOAS item with links."""
         # Arrange
-        mock_instance = MagicMock()
+        mock_instance = create_autospec(BaseDbModel, instance=True)
         mock_instance.__tablename__ = "user"
         mock_instance.id_str = "123e4567-e89b-12d3-a456-426614174000"
 
@@ -219,7 +220,7 @@ class TestGetHateoasItem:
         url = "http://localhost:8000/api/v1/users/123e4567-e89b-12d3-a456-426614174000"
 
         # Mock the base_to_dict function through the instance
-        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+        with patch("app.utils.hateoas.base_to_dict", autospec=True) as mock_base_to_dict:
             mock_base_to_dict.return_value = {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "first_name": "John",
@@ -242,7 +243,7 @@ class TestGetHateoasItem:
     def test_get_hateoas_item_with_extra_rels(self) -> None:
         """Should create HATEOAS item with extra relations."""
         # Arrange
-        mock_instance = MagicMock()
+        mock_instance = create_autospec(BaseDbModel, instance=True)
         mock_instance.__tablename__ = "user"
         mock_instance.id_str = "123"
 
@@ -250,7 +251,7 @@ class TestGetHateoasItem:
         url = "http://localhost:8000/api/v1/users/123"
         extra_rels = [{"rel": "connections", "endpoint": "/connections", "method": "GET"}]
 
-        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+        with patch("app.utils.hateoas.base_to_dict", autospec=True) as mock_base_to_dict:
             mock_base_to_dict.return_value = {"id": "123", "name": "Test User"}
 
             # Act
@@ -269,9 +270,9 @@ class TestGetHateoasList:
     def test_get_hateoas_list_basic(self) -> None:
         """Should create HATEOAS list with items and pagination links."""
         # Arrange
-        mock_item1 = MagicMock()
+        mock_item1 = create_autospec(BaseDbModel, instance=True)
         mock_item1.__tablename__ = "user"
-        mock_item2 = MagicMock()
+        mock_item2 = create_autospec(BaseDbModel, instance=True)
         mock_item2.__tablename__ = "user"
 
         items = [mock_item1, mock_item2]
@@ -279,7 +280,7 @@ class TestGetHateoasList:
         limit = 10
         base_url = "http://localhost:8000"
 
-        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+        with patch("app.utils.hateoas.base_to_dict", autospec=True) as mock_base_to_dict:
             mock_base_to_dict.side_effect = [{"id": "1", "name": "User 1"}, {"id": "2", "name": "User 2"}]
 
             # Act
@@ -315,7 +316,7 @@ class TestGetHateoasList:
     def test_get_hateoas_list_with_pagination(self) -> None:
         """Should create correct pagination links."""
         # Arrange
-        mock_item = MagicMock()
+        mock_item = create_autospec(BaseDbModel, instance=True)
         mock_item.__tablename__ = "developer"
 
         items = [mock_item]
@@ -323,7 +324,7 @@ class TestGetHateoasList:
         limit = 25
         base_url = "http://localhost:8000"
 
-        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+        with patch("app.utils.hateoas.base_to_dict", autospec=True) as mock_base_to_dict:
             mock_base_to_dict.return_value = {"id": "1"}
 
             # Act

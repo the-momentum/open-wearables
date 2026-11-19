@@ -1,8 +1,9 @@
 """get_valid_token caches the token on the session, so a sync reads user_connection once."""
 
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 
 import httpx
 import pytest
@@ -13,8 +14,10 @@ from sqlalchemy.orm import Session
 
 from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
+from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers import api_client
 from app.services.providers.api_client import download_binary_content, get_valid_token, make_authenticated_request
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.exceptions import (
     ProviderAuthRejectedError,
     ProviderError,
@@ -36,7 +39,7 @@ def connection() -> Any:
 @pytest.fixture
 def repo() -> Any:
     repo = UserConnectionRepository()
-    with patch.object(repo, "get_by_user_and_provider", wraps=repo.get_by_user_and_provider):
+    with patch.object(repo, "get_by_user_and_provider", autospec=True, wraps=repo.get_by_user_and_provider):
         yield repo
 
 
@@ -49,7 +52,7 @@ def _request(db: Session, connection: Any, repo: Any, oauth: Any = None) -> Any:
         db=db,
         user_id=connection.user_id,
         connection_repo=repo,
-        oauth=oauth or MagicMock(),
+        oauth=oauth or create_autospec(BaseOAuthTemplate, instance=True),
         api_base_url=API_BASE_URL,
         provider_name="whoop",
         endpoint="/v1/data",
@@ -57,14 +60,17 @@ def _request(db: Session, connection: Any, repo: Any, oauth: Any = None) -> Any:
 
 
 def test_repeated_calls_read_connection_once(db: Session, connection: Any, repo: Any) -> None:
-    tokens = [get_valid_token(db, connection.user_id, "whoop", repo, MagicMock()) for _ in range(5)]
+    tokens = [
+        get_valid_token(db, connection.user_id, "whoop", repo, create_autospec(BaseOAuthTemplate, instance=True))
+        for _ in range(5)
+    ]
 
     assert tokens == [connection.access_token] * 5
     assert repo.get_by_user_and_provider.call_count == 1
 
 
 def test_cached_token_close_to_expiry_is_refreshed(db: Session, connection: Any, repo: Any) -> None:
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     oauth.refresh_access_token.return_value.access_token = "refreshed"
     get_valid_token(db, connection.user_id, "whoop", repo, oauth)
 
@@ -78,9 +84,9 @@ def test_cached_token_close_to_expiry_is_refreshed(db: Session, connection: Any,
 def test_a_refreshed_token_is_reused(db: Session, connection: Any, repo: Any) -> None:
     def refresh(db_session: Session, _user_id: Any, refresh_token: str, **_: Any) -> Any:
         repo.update_tokens(db_session, connection, "refreshed", refresh_token, 3600)
-        return MagicMock(access_token="refreshed")
+        return OAuthTokenResponse(access_token="refreshed", token_type="Bearer", expires_in=3600)
 
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     oauth.refresh_access_token.side_effect = refresh
 
     with time_machine.travel(datetime.now(timezone.utc) + timedelta(minutes=58), tick=False):
@@ -96,21 +102,23 @@ def test_a_disconnect_made_elsewhere_is_seen_once_the_cached_token_ages(
     db: Session, connection: Any, repo: Any
 ) -> None:
     """A sync must not outlive a disconnect, or it writes back the data a purge just deleted."""
-    clock = MagicMock()
+    clock = create_autospec(time)
     clock.monotonic.return_value = 0.0
     with patch.object(api_client, "time", clock):
-        get_valid_token(db, connection.user_id, "whoop", repo, MagicMock())
+        get_valid_token(db, connection.user_id, "whoop", repo, create_autospec(BaseOAuthTemplate, instance=True))
         db.execute(text("UPDATE user_connection SET access_token = NULL WHERE id = :id"), {"id": connection.id})
         clock.monotonic.return_value = api_client.TOKEN_CACHE_TTL_SECONDS + 1
 
         with pytest.raises(ProviderTokenUnavailableError):
-            get_valid_token(db, connection.user_id, "whoop", repo, MagicMock())
+            get_valid_token(db, connection.user_id, "whoop", repo, create_autospec(BaseOAuthTemplate, instance=True))
 
 
 def test_request_retries_with_token_refreshed_elsewhere(
     respx_mock: respx.MockRouter, db: Session, connection: Any, repo: Any
 ) -> None:
-    stale_token = get_valid_token(db, connection.user_id, "whoop", repo, MagicMock())
+    stale_token = get_valid_token(
+        db, connection.user_id, "whoop", repo, create_autospec(BaseOAuthTemplate, instance=True)
+    )
     # Raw SQL, like another worker's session: the connection instance in this session stays stale.
     db.execute(
         text("UPDATE user_connection SET access_token = 'refreshed-by-another-worker' WHERE id = :id"),
@@ -127,7 +135,9 @@ def test_request_retries_with_token_refreshed_elsewhere(
 def test_download_retries_with_token_refreshed_elsewhere(
     respx_mock: respx.MockRouter, db: Session, connection: Any, repo: Any
 ) -> None:
-    stale_token = get_valid_token(db, connection.user_id, "whoop", repo, MagicMock())
+    stale_token = get_valid_token(
+        db, connection.user_id, "whoop", repo, create_autospec(BaseOAuthTemplate, instance=True)
+    )
     db.execute(
         text("UPDATE user_connection SET access_token = 'refreshed-by-another-worker' WHERE id = :id"),
         {"id": connection.id},
@@ -136,7 +146,9 @@ def test_download_retries_with_token_refreshed_elsewhere(
         side_effect=[httpx.Response(401, content=b"file"), httpx.Response(200, content=b"file")]
     )
 
-    content = download_binary_content(db, connection.user_id, repo, MagicMock(), "whoop", FILE_URL)
+    content = download_binary_content(
+        db, connection.user_id, repo, create_autospec(BaseOAuthTemplate, instance=True), "whoop", FILE_URL
+    )
 
     assert content == b"file"
     assert _sent_auth(route) == [f"Bearer {stale_token}", "Bearer refreshed-by-another-worker"]
@@ -146,7 +158,7 @@ def test_an_unchanged_rejected_token_is_refreshed_once_and_retried(
     respx_mock: respx.MockRouter, db: Session, connection: Any, repo: Any
 ) -> None:
     """A grant revoked at the provider shows up only when its refresh token is rejected too."""
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     oauth.refresh_access_token.return_value.access_token = "refreshed"
     route = respx_mock.get(DATA_URL).mock(side_effect=[httpx.Response(401), httpx.Response(200, json={"ok": True})])
 
@@ -159,7 +171,7 @@ def test_an_unchanged_rejected_token_is_refreshed_once_and_retried(
 def test_a_401_recovery_keeps_unflushed_changes_to_the_connection(
     respx_mock: respx.MockRouter, db: Session, connection: Any, repo: Any
 ) -> None:
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     oauth.refresh_access_token.return_value.access_token = "refreshed"
     connection.scope = "changed in this session"
     respx_mock.get(DATA_URL).mock(side_effect=[httpx.Response(401), httpx.Response(200, json={"ok": True})])
@@ -172,7 +184,7 @@ def test_a_401_recovery_keeps_unflushed_changes_to_the_connection(
 def test_a_rejected_refresh_ends_the_request_as_reauth_required(
     respx_mock: respx.MockRouter, db: Session, connection: Any, repo: Any
 ) -> None:
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     oauth.refresh_access_token.side_effect = ReauthRequiredError("whoop", connection.user_id, "reconnection required")
     route = respx_mock.get(DATA_URL).respond(401)
 
@@ -186,7 +198,7 @@ def test_a_401_after_a_successful_refresh_is_not_a_dead_grant(
     respx_mock: respx.MockRouter, db: Session, connection: Any, repo: Any
 ) -> None:
     """The refresh proved the grant alive, so the endpoint itself refused; nothing is revoked."""
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     oauth.refresh_access_token.return_value.access_token = "refreshed"
     route = respx_mock.get(DATA_URL).respond(401)
 
@@ -204,7 +216,7 @@ def test_without_a_refresh_token_a_401_is_not_retried(
 ) -> None:
     """Polar has no refresh tokens and answers 401 on endpoints the user didn't consent to."""
     db.execute(text("UPDATE user_connection SET refresh_token = NULL WHERE id = :id"), {"id": connection.id})
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     route = respx_mock.get(DATA_URL).mock(side_effect=[httpx.Response(401), httpx.Response(200, json={"ok": True})])
 
     with pytest.raises(ProviderAuthRejectedError) as exc_info:
@@ -226,7 +238,7 @@ def test_a_grant_that_only_fails_for_a_day_is_revoked(
 ) -> None:
     """A revoke at a provider without refresh tokens, or a lapsed Oura membership, looks just like this."""
     _failing_since(connection, hours_ago=25)
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     respx_mock.get(DATA_URL).respond(403)
 
     with pytest.raises(ReauthRequiredError):
@@ -238,7 +250,7 @@ def test_a_grant_that_only_fails_for_a_day_is_revoked(
 def test_a_recent_rejection_is_not_yet_a_dead_grant(
     respx_mock: respx.MockRouter, db: Session, connection: Any, repo: Any
 ) -> None:
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     respx_mock.get(DATA_URL).respond(403)
 
     with pytest.raises(ProviderError) as exc_info:

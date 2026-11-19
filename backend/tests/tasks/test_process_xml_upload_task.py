@@ -39,12 +39,12 @@ class FakeImport:
 def fake_import(db: Session) -> Generator[FakeImport, None, None]:
     fake = FakeImport()
     with (
-        patch(f"{_TASK}.SessionLocal") as mock_session_local,
-        patch(f"{_TASK}._import_xml_data", side_effect=fake),
-        patch(f"{_TASK}.emit_sync_started"),
-        patch(f"{_TASK}.emit_sync_completed"),
-        patch(f"{_TASK}.emit_sync_failed"),
-        patch(f"{_TASK}.try_record_data_types"),
+        patch(f"{_TASK}.SessionLocal", autospec=True) as mock_session_local,
+        patch(f"{_TASK}._import_xml_data", autospec=True, side_effect=fake),
+        patch(f"{_TASK}.emit_sync_started", autospec=True),
+        patch(f"{_TASK}.emit_sync_completed", autospec=True),
+        patch(f"{_TASK}.emit_sync_failed", autospec=True),
+        patch(f"{_TASK}.try_record_data_types", autospec=True),
     ):
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)

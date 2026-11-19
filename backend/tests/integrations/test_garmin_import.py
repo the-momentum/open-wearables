@@ -95,7 +95,7 @@ class TestGarminWorkoutImport:
         start_date = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end_date = datetime(2024, 1, 31, tzinfo=timezone.utc)
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=sample_garmin_activities):
+        with patch.object(strategy.workouts, "_make_api_request", autospec=True, return_value=sample_garmin_activities):
             # Act
             activities = strategy.workouts.get_workouts(db, user.id, start_date, end_date)
 
@@ -128,7 +128,7 @@ class TestGarminWorkoutImport:
             "laps": [{"lapIndex": 1, "duration": 600}],
         }
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=activity_detail):
+        with patch.object(strategy.workouts, "_make_api_request", autospec=True, return_value=activity_detail):
             # Act
             result = cast(GarminWorkouts, strategy.workouts).get_activity_detail(db, user.id, "12345678901")
 
@@ -149,7 +149,7 @@ class TestGarminWorkoutImport:
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=[]) as mock_request:
+        with patch.object(strategy.workouts, "_make_api_request", autospec=True, return_value=[]) as mock_request:
             # Act - using a 31-day date range
             strategy.workouts.get_workouts_from_api(
                 db,

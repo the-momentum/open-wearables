@@ -1,13 +1,15 @@
 import re
 from collections.abc import Iterator
 from hashlib import sha256
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from svix.api import MessageOut
 
 from app.extensions import webhooks
 from app.integrations.celery.tasks import emit_webhook_event_task
+from app.models import Developer
 
 _CREATED = "my_extension.thing.created"
 _LONG_TYPE = "my_extension." + "a" * 250  # _EVENT_TYPE sets no length limit
@@ -23,8 +25,8 @@ _SVIX_EVENT_ID = re.compile(r"[a-zA-Z0-9\-_.]+")
 @pytest.fixture
 def dispatch() -> Iterator[MagicMock]:
     with (
-        patch.object(webhooks, "collect_webhook_event_types", return_value=_DECLARED),
-        patch("app.services.outgoing_webhooks.events._dispatch") as dispatch,
+        patch.object(webhooks, "collect_webhook_event_types", autospec=True, return_value=_DECLARED),
+        patch("app.services.outgoing_webhooks.events._dispatch", autospec=True) as dispatch,
     ):
         yield dispatch
 
@@ -32,9 +34,9 @@ def dispatch() -> Iterator[MagicMock]:
 @pytest.fixture
 def send_task() -> Iterator[MagicMock]:
     with (
-        patch.object(webhooks, "collect_webhook_event_types", return_value=_DECLARED),
-        patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=True),
-        patch("app.services.outgoing_webhooks.events.celery_app") as celery_app,
+        patch.object(webhooks, "collect_webhook_event_types", autospec=True, return_value=_DECLARED),
+        patch("app.services.outgoing_webhooks.svix.is_enabled", autospec=True, return_value=True),
+        patch("app.services.outgoing_webhooks.events.celery_app", autospec=True) as celery_app,
     ):
         yield celery_app.send_task
 
@@ -90,7 +92,7 @@ def test_an_undeclared_event_is_not_sent(dispatch: MagicMock) -> None:
 
 
 def test_an_undeclared_event_alerts(dispatch: MagicMock) -> None:
-    with patch.object(webhooks, "logger") as logger:
+    with patch.object(webhooks, "logger", autospec=True) as logger:
         webhooks.emit("my_extension.thing.unknown", {})
 
     assert logger.error.call_args.kwargs["alert"] is True
@@ -115,15 +117,20 @@ class TestKeylessEvents:
     def test_a_retry_resends_the_key_the_event_was_enqueued_with(self, send_task: MagicMock) -> None:
         webhooks.emit(_CREATED, {})
         enqueued = send_task.call_args.kwargs
-        developers = [MagicMock(id=uuid4(), email="dev1@example.com"), MagicMock(id=uuid4(), email="dev2@example.com")]
+        developers = [Developer(id=uuid4(), email="dev1@example.com"), Developer(id=uuid4(), email="dev2@example.com")]
 
         with (
-            patch.object(emit_webhook_event_task, "developer_service") as developer_service,
-            patch.object(emit_webhook_event_task, "svix_service") as svix_service,
+            patch.object(emit_webhook_event_task, "developer_service", autospec=True) as developer_service,
+            patch.object(emit_webhook_event_task, "svix_service", autospec=True) as svix_service,
         ):
             developer_service.crud.get_all.return_value = developers
             # The second developer fails once, so the retry sends to both again; the first must see the same event id.
-            svix_service.send.side_effect = [MagicMock(), None, MagicMock(), MagicMock()]
+            svix_service.send.side_effect = [
+                create_autospec(MessageOut, instance=True),
+                None,
+                create_autospec(MessageOut, instance=True),
+                create_autospec(MessageOut, instance=True),
+            ]
             emit_webhook_event_task.emit_webhook_event.apply(args=enqueued["args"], kwargs=enqueued["kwargs"])
 
         keys = [call.kwargs["idempotency_key"] for call in svix_service.send.call_args_list]

@@ -211,7 +211,7 @@ class TestOura247SleepNormalization:
         assert result[0]["is_nap"] is False  # long_sleep
         assert result[1]["is_nap"] is True  # sleep
 
-    @patch("app.services.providers.oura.data_247.event_record_service")
+    @patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
     def test_unreported_sleep_stages_are_saved_as_none(
         self, mock_event: MagicMock, data_247: Oura247Data, sample_oura_sleep: dict
     ) -> None:
@@ -220,7 +220,7 @@ class TestOura247SleepNormalization:
         )
 
         normalized = data_247.normalize_sleeps([sample_oura_sleep], uuid4())
-        data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
 
         detail = mock_event.create_or_merge_sleep.call_args[0][3]
         assert detail.sleep_deep_minutes is None
@@ -230,14 +230,14 @@ class TestOura247SleepNormalization:
         assert detail.sleep_total_duration_minutes is None
         assert detail.sleep_time_in_bed_minutes == 480
 
-    @patch("app.services.providers.oura.data_247.event_record_service")
+    @patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
     def test_reported_zero_sleep_stages_are_saved_as_zero(
         self, mock_event: MagicMock, data_247: Oura247Data, sample_oura_sleep: dict
     ) -> None:
         sample_oura_sleep.update(deep_sleep_duration=0, rem_sleep_duration=0)
 
         normalized = data_247.normalize_sleeps([sample_oura_sleep], uuid4())
-        data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
 
         detail = mock_event.create_or_merge_sleep.call_args[0][3]
         assert detail.sleep_deep_minutes == 0

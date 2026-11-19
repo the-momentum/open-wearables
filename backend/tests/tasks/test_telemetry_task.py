@@ -9,8 +9,8 @@ from app.integrations.celery.tasks.telemetry_task import send_telemetry_ping
 
 
 class TestSendTelemetryPingTask:
-    @patch("app.integrations.celery.tasks.telemetry_task.telemetry_service")
-    @patch("app.integrations.celery.tasks.telemetry_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.telemetry_task.telemetry_service", autospec=True)
+    @patch("app.integrations.celery.tasks.telemetry_task.SessionLocal", autospec=True)
     def test_sends_daily_ping(
         self,
         mock_session_local: MagicMock,
@@ -26,8 +26,8 @@ class TestSendTelemetryPingTask:
         assert result == "sent"
         mock_service.send_ping.assert_called_once_with(db, event="daily")
 
-    @patch("app.integrations.celery.tasks.telemetry_task.telemetry_service")
-    @patch("app.integrations.celery.tasks.telemetry_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.telemetry_task.telemetry_service", autospec=True)
+    @patch("app.integrations.celery.tasks.telemetry_task.SessionLocal", autospec=True)
     def test_passes_startup_event_through(
         self,
         mock_session_local: MagicMock,
@@ -43,8 +43,8 @@ class TestSendTelemetryPingTask:
         assert result == "not_due"
         mock_service.send_ping.assert_called_once_with(db, event="startup")
 
-    @patch("app.integrations.celery.tasks.telemetry_task.telemetry_service")
-    @patch("app.integrations.celery.tasks.telemetry_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.telemetry_task.telemetry_service", autospec=True)
+    @patch("app.integrations.celery.tasks.telemetry_task.SessionLocal", autospec=True)
     def test_delivery_errors_are_swallowed(
         self,
         mock_session_local: MagicMock,

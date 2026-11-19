@@ -13,7 +13,7 @@ from tests.factories import ApiKeyFactory
 
 @pytest.fixture(autouse=True)
 def mock_celery_tasks() -> Generator[MagicMock, None, None]:
-    with patch("app.api.routes.v1.sdk_sync.process_sdk_upload") as mock:
+    with patch("app.api.routes.v1.sdk_sync.process_sdk_upload", autospec=True) as mock:
         mock.delay.return_value = None
         yield mock
 

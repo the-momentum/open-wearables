@@ -6,13 +6,15 @@ still holds.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
 
 import app.integrations.celery.tasks.provider_webhooks_task as task
 from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.incoming_webhooks import WebhookOperationResult, WebhookSubscriptionStatus
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.templates.base_webhook_service import BaseWebhookService
 
 
 def _deleted(subscription_id: str) -> WebhookOperationResult:
@@ -21,20 +23,20 @@ def _deleted(subscription_id: str) -> WebhookOperationResult:
 
 @pytest.fixture
 def strategy() -> MagicMock:
-    strategy = MagicMock()
-    strategy.capabilities.webhook_inbound_secret = False
-    strategy.webhook_service = MagicMock()
+    strategy = create_autospec(BaseProviderStrategy, instance=True)
+    strategy.capabilities = ProviderCapabilities(webhook_inbound_secret=False)
+    strategy.webhook_service = create_autospec(BaseWebhookService, instance=True)
     return strategy
 
 
 def _run(provider: str, mode: LiveSyncMode, strategy: MagicMock) -> Any:
-    with patch.object(task.ProviderFactory, "get_provider", return_value=strategy):
+    with patch.object(task.ProviderFactory, "get_provider", autospec=True, return_value=strategy):
         return task.reconcile_provider_webhooks.run(provider, mode)
 
 
 def test_webhook_mode_registers_against_the_callback_url(strategy: MagicMock) -> None:
     """Should register subscriptions pointing at the provider's own callback route."""
-    strategy.webhook_service.register_subscriptions = AsyncMock(return_value=[{"status": "created"}])
+    strategy.webhook_service.register_subscriptions.return_value = [{"status": "created"}]
 
     result = _run("oura", LiveSyncMode.WEBHOOK, strategy)
 
@@ -45,7 +47,7 @@ def test_webhook_mode_registers_against_the_callback_url(strategy: MagicMock) ->
 
 def test_pull_mode_deletes_subscriptions(strategy: MagicMock) -> None:
     """Should delete the subscriptions the provider still holds."""
-    strategy.webhook_service.deregister_subscriptions = AsyncMock(return_value=[_deleted("sub-1")])
+    strategy.webhook_service.deregister_subscriptions.return_value = [_deleted("sub-1")]
 
     result = _run("oura", LiveSyncMode.PULL, strategy)
 
@@ -56,12 +58,10 @@ def test_pull_mode_deletes_subscriptions(strategy: MagicMock) -> None:
 
 def test_pull_mode_retries_when_a_delete_fails(strategy: MagicMock) -> None:
     """Should retry rather than report success: a surviving subscription keeps delivering."""
-    strategy.webhook_service.deregister_subscriptions = AsyncMock(
-        return_value=[
-            _deleted("sub-1"),
-            WebhookOperationResult(subscription_id="sub-2", status=WebhookSubscriptionStatus.ERROR, error="boom"),
-        ]
-    )
+    strategy.webhook_service.deregister_subscriptions.return_value = [
+        _deleted("sub-1"),
+        WebhookOperationResult(subscription_id="sub-2", status=WebhookSubscriptionStatus.ERROR, error="boom"),
+    ]
 
     with pytest.raises(RuntimeError, match="failed for 1 of 2"):
         _run("oura", LiveSyncMode.PULL, strategy)

@@ -6,8 +6,9 @@ Tests cover:
 - POST /api/v1/settings/seed - dispatch seed data generation task
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
+from celery.result import AsyncResult
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -56,14 +57,14 @@ class TestListPresets:
 class TestDispatchSeedGeneration:
     """Tests for POST /api/v1/settings/seed."""
 
-    @patch("app.api.routes.v1.seed_data.generate_seed_data")
+    @patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
     def test_dispatch_default_config(
         self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
 
-        mock_result = MagicMock()
+        mock_result = create_autospec(AsyncResult, instance=True)
         mock_result.id = "test-task-id-123"
         mock_task.delay.return_value = mock_result
 
@@ -79,14 +80,14 @@ class TestDispatchSeedGeneration:
         assert data["status"] == "dispatched"
         mock_task.delay.assert_called_once()
 
-    @patch("app.api.routes.v1.seed_data.generate_seed_data")
+    @patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
     def test_dispatch_with_preset_profile(
         self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
 
-        mock_result = MagicMock()
+        mock_result = create_autospec(AsyncResult, instance=True)
         mock_result.id = "task-456"
         mock_task.delay.return_value = mock_result
 
@@ -121,7 +122,7 @@ class TestDispatchSeedGeneration:
         )
         assert response.status_code == 401
 
-    @patch("app.api.routes.v1.seed_data.generate_seed_data")
+    @patch("app.api.routes.v1.seed_data.generate_seed_data", autospec=True)
     def test_dispatch_validates_num_users(
         self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:

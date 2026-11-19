@@ -34,9 +34,9 @@ def _at(day: int, hour: int = 0) -> datetime:
 @pytest.fixture
 def stored_runs(db: Session) -> Iterator[None]:
     """Route the best-effort run writers onto the test session."""
-    with patch("app.services.sync_status_service.SessionLocal") as session_local:
+    with patch("app.services.sync_status_service.SessionLocal", autospec=True) as session_local:
         session_local.return_value.__enter__.return_value = db
-        with patch("app.services.sync_status_service._dispatch_data_type_webhooks"):
+        with patch("app.services.sync_status_service._dispatch_data_type_webhooks", autospec=True):
             yield
 
 
