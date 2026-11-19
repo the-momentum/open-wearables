@@ -54,6 +54,8 @@ The Railway template provisions seven services:
 
 All inter-service networking and environment variables are configured automatically by the template.
 
+The **Celery Worker** exits until the **Backend** has applied the database migrations, and whenever one of its workers stops. Keep its restart policy at **On Failure** or **Always**, and allow enough retries for a slow migration: each attempt waits up to two minutes.
+
 ## Post-deploy setup
 
 <Steps>

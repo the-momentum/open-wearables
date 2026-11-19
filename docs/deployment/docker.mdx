@@ -17,11 +17,19 @@ The single backend image covers every backend role. The start command selects wh
 | Command | Role |
 |---------|------|
 | `scripts/start/app.sh` | API server. Also applies database migrations and seed scripts on startup |
-| `scripts/start/worker.sh` | Celery worker (data syncs, background jobs) |
+| `scripts/start/worker.sh` | Celery workers (data syncs, background jobs, and the queues of installed extensions) |
 | `scripts/start/beat.sh` | Celery beat (scheduler) |
 | `scripts/start/flower.sh` | Flower (Celery monitoring UI, port `5555`) |
 
 Once the service is running, the start commands pass `SIGTERM` on to it, so `docker stop` shuts down cleanly. The worker container stops taking new tasks and finishes the ones already running. If that takes longer than the stop timeout (10 seconds by default), Docker kills the remaining tasks; raise `stop_grace_period` on the worker service if your syncs or imports run longer. A stop during startup, while `app.sh` applies migrations and seed scripts or `flower.sh` waits for the workers, is not passed on, so the container may keep running until the stop timeout runs out.
+
+Every worker container, with or without extensions, waits for the core's database migrations before it starts its workers, polling for up to `SCHEMA_POLL_SECONDS` × 60 seconds (2 minutes with the default of 2). If the migrations haven't finished by then, the container exits without starting any worker, so its restart policy starts it again.
+
+When installed extensions declare queues of their own, the worker container runs a third worker on them, with `EXTENSION_WORKER_CONCURRENCY` threads (4 by default); if it doesn't start, the container log says which extension is disabled and why. Their tasks can run longer than the core's: set the worker service's `stop_grace_period` above the longest one, which each extension documents.
+
+The worker container exits with a non-zero status when any of its workers stops on its own, even with success, so its restart policy brings them all back instead of leaving a queue without a worker.
+
+To scale the extension queues apart from the core's, run a second worker service from the same image with `WORKER_ROLES=ext`, and set `WORKER_ROLES=io,cpu` on the first. Without `WORKER_ROLES` a worker container runs all three.
 
 ## Image tags
 
