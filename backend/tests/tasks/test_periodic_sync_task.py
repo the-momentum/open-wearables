@@ -17,8 +17,8 @@ from tests.factories import UserConnectionFactory, UserFactory
 class TestSyncAllUsersTask:
     """Test suite for sync_all_users periodic task."""
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_with_active_connections(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -51,8 +51,8 @@ class TestSyncAllUsersTask:
         assert str(user2.id) in call_args_list
         assert str(user3.id) in call_args_list
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_with_date_range(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -81,8 +81,8 @@ class TestSyncAllUsersTask:
             end_date=end_date,
         )
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_skips_disconnected_users(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -114,8 +114,8 @@ class TestSyncAllUsersTask:
         call_kwargs = mock_sync_vendor_data.delay.call_args.kwargs
         assert call_kwargs["user_id"] == str(user1.id)
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_no_users(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -134,8 +134,8 @@ class TestSyncAllUsersTask:
         assert result["users_for_sync"] == 0
         mock_sync_vendor_data.delay.assert_not_called()
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_multiple_connections_per_user(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -162,8 +162,8 @@ class TestSyncAllUsersTask:
         assert result["users_for_sync"] == 1
         mock_sync_vendor_data.delay.assert_called_once_with(user_id=str(user.id), start_date=None, end_date=None)
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_mixed_connection_statuses(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -201,8 +201,8 @@ class TestSyncAllUsersTask:
         assert str(user2.id) in call_args_list
         assert str(user3.id) not in call_args_list
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_queues_async_tasks(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -225,8 +225,8 @@ class TestSyncAllUsersTask:
         # Verify .apply() or direct call was NOT used
         mock_sync_vendor_data.apply.assert_not_called() if hasattr(mock_sync_vendor_data, "apply") else None
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_large_batch(
         self,
         mock_sync_vendor_data: MagicMock,
@@ -256,8 +256,8 @@ class TestSyncAllUsersTask:
         for user in users:
             assert str(user.id) in call_args_list
 
-    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal", autospec=True)
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data", autospec=True)
     def test_sync_all_users_skips_users_without_a_pull_mode_connection(
         self,
         mock_sync_vendor_data: MagicMock,

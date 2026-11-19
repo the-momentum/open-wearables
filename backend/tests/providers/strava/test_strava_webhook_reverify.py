@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 import respx
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 import app.integrations.celery.tasks.webhook_push_task as task
@@ -147,9 +148,9 @@ def _run_webhook(
     requested = respx_mock.get(url__startswith=f"{API_URL}/").mock(side_effect=_in_order(api))
     token_post = respx_mock.post(TOKEN_URL).mock(side_effect=lambda request: refresh)
     with (
-        patch.object(task, "SessionLocal") as session_local,
-        patch("app.services.providers.templates.base_oauth.on_connection_revoked") as revoked,
-        patch.object(task.sync_status_service, "emit_webhook_delivered"),
+        patch.object(task, "SessionLocal", autospec=True) as session_local,
+        patch("app.services.providers.templates.base_oauth.on_connection_revoked", autospec=True) as revoked,
+        patch.object(task.sync_status_service, "emit_webhook_delivered", autospec=True),
     ):
         session_local.return_value.__enter__.return_value = db
         result = task.process_webhook_push.run("strava", payload, "trace-1868")
@@ -403,13 +404,12 @@ class TestVerifySignature:
     """The header is required and its timestamp bounds replays; ``v1`` is not checked."""
 
     @staticmethod
-    def _request(signature: str | None) -> MagicMock:
-        request = MagicMock()
-        request.headers = {"X-Strava-Signature": signature} if signature is not None else {}
-        return request
+    def _request(signature: str | None) -> Request:
+        headers = [(b"x-strava-signature", signature.encode())] if signature is not None else []
+        return Request({"type": "http", "headers": headers})
 
     def _verify(self, handler: Any, signature: str | None, now: float) -> bool:
-        with patch("app.services.providers.strava.webhook_handler.time.time", return_value=now):
+        with patch("app.services.providers.strava.webhook_handler.time.time", autospec=True, return_value=now):
             return handler.verify_signature(self._request(signature), json.dumps(CREATE_EVENT).encode())
 
     def test_real_event_within_tolerance_passes(self, handler: Any) -> None:

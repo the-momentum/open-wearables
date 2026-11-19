@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
@@ -11,9 +11,10 @@ from psycopg.errors import ForeignKeyViolation, NotNullViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord
+from app.models import EventRecord, UserConnection
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.enums import EntrySource, SeriesType, WorkoutType
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
@@ -32,7 +33,7 @@ class TestGarminWorkouts:
         workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
         oauth = GarminOAuth(
-            user_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
             connection_repo=connection_repo,
             provider_name="garmin",
             api_base_url="https://apis.garmin.com",
@@ -72,7 +73,7 @@ class TestGarminWorkouts:
         start_date = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end_date = datetime(2024, 1, 31, tzinfo=timezone.utc)
 
-        with patch.object(garmin_workouts, "_make_api_request", return_value=[]) as mock_request:
+        with patch.object(garmin_workouts, "_make_api_request", autospec=True, return_value=[]) as mock_request:
             # Act
             garmin_workouts.get_workouts(db, user.id, start_date, end_date)
 
@@ -94,7 +95,7 @@ class TestGarminWorkouts:
         start_ts = int(datetime(2025, 10, 25, tzinfo=timezone.utc).timestamp())
         end_ts = int(datetime(2025, 10, 28, tzinfo=timezone.utc).timestamp())  # spans the 2025-10-26 fall-back
 
-        with patch.object(garmin_workouts, "_make_api_request", return_value=[]) as mock_request:
+        with patch.object(garmin_workouts, "_make_api_request", autospec=True, return_value=[]) as mock_request:
             # Act
             garmin_workouts.get_workouts_from_api(
                 db, user.id, summary_start_time=str(start_ts), summary_end_time=str(end_ts)
@@ -326,7 +327,9 @@ class TestGarminWorkouts:
 
         activity_detail = {"activityId": "123", "detailed": "data"}
 
-        with patch.object(garmin_workouts, "_make_api_request", return_value=activity_detail) as mock_request:
+        with patch.object(
+            garmin_workouts, "_make_api_request", autospec=True, return_value=activity_detail
+        ) as mock_request:
             result = garmin_workouts.get_activity_detail(db, user.id, "123")
 
             assert result == activity_detail
@@ -336,7 +339,9 @@ class TestGarminWorkouts:
         """Test getting workout detail via public API method."""
         user = UserFactory()
 
-        with patch.object(garmin_workouts, "get_activity_detail", return_value={"detail": "data"}) as mock_detail:
+        with patch.object(
+            garmin_workouts, "get_activity_detail", autospec=True, return_value={"detail": "data"}
+        ) as mock_detail:
             result = garmin_workouts.get_workout_detail_from_api(db, user.id, "workout_123")
 
             assert result == {"detail": "data"}
@@ -355,26 +360,28 @@ class TestActivityNotificationLinkedProfiles:
 
     def test_a_profile_deleted_meanwhile_does_not_stop_the_others(self) -> None:
         """The deleted user's insert violates its foreign key; the linked profile still gets the activity."""
-        deleted, linked = MagicMock(user_id=uuid4()), MagicMock(user_id=uuid4())
-        connection_repo = MagicMock()
+        deleted, linked = UserConnection(user_id=uuid4()), UserConnection(user_id=uuid4())
+        connection_repo = create_autospec(UserConnectionRepository, instance=True)
         connection_repo.get_all_by_provider_user_id.return_value = [deleted, linked]
-        garmin_workouts = MagicMock()
+        garmin_workouts = create_autospec(GarminWorkouts, instance=True)
         garmin_workouts.process_push_activities.side_effect = [
             IntegrityError("INSERT ...", {}, ForeignKeyViolation("user is gone")),
             [uuid4()],
         ]
 
         results = process_activity_notification(
-            MagicMock(), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1"
+            MagicMock(spec=Session), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1"
         )
 
         assert [r["status"] for r in results] == ["skipped", "saved"]
 
     def test_another_constraint_violation_is_raised(self) -> None:
-        connection_repo = MagicMock()
-        connection_repo.get_all_by_provider_user_id.return_value = [MagicMock(user_id=uuid4())]
-        garmin_workouts = MagicMock()
+        connection_repo = create_autospec(UserConnectionRepository, instance=True)
+        connection_repo.get_all_by_provider_user_id.return_value = [UserConnection(user_id=uuid4())]
+        garmin_workouts = create_autospec(GarminWorkouts, instance=True)
         garmin_workouts.process_push_activities.side_effect = IntegrityError("INSERT ...", {}, NotNullViolation("x"))
 
         with pytest.raises(IntegrityError):
-            process_activity_notification(MagicMock(), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1")
+            process_activity_notification(
+                MagicMock(spec=Session), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1"
+            )

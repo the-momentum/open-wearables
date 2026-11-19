@@ -47,7 +47,10 @@ def test_delete_keeps_last_synced_at(db: Session, handler: Any) -> None:
     before = connection.last_synced_at
 
     with patch.object(
-        handler.workouts, "get_workout_detail_from_api", side_effect=ProviderError("strava", upstream_status=404)
+        handler.workouts,
+        "get_workout_detail_from_api",
+        autospec=True,
+        side_effect=ProviderError("strava", upstream_status=404),
     ) as api:
         result = handler.process_payload(db, _payload("delete"), "trace-1")
     db.refresh(connection)
@@ -61,7 +64,7 @@ def test_completed_fetch_updates_last_synced_at(db: Session, handler: Any) -> No
     connection = _connection()
     before = connection.last_synced_at
 
-    with patch.object(handler.workouts, "get_workout_detail_from_api", return_value={}) as api:
+    with patch.object(handler.workouts, "get_workout_detail_from_api", autospec=True, return_value={}) as api:
         result = handler.process_payload(db, _payload("create"), "trace-2")
     db.refresh(connection)
 

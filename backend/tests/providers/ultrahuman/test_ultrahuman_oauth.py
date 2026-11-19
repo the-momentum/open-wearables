@@ -7,6 +7,7 @@ Tests the UltrahumanOAuth class for OAuth 2.0 authentication flow with Ultrahuma
 from unittest.mock import MagicMock, patch
 
 import httpx
+import redis
 import respx
 from sqlalchemy.orm import Session
 
@@ -93,7 +94,7 @@ class TestUltrahumanOAuthConfiguration:
 class TestUltrahumanOAuthAuthorization:
     """Tests for Ultrahuman OAuth authorization URL generation."""
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
+    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
     def test_get_authorization_url(self, mock_redis_client: MagicMock, db: Session) -> None:
         """Test generating authorization URL for Ultrahuman."""
         from app.models import User
@@ -105,7 +106,7 @@ class TestUltrahumanOAuthAuthorization:
         connection_repo = UserConnectionRepository()
 
         # Setup mock redis before creating OAuth instance
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -135,7 +136,7 @@ class TestUltrahumanOAuthAuthorization:
         assert call_args[0][1] == 900  # TTL
         assert str(user.id) in call_args[0][2]  # State contains user_id
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
+    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
     def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
         """Test authorization URL includes default scope."""
         from app.models import User
@@ -146,7 +147,7 @@ class TestUltrahumanOAuthAuthorization:
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 

@@ -35,19 +35,21 @@ class TestPolar247ApiRequest:
     def test_no_data_is_none(self, data_247: Polar247Data, upstream_status: int) -> None:
         with patch(
             "app.services.providers.polar.data_247.make_authenticated_request",
+            autospec=True,
             side_effect=ProviderError("polar", upstream_status=upstream_status),
         ):
-            assert data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep") is None
+            assert data_247._make_api_request(MagicMock(spec=Session), uuid4(), "/v3/users/sleep") is None
 
     def test_other_failures_propagate(self, data_247: Polar247Data) -> None:
         with (
             patch(
                 "app.services.providers.polar.data_247.make_authenticated_request",
+                autospec=True,
                 side_effect=ProviderError("polar", upstream_status=500),
             ),
             pytest.raises(ProviderError),
         ):
-            data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep")
+            data_247._make_api_request(MagicMock(spec=Session), uuid4(), "/v3/users/sleep")
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +278,7 @@ class TestPolar247SleepSave:
 
     def test_resync_keeps_one_copy_of_the_night(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             for _ in range(3):
                 assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
 
@@ -289,7 +291,7 @@ class TestPolar247SleepSave:
         self, db: Session, data_247: Polar247Data
     ) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
             # As an old pod writes it during a deploy, before Polar sleep carried an id
             self._sleep_records(db, user.id)[0].external_id = None
@@ -305,12 +307,12 @@ class TestPolar247SleepSave:
         self, db: Session, data_247: Polar247Data
     ) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
         # As dedupe_polar_sleep leaves a night without stages, or an old pod writes one
         self._sleep_records(db, user.id)[0].external_id = None
         db.commit()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.MOVED]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.MOVED]):
             for _ in range(2):
                 assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
 
@@ -324,13 +326,13 @@ class TestPolar247SleepSave:
         self, db: Session, data_247: Polar247Data
     ) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             data_247._save_sleep(db, user.id, *self.WINDOW)
         recharge = {"date": "2024-01-15", "hrv_samples": {"23:58": 40, "00:03": 42}}
 
         with (
-            patch.object(data_247, "get_nightly_recharge_data", return_value=[recharge]),
-            patch.object(data_247, "normalize_nightly_recharge", return_value=([], [])) as normalize,
+            patch.object(data_247, "get_nightly_recharge_data", autospec=True, return_value=[recharge]),
+            patch.object(data_247, "normalize_nightly_recharge", autospec=True, return_value=([], [])) as normalize,
         ):
             data_247._save_nightly_recharge(db, user.id, *self.WINDOW, sleep_starts={})
 
@@ -340,7 +342,7 @@ class TestPolar247SleepSave:
     def test_a_moved_resync_links_its_score_to_the_stored_night(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
         for night in (self.NIGHT, self.MOVED):
-            with patch.object(data_247, "get_sleep_data", return_value=[{**night, "sleep_score": 80}]):
+            with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[{**night, "sleep_score": 80}]):
                 assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
 
         (record,) = self._sleep_records(db, user.id)
@@ -351,7 +353,7 @@ class TestPolar247SleepSave:
     ) -> None:
         user = UserFactory()
         for night in (self.NIGHT, self.MOVED):
-            with patch.object(data_247, "_make_api_request", return_value={**night, "sleep_score": 80}):
+            with patch.object(data_247, "_make_api_request", autospec=True, return_value={**night, "sleep_score": 80}):
                 data_247.fetch_and_save_from_webhook(db, user.id, PolarWebhookEventType.SLEEP, "/sleep/2024-01-15")
 
         (record,) = self._sleep_records(db, user.id)
@@ -396,7 +398,7 @@ class TestPolar247LateSleep:
             fetched.append(day)
             return self._night(day)
 
-        with patch.object(data_247, "_make_api_request", side_effect=api):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=api):
             data_247.get_sleep_data(db, user_id, *self.WINDOW)
         return sorted(fetched)
 
@@ -407,7 +409,7 @@ class TestPolar247LateSleep:
 
     def test_late_night_already_stored_is_not_fetched_again(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self._night("2024-01-12")]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self._night("2024-01-12")]):
             data_247._save_sleep(db, user.id, *self.WINDOW)
 
         fetched = self._fetch(db, data_247, user.id, ["2024-01-12", "2024-01-20"])
@@ -416,7 +418,7 @@ class TestPolar247LateSleep:
 
     def test_another_users_night_does_not_count_as_stored(self, db: Session, data_247: Polar247Data) -> None:
         other, user = UserFactory(), UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self._night("2024-01-12")]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self._night("2024-01-12")]):
             data_247._save_sleep(db, other.id, *self.WINDOW)
 
         assert self._fetch(db, data_247, user.id, ["2024-01-12"]) == ["2024-01-12"]
@@ -431,7 +433,7 @@ class TestPolar247LateSleep:
             "sleep_start_time": "2024-01-12T08:30:00+02:00",
             "sleep_end_time": "2024-01-12T12:00:00+02:00",
         }
-        with patch.object(data_247, "get_sleep_data", return_value=[late, next_night]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[late, next_night]):
             data_247._save_sleep(db, user.id, *self.WINDOW)
         [merged] = TestPolar247SleepSave._sleep_records(db, user.id)
         assert merged.external_id == "sleep-2024-01-13"
@@ -696,9 +698,9 @@ class TestPolar247DailyActivityNormalization:
         assert [s.value for s in samples if s.series_type == SeriesType.exercise_time] == [54]
 
     def test_requests_activity_zones(self, data_247: Polar247Data) -> None:
-        with patch.object(data_247, "_make_api_request", return_value=[]) as request:
+        with patch.object(data_247, "_make_api_request", autospec=True, return_value=[]) as request:
             data_247.get_daily_activity_statistics(
-                MagicMock(),
+                MagicMock(spec=Session),
                 uuid4(),
                 datetime(2024, 1, 1, tzinfo=timezone.utc),
                 datetime(2024, 1, 2, tzinfo=timezone.utc),
@@ -917,12 +919,12 @@ class TestPolar247NightlyRechargeNormalization:
         sample_recharge.pop("nightly_recharge_status")
 
         with (
-            patch.object(data_247, "get_nightly_recharge_data", return_value=[sample_recharge]),
-            patch("app.services.providers.polar.data_247.timeseries_service") as timeseries,
+            patch.object(data_247, "get_nightly_recharge_data", autospec=True, return_value=[sample_recharge]),
+            patch("app.services.providers.polar.data_247.timeseries_service", autospec=True) as timeseries,
         ):
             timeseries.bulk_create_samples.return_value = WriteCounts(inserted=2, updated=0)
             saved = data_247._save_nightly_recharge(
-                MagicMock(),
+                MagicMock(spec=Session),
                 uuid4(),
                 datetime(2024, 1, 1, tzinfo=timezone.utc),
                 datetime(2024, 1, 31, tzinfo=timezone.utc),

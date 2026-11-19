@@ -1,9 +1,10 @@
 """Tests for invitation email delivery over SMTP and Resend."""
 
+import smtplib
 import ssl
 from collections.abc import Iterator
 from email.message import EmailMessage
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 
 import pytest
 from pydantic import SecretStr
@@ -34,8 +35,8 @@ def email_settings() -> Iterator[None]:
 class TestSendInvitationEmail:
     def test_not_configured_skips_send(self) -> None:
         with (
-            patch.object(email_client.smtplib, "SMTP") as smtp,
-            patch.object(email_client.resend.Emails, "send") as resend_send,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
+            patch.object(email_client.resend.Emails, "send", autospec=True) as resend_send,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is False
         smtp.assert_not_called()
@@ -44,8 +45,8 @@ class TestSendInvitationEmail:
     def test_resend_used_when_only_api_key_set(self) -> None:
         with (
             patch.object(settings, "resend_api_key", SecretStr("re_test")),
-            patch.object(email_client.smtplib, "SMTP") as smtp,
-            patch.object(email_client.resend.Emails, "send", return_value={"id": "1"}) as resend_send,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
+            patch.object(email_client.resend.Emails, "send", autospec=True, return_value={"id": "1"}) as resend_send,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is True
 
@@ -60,8 +61,8 @@ class TestSendInvitationEmail:
         with (
             patch.object(settings, "resend_api_key", SecretStr("re_test")),
             patch.object(settings, "smtp_host", "smtp.example.com"),
-            patch.object(email_client.smtplib, "SMTP") as smtp,
-            patch.object(email_client.resend.Emails, "send") as resend_send,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
+            patch.object(email_client.resend.Emails, "send", autospec=True) as resend_send,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is True
 
@@ -73,7 +74,7 @@ class TestSendInvitationEmail:
             patch.object(settings, "smtp_host", "smtp.example.com"),
             patch.object(settings, "smtp_username", "user"),
             patch.object(settings, "smtp_password", SecretStr("pass")),
-            patch.object(email_client.smtplib, "SMTP") as smtp,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL, invited_by_email="admin@example.com") is True
 
@@ -101,7 +102,7 @@ class TestSendInvitationEmail:
         with (
             patch.object(settings, "email_from_name", "R&D, Acme"),
             patch.object(settings, "smtp_host", "smtp.example.com"),
-            patch.object(email_client.smtplib, "SMTP") as smtp,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is True
 
@@ -114,8 +115,8 @@ class TestSendInvitationEmail:
             patch.object(settings, "smtp_host", "smtp.example.com"),
             patch.object(settings, "smtp_port", 465),
             patch.object(settings, "smtp_security", "ssl"),
-            patch.object(email_client.smtplib, "SMTP") as smtp,
-            patch.object(email_client.smtplib, "SMTP_SSL") as smtp_ssl,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
+            patch.object(email_client.smtplib, "SMTP_SSL", autospec=True) as smtp_ssl,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is True
 
@@ -131,7 +132,7 @@ class TestSendInvitationEmail:
             patch.object(settings, "smtp_host", "localhost"),
             patch.object(settings, "smtp_port", 1025),
             patch.object(settings, "smtp_security", "none"),
-            patch.object(email_client.smtplib, "SMTP") as smtp,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is True
 
@@ -146,14 +147,14 @@ class TestSendInvitationEmail:
             patch.object(settings, "smtp_security", "none"),
             patch.object(settings, "smtp_username", "user"),
             patch.object(settings, "smtp_password", SecretStr("pass")),
-            patch.object(email_client.smtplib, "SMTP") as smtp,
+            patch.object(email_client.smtplib, "SMTP", autospec=True) as smtp,
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is False
 
         smtp.assert_not_called()
 
     def test_smtp_error_returns_false(self) -> None:
-        smtp = MagicMock(side_effect=OSError("connection refused"))
+        smtp = create_autospec(smtplib.SMTP, side_effect=OSError("connection refused"))
         with (
             patch.object(settings, "smtp_host", "smtp.example.com"),
             patch.object(email_client.smtplib, "SMTP", smtp),

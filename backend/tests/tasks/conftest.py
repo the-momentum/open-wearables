@@ -21,7 +21,7 @@ def mock_session_local() -> Callable[[Session], MagicMock]:
 
     def _mock_session_context(db: Session) -> MagicMock:
         """Create a mock SessionLocal context manager."""
-        mock = MagicMock()
+        mock = MagicMock(spec=Session)
         mock.__enter__ = MagicMock(return_value=db)
         mock.__exit__ = MagicMock(return_value=None)
         return mock

@@ -193,7 +193,7 @@ class TestLegacyOutputUnchanged:
         assert records == []
 
     def test_the_alert_flag_is_not_printed(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with patch("app.utils.structured_logging.sentry_sdk"):
+        with patch("app.utils.structured_logging.sentry_sdk", autospec=True):
             logger.warning("flagged", alert=True)
 
         assert "alert" not in json.loads(capsys.readouterr().out)

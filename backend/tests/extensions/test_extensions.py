@@ -5,12 +5,13 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 from uuid import uuid4
 
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
+from celery import Celery
 from celery.schedules import crontab
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
@@ -38,6 +39,7 @@ from app.integrations.celery.core import create_celery
 from app.integrations.redis_client import get_redis_client
 from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus, SyncStatusEvent
 from app.services.sync_status_service import emit
+from app.utils.structured_logging import StructuredLogger
 from tests.factories import ApiKeyFactory
 from tests.utils import api_key_headers
 
@@ -530,7 +532,7 @@ class TestWebhookEventTypes:
         assert collect_webhook_event_types() == {"events.thing.created": "A thing was created."}
 
     def test_a_skipped_event_type_alerts(self, installed: Callable[..., None], monkeypatch: pytest.MonkeyPatch) -> None:
-        logger = MagicMock()
+        logger = create_autospec(StructuredLogger, instance=True)
         monkeypatch.setattr(extensions, "logger", logger)
         installed(FakeEntryPoint("events", EventsExtension), FakeEntryPoint("workout", CoreEventExtension))
 
@@ -697,7 +699,7 @@ def _pending() -> dict[str, float]:
 class TestEvents:
     @pytest.fixture
     def send_task(self, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-        app = MagicMock()
+        app = create_autospec(Celery, instance=True)
         monkeypatch.setattr(events, "current_app", app)
         return app.send_task
 

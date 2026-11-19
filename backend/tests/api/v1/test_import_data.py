@@ -136,7 +136,7 @@ class TestXMLDirectImportEndpoint:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay", autospec=True) as delay:
             delay.return_value.id = "task-id"
             response = client.post(
                 self.URL.format(user_id=user.id),
@@ -151,7 +151,7 @@ class TestXMLDirectImportEndpoint:
     def test_unknown_user_is_not_queued(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay", autospec=True) as delay:
             response = client.post(
                 self.URL.format(user_id=uuid4()),
                 headers=headers,
@@ -164,7 +164,7 @@ class TestXMLDirectImportEndpoint:
     def test_rejects_non_uuid_user_id(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay", autospec=True) as delay:
             response = client.post(
                 self.URL.format(user_id="not-a-uuid"),
                 headers=headers,
@@ -220,7 +220,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML)),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             mock_task.delay.return_value.id = "task-1"
             response = _upload_direct(client, str(user.id), _XML)
@@ -234,7 +234,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML) - 1),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -247,7 +247,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_FILE_SIZE", len(_XML) - 1),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -259,7 +259,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload"),
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
 
@@ -276,7 +276,7 @@ class TestDirectXMLUpload:
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
             patch(f"{_SERVICE}.MAX_FILE_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload"),
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
 
@@ -288,7 +288,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
             patch("starlette.requests.Request.form", new_callable=AsyncMock) as mock_form,
         ):
             response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
@@ -319,7 +319,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             response = client.post(
                 f"/api/v1/users/{user.id}/import/apple/xml/direct",
@@ -338,8 +338,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
-            patch(f"{_SERVICE}.logger") as mock_logger,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
+            patch(f"{_SERVICE}.logger", autospec=True) as mock_logger,
         ):
             mock_task.delay.side_effect = OperationalError("Error 32 while writing to socket. Broken pipe.")
             response = _upload_direct(client, str(user.id), _XML)

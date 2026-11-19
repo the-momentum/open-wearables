@@ -35,6 +35,7 @@ from app.schemas.enums import SERIES_TYPE_DEFINITIONS
 from app.utils.structured_logging import strict_attributes
 from tests import factories
 from tests.utils import RecordingRouter
+from tests.utils.aws import mock_s3_client
 
 # An unserializable or clashing log attribute fails the test instead of being printed with str().
 strict_attributes(True)
@@ -375,7 +376,7 @@ def _fail_on_network_access(_block_network: None) -> Generator[None, None, None]
 def mock_svix_lifespan() -> Generator[MagicMock, None, None]:
     """Prevent register_event_types() from making ~170 HTTP calls to Svix on
     every TestClient lifespan startup during tests."""
-    with patch("app.services.outgoing_webhooks.svix.register_event_types") as mock:
+    with patch("app.services.outgoing_webhooks.svix.register_event_types", autospec=True) as mock:
         yield mock
 
 
@@ -402,19 +403,19 @@ def respx_mock() -> Generator[RecordingRouter, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
-    """Block outgoing ``requests`` calls and stub Garmin backfill state for every test."""
+def mock_external_apis() -> Generator[None, None, None]:
+    """Stub Garmin backfill state for every test."""
     garmin_handler = "app.services.providers.garmin.webhook_handler"
 
     with (
-        patch("requests.Session") as mock_requests,
-        patch(f"{garmin_handler}.mark_type_success", return_value=False),
+        patch(f"{garmin_handler}.mark_type_success", autospec=True, return_value=False),
         patch(
             f"{garmin_handler}.get_backfill_status",
+            autospec=True,
             return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
         ),
     ):
-        yield {"requests": mock_requests}
+        yield
 
 
 @pytest.fixture
@@ -423,7 +424,7 @@ def mock_s3() -> Generator[MagicMock, None, None]:
 
     Opt in from tests that exercise presigned/multipart uploads or the AWS upload task.
     """
-    mock_s3 = MagicMock()
+    mock_s3 = mock_s3_client()
     mock_s3.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test-key"
     mock_s3.generate_presigned_post.return_value = {
         "url": "https://test-bucket.s3.amazonaws.com",
@@ -451,11 +452,13 @@ def mock_s3() -> Generator[MagicMock, None, None]:
 
     with (
         patch.object(settings, "aws_bucket_name", "test-bucket"),
-        patch(f"{apple_xml}.presigned_url_service.get_s3_client", return_value=mock_s3),
-        patch(f"{apple_xml}.presigned_url_service.get_public_s3_client", return_value=mock_s3),
-        patch(f"{apple_xml}.multipart_upload_service.get_s3_client", return_value=mock_s3),
-        patch(f"{apple_xml}.multipart_upload_service.get_public_s3_client", return_value=mock_s3),
-        patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", return_value=mock_s3),
+        patch(f"{apple_xml}.presigned_url_service.get_s3_client", autospec=True, return_value=mock_s3),
+        patch(f"{apple_xml}.presigned_url_service.get_public_s3_client", autospec=True, return_value=mock_s3),
+        patch(f"{apple_xml}.multipart_upload_service.get_s3_client", autospec=True, return_value=mock_s3),
+        patch(f"{apple_xml}.multipart_upload_service.get_public_s3_client", autospec=True, return_value=mock_s3),
+        patch(
+            "app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", autospec=True, return_value=mock_s3
+        ),
     ):
         yield mock_s3
 

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from celery.exceptions import Retry
@@ -28,10 +28,10 @@ REQUEST = SyncRequest.model_validate(
 
 def _run(retries: int, outcome: Exception | None) -> object:
     with (
-        patch.object(task, "SessionLocal", MagicMock()),
-        patch.object(task, "handle_sleep_data", side_effect=outcome) as handle,
-        patch.object(task.save_sdk_sleep, "retry", side_effect=Retry()),
-        patch.object(task.logger, "error") as error,
+        patch.object(task, "SessionLocal", autospec=True),
+        patch.object(task, "handle_sleep_data", autospec=True, side_effect=outcome) as handle,
+        patch.object(task.save_sdk_sleep, "retry", autospec=True, side_effect=Retry()),
+        patch.object(task.logger, "error", autospec=True) as error,
     ):
         task.save_sdk_sleep.push_request(retries=retries)
         try:

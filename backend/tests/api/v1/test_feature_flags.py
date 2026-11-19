@@ -54,7 +54,7 @@ class TestArchivalDisabled:
 
         assert response.status_code == 401
 
-    @patch("app.api.routes.v1.archival.run_daily_archival")
+    @patch("app.api.routes.v1.archival.run_daily_archival", autospec=True)
     def test_enabled_passes_through(
         self, mock_task: MagicMock, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
@@ -96,7 +96,7 @@ class TestBeatSchedule:
 def test_sleep_merge_skips_score_recompute_when_disabled(db: Session) -> None:
     with (
         patch.object(settings, "ow_scores_enabled", False),
-        patch("app.services.event_record_service.sleep_score_service") as mock_scores,
+        patch("app.services.event_record_service.sleep_score_service", autospec=True) as mock_scores,
     ):
         event_record_service._recompute_sleep_scores(db, uuid4(), {date(2026, 9, 1)})
 

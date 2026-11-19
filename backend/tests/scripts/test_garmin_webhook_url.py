@@ -69,8 +69,8 @@ def test_the_printed_url_is_accepted(client: TestClient, capsys: pytest.CaptureF
 
     with (
         patch.object(settings, "garmin_client_id", "test-client-id"),
-        patch("app.services.providers.garmin.webhook_handler.celery_app") as celery,
-        patch("app.services.providers.garmin.webhook_handler.store_raw_payload"),
+        patch("app.services.providers.garmin.webhook_handler.celery_app", autospec=True) as celery,
+        patch("app.services.providers.garmin.webhook_handler.store_raw_payload", autospec=True),
     ):
         celery.send_task.return_value.id = "task-1"
         response = client.post(path, headers={"garmin-client-id": "test-client-id"}, json={"dailies": []})

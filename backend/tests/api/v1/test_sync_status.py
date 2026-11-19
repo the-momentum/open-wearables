@@ -158,7 +158,7 @@ class TestHistoryEndpointFilters:
             )
         )
 
-    @patch("app.services.sync_status_service.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal", autospec=True)
     def test_filters_by_provider_and_covered_window(
         self,
         mock_session_local: MagicMock,
@@ -207,7 +207,7 @@ class TestStreamHoldsNoDbSession:
 
     def test_checks_the_user_without_the_request_session(self, db: Session) -> None:
         user = UserFactory()
-        with patch("app.api.routes.v1.sync_status.SessionLocal") as mock_session_local:
+        with patch("app.api.routes.v1.sync_status.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             _ensure_user_exists_detached(user.id)
             with pytest.raises(HTTPException) as exc_info:

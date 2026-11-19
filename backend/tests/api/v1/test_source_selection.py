@@ -32,7 +32,9 @@ class TestTimeseriesSourceSelection:
         self, client: TestClient, db: Session, query: dict, expected: SourceSelection
     ) -> None:
         user = UserFactory()
-        with patch.object(timeseries_service, "get_timeseries", wraps=timeseries_service.get_timeseries) as spy:
+        with patch.object(
+            timeseries_service, "get_timeseries", autospec=True, wraps=timeseries_service.get_timeseries
+        ) as spy:
             response = client.get(
                 f"/api/v1/users/{user.id}/timeseries",
                 params={**RANGE, "types": "steps", **query},
@@ -66,7 +68,7 @@ class TestEventSourceSelection:
     ) -> None:
         user = UserFactory()
         with patch.object(
-            event_record_service, "get_sleep_sessions", wraps=event_record_service.get_sleep_sessions
+            event_record_service, "get_sleep_sessions", autospec=True, wraps=event_record_service.get_sleep_sessions
         ) as spy:
             response = client.get(
                 f"/api/v1/users/{user.id}/events/sleep",
@@ -79,7 +81,9 @@ class TestEventSourceSelection:
 
     def test_workouts_accept_per_session(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
-        with patch.object(event_record_service, "get_workouts", wraps=event_record_service.get_workouts) as spy:
+        with patch.object(
+            event_record_service, "get_workouts", autospec=True, wraps=event_record_service.get_workouts
+        ) as spy:
             response = client.get(
                 f"/api/v1/users/{user.id}/events/workouts",
                 params={**DATES, "source_selection": "per_session"},

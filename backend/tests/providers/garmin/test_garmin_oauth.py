@@ -1,10 +1,11 @@
 """Tests for Garmin OAuth implementation."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import httpx
 import pytest
+import redis
 import respx
 from sqlalchemy.orm import Session
 
@@ -74,11 +75,11 @@ class TestGarminOAuth:
         """Garmin should use body authentication method."""
         assert garmin_oauth.auth_method == AuthenticationMethod.BODY
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
+    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
     def test_get_authorization_url(self, mock_get_redis: MagicMock, garmin_oauth: GarminOAuth) -> None:
         """Test generating authorization URL with PKCE."""
         # Arrange
-        mock_redis_client = MagicMock()
+        mock_redis_client = MagicMock(spec=redis.Redis)
         mock_get_redis.return_value = mock_redis_client
 
         user_id = uuid4()
@@ -162,7 +163,7 @@ class TestGarminOAuth:
         assert user_info["user_id"] == "garmin_user_abc"
         assert user_info["scope"] is None
 
-    @patch("app.integrations.redis_client.get_redis_client")
+    @patch("app.integrations.redis_client.get_redis_client", autospec=True)
     def test_exchange_token_with_pkce(
         self, mock_redis: MagicMock, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
@@ -249,8 +250,8 @@ class TestOAuthTokenErrors:
     @pytest.fixture
     def garmin_oauth(self) -> GarminOAuth:
         return GarminOAuth(
-            user_repo=MagicMock(),
-            connection_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
             provider_name="garmin",
             api_base_url="https://apis.garmin.com",
         )
@@ -262,10 +263,10 @@ class TestOAuthTokenErrors:
         respx_mock.post(TOKEN_URL).respond(status_code, json={"error": "invalid_grant"})
 
         with (
-            patch.object(garmin_oauth, "revoke_connection") as mock_revoke,
+            patch.object(garmin_oauth, "revoke_connection", autospec=True) as mock_revoke,
             pytest.raises(ReauthRequiredError),
         ):
-            garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "dead-refresh-token")
+            garmin_oauth.refresh_access_token(MagicMock(spec=Session), uuid4(), "dead-refresh-token")
 
         mock_revoke.assert_called_once()
 
@@ -274,8 +275,11 @@ class TestOAuthTokenErrors:
     ) -> None:
         respx_mock.post(TOKEN_URL).respond(503, text="maintenance")
 
-        with patch.object(garmin_oauth, "revoke_connection") as mock_revoke, pytest.raises(ProviderError) as exc_info:
-            garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "refresh-token")
+        with (
+            patch.object(garmin_oauth, "revoke_connection", autospec=True) as mock_revoke,
+            pytest.raises(ProviderError) as exc_info,
+        ):
+            garmin_oauth.refresh_access_token(MagicMock(spec=Session), uuid4(), "refresh-token")
 
         assert (exc_info.value.status_code, exc_info.value.upstream_status) == (502, 503)
         mock_revoke.assert_not_called()
@@ -284,7 +288,7 @@ class TestOAuthTokenErrors:
         respx_mock.post(TOKEN_URL).mock(side_effect=httpx.ConnectError("connection refused"))
 
         with pytest.raises(ProviderError) as exc_info:
-            garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "refresh-token")
+            garmin_oauth.refresh_access_token(MagicMock(spec=Session), uuid4(), "refresh-token")
 
         assert exc_info.value.detail == "Garmin token refresh failed"
 

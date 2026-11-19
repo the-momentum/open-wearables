@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.sync_status import SyncStatus
@@ -32,7 +33,7 @@ from app.utils.exceptions import (
 
 @pytest.fixture
 def run() -> Sync247Run:
-    return Sync247Run("testprovider", MagicMock(), uuid4())
+    return Sync247Run("testprovider", MagicMock(spec=Session), uuid4())
 
 
 class TestWriteCountsArithmetic:

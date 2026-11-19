@@ -3,7 +3,7 @@
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 import respx
@@ -17,6 +17,7 @@ from app.services.providers.api_client import (
     get_valid_token,
     make_authenticated_request,
 )
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.exceptions import ReauthRequiredError
 from tests.factories import UserConnectionFactory
 
@@ -34,7 +35,7 @@ def dead_connection() -> Any:
 
 @pytest.mark.parametrize("revoke_on_failure", [True, False])
 def test_no_refresh_token_raises_reauth_required(db: Session, dead_connection: Any, revoke_on_failure: bool) -> None:
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     with pytest.raises(ReauthRequiredError) as exc_info:
         get_valid_token(
             db,
@@ -59,7 +60,7 @@ def test_no_refresh_token_within_buffer_returns_still_valid_token(db: Session) -
         refresh_token=None,
         token_expires_at=datetime.now(timezone.utc) + timedelta(minutes=2),
     )
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
 
     token = get_valid_token(db, connection.user_id, "whoop", UserConnectionRepository(), oauth)
 
@@ -95,7 +96,7 @@ def test_rejected_token_refreshes_with_callers_revoke_choice(
     respx_mock: respx.MockRouter, db: Session, revoke_on_failure: bool
 ) -> None:
     connection: Any = UserConnectionFactory(provider="whoop")
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
     oauth.refresh_access_token.side_effect = ReauthRequiredError("whoop", connection.user_id, "reconnection required")
 
     with pytest.raises(ReauthRequiredError):
@@ -113,7 +114,7 @@ def test_grant_failing_for_a_day_raises_reauth_required(
     connection: Any = UserConnectionFactory(provider="whoop")
     failing_since = time.time() - DEAD_GRANT_AFTER.total_seconds() - 60
     get_redis_client().set(_failing_since_key("whoop", connection.user_id), failing_since)
-    oauth = MagicMock()
+    oauth = create_autospec(BaseOAuthTemplate, instance=True)
 
     with pytest.raises(ReauthRequiredError):
         _request(respx_mock, db, connection, oauth, 403, revoke_on_failure=revoke_on_failure)

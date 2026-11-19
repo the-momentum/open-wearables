@@ -4,15 +4,16 @@ Fitbit provider test configuration.
 Overrides session-scoped DB fixtures for pure unit tests that don't need a database.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
+from sqlalchemy import Engine
 
 
 @pytest.fixture(scope="session")
 def engine() -> MagicMock:
     """Override engine fixture — fitbit unit tests don't need a database."""
-    return MagicMock()
+    return create_autospec(Engine, instance=True)
 
 
 @pytest.fixture(autouse=True)

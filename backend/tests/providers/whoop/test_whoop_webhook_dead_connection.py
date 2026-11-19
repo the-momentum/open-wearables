@@ -63,10 +63,13 @@ def _run_webhook(db: Session, workout_id: str) -> tuple[dict, list[dict]]:
     payload = {"user_id": WHOOP_USER_ID, "id": workout_id, "type": "workout.updated"}
     emitted: list[dict] = []
     with (
-        patch.object(task, "SessionLocal") as session_local,
-        patch("app.services.providers.templates.base_oauth.on_connection_revoked"),
+        patch.object(task, "SessionLocal", autospec=True) as session_local,
+        patch("app.services.providers.templates.base_oauth.on_connection_revoked", autospec=True),
         patch.object(
-            task.sync_status_service, "emit_webhook_delivered", side_effect=lambda *a, **kw: emitted.append(kw)
+            task.sync_status_service,
+            "emit_webhook_delivered",
+            autospec=True,
+            side_effect=lambda *a, **kw: emitted.append(kw),
         ),
     ):
         session_local.return_value.__enter__.return_value = db
@@ -115,7 +118,9 @@ def test_workout_fetch_error_propagates(db: Session) -> None:
     connection = _whoop_connection()
     workouts = ProviderFactory().get_provider("whoop").webhooks.workouts
     with (
-        patch.object(workouts, "get_workout_detail_from_api", side_effect=HTTPException(status_code=503)),
+        patch.object(
+            workouts, "get_workout_detail_from_api", autospec=True, side_effect=HTTPException(status_code=503)
+        ),
         pytest.raises(HTTPException),
     ):
         workouts.load_single_workout(db, connection.user_id, str(uuid4()))
@@ -125,5 +130,5 @@ def test_unparseable_workout_is_skipped(db: Session) -> None:
     """A record that cannot be parsed is skipped, not raised."""
     connection = _whoop_connection()
     workouts = ProviderFactory().get_provider("whoop").webhooks.workouts
-    with patch.object(workouts, "get_workout_detail_from_api", return_value={"id": "broken"}):
+    with patch.object(workouts, "get_workout_detail_from_api", autospec=True, return_value={"id": "broken"}):
         assert workouts.load_single_workout(db, connection.user_id, "broken") == 0

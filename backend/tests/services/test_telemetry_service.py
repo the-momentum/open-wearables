@@ -167,7 +167,7 @@ class TestEndpointUsagePayload:
         }
 
     def test_redis_failure_does_not_block_the_ping(self, db: Session) -> None:
-        with patch("app.services.endpoint_usage.get_redis_client", side_effect=ConnectionError("down")):
+        with patch("app.services.endpoint_usage.get_redis_client", autospec=True, side_effect=ConnectionError("down")):
             payload = telemetry_service.build_payload(db, event="daily")
 
         assert payload["endpoint_usage"] is None

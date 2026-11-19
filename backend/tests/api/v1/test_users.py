@@ -218,7 +218,9 @@ class TestCreateUser:
         db.commit()
 
         # Act - the other request commits between this one's check and its insert
-        with patch("app.services.user_service.user_service.crud.get_by_external_user_id", return_value=None):
+        with patch(
+            "app.services.user_service.user_service.crud.get_by_external_user_id", autospec=True, return_value=None
+        ):
             response = client.post(
                 f"{api_v1_prefix}/users",
                 json={"external_user_id": "ext123"},
