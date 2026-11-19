@@ -21,7 +21,7 @@ import bcrypt
 import pytest
 import redis as redis_lib
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, make_url, text
+from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
@@ -159,20 +159,11 @@ def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
     """
     Create a test database session with transaction rollback.
     Each test runs in its own transaction that gets rolled back.
+    Session commits and rollbacks only release or roll back savepoints inside it.
     """
     connection = engine.connect()
     transaction = connection.begin()
-    session = session_factory(bind=connection)
-
-    # Begin a nested transaction (savepoint)
-    nested = connection.begin_nested()
-
-    # If the application code calls commit, restart the savepoint
-    @event.listens_for(session, "after_transaction_end")
-    def restart_savepoint(session: Session, transaction: Any) -> None:
-        nonlocal nested
-        if not nested.is_active:
-            nested = connection.begin_nested()
+    session = session_factory(bind=connection, join_transaction_mode="create_savepoint")
 
     yield session
 
