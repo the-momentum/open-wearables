@@ -272,7 +272,9 @@ class TestGarminWorkouts:
             }
         )
 
-    def test_normalize_workout_with_different_types(self, garmin_workouts: GarminWorkouts) -> None:
+    def test_normalize_workout_with_different_types(
+        self, garmin_workouts: GarminWorkouts, subtests: pytest.Subtests
+    ) -> None:
         """Test normalizing different workout types."""
         user_id = uuid4()
 
@@ -285,24 +287,27 @@ class TestGarminWorkouts:
         ]
 
         for garmin_type, expected_type in test_cases:
-            activity = GarminActivityJSON(
-                userId="user_123",
-                activityId=f"act_{garmin_type}",
-                summaryId="sum_123",
-                activityType=garmin_type,
-                startTimeInSeconds=1705309200,
-                durationInSeconds=3600,
-                deviceName="Garmin Device",
-                distanceInMeters=10000,
-                steps=1000,
-                activeKilocalories=500,
-                averageHeartRateInBeatsPerMinute=140,
-                maxHeartRateInBeatsPerMinute=170,
-            )
-            record, detail = garmin_workouts._normalize_workout(activity, user_id)
-            assert record.type == expected_type.value
+            with subtests.test(garmin_type=garmin_type):
+                activity = GarminActivityJSON(
+                    userId="user_123",
+                    activityId=f"act_{garmin_type}",
+                    summaryId="sum_123",
+                    activityType=garmin_type,
+                    startTimeInSeconds=1705309200,
+                    durationInSeconds=3600,
+                    deviceName="Garmin Device",
+                    distanceInMeters=10000,
+                    steps=1000,
+                    activeKilocalories=500,
+                    averageHeartRateInBeatsPerMinute=140,
+                    maxHeartRateInBeatsPerMinute=170,
+                )
+                record, detail = garmin_workouts._normalize_workout(activity, user_id)
+                assert record.type == expected_type.value
 
-    def test_build_bundles(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
+    def test_build_bundles(
+        self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any], subtests: pytest.Subtests
+    ) -> None:
         """Test building bundles from multiple activities."""
         user_id = uuid4()
         activity1 = GarminActivityJSON(**sample_activity)
@@ -325,9 +330,10 @@ class TestGarminWorkouts:
         bundles = list(garmin_workouts._build_bundles(activities, user_id))
 
         assert len(bundles) == 2
-        for record, detail in bundles:
-            assert isinstance(record, EventRecordCreate)
-            assert isinstance(detail, EventRecordDetailCreate)
+        for index, (record, detail) in enumerate(bundles):
+            with subtests.test(bundle_index=index):
+                assert isinstance(record, EventRecordCreate)
+                assert isinstance(detail, EventRecordDetailCreate)
 
     def test_load_data_is_noop(
         self,
