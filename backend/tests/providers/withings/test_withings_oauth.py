@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import UserConnection
@@ -140,16 +141,12 @@ def test_provider_user_info_reads_userid_from_the_token_body() -> None:
     ("stored_mode", "enqueued"),
     [(LiveSyncMode.WEBHOOK, True), (LiveSyncMode.PULL, False), (None, False)],
 )
-@patch("app.services.providers.withings.oauth.celery_app.send_task", autospec=True)
-@patch("app.services.providers.withings.oauth.ProviderSettingsRepository", autospec=True)
-@patch.object(BaseOAuthTemplate, "_save_connection", autospec=True)
 def test_save_connection_enqueues_subscriptions_only_in_webhook_mode(
-    mock_super: MagicMock,
-    mock_repo: MagicMock,
-    mock_send: MagicMock,
-    stored_mode: LiveSyncMode | None,
-    enqueued: bool,
+    mocker: MockerFixture, stored_mode: LiveSyncMode | None, enqueued: bool
 ) -> None:
+    mock_super = mocker.patch.object(BaseOAuthTemplate, "_save_connection", autospec=True)
+    mock_repo = mocker.patch("app.services.providers.withings.oauth.ProviderSettingsRepository", autospec=True)
+    mock_send = mocker.patch("app.services.providers.withings.oauth.celery_app.send_task", autospec=True)
     mock_repo.return_value.get_live_sync_mode.return_value = stored_mode
     user_id = uuid4()
     token = OAuthTokenResponse.model_validate({"access_token": "at", "token_type": "Bearer", "expires_in": 1})
@@ -165,15 +162,15 @@ def test_save_connection_enqueues_subscriptions_only_in_webhook_mode(
         assert mock_send.call_args.kwargs["args"] == [str(user_id)]
 
 
-@patch(
-    "app.services.providers.withings.oauth.celery_app.send_task", autospec=True, side_effect=RuntimeError("broker down")
-)
-@patch("app.services.providers.withings.oauth.ProviderSettingsRepository", autospec=True)
-@patch.object(BaseOAuthTemplate, "_save_connection", autospec=True)
-def test_save_connection_survives_a_broker_failure(
-    mock_super: MagicMock, mock_repo: MagicMock, mock_send: MagicMock
-) -> None:
+def test_save_connection_survives_a_broker_failure(mocker: MockerFixture) -> None:
     # The account is linked by this point; scheduling must not fail the callback.
+    mock_super = mocker.patch.object(BaseOAuthTemplate, "_save_connection", autospec=True)
+    mock_repo = mocker.patch("app.services.providers.withings.oauth.ProviderSettingsRepository", autospec=True)
+    mock_send = mocker.patch(
+        "app.services.providers.withings.oauth.celery_app.send_task",
+        autospec=True,
+        side_effect=RuntimeError("broker down"),
+    )
     mock_repo.return_value.get_live_sync_mode.return_value = LiveSyncMode.WEBHOOK
     token = OAuthTokenResponse.model_validate({"access_token": "at", "token_type": "Bearer", "expires_in": 1})
 

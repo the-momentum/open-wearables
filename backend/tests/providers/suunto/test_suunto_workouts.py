@@ -14,10 +14,11 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, PropertyMock, create_autospec, patch
+from unittest.mock import PropertyMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
@@ -285,15 +286,11 @@ class TestSuuntoWorkouts:
             assert "Ocp-Apim-Subscription-Key" in headers
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
-    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
     def test_get_workouts_from_api(
-        self,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Should fetch workouts from Suunto API with correct parameters."""
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -318,14 +315,11 @@ class TestSuuntoWorkouts:
         assert call_args[1]["params"]["limit"] == 50
         assert result["payload"] == [sample_workout_data]
 
-    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
     def test_get_workouts_respects_max_limit(
-        self,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session
     ) -> None:
         """Should respect maximum limit of 100 workouts per request."""
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -339,9 +333,9 @@ class TestSuuntoWorkouts:
         call_args = mock_request.call_args
         assert call_args[1]["params"]["limit"] == 100  # Capped at 100
 
-    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
-    def test_get_workout_detail(self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session) -> None:
+    def test_get_workout_detail(self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session) -> None:
         """Should fetch detailed workout data from API."""
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -359,21 +353,18 @@ class TestSuuntoWorkouts:
         assert call_args[0][3] == f"/v3/workouts/{workout_key}"
         assert result["workoutKey"] == workout_key
 
-    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_load_data_creates_records(
-        self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Should load data and create event records."""
+        mock_ensure_data_source = mocker.patch(
+            "app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True
+        )
+        mock_create_detail = mocker.patch(
+            "app.services.event_record_service.event_record_service.create_detail", autospec=True
+        )
+        mock_create = mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -390,21 +381,14 @@ class TestSuuntoWorkouts:
         # Verify data source creation was attempted
         mock_ensure_data_source.assert_called_once()
 
-    @patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_load_data_walks_every_page(
-        self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Historical sync must not stop at the first page of 100 workouts."""
+        mocker.patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
+        mocker.patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
+        mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         from tests.factories import UserFactory
 
         user = UserFactory()
@@ -421,17 +405,8 @@ class TestSuuntoWorkouts:
         assert [(page["offset"], page["limit"]) for page in pages] == [(0, 100), (100, 100), (200, 100)]
         assert {page["since"] for page in pages} == {1735689600000}
 
-    @patch("app.services.event_record_service.event_record_service.create", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
     def test_process_push_activity_creates_record_and_detail(
-        self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Webhook push path must persist both the event_record and its detail.
 
@@ -439,6 +414,13 @@ class TestSuuntoWorkouts:
         the workout.created outgoing webhook, so skipping it silently drops
         live workouts from every downstream consumer.
         """
+        mock_ensure_data_source = mocker.patch(
+            "app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True
+        )
+        mock_create_detail = mocker.patch(
+            "app.services.event_record_service.event_record_service.create_detail", autospec=True
+        )
+        mock_create = mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
         from tests.factories import UserFactory
 
         user = UserFactory()

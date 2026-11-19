@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 import pytest
 from celery.result import AsyncResult
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.repositories.data_point_series_repository import WriteCounts
@@ -102,14 +103,9 @@ class TestSyncDataEndpoint:
             },
         }
 
-    @patch("app.api.routes.v1.sync_data.sync_vendor_data", autospec=True)
-    def test_sync_garmin_async_mode(
-        self,
-        mock_celery_task: MagicMock,
-        client: TestClient,
-        db: Session,
-    ) -> None:
+    def test_sync_garmin_async_mode(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
         """Test async sync dispatches to Celery task."""
+        mock_celery_task = mocker.patch("app.api.routes.v1.sync_data.sync_vendor_data", autospec=True)
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()

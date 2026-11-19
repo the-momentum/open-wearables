@@ -6,6 +6,7 @@ Tests synchronization of workout data from external providers (Garmin, Polar, Su
 
 from unittest.mock import MagicMock, create_autospec, patch
 
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
@@ -24,15 +25,12 @@ from tests.factories import UserConnectionFactory, UserFactory
 class TestSyncVendorDataTask:
     """Test suite for sync_vendor_data task."""
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_success(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_success(self, mocker: MockerFixture, db: Session) -> None:
         """Test successful sync of vendor data."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         connection = UserConnectionFactory(
@@ -68,14 +66,11 @@ class TestSyncVendorDataTask:
         db.refresh(connection)
         assert connection.last_synced_at is not None
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_saves_247_data(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_saves_247_data(self, mocker: MockerFixture, db: Session) -> None:
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
         mock_session_local.return_value.__enter__.return_value = db
@@ -98,15 +93,12 @@ class TestSyncVendorDataTask:
         mock_strategy.data_247.load_and_save_all.assert_called_once()
         assert mock_strategy.data_247.load_and_save_all.call_args.kwargs["is_first_sync"] is True
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_with_date_range(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_with_date_range(self, mocker: MockerFixture, db: Session) -> None:
         """Test sync with specific date range."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(
@@ -139,15 +131,12 @@ class TestSyncVendorDataTask:
         assert "polar" in result["providers_synced"]
         mock_workouts.load_data.assert_called_once()
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_multiple_providers(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_multiple_providers(self, mocker: MockerFixture, db: Session) -> None:
         """Test sync with multiple provider connections."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
@@ -175,15 +164,12 @@ class TestSyncVendorDataTask:
         assert "suunto" in result["providers_synced"]
         assert mock_workouts.load_data.call_count == 3
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_specific_providers_only(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_specific_providers_only(self, mocker: MockerFixture, db: Session) -> None:
         """Test sync with specific provider filter."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
@@ -209,13 +195,11 @@ class TestSyncVendorDataTask:
         assert "polar" not in result["providers_synced"]
         mock_workouts.load_data.assert_called_once()
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    def test_sync_vendor_data_no_active_connections(
-        self,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_no_active_connections(self, mocker: MockerFixture, db: Session) -> None:
         """Test sync when user has no active connections."""
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         # Create a disconnected connection
@@ -236,15 +220,12 @@ class TestSyncVendorDataTask:
         assert result["providers_synced"] == {}
         assert result["message"] == "No active provider connections found"
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_provider_error(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_provider_error(self, mocker: MockerFixture, db: Session) -> None:
         """Test handling of provider API errors."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
@@ -271,16 +252,16 @@ class TestSyncVendorDataTask:
         # The error's type only: its text could carry the rows a write failed on.
         assert result["providers_synced"]["garmin"]["params"]["workouts"]["error_code"] == "Exception"
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.try_record_data_types", autospec=True)
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
     def test_a_run_where_everything_failed_still_records_its_data_types(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        mock_record: MagicMock,
-        db: Session,
+        self, mocker: MockerFixture, db: Session
     ) -> None:
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
+        mock_record = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.try_record_data_types", autospec=True
+        )
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
         mock_session_local.return_value.__enter__.return_value = db
@@ -297,15 +278,12 @@ class TestSyncVendorDataTask:
         outcomes = mock_record.call_args.args[1]
         assert [(o.data_type, o.status) for o in outcomes] == [("workouts", SyncStatus.FAILED)]
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_records_data_types_before_the_runs_terminal_event(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_records_data_types_before_the_runs_terminal_event(self, mocker: MockerFixture, db: Session) -> None:
         """A consumer acting on sync.completed reads the per-type outcomes from the history."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
         mock_session_local.return_value.__enter__.return_value = db
@@ -327,15 +305,12 @@ class TestSyncVendorDataTask:
 
         assert [name for name, *_ in calls.mock_calls] == ["record", "completed"]
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_sync_returns_false(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_sync_returns_false(self, mocker: MockerFixture, db: Session) -> None:
         """Test handling when provider sync returns False."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="polar", status=ConnectionStatus.ACTIVE)
@@ -359,15 +334,12 @@ class TestSyncVendorDataTask:
         assert result["providers_synced"]["polar"]["params"]["workouts"]["success"] is False
         assert result["errors"] == {}
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_workouts_not_supported(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_workouts_not_supported(self, mocker: MockerFixture, db: Session) -> None:
         """Test handling when provider doesn't support workouts."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
@@ -391,15 +363,12 @@ class TestSyncVendorDataTask:
         assert "workouts" not in result["providers_synced"]["garmin"]["params"]
         assert result["errors"] == {}
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_sync_vendor_data_skips_push_based_provider(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_sync_vendor_data_skips_push_based_provider(self, mocker: MockerFixture, db: Session) -> None:
         """Test that push-based providers (no cloud API) are filtered out entirely."""
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
@@ -458,14 +427,11 @@ class TestBuildSyncParams:
 class TestSyncVendorDataLinkedSkip:
     """A profile that loses the linked-account lock must not look like it synced."""
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True)
-    @patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
-    def test_skip_reports_skipped_and_leaves_the_cursor_alone(
-        self,
-        mock_get_provider: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_skip_reports_skipped_and_leaves_the_cursor_alone(self, mocker: MockerFixture, db: Session) -> None:
+        mock_get_provider = mocker.patch("app.services.providers.factory.ProviderFactory.get_provider", autospec=True)
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal", autospec=True
+        )
         user = UserFactory()
         holder = UserFactory()
         provider_user_id = "shared-account-1"

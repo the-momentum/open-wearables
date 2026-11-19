@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.constants.withings_requests import ACTIVITY
@@ -203,14 +204,12 @@ def test_intraday_slice_on_the_local_day_start_is_dropped() -> None:
     assert samples == []
 
 
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
-def test_intraday_is_requested_only_for_days_the_daily_rows_report(
-    mock_intraday: MagicMock, mock_daily: MagicMock
-) -> None:
+def test_intraday_is_requested_only_for_days_the_daily_rows_report(mocker: MockerFixture) -> None:
     # The action returns at most 24 h per call, so a window costs one request per day.
     # Asking for days Withings never reported would spend the per-minute quota on nothing
     # and leave none for the domains that run after this one.
+    mock_intraday = mocker.patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
+    mock_daily = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
     mock_intraday.return_value = {}
     mock_daily.return_value = PaginatedResult(
         rows=[
@@ -237,11 +236,9 @@ def test_intraday_is_requested_only_for_days_the_daily_rows_report(
     ]
 
 
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
-def test_intraday_asks_for_nothing_when_no_day_reported_activity(
-    mock_intraday: MagicMock, mock_daily: MagicMock
-) -> None:
+def test_intraday_asks_for_nothing_when_no_day_reported_activity(mocker: MockerFixture) -> None:
+    mock_intraday = mocker.patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
+    mock_daily = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
     mock_daily.return_value = PaginatedResult(rows=[], envelope={})
     data_247 = _data_247()
     data_247._active_connection_id = create_autospec(data_247._active_connection_id, return_value=None)
@@ -257,10 +254,10 @@ def test_intraday_asks_for_nothing_when_no_day_reported_activity(
     assert mock_intraday.call_args_list == []
 
 
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
-def test_intraday_asks_for_a_day_without_a_zone(mock_intraday: MagicMock, mock_daily: MagicMock) -> None:
+def test_intraday_asks_for_a_day_without_a_zone(mocker: MockerFixture) -> None:
     # A missing zone costs the local offset, not the day: it is asked for from UTC midnight.
+    mock_intraday = mocker.patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
+    mock_daily = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
     mock_intraday.return_value = {}
     mock_daily.return_value = PaginatedResult(rows=[{"date": "2026-03-01", "brand": 1, "steps": 1}], envelope={})
     data_247 = _data_247()
@@ -277,11 +274,11 @@ def test_intraday_asks_for_a_day_without_a_zone(mock_intraday: MagicMock, mock_d
     assert starts == [int(datetime(2026, 3, 1, tzinfo=timezone.utc).timestamp())]
 
 
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
-def test_intraday_zone_ignores_externally_sourced_rows(mock_intraday: MagicMock, mock_daily: MagicMock) -> None:
+def test_intraday_zone_ignores_externally_sourced_rows(mocker: MockerFixture) -> None:
     # The day's total comes from the Withings row only, so an echo row in another zone
     # must not move the midnight the intraday request and its guard are anchored to.
+    mock_intraday = mocker.patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
+    mock_daily = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
     mock_intraday.return_value = {}
     mock_daily.return_value = PaginatedResult(
         rows=[
@@ -310,12 +307,10 @@ TWO_DAYS = [
 ]
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
-def test_intraday_keeps_the_days_fetched_before_a_failure(
-    mock_intraday: MagicMock, mock_daily: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_intraday_keeps_the_days_fetched_before_a_failure(mocker: MockerFixture) -> None:
+    mock_intraday = mocker.patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
+    mock_daily = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_timeseries = mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     mock_daily.return_value = PaginatedResult(rows=TWO_DAYS, envelope={})
     mock_intraday.side_effect = [{"1772346600": INTRADAY_SLICE}, RuntimeError("Too Many Requests")]
     mock_timeseries.bulk_create_samples.return_value = 3
@@ -334,11 +329,9 @@ def test_intraday_keeps_the_days_fetched_before_a_failure(
     assert {sample.recorded_at for sample in written} == {datetime(2026, 3, 1, 6, 30, tzinfo=timezone.utc)}
 
 
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
-def test_intraday_failure_before_anything_is_fetched_propagates(
-    mock_intraday: MagicMock, mock_daily: MagicMock
-) -> None:
+def test_intraday_failure_before_anything_is_fetched_propagates(mocker: MockerFixture) -> None:
+    mock_intraday = mocker.patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
+    mock_daily = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
     mock_daily.return_value = PaginatedResult(rows=TWO_DAYS, envelope={})
     mock_intraday.side_effect = RuntimeError("Too Many Requests")
     data_247 = _data_247()
@@ -387,8 +380,8 @@ def test_unknown_workout_category_falls_back_to_other() -> None:
     assert record.type == WorkoutType.OTHER.value
 
 
-@patch("app.services.providers.withings.workouts.paginate", autospec=True)
-def test_workout_window_widens_by_a_local_day_on_each_edge(mock_paginate: MagicMock) -> None:
+def test_workout_window_widens_by_a_local_day_on_each_edge(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.workouts.paginate", autospec=True)
     mock_paginate.return_value = PaginatedResult(rows=[], envelope={})
 
     _workouts().get_workouts_from_api(
@@ -438,21 +431,19 @@ def _save_one_night(mock_paginate: MagicMock) -> None:
     _data_247().save_sleep(MagicMock(spec=Session), uuid4(), *_WINDOW)
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch(
-    "app.services.providers.withings.data_247.withings_request",
-    autospec=True,
-    side_effect=[SERIES_BODY, {"series": []}],
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_sleep_row_stores_the_hypnogram(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_sleep_row_stores_the_hypnogram(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch(
+        "app.services.providers.withings.data_247.withings_request",
+        autospec=True,
+        side_effect=[SERIES_BODY, {"series": []}],
+    )
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     _save_one_night(mock_paginate)
 
     detail = mock_event.create_or_merge_sleep.call_args.args[3]
@@ -486,21 +477,19 @@ def _saved_hrv(mock_timeseries: MagicMock) -> dict[SeriesType, list[float]]:
     return hrv
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch(
-    "app.services.providers.withings.data_247.withings_request",
-    autospec=True,
-    side_effect=[HRV_SERIES_BODY, {"series": []}],
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_sleep_hrv_readings_become_samples_of_their_night(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_sleep_hrv_readings_become_samples_of_their_night(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch(
+        "app.services.providers.withings.data_247.withings_request",
+        autospec=True,
+        side_effect=[HRV_SERIES_BODY, {"series": []}],
+    )
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mock_timeseries = mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     _save_one_night(mock_paginate)
 
     assert mock_request.call_args.kwargs["params"]["data_fields"] == "rmssd,sdnn_1"
@@ -513,22 +502,20 @@ def test_sleep_hrv_readings_become_samples_of_their_night(
     assert detail.sleep_stages[0].stage.value == "light"
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch(
-    "app.services.providers.withings.data_247.withings_request",
-    autospec=True,
-    side_effect=[WithingsAPIError(withings_status=2555, action="get"), SERIES_BODY, {"series": []}],
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_hypnogram_survives_the_hrv_fields_being_refused(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_hypnogram_survives_the_hrv_fields_being_refused(mocker: MockerFixture) -> None:
     # A plan without the HRV pack must still get its stages.
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch(
+        "app.services.providers.withings.data_247.withings_request",
+        autospec=True,
+        side_effect=[WithingsAPIError(withings_status=2555, action="get"), SERIES_BODY, {"series": []}],
+    )
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     _save_one_night(mock_paginate)
 
     detail = mock_event.create_or_merge_sleep.call_args.args[3]
@@ -536,42 +523,38 @@ def test_hypnogram_survives_the_hrv_fields_being_refused(
     assert "data_fields" not in mock_request.call_args_list[1].kwargs["params"]
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch(
-    "app.services.providers.withings.data_247.withings_request",
-    autospec=True,
-    side_effect=withings_api_error(601, "get"),
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_throttled_hypnogram_is_not_asked_again_without_the_hrv_fields(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_throttled_hypnogram_is_not_asked_again_without_the_hrv_fields(mocker: MockerFixture) -> None:
     # withings_request has already backed off; asking again would wait out the quota twice.
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch(
+        "app.services.providers.withings.data_247.withings_request",
+        autospec=True,
+        side_effect=withings_api_error(601, "get"),
+    )
+    mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     _save_one_night(mock_paginate)
 
     assert mock_request.call_count == 1
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch(
-    "app.services.providers.withings.data_247.withings_request",
-    autospec=True,
-    side_effect=[HRV_SERIES_BODY, {"series": []}],
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_sleep_hrv_is_kept_for_a_night_without_a_lowest_heart_rate(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_sleep_hrv_is_kept_for_a_night_without_a_lowest_heart_rate(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mocker.patch(
+        "app.services.providers.withings.data_247.withings_request",
+        autospec=True,
+        side_effect=[HRV_SERIES_BODY, {"series": []}],
+    )
+    mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mock_timeseries = mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     mock_paginate.return_value = PaginatedResult(
         rows=[{**SLEEP_ROW, "data": {**SLEEP_ROW["data"], "hr_min": None}}], envelope={}
     )
@@ -581,17 +564,17 @@ def test_sleep_hrv_is_kept_for_a_night_without_a_lowest_heart_rate(
     assert SeriesType.heart_rate_variability_rmssd in _saved_hrv(mock_timeseries)
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True, side_effect=RuntimeError("boom"))
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_night_is_saved_when_the_hypnogram_call_fails(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_night_is_saved_when_the_hypnogram_call_fails(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mocker.patch(
+        "app.services.providers.withings.data_247.withings_request", autospec=True, side_effect=RuntimeError("boom")
+    )
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     _save_one_night(mock_paginate)
 
     detail = mock_event.create_or_merge_sleep.call_args.args[3]
@@ -599,17 +582,15 @@ def test_night_is_saved_when_the_hypnogram_call_fails(
     assert detail.sleep_deep_minutes == 120
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_two_nights_share_one_hypnogram_request(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_two_nights_share_one_hypnogram_request(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch("app.services.providers.withings.data_247.withings_request", autospec=True)
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     second_night = {**SLEEP_ROW, "id": 12346, "startdate": 1594245600, "enddate": 1594274400}
     mock_paginate.return_value = PaginatedResult(rows=[SLEEP_ROW, second_night], envelope={})
     mock_request.side_effect = [
@@ -640,17 +621,15 @@ def test_two_nights_share_one_hypnogram_request(
     assert [stage.stage.value for stage in second.sleep_stages] == ["light"]
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch("app.services.providers.withings.data_247.withings_request", autospec=True)
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     ten_days = 10 * 86400
     later_night = {
         **SLEEP_ROW,
@@ -679,23 +658,17 @@ def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
     assert [stage.stage.value for stage in second.sleep_stages] == ["light"]
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch("app.services.providers.withings.data_247.logger", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
-    mock_paginate: MagicMock,
-    mock_request: MagicMock,
-    mock_event: MagicMock,
-    mock_error: MagicMock,
-    mock_timeseries: MagicMock,
-) -> None:
+def test_every_night_gets_stages_when_a_page_reaches_only_one_night(mocker: MockerFixture) -> None:
     # Withings documents a 24h cap on this endpoint, which makes a long sync one page per night.
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch("app.services.providers.withings.data_247.withings_request", autospec=True)
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mock_error = mocker.patch("app.services.providers.withings.data_247.logger", autospec=True)
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     nights = [
         {
             **SLEEP_ROW,
@@ -725,23 +698,18 @@ def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
     assert not [call for call in mock_error.method_calls if call.kwargs.get("exc_info")]
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch("app.services.providers.withings.data_247.logger", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_a_walk_that_runs_out_of_requests_says_so(
-    mock_paginate: MagicMock,
-    mock_request: MagicMock,
-    mock_event: MagicMock,
-    mock_log: MagicMock,
-    mock_timeseries: MagicMock,
-) -> None:
+def test_a_walk_that_runs_out_of_requests_says_so(mocker: MockerFixture) -> None:
     # A page that creeps forward a minute at a time never reaches the end of the night.
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_request = mocker.patch("app.services.providers.withings.data_247.withings_request", autospec=True)
+    mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mock_log = mocker.patch("app.services.providers.withings.data_247.logger", autospec=True)
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
+
     def one_minute(**kwargs: dict) -> dict:
         start = kwargs["params"]["startdate"]
         return {"series": [{"startdate": start, "enddate": start + 60, "state": 1}]}
@@ -754,16 +722,14 @@ def test_a_walk_that_runs_out_of_requests_says_so(
     assert "warning" in [name for name, _, _ in mock_log.method_calls]
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_minute_by_minute_states_are_folded_into_one_interval(
-    mock_paginate: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_minute_by_minute_states_are_folded_into_one_interval(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     minute_states = {
         "series": [
             {"startdate": 1594159200 + 60 * i, "enddate": 1594159200 + 60 * (i + 1), "state": 0} for i in range(8)
@@ -782,21 +748,19 @@ def test_minute_by_minute_states_are_folded_into_one_interval(
     assert detail.sleep_stages[0].end_time == detail.sleep_stages[1].start_time
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch(
-    "app.services.providers.withings.data_247.withings_request",
-    autospec=True,
-    side_effect=[SERIES_BODY, {"series": []}],
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_a_night_with_unreadable_timestamps_does_not_drop_the_batch(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_a_night_with_unreadable_timestamps_does_not_drop_the_batch(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mocker.patch(
+        "app.services.providers.withings.data_247.withings_request",
+        autospec=True,
+        side_effect=[SERIES_BODY, {"series": []}],
+    )
+    mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     mock_paginate.return_value = PaginatedResult(
         rows=[
             {**SLEEP_ROW, "id": 1, "startdate": "broken"},
@@ -810,17 +774,15 @@ def test_a_night_with_unreadable_timestamps_does_not_drop_the_batch(
     assert _data_247().save_sleep(MagicMock(spec=Session), uuid4(), *_WINDOW) == 1
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_a_stage_running_past_the_night_is_clipped(
-    mock_paginate: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_a_stage_running_past_the_night_is_clipped(mocker: MockerFixture) -> None:
     # Last state starts inside the night and runs an hour past its end.
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     overrunning = {"series": [{"startdate": 1594187700, "enddate": 1594191600, "state": 1}]}
     with patch(
         "app.services.providers.withings.data_247.withings_request",
@@ -833,17 +795,17 @@ def test_a_stage_running_past_the_night_is_clipped(
     assert detail.sleep_stages[0].end_time == datetime.fromtimestamp(SLEEP_ROW["enddate"], tz=timezone.utc)
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True, return_value={"series": []})
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_the_night_low_heart_rate_becomes_a_resting_heart_rate_sample(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_the_night_low_heart_rate_becomes_a_resting_heart_rate_sample(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mocker.patch(
+        "app.services.providers.withings.data_247.withings_request", autospec=True, return_value={"series": []}
+    )
+    mock_event = mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mock_timeseries = mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     mock_paginate.return_value = PaginatedResult(rows=[SLEEP_ROW], envelope={})
 
     _data_247().save_sleep(
@@ -862,18 +824,18 @@ def test_the_night_low_heart_rate_becomes_a_resting_heart_rate_sample(
     assert rhr.session == SessionValue(record_id=mock_event.create_or_merge_sleep.return_value.id)
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True, return_value={"series": []})
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_the_sample_carries_the_offset_in_force_when_the_night_began(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_the_sample_carries_the_offset_in_force_when_the_night_began(mocker: MockerFixture) -> None:
     # Warsaw goes from +02:00 to +01:00 at 03:00 local on 2020-10-25, mid-night.
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mocker.patch(
+        "app.services.providers.withings.data_247.withings_request", autospec=True, return_value={"series": []}
+    )
+    mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mock_timeseries = mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     dst_night = {
         **SLEEP_ROW,
         "startdate": int(datetime(2020, 10, 24, 21, tzinfo=timezone.utc).timestamp()),
@@ -892,17 +854,17 @@ def test_the_sample_carries_the_offset_in_force_when_the_night_began(
     assert sample.zone_offset == "+02:00"
 
 
-@patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
-@patch(
-    "app.services.providers.withings.data_247.event_record_service",
-    autospec=True,
-    **{"create_or_merge_sleep.return_value.id": uuid4()},
-)
-@patch("app.services.providers.withings.data_247.withings_request", autospec=True, return_value={"series": []})
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-def test_a_night_without_a_low_heart_rate_is_still_saved(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
-) -> None:
+def test_a_night_without_a_low_heart_rate_is_still_saved(mocker: MockerFixture) -> None:
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
+    mocker.patch(
+        "app.services.providers.withings.data_247.withings_request", autospec=True, return_value={"series": []}
+    )
+    mocker.patch(
+        "app.services.providers.withings.data_247.event_record_service",
+        autospec=True,
+        **{"create_or_merge_sleep.return_value.id": uuid4()},
+    )
+    mock_timeseries = mocker.patch("app.services.providers.withings.data_247.timeseries_service", autospec=True)
     without_hr = {**SLEEP_ROW, "data": {k: v for k, v in SLEEP_ROW["data"].items() if k != "hr_min"}}
     mock_paginate.return_value = PaginatedResult(rows=[without_hr], envelope={})
 
@@ -917,10 +879,10 @@ def test_a_night_without_a_low_heart_rate_is_still_saved(
     mock_timeseries.bulk_create_samples.assert_not_called()
 
 
-@patch("app.services.providers.withings.data_247.paginate", autospec=True)
-@patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
-def test_one_sync_asks_for_the_daily_rows_once(mock_intraday: MagicMock, mock_paginate: MagicMock) -> None:
+def test_one_sync_asks_for_the_daily_rows_once(mocker: MockerFixture) -> None:
     # Daily and intraday activity both start from getactivity; a second call only spends quota.
+    mock_intraday = mocker.patch("app.services.providers.withings.data_247.paginate_mapping", autospec=True)
+    mock_paginate = mocker.patch("app.services.providers.withings.data_247.paginate", autospec=True)
     mock_intraday.return_value = {}
     mock_paginate.return_value = PaginatedResult(rows=TWO_DAYS, envelope={})
     data_247 = _data_247()

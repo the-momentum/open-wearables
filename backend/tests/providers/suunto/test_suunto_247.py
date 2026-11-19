@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.schemas.enums import SeriesType
@@ -494,10 +495,10 @@ def _normalized_sleep(**overrides: Any) -> dict[str, Any]:
 
 
 class TestSuuntoSleepWindow:
-    @patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
     def test_duration_and_time_in_bed_follow_the_window_not_duration(
-        self, mock_event: MagicMock, data_247: Suunto247Data
+        self, mocker: MockerFixture, data_247: Suunto247Data
     ) -> None:
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
         assert (
             data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), _normalized_sleep(duration_seconds=21600))
             is True
@@ -513,13 +514,13 @@ class TestSuuntoSleepSyncStats:
     (saved, skipped) counts, so a fully-dropped backfill is never reported as a
     successful sync."""
 
-    @patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
-    def test_save_sleep_data_reports_success(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+    def test_save_sleep_data_reports_success(self, mocker: MockerFixture, data_247: Suunto247Data) -> None:
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
         assert data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), _normalized_sleep()) is True
         mock_event.create_or_merge_sleep.assert_called_once()
 
-    @patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
-    def test_save_sleep_data_keeps_unreported_stages_none(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+    def test_save_sleep_data_keeps_unreported_stages_none(self, mocker: MockerFixture, data_247: Suunto247Data) -> None:
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
         stages = {"deep_seconds": None, "light_seconds": None, "rem_seconds": None, "awake_seconds": 0}
 
         data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), _normalized_sleep(stages=stages))
@@ -531,10 +532,10 @@ class TestSuuntoSleepSyncStats:
         assert detail.sleep_total_duration_minutes is None
         assert detail.sleep_awake_minutes == 0
 
-    @patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
     def test_save_sleep_data_reports_skip_for_missing_window(
-        self, mock_event: MagicMock, data_247: Suunto247Data
+        self, mocker: MockerFixture, data_247: Suunto247Data
     ) -> None:
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
         skipped = data_247.save_sleep_data(
             MagicMock(spec=Session), uuid4(), _normalized_sleep(start_time=None, end_time=None)
         )
@@ -542,8 +543,8 @@ class TestSuuntoSleepSyncStats:
         assert skipped is False
         mock_event.create_or_merge_sleep.assert_not_called()
 
-    @patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
-    def test_load_and_save_sleep_counts_saved_and_skipped(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+    def test_load_and_save_sleep_counts_saved_and_skipped(self, mocker: MockerFixture, data_247: Suunto247Data) -> None:
+        mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
         saveable = {
             "timestamp": "2026-06-06T23:40:00+02:00",
             "entryData": {

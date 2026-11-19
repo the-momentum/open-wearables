@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 from uuid import UUID, uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
@@ -578,11 +579,11 @@ class TestGarmin247Data:
 
         assert [sample["value"] for sample in normalized["steps"]] == [420]
 
-    @patch("app.services.providers.garmin.data_247.logger", autospec=True)
     def test_normalize_epochs_reports_skipped_epochs_once(
-        self, mock_logger: MagicMock, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
     ) -> None:
         """Malformed epochs are reported once per call, with how many were skipped."""
+        mock_logger = mocker.patch("app.services.providers.garmin.data_247.logger", autospec=True)
         broken = [
             {**mixed_slot_epochs[0], "summaryId": f"bad-{i}", "startTimeOffsetInSeconds": "n/a"} for i in range(3)
         ]
@@ -869,15 +870,13 @@ class TestGarmin247Data:
         samples = garmin_247._build_body_comp_samples(user_id, {"weightInGrams": 75000})
         assert samples == []
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True)
     def test_process_items_batch_body_comp(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_body_comp: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_body_comp: dict[str, Any]
     ) -> None:
         """Test body composition is persisted through the batch entrypoint."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
         mock_bulk_create.side_effect = lambda _repo, db_session, samples: WriteCounts(len(samples), 0)
 
@@ -1062,15 +1061,13 @@ class TestGarmin247Data:
     # Batch Processing Tests
     # -------------------------------------------------------------------------
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True)
     def test_process_items_batch_dailies(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_daily: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_daily: dict[str, Any]
     ) -> None:
         """Test batch processing multiple daily items in a single bulk_create."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
         daily2 = {**sample_daily, "summaryId": "daily_456", "calendarDate": "2024-01-16"}
         mock_bulk_create.side_effect = lambda _repo, db_session, samples: WriteCounts(len(samples), 0)
@@ -1099,14 +1096,11 @@ class TestGarmin247Data:
             [(get_series_type_id(SeriesType.steps), 420.0), (get_series_type_id(SeriesType.active_energy), 18.0)]
         )
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True)
-    def test_process_items_batch_stress(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-    ) -> None:
+    def test_process_items_batch_stress(self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session) -> None:
         """Test batch processing multiple stress items."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
         items = [
             {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 25, "300": 30}},
@@ -1119,17 +1113,16 @@ class TestGarmin247Data:
         mock_bulk_create.assert_called_once()
         assert count == 3  # 2 + 1
 
-    @patch("app.services.event_record_service.event_record_service.bulk_create", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.bulk_create_details", autospec=True)
     def test_process_items_batch_sleeps(
-        self,
-        mock_bulk_details: MagicMock,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_sleep: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
     ) -> None:
         """Test batch processing sleep items uses bulk_create for records."""
+        mock_bulk_details = mocker.patch(
+            "app.services.event_record_service.event_record_service.bulk_create_details", autospec=True
+        )
+        mock_bulk_create = mocker.patch(
+            "app.services.event_record_service.event_record_service.bulk_create", autospec=True
+        )
         user = UserFactory()
         sleep2 = {**sample_sleep, "summaryId": "sleep_456"}
 
@@ -1187,17 +1180,14 @@ class TestGarmin247Data:
         assert garmin_247._build_nap_record({"napDurationInSeconds": 600}, user_id) is None
         assert garmin_247._build_nap_record({"napStartTimeInSeconds": 1690916700}, user_id) is None
 
-    @patch("app.services.event_record_service.event_record_service.bulk_create", autospec=True)
-    @patch("app.services.event_record_service.event_record_service.bulk_create_details", autospec=True)
     def test_process_items_batch_sleeps_with_naps(
-        self,
-        mock_bulk_details: MagicMock,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_sleep: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
     ) -> None:
         """Naps embedded in a sleep summary are saved as separate is_nap=True records."""
+        mocker.patch("app.services.event_record_service.event_record_service.bulk_create_details", autospec=True)
+        mock_bulk_create = mocker.patch(
+            "app.services.event_record_service.event_record_service.bulk_create", autospec=True
+        )
         user = UserFactory()
         sleep_with_nap = {
             **sample_sleep,
@@ -1257,14 +1247,13 @@ class TestGarmin247Data:
         count = garmin_247.process_items_batch(db, user.id, "dailies", [])
         assert count == 0
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True)
     def test_process_items_batch_skips_bad_items(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session
     ) -> None:
         """Test batch processing skips invalid items and continues."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
         items = [
             {"startTimeInSeconds": 0},  # Missing timestamp -> skipped

@@ -6,12 +6,13 @@ as a bad API key), and a failed call keeps the provider's status and body out of
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest.mock import MagicMock, create_autospec
 from uuid import uuid4
 
 import httpx
 import pytest
 import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import UserConnection
@@ -54,6 +55,11 @@ def _request_args() -> dict[str, Any]:
     }
 
 
+@pytest.fixture
+def valid_token(mocker: MockerFixture) -> None:
+    mocker.patch("app.services.providers.api_client.get_valid_token", autospec=True, return_value="token")
+
+
 class TestGetValidToken:
     def test_no_connection(self) -> None:
         with pytest.raises(ProviderNotConnectedError) as exc_info:
@@ -81,13 +87,13 @@ class TestGetValidToken:
         assert exc_info.value.status_code == 409
 
 
-@patch("app.services.providers.api_client.get_valid_token", autospec=True, return_value="token")
+@pytest.mark.usefixtures("valid_token")
 class TestMakeAuthenticatedRequest:
-    @patch("app.services.providers.api_client._reload_token_after_401", autospec=True, return_value=None)
     def test_a_rejected_token_is_an_upstream_error_not_a_reconnect(
-        self, mock_reload: MagicMock, mock_token: MagicMock, respx_mock: respx.MockRouter
+        self, mocker: MockerFixture, respx_mock: respx.MockRouter
     ) -> None:
         """Not proof the grant is dead: only a day of rejections revokes it (ReauthRequiredError, 409)."""
+        mocker.patch("app.services.providers.api_client._reload_token_after_401", autospec=True, return_value=None)
         respx_mock.get(URL).respond(401, text="invalid_token")
 
         with pytest.raises(ProviderAuthRejectedError) as exc_info:
@@ -95,9 +101,7 @@ class TestMakeAuthenticatedRequest:
 
         assert exc_info.value.status_code == 502
 
-    def test_error_response_keeps_the_body_out_of_the_detail(
-        self, mock_token: MagicMock, respx_mock: respx.MockRouter
-    ) -> None:
+    def test_error_response_keeps_the_body_out_of_the_detail(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.get(URL).respond(404, text='{"message": "user 42 not found"}')
 
         with pytest.raises(ProviderError) as exc_info:
@@ -108,10 +112,8 @@ class TestMakeAuthenticatedRequest:
         assert error.detail == "Garmin API error (status 404)"
         assert error.upstream_body == '{"message": "user 42 not found"}'
 
-    @patch("app.services.providers.api_client.time.sleep", autospec=True)
-    def test_throttle_that_persists_is_a_503(
-        self, mock_sleep: MagicMock, mock_token: MagicMock, respx_mock: respx.MockRouter
-    ) -> None:
+    def test_throttle_that_persists_is_a_503(self, mocker: MockerFixture, respx_mock: respx.MockRouter) -> None:
+        mocker.patch("app.services.providers.api_client.time.sleep", autospec=True)
         route = respx_mock.get(URL).respond(429, text="slow down")
 
         with pytest.raises(ProviderRateLimitError) as exc_info:
@@ -120,7 +122,7 @@ class TestMakeAuthenticatedRequest:
         assert (exc_info.value.status_code, exc_info.value.upstream_status) == (503, 429)
         assert route.call_count == 4
 
-    def test_no_response(self, mock_token: MagicMock, respx_mock: respx.MockRouter) -> None:
+    def test_no_response(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.get(URL).mock(side_effect=httpx.ConnectTimeout("timed out"))
 
         with pytest.raises(ProviderError) as exc_info:
@@ -129,7 +131,7 @@ class TestMakeAuthenticatedRequest:
         assert exc_info.value.upstream_status is None
         assert exc_info.value.detail == "Garmin API request failed"
 
-    def test_empty_body_where_json_is_expected(self, mock_token: MagicMock, respx_mock: respx.MockRouter) -> None:
+    def test_empty_body_where_json_is_expected(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.get(URL).respond(204)
 
         with pytest.raises(ProviderError) as exc_info:
@@ -137,7 +139,7 @@ class TestMakeAuthenticatedRequest:
 
         assert exc_info.value.upstream_status == 204
 
-    def test_error_in_a_200_body(self, mock_token: MagicMock, respx_mock: respx.MockRouter) -> None:
+    def test_error_in_a_200_body(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.get(URL).respond(200, text='{"error": "not found", "code": 404, "request_id": "r1"}')
 
         with pytest.raises(ProviderError) as exc_info:
@@ -146,7 +148,7 @@ class TestMakeAuthenticatedRequest:
         assert exc_info.value.upstream_status == 404
         assert exc_info.value.upstream_body == '{"error": "not found", "code": 404, "request_id": "r1"}'
 
-    def test_error_in_a_200_body_without_a_code(self, mock_token: MagicMock, respx_mock: respx.MockRouter) -> None:
+    def test_error_in_a_200_body_without_a_code(self, respx_mock: respx.MockRouter) -> None:
         """The provider still rejected the request: dropped by a task like an upstream 400, not retried."""
         respx_mock.get(URL).respond(200, json={"error": "Workout not found"})
 
@@ -156,7 +158,7 @@ class TestMakeAuthenticatedRequest:
         assert exc_info.value.upstream_status == 400
         assert exc_info.value.detail == "Garmin API error (status 400)"
 
-    def test_error_in_a_200_body_with_a_string_code(self, mock_token: MagicMock, respx_mock: respx.MockRouter) -> None:
+    def test_error_in_a_200_body_with_a_string_code(self, respx_mock: respx.MockRouter) -> None:
         """A provider outage reported as "503" is still retried by a task, not dropped as a 400."""
         respx_mock.get(URL).respond(200, json={"error": "maintenance", "code": "503"})
 
@@ -166,7 +168,7 @@ class TestMakeAuthenticatedRequest:
         assert exc_info.value.upstream_status == 503
 
 
-@patch("app.services.providers.api_client.get_valid_token", autospec=True, return_value="token")
+@pytest.mark.usefixtures("valid_token")
 class TestDownloadBinaryContent:
     def _download(self) -> bytes:
         args = _request_args()
@@ -179,7 +181,7 @@ class TestDownloadBinaryContent:
             url=URL,
         )
 
-    def test_error_response(self, mock_token: MagicMock, respx_mock: respx.MockRouter) -> None:
+    def test_error_response(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.get(URL).respond(403, text="forbidden")
 
         with pytest.raises(ProviderError) as exc_info:
@@ -187,7 +189,7 @@ class TestDownloadBinaryContent:
 
         assert exc_info.value.upstream_status == 403
 
-    def test_no_response(self, mock_token: MagicMock, respx_mock: respx.MockRouter) -> None:
+    def test_no_response(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.get(URL).mock(side_effect=httpx.ReadTimeout("timed out"))
 
         with pytest.raises(ProviderError) as exc_info:

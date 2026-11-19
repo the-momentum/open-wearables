@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -162,8 +163,8 @@ class TestUltrahumanSleepData:
         "quick_metrics": [{"type": "time_in_bed", "value": 25200}],
     }
 
-    @patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
-    def test_save_sleep_keeps_unreported_stages_none(self, mock_event: MagicMock, db: Session) -> None:
+    def test_save_sleep_keeps_unreported_stages_none(self, mocker: MockerFixture, db: Session) -> None:
+        mock_event = mocker.patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
         data_247 = self._data_247()
         raw_sleep = {**self._NIGHT, "sleep_stages": [{"type": "awake", "stage_time": 1800}]}
 
@@ -178,8 +179,8 @@ class TestUltrahumanSleepData:
         # Total sleep falls back to time in bed minus awake time
         assert detail.sleep_total_duration_minutes == 390
 
-    @patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
-    def test_save_sleep_keeps_reported_zero_stages(self, mock_event: MagicMock, db: Session) -> None:
+    def test_save_sleep_keeps_reported_zero_stages(self, mocker: MockerFixture, db: Session) -> None:
+        mock_event = mocker.patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
         data_247 = self._data_247()
         raw_sleep = {
             **self._NIGHT,
@@ -199,8 +200,8 @@ class TestUltrahumanSleepData:
         assert detail.sleep_awake_minutes == 0
         assert detail.sleep_total_duration_minutes == 330
 
-    @patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
-    def test_save_sleep_infers_total_when_phases_are_zero(self, mock_event: MagicMock, db: Session) -> None:
+    def test_save_sleep_infers_total_when_phases_are_zero(self, mocker: MockerFixture, db: Session) -> None:
+        mock_event = mocker.patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
         data_247 = self._data_247()
         raw_sleep = {
             **self._NIGHT,
@@ -219,8 +220,8 @@ class TestUltrahumanSleepData:
         assert detail.sleep_deep_minutes == 0
         assert detail.sleep_total_duration_minutes == 390
 
-    @patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
-    def test_save_sleep_without_stages_takes_time_in_bed_as_total(self, mock_event: MagicMock, db: Session) -> None:
+    def test_save_sleep_without_stages_takes_time_in_bed_as_total(self, mocker: MockerFixture, db: Session) -> None:
+        mock_event = mocker.patch("app.services.providers.ultrahuman.data_247.event_record_service", autospec=True)
         data_247 = self._data_247()
 
         normalized = data_247.normalize_sleep(dict(self._NIGHT), UserFactory().id)

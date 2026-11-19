@@ -5,10 +5,10 @@ Tests complete OAuth authorization flows for Garmin, Polar, and Suunto providers
 """
 
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import respx
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
@@ -120,15 +120,11 @@ class TestPolarOAuth:
         # Assert
         assert response.status_code in [200, 302, 307, 422]
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
     def test_polar_callback_success(
-        self,
-        mock_sync_task: MagicMock,
-        respx_mock: respx.MockRouter,
-        client: TestClient,
-        db: Session,
+        self, mocker: MockerFixture, respx_mock: respx.MockRouter, client: TestClient, db: Session
     ) -> None:
         """Test Polar OAuth callback handles tokens."""
+        mocker.patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
         # Arrange
 
         from app.integrations.redis_client import get_redis_client

@@ -2,10 +2,11 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
@@ -211,10 +212,10 @@ class TestOura247SleepNormalization:
         assert result[0]["is_nap"] is False  # long_sleep
         assert result[1]["is_nap"] is True  # sleep
 
-    @patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
     def test_unreported_sleep_stages_are_saved_as_none(
-        self, mock_event: MagicMock, data_247: Oura247Data, sample_oura_sleep: dict
+        self, mocker: MockerFixture, data_247: Oura247Data, sample_oura_sleep: dict
     ) -> None:
+        mock_event = mocker.patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
         sample_oura_sleep.update(
             deep_sleep_duration=None, light_sleep_duration=None, rem_sleep_duration=None, awake_time=None
         )
@@ -230,10 +231,10 @@ class TestOura247SleepNormalization:
         assert detail.sleep_total_duration_minutes is None
         assert detail.sleep_time_in_bed_minutes == 480
 
-    @patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
     def test_reported_zero_sleep_stages_are_saved_as_zero(
-        self, mock_event: MagicMock, data_247: Oura247Data, sample_oura_sleep: dict
+        self, mocker: MockerFixture, data_247: Oura247Data, sample_oura_sleep: dict
     ) -> None:
+        mock_event = mocker.patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
         sample_oura_sleep.update(deep_sleep_duration=0, rem_sleep_duration=0)
 
         normalized = data_247.normalize_sleeps([sample_oura_sleep], uuid4())

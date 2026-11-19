@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -22,14 +23,14 @@ from tests.factories import UserFactory
 class TestProcessSDKUploadTask:
     """Test suite for process_sdk_upload task."""
 
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True)
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True)
-    def test_process_sdk_upload_with_nonexistent_user(
-        self,
-        mock_user_repo_class: MagicMock,
-        mock_session_local: MagicMock,
-    ) -> None:
+    def test_process_sdk_upload_with_nonexistent_user(self, mocker: MockerFixture) -> None:
         """Verify task gracefully handles non-existent user_id."""
+        mock_user_repo_class = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True
+        )
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True
+        )
         # Arrange
         non_existent_user_id = str(uuid4())
         mock_db = MagicMock(spec=Session)
@@ -63,17 +64,17 @@ class TestProcessSDKUploadTask:
         assert result["status"] == "error"
         assert result["reason"] == "invalid_user_id"
 
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service", autospec=True)
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True)
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True)
-    def test_process_sdk_upload_success_apple(
-        self,
-        mock_user_repo_class: MagicMock,
-        mock_session_local: MagicMock,
-        mock_sdk_import_service: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_process_sdk_upload_success_apple(self, mocker: MockerFixture, db: Session) -> None:
         """Test successful processing with apple provider."""
+        mock_user_repo_class = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True
+        )
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True
+        )
+        mock_sdk_import_service = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service", autospec=True
+        )
         # Arrange
         user = UserFactory()
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
@@ -101,19 +102,19 @@ class TestProcessSDKUploadTask:
         mock_sdk_import_service.import_data_from_request.assert_called_once()
 
     @pytest.mark.parametrize(("records_saved", "rolls_up"), [(3, True), (0, False)])
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service", autospec=True)
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True)
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True)
     def test_a_saved_batch_rolls_its_days_up_right_away(
-        self,
-        mock_user_repo_class: MagicMock,
-        mock_session_local: MagicMock,
-        mock_sdk_import_service: MagicMock,
-        db: Session,
-        records_saved: int,
-        rolls_up: bool,
+        self, mocker: MockerFixture, db: Session, records_saved: int, rolls_up: bool
     ) -> None:
         """The SDK sends no day values: its days and summaries are ours, so they wait for no 15-minute run."""
+        mock_user_repo_class = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True
+        )
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True
+        )
+        mock_sdk_import_service = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service", autospec=True
+        )
         user = UserFactory()
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -127,14 +128,14 @@ class TestProcessSDKUploadTask:
 
         assert roll_up_soon.called is rolls_up
 
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True)
-    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True)
-    def test_process_sdk_upload_user_check_uses_correct_uuid(
-        self,
-        mock_user_repo_class: MagicMock,
-        mock_session_local: MagicMock,
-    ) -> None:
+    def test_process_sdk_upload_user_check_uses_correct_uuid(self, mocker: MockerFixture) -> None:
         """Verify the user repository is called with the correct UUID."""
+        mock_user_repo_class = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.UserRepository", autospec=True
+        )
+        mock_session_local = mocker.patch(
+            "app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal", autospec=True
+        )
         # Arrange
         user_id = str(uuid4())
         mock_db = MagicMock(spec=Session)
@@ -168,15 +169,10 @@ _PAYLOAD_REF = "s3://bucket/raw/apple/sdk/2026-08-26/user/x.json"
 class TestOffloadedPayload:
     """The body is fetched in the worker, so the broker only ever carries a reference."""
 
-    @patch(f"{_MODULE}.get_payload_from_s3", autospec=True)
-    @patch(f"{_MODULE}.SessionLocal", autospec=True)
-    @patch(f"{_MODULE}.UserRepository", autospec=True)
-    def test_content_is_loaded_from_the_reference(
-        self,
-        mock_user_repo_class: MagicMock,
-        mock_session_local: MagicMock,
-        mock_get_payload: MagicMock,
-    ) -> None:
+    def test_content_is_loaded_from_the_reference(self, mocker: MockerFixture) -> None:
+        mock_user_repo_class = mocker.patch(f"{_MODULE}.UserRepository", autospec=True)
+        mock_session_local = mocker.patch(f"{_MODULE}.SessionLocal", autospec=True)
+        mock_get_payload = mocker.patch(f"{_MODULE}.get_payload_from_s3", autospec=True)
         mock_get_payload.return_value = '{"data":{"records":[]}}'
         mock_session_local.return_value.__enter__ = MagicMock(return_value=MagicMock(spec=Session))
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -194,9 +190,9 @@ class TestOffloadedPayload:
         mock_get_payload.assert_called_once_with(_PAYLOAD_REF)
         assert result["reason"] == "user_not_found"
 
-    @patch(f"{_MODULE}.get_payload_from_s3", autospec=True)
-    def test_read_failure_propagates(self, mock_get_payload: MagicMock) -> None:
+    def test_read_failure_propagates(self, mocker: MockerFixture) -> None:
         """Swallowing this would drop the batch silently; raising reports it to Sentry."""
+        mock_get_payload = mocker.patch(f"{_MODULE}.get_payload_from_s3", autospec=True)
         mock_get_payload.side_effect = RuntimeError("S3 unavailable")
 
         with pytest.raises(RuntimeError, match="S3 unavailable"):

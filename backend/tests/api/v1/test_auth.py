@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.config import DEFAULT_ADMIN_PASSWORD, settings
@@ -56,8 +57,10 @@ class TestLogin:
         assert isinstance(data["access_token"], str)
         assert len(data["access_token"]) > 0
 
-    @patch.object(settings, "login_max_failed_attempts", 3)
-    def test_login_locked_after_failed_attempts(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+    def test_login_locked_after_failed_attempts(
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
         DeveloperFactory(email="test@example.com", password="test1234")
 
         statuses = [_login(client, api_v1_prefix, "Test@Example.com ", "wrong").status_code for _ in range(3)]
@@ -67,14 +70,18 @@ class TestLogin:
         assert locked.status_code == 429
         assert 0 < int(locked.headers["Retry-After"]) <= settings.login_lockout_seconds
 
-    @patch.object(settings, "login_max_failed_attempts", 3)
-    def test_login_locks_unknown_emails_too(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+    def test_login_locks_unknown_emails_too(
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
         statuses = [_login(client, api_v1_prefix, "nobody@example.com", "x").status_code for _ in range(4)]
 
         assert statuses == [401, 401, 401, 429]
 
-    @patch.object(settings, "login_max_failed_attempts", 3)
-    def test_login_success_resets_failed_attempts(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+    def test_login_success_resets_failed_attempts(
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
         DeveloperFactory(email="test@example.com", password="test1234")
         for _ in range(2):
             _login(client, api_v1_prefix, "test@example.com", "wrong")
@@ -84,9 +91,9 @@ class TestLogin:
 
         assert statuses == [401, 401, 401]
 
-    @patch.object(settings, "login_max_failed_attempts", 3)
-    def test_login_attempts_in_flight_count_against_the_limit(self) -> None:
+    def test_login_attempts_in_flight_count_against_the_limit(self, mocker: MockerFixture) -> None:
         """Parallel requests are counted on arrival, so a burst can't outrun the limit."""
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
         waits = [login_throttle.count_attempt("test@example.com") for _ in range(4)]
 
         assert waits[:3] == [0, 0, 0]

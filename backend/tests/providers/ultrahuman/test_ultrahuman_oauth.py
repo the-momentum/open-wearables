@@ -4,11 +4,12 @@ Tests for Ultrahuman OAuth implementation.
 Tests the UltrahumanOAuth class for OAuth 2.0 authentication flow with Ultrahuman Partnership API.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
 import redis
 import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -94,9 +95,9 @@ class TestUltrahumanOAuthConfiguration:
 class TestUltrahumanOAuthAuthorization:
     """Tests for Ultrahuman OAuth authorization URL generation."""
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
-    def test_get_authorization_url(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_get_authorization_url(self, mocker: MockerFixture, db: Session) -> None:
         """Test generating authorization URL for Ultrahuman."""
+        mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -136,9 +137,9 @@ class TestUltrahumanOAuthAuthorization:
         assert call_args[0][1] == 900  # TTL
         assert str(user.id) in call_args[0][2]  # State contains user_id
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
-    def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_authorization_url_includes_scope(self, mocker: MockerFixture, db: Session) -> None:
         """Test authorization URL includes default scope."""
+        mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository

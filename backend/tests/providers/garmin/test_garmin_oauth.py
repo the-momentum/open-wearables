@@ -7,6 +7,7 @@ import httpx
 import pytest
 import redis
 import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -75,9 +76,9 @@ class TestGarminOAuth:
         """Garmin should use body authentication method."""
         assert garmin_oauth.auth_method == AuthenticationMethod.BODY
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
-    def test_get_authorization_url(self, mock_get_redis: MagicMock, garmin_oauth: GarminOAuth) -> None:
+    def test_get_authorization_url(self, mocker: MockerFixture, garmin_oauth: GarminOAuth) -> None:
         """Test generating authorization URL with PKCE."""
+        mock_get_redis = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         # Arrange
         mock_redis_client = MagicMock(spec=redis.Redis)
         mock_get_redis.return_value = mock_redis_client
@@ -163,11 +164,11 @@ class TestGarminOAuth:
         assert user_info["user_id"] == "garmin_user_abc"
         assert user_info["scope"] is None
 
-    @patch("app.integrations.redis_client.get_redis_client", autospec=True)
     def test_exchange_token_with_pkce(
-        self, mock_redis: MagicMock, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
+        self, mocker: MockerFixture, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
         """Test token exchange includes PKCE verifier."""
+        mocker.patch("app.integrations.redis_client.get_redis_client", autospec=True)
         token = respx_mock.post(TOKEN_URL).respond(200, json=NEW_TOKENS)
 
         token_response = garmin_oauth._exchange_token("auth_code_123", "test_verifier_abc123")

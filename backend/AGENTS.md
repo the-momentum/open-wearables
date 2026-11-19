@@ -252,7 +252,7 @@ logger.warning(
 - Levels: `logger.debug/info/warning/error/critical`, or `logger.log(level, ...)` for a computed level. `debug` lines are dropped unless `LOG_LEVEL=DEBUG`.
 - Output format follows `LOG_FORMAT` (`legacy` default, `json`, `text`) and `LOG_LEVEL` (see `app/utils/logging_setup.py`). The `app` logger has its own stdout handler and does not propagate to the root logger.
 - Keep attribute values JSON-serializable. The test suite raises `TypeError` at the call site for a value that is not (also when `LOG_LEVEL` filters the call out); in production the line is printed with `str()` of that value.
-- In tests, patch the module's logger (`patch("app.x.logger")`) and assert on `mock.error.call_args.kwargs`.
+- In tests, patch the module's logger (`mocker.patch("app.x.logger")`) and assert on `mock.error.call_args.kwargs`.
 
 ### Provider Strategy Pattern
 
@@ -317,6 +317,7 @@ into startup.
 - Imports sorted by isort
 - All imports at module level — never inside functions or methods
 - PEP 8 naming conventions
+- Tests patch with `mocker.patch(...)` (fixture typed `mocker: MockerFixture`), not `@patch` decorators: a decorator stack hands mocks to the test by position, in reverse order
 
 ## Commands
 

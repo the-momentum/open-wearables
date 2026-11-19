@@ -60,6 +60,7 @@ dev = [
     "pytest-randomly>=5.1.0",
     "time-machine>=3.6.0",
     "respx>=0.23.1",
+    "pytest-mock>=3.17.0",
 ]
 
 [tool.ruff]
