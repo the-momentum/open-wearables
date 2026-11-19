@@ -7,8 +7,6 @@ Usage:
     developer = DeveloperFactory(email="custom@example.com")
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from contextvars import ContextVar
 from datetime import date, datetime, timedelta, timezone

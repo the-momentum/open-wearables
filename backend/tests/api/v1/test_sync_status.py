@@ -1,7 +1,5 @@
 """Tests for the sync status SSE / history API endpoints."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from datetime import datetime, timezone
 from unittest.mock import patch

@@ -7,8 +7,6 @@ Covers:
 - outgoing_webhooks API router (#722-726)
 """
 
-from __future__ import annotations
-
 import re
 from collections.abc import Generator
 from datetime import datetime, timezone

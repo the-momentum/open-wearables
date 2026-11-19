@@ -13,8 +13,6 @@ calls to Strava and the outgoing connection.revoked webhook are replaced.
 - Any other API failure leaves the data alone and reaches the task, which retries.
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Callable
 from dataclasses import dataclass

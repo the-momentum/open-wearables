@@ -6,8 +6,6 @@ plumbing. Saves become SUCCESS runs, errors FAILED, no-ops SKIPPED, and
 deliveries with no resolvable user (or from self-reporting Garmin) are dropped.
 """
 
-from __future__ import annotations
-
 import contextlib
 from typing import Any
 from unittest.mock import ANY, create_autospec, patch
