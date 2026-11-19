@@ -290,6 +290,7 @@ def test_alert_can_leave_out_expected_errors(captured: list[dict[str, Any]], exc
         (lambda: ProviderError("sensorbio", upstream_status=503), 3),
         (lambda: RuntimeError("boom"), 3),
     ],
+    ids=["http-401", "provider-404", "provider-503", "runtime-error"],
 )
 def test_sensorbio_daily_details_do_not_alert_on_client_errors(
     captured: list[dict[str, Any]], make_exc: Any, events: int

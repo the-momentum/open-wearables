@@ -4,8 +4,6 @@ Verifies persistence (Redis history & runs), terminal-event Svix
 dispatch, and the SSE replay/streaming generator.
 """
 
-from __future__ import annotations
-
 import json
 import threading
 import time
