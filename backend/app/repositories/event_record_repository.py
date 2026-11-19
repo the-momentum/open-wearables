@@ -1648,6 +1648,29 @@ class EventRecordRepository(
             .first()
         )
 
+    def find_sleep_by_external_id(
+        self, db_session: DbSession, user_id: UUID, provider: str, external_id: str, start_time: datetime
+    ) -> EventRecord | None:
+        """The user's sleep session from this provider stored under external_id, wherever it sits now.
+
+        Of several, the one starting closest to start_time.
+        """
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.sleep_detail))
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.provider == provider,
+                self.model.category == EventCategory.SLEEP,
+                self.model.type == "sleep_session",
+                self.model.external_id == external_id,
+            )
+            .order_by(func.abs(func.extract("epoch", self.model.start_datetime - start_time)))
+            .with_for_update(of=self.model)
+            .first()
+        )
+
     def get_sleep_records_with_details(
         self,
         db_session: DbSession,

@@ -1152,7 +1152,7 @@ class TestGarmin247Data:
         result = garmin_247._build_nap_record(nap, user_id, parent_summary_id="sleep_123")
         assert result is not None
         record, detail = result
-        assert record.external_id == "sleep_123"
+        assert record.external_id == "sleep_123-nap-1690916700"
         assert record.duration_seconds == 600
         assert detail.is_nap is True
         assert detail.sleep_total_duration_minutes == 10  # 600 // 60

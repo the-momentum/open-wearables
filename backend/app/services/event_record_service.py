@@ -393,8 +393,12 @@ class EventRecordService(
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
         threshold_minutes: int,
+        merge_adjacent: bool = True,
     ) -> EventRecord:
         """Create a sleep record, merging with any adjacent session within threshold_minutes.
+
+        A session already stored under the record's external_id is refreshed in place wherever it sits.
+        Without merge_adjacent, no other session is merged into it.
 
         When an adjacent session already exists in the database within the gap threshold,
         the two records are merged: the time window expands to cover both, stage minutes
@@ -405,7 +409,7 @@ class EventRecordService(
         never loses the original data.
         """
         result, inserted, final_detail = self._create_or_merge_sleep_inner(
-            db_session, user_id, record, detail, threshold_minutes
+            db_session, user_id, record, detail, threshold_minutes, merge_adjacent
         )
         is_nap = final_detail.is_nap
         if self.reclassify_sleep_naps_after_write(db_session, user_id, result) and result.sleep_detail is not None:
@@ -469,16 +473,27 @@ class EventRecordService(
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
         threshold_minutes: int,
+        merge_adjacent: bool = True,
     ) -> tuple[EventRecord, bool, EventRecordDetailCreate]:
-        adjacent = self.find_adjacent_sleep_record(
-            db_session,
-            user_id,
-            record.start_datetime,
-            record.end_datetime,
-            threshold_minutes,
-            source=record.source,
-            provider=record.provider,
-        )
+        adjacent = None
+        if record.external_id is not None:
+            adjacent = self.crud.find_sleep_by_external_id(
+                db_session,
+                user_id,
+                self.data_source_repo.provider_of(record).value,
+                record.external_id,
+                record.start_datetime,
+            )
+        if adjacent is None and merge_adjacent:
+            adjacent = self.crud.find_adjacent_sleep_record(
+                db_session,
+                user_id,
+                record.start_datetime,
+                record.end_datetime,
+                threshold_minutes,
+                source=record.source,
+                provider=record.provider,
+            )
 
         if adjacent is not None:
             # Same external_id → re-ingestion of the same session (e.g. webhook

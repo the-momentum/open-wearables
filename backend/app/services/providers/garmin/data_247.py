@@ -361,7 +361,7 @@ class Garmin247Data(Base247DataTemplate):
             start_datetime=self._from_epoch_seconds(start_ts),
             end_datetime=self._from_epoch_seconds(start_ts + duration),
             zone_offset=offset_to_iso(nap.get("napOffsetInSeconds")),
-            external_id=parent_summary_id,
+            external_id=f"{parent_summary_id}-nap-{start_ts}" if parent_summary_id else None,
             source=self.provider_name,
             user_id=user_id,
         )
