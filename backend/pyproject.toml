@@ -52,13 +52,13 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",
-    "freezegun>=1.5.5",
     "factory-boy>=3.3.3",
     "psycopg-binary>=3.3.9",
     "testcontainers[postgres,redis]>=4.15.0",
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.8.0",
     "pytest-randomly>=5.1.0",
+    "time-machine>=3.6.0",
 ]
 
 [tool.ruff]
