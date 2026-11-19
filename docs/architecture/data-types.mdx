@@ -221,6 +221,8 @@ Nutrients logged as standalone samples are returned as timeseries. Nutrients log
 | `dietary_folate` | mcg | Folate |
 | `dietary_folic_acid` | mcg | Folic acid |
 
+An SDK sync can list the samples deleted on the device in `data.deletions`, each by `id` and `type`. Deleted food and water items stored as timeseries are removed, so an item edited on the phone, which comes back under a new id, replaces the old one. Nutrients stored with a meal and deleted meals are left as they are, and deletions of other types are ignored.
+
 ### Other
 
 | Type | Unit | Description |

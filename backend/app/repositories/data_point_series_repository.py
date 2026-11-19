@@ -325,6 +325,15 @@ _WINDOWED_IN_WORKOUTS = text("""
         OFFSET 0
     ) series
 """)
+# One range of the (source, type) index prefix per source. A food or water row from the SDK keeps its item's id as
+# external id, as a later item at the same instant replaces both its value and its id.
+_DELETE_ENTRIES = text("""
+    DELETE FROM series_sample s
+    USING data_source ds
+    WHERE ds.user_id = :user_id AND ds.provider = :provider AND s.data_source_id = ds.id
+        AND s.series_type_definition_id = :type_id AND s.external_id = ANY(:ids)
+    RETURNING s.data_source_id, s.recorded_at, s.zone_offset
+""")
 _RESTORE_REPLACED = text(
     "UPDATE series_sample SET value = :value, window_seconds = NULL, external_id = NULL WHERE id = :id"
 )
@@ -496,6 +505,26 @@ class DataPointSeriesRepository(
     def delete_ids(self, db_session: DbSession, ids: Collection[UUID]) -> None:
         if ids:
             db_session.execute(delete(SeriesSample).where(SeriesSample.id.in_(list(ids))))
+
+    def delete_entries(
+        self, db_session: DbSession, user_id: UUID, provider: ProviderName, ids_by_type: dict[int, set[str]]
+    ) -> int:
+        """Delete a user's entries (food and water items) by id, per series type id, and queue their days for the
+        rollup; returns the rows deleted. The caller commits.
+
+        A day left without entries keeps its total, as the rollup keeps a series whose samples are gone.
+        data_type_coverage is not narrowed: a deleted item leaves the span at most one item wider than the rows held.
+        """
+        days: set[tuple[UUID, date]] = set()
+        deleted = 0
+        for type_id, ids in ids_by_type.items():
+            rows = db_session.execute(
+                _DELETE_ENTRIES, {"user_id": user_id, "provider": provider.value, "type_id": type_id, "ids": list(ids)}
+            ).all()
+            deleted += len(rows)
+            days |= {(row.data_source_id, local_date(row.recorded_at, row.zone_offset)) for row in rows}
+        mark_dirty_days(db_session, days)
+        return deleted
 
     @staticmethod
     def _with_live_sessions(
