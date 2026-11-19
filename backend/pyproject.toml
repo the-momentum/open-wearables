@@ -61,6 +61,7 @@ dev = [
     "time-machine>=3.6.0",
     "respx>=0.23.1",
     "pytest-mock>=3.17.0",
+    "dirty-equals>=0.11",
 ]
 
 [tool.ruff]
