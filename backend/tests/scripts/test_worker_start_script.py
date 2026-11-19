@@ -202,12 +202,13 @@ def test_second_signal_does_not_cut_a_slow_shutdown_short(run_worker_script: Cal
 _ROLES = ("io", "cpu", "ext")
 
 
-@pytest.mark.parametrize("worker_status", [2, 127, 255])
+@pytest.mark.parametrize(("worker_status", "container_status"), [(0, 1), (2, 2), (127, 127), (255, 255)])
 @pytest.mark.parametrize("role", _ROLES)
 def test_a_worker_exit_stops_the_other_workers_and_the_container(
-    run_worker_script: Callable, role: str, worker_status: int
+    run_worker_script: Callable, role: str, worker_status: int, container_status: int
 ) -> None:
-    """The worker's own exit code is kept, including 127 and 255 that bash 5 also uses for a lost status."""
+    """The worker's own exit code is kept, including 127 and 255 that bash 5 also uses for a lost status. A worker
+    ending with 0, e.g. shut down from Flower, still fails the container, so an on-failure policy restarts it."""
     others = [other for other in _ROLES if other != role]
     process, events_log = run_worker_script(
         EXT_QUEUES="my_queue",
@@ -218,7 +219,7 @@ def test_a_worker_exit_stops_the_other_workers_and_the_container(
     )
     _wait_for(events_log, "io started", "cpu started", "ext started")
 
-    assert process.wait(timeout=_TIMEOUT_S) == worker_status
+    assert process.wait(timeout=_TIMEOUT_S) == container_status
     for other in others:
         assert f"{other} stopped" in _events(events_log)
 
@@ -253,6 +254,36 @@ def test_extension_worker_runs_the_extension_queues(run_worker_script: Callable)
     assert "--pool=threads" in args
     assert "--prefetch-multiplier=1" in args
     assert "--disable-prefetch" in args
+
+
+def test_worker_roles_start_only_the_named_workers(run_worker_script: Callable) -> None:
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue", WORKER_ROLES="ext")
+    _wait_for(events_log, "ext started")
+
+    time.sleep(0.5)
+    assert "io started" not in _events(events_log)
+    assert "cpu started" not in _events(events_log)
+
+    process.send_signal(signal.SIGTERM)
+    assert process.wait(timeout=_TIMEOUT_S) == 0
+
+
+def test_without_the_ext_role_the_extensions_queues_are_not_looked_up(
+    run_worker_script: Callable, tmp_path: Path
+) -> None:
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue", WORKER_ROLES="io,cpu")
+    _wait_for(events_log, "io started", "cpu started")
+
+    time.sleep(0.5)
+    assert "ext started" not in _events(events_log)
+    assert "Extension disabled" not in (tmp_path / "container.log").read_text()
+
+
+def test_the_container_exits_when_its_roles_leave_no_worker(run_worker_script: Callable, tmp_path: Path) -> None:
+    process, _ = run_worker_script(WORKER_ROLES="ext")
+
+    assert process.wait(timeout=_TIMEOUT_S) == 1
+    assert "no worker to run for WORKER_ROLES=ext" in (tmp_path / "container.log").read_text()
 
 
 def test_workers_start_only_after_the_core_schema_is_at_head(run_worker_script: Callable) -> None:

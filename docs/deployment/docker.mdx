@@ -27,7 +27,9 @@ Every worker container, with or without extensions, waits for the core's databas
 
 When installed extensions declare queues of their own, the worker container runs a third worker on them, with `EXTENSION_WORKER_CONCURRENCY` threads (4 by default); if it doesn't start, the container log says which extension is disabled and why. Their tasks can run longer than the core's: set the worker service's `stop_grace_period` above the longest one, which each extension documents.
 
-The worker container exits when any of its workers does, so its restart policy brings them all back instead of leaving a queue without a worker.
+The worker container exits with a non-zero status when any of its workers stops on its own, even with success, so its restart policy brings them all back instead of leaving a queue without a worker.
+
+To scale the extension queues apart from the core's, run a second worker service from the same image with `WORKER_ROLES=ext`, and set `WORKER_ROLES=io,cpu` on the first. Without `WORKER_ROLES` a worker container runs all three.
 
 ## Image tags
 

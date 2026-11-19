@@ -15,21 +15,33 @@ for poll in $(seq 1 60); do
     sleep "${SCHEMA_POLL_SECONDS:-2}"
 done
 
-# OWExtension.celery_queues of the active extensions, for the third worker below.
-extension_queues=$(uv run python scripts/start/extension_queues.py | tee /dev/stderr | sed -n 's/^EXTENSION_QUEUES=//p')
-
-echo "Starting I/O worker..."
-uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q default,sdk_sync,garmin_sync,webhook_sync -n io@%h &
-io_pid=$!
-
-echo "Starting CPU worker..."
-# XML imports are long and a direct upload carries the whole file in its message. With early
-# acks a prefetch multiplier of 1 still reserves one extra message per busy process, so
-# prefetch is disabled: the worker fetches a task only when a process is free.
-uv run celery -A app.main:celery_app worker --loglevel=info --pool=prefork --concurrency=2 --prefetch-multiplier=1 --disable-prefetch -Q xml_sync -n cpu@%h &
-cpu_pid=$!
-
+# The workers this container runs, e.g. "ext" for a service of its own that scales the extension queues separately.
+roles=",${WORKER_ROLES:-io,cpu,ext},"
+io_pid=""
+cpu_pid=""
 ext_pid=""
+
+extension_queues=""
+if [[ "$roles" == *,ext,* ]]; then
+    # OWExtension.celery_queues of the active extensions, for the extension worker below.
+    extension_queues=$(uv run python scripts/start/extension_queues.py | tee /dev/stderr | sed -n 's/^EXTENSION_QUEUES=//p')
+fi
+
+if [[ "$roles" == *,io,* ]]; then
+    echo "Starting I/O worker..."
+    uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q default,sdk_sync,garmin_sync,webhook_sync -n io@%h &
+    io_pid=$!
+fi
+
+if [[ "$roles" == *,cpu,* ]]; then
+    echo "Starting CPU worker..."
+    # XML imports are long and a direct upload carries the whole file in its message. With early
+    # acks a prefetch multiplier of 1 still reserves one extra message per busy process, so
+    # prefetch is disabled: the worker fetches a task only when a process is free.
+    uv run celery -A app.main:celery_app worker --loglevel=info --pool=prefork --concurrency=2 --prefetch-multiplier=1 --disable-prefetch -Q xml_sync -n cpu@%h &
+    cpu_pid=$!
+fi
+
 if [ -n "$extension_queues" ]; then
     echo "Starting extension worker..."
     # Extension tasks can run for minutes, so they get their own pool. Prefetch is off as for the CPU worker:
@@ -37,7 +49,11 @@ if [ -n "$extension_queues" ]; then
     uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads --concurrency="${EXTENSION_WORKER_CONCURRENCY:-4}" --prefetch-multiplier=1 --disable-prefetch -Q "$extension_queues" -n ext@%h &
     ext_pid=$!
 fi
-worker_pids=("$io_pid" "$cpu_pid" ${ext_pid:+"$ext_pid"})
+worker_pids=(${io_pid:+"$io_pid"} ${cpu_pid:+"$cpu_pid"} ${ext_pid:+"$ext_pid"})
+if [ "${#worker_pids[@]}" = 0 ]; then
+    echo "no worker to run for WORKER_ROLES=${WORKER_ROLES:-io,cpu,ext}; exiting" >&2
+    exit 1
+fi
 
 # This shell is PID 1 in the container, so a SIGTERM from `docker stop` only reaches
 # the workers if it is forwarded. Without it all are SIGKILLed after the grace period
@@ -81,7 +97,9 @@ wait -n -p first_pid "${worker_pids[@]}"
 status=$?
 
 if [ "$signalled" = 0 ]; then
-    # A worker exited on its own: stop the others and keep its status.
+    # A worker exited on its own: stop the others and keep its status, but never 0, which an on-failure restart
+    # policy would take as a finished container.
+    [ "$status" = 0 ] && status=1
     for pid in "${worker_pids[@]}"; do
         [ "$pid" != "$first_pid" ] && kill -TERM "$pid" 2>/dev/null
     done
@@ -91,11 +109,11 @@ if [ "$signalled" = 0 ]; then
     exit "$status"
 fi
 
-# Stopped: the trap has signalled every worker, and the status is the CPU worker's, as before.
-wait_for_exit "$cpu_pid"
+# Stopped: the trap has signalled every worker, and the status is the CPU worker's, as before, or the first one's.
+status_pid=${cpu_pid:-${worker_pids[0]}}
+wait_for_exit "$status_pid"
 status=$?
-wait_for_exit "$io_pid"
-if [ -n "$ext_pid" ]; then
-    wait_for_exit "$ext_pid"
-fi
+for pid in "${worker_pids[@]}"; do
+    [ "$pid" != "$status_pid" ] && wait_for_exit "$pid"
+done
 exit "$status"
