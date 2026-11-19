@@ -331,7 +331,7 @@ uv run ruff check . --fix && uv run ruff format .
 uv run ty check .
 
 # Run tests (in parallel via pytest-xdist; add -n0 for --pdb or breakpoint())
-uv run pytest -v --cov=app
+uv run pytest --cov=app
 ```
 
 Use `uv add <package-name>` to add new dependencies (automatically updates pyproject.toml, lockfile, and venv).
