@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from dirty_equals import IsInstance, IsInt, IsStr
 from fastapi.testclient import TestClient
 from httpx import Response
 from kombu.exceptions import OperationalError
@@ -46,13 +47,14 @@ class TestXMLImportEndpoint:
         # Assert - May return 403 or 503 if S3 is not configured in test environment
         assert response.status_code in [200, 201, 403, 503]
         if response.status_code in [200, 201]:
-            data = response.json()
-            assert "upload_url" in data
-            assert "form_fields" in data
-            assert "file_key" in data
-            assert "expires_in" in data
-            assert "max_file_size" in data
-            assert "bucket" in data
+            assert response.json() == {
+                "upload_url": IsStr,
+                "form_fields": IsInstance(dict),
+                "file_key": IsStr,
+                "expires_in": IsInt,
+                "max_file_size": IsInt,
+                "bucket": IsStr,
+            }
 
     def test_generate_presigned_url_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that presigned URL generation requires API key."""

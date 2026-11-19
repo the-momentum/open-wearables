@@ -1,5 +1,6 @@
 """Tests for SDK logs endpoint."""
 
+from dirty_equals import IsPartialDict
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
@@ -204,13 +205,15 @@ class TestSDKLogsEventFields:
     def test_data_type_is_normalised_native_kept(self) -> None:
         fields = _event_fields(SDKLogRequest(**_payload(SYNC_END_EVENT, DEVICE_STATE_EVENT)))
 
-        assert fields["data_type"] == SeriesType.heart_rate.value
-        assert fields["native_data_type"] == "HKQuantityTypeIdentifierHeartRate"
-        assert fields["success"] is True
-        assert fields["record_count"] == 500
-        assert fields["task_type"] == "background"
-        assert fields["low_power"] is False
-        assert fields["thermal_state"] == "nominal"
+        assert fields == IsPartialDict(
+            data_type=SeriesType.heart_rate.value,
+            native_data_type="HKQuantityTypeIdentifierHeartRate",
+            success=True,
+            record_count=500,
+            task_type="background",
+            low_power=False,
+            thermal_state="nominal",
+        )
 
     def test_android_data_type_maps_to_same_series_type(self) -> None:
         """Health Connect and HealthKit heart rate must land on one series for a shared panel."""

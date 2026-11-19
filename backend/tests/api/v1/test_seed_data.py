@@ -9,6 +9,7 @@ Tests cover:
 from unittest.mock import create_autospec
 
 from celery.result import AsyncResult
+from dirty_equals import IsInstance, IsStr
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
@@ -32,11 +33,7 @@ class TestListPresets:
         assert len(data) > 0
 
         # Each preset should have required fields
-        preset = data[0]
-        assert "id" in preset
-        assert "label" in preset
-        assert "description" in preset
-        assert "profile" in preset
+        assert data[0] == {"id": IsStr, "label": IsStr, "description": IsStr, "profile": IsInstance(dict)}
 
     def test_list_presets_contains_known_ids(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         developer = DeveloperFactory(email="test@example.com", password="test123")
