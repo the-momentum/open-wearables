@@ -168,6 +168,18 @@ class TestApplicationServiceRotateSecret:
 
         assert exc_info.value.status_code == 401
 
+    def test_rotate_secret_outlives_the_request(self, db: Session) -> None:
+        """A request ends by closing its session, which discards anything not committed."""
+        developer = DeveloperFactory()
+        app, old_secret = application_service.create_application(db, developer.id, "Test App")
+
+        _, new_secret = application_service.rotate_secret(db, app.app_id, developer.id)
+        db.rollback()
+
+        assert application_service.validate_credentials(db, app.app_id, new_secret)
+        with pytest.raises(AuthenticationError):
+            application_service.validate_credentials(db, app.app_id, old_secret)
+
     def test_rotate_secret_not_owner_raises_404(self, db: Session) -> None:
         """Should raise 404 when rotating another developer's app secret."""
         developer1 = DeveloperFactory()
