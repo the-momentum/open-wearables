@@ -19,8 +19,10 @@ from httpx import Response
 from sqlalchemy.orm import Session
 
 from app.config import DEFAULT_ADMIN_PASSWORD, settings
+from app.integrations.redis_client import get_redis_client
 from app.schemas.model_crud.user_management import DeveloperUpdate
 from app.services import developer_service
+from app.utils import login_throttle
 from app.utils.config_utils import EnvironmentType
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
@@ -80,6 +82,21 @@ class TestLogin:
         statuses = [_login(client, api_v1_prefix, "test@example.com", "wrong").status_code for _ in range(3)]
 
         assert statuses == [401, 401, 401]
+
+    @patch.object(settings, "login_max_failed_attempts", 3)
+    def test_login_attempts_in_flight_count_against_the_limit(self) -> None:
+        """Parallel requests are counted on arrival, so a burst can't outrun the limit."""
+        waits = [login_throttle.count_attempt("test@example.com") for _ in range(4)]
+
+        assert waits[:3] == [0, 0, 0]
+        assert 0 < waits[3] <= settings.login_lockout_seconds
+
+    def test_login_counter_without_expiry_gets_one(self) -> None:
+        get_redis_client().set("login_attempts:test@example.com", 1)
+
+        login_throttle.count_attempt("test@example.com")
+
+        assert 0 < get_redis_client().ttl("login_attempts:test@example.com") <= settings.login_lockout_seconds
 
     def test_login_invalid_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test login fails with incorrect password."""

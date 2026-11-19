@@ -41,7 +41,7 @@ def login(
     db: DbSession,
 ) -> TokenResponse:
     """Authenticate developer and return access token with refresh token."""
-    if wait := login_throttle.seconds_until_allowed(form_data.username):
+    if wait := login_throttle.count_attempt(form_data.username):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed login attempts. Try again later.",
@@ -66,7 +66,6 @@ def login(
 
     developer = developer_service.get_by_email(db, form_data.username)
     if not developer:
-        login_throttle.record_failure(form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -74,7 +73,6 @@ def login(
         )
 
     if not verify_password(form_data.password, developer.hashed_password):
-        login_throttle.record_failure(form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
