@@ -14,6 +14,7 @@ Tests cover:
 from unittest.mock import patch
 
 import pytest
+from dirty_equals import IsDatetime, IsStr
 from fastapi.testclient import TestClient
 from httpx import Response
 from pytest_mock import MockerFixture
@@ -51,11 +52,13 @@ class TestLogin:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
-        assert data["expires_in"] == settings.access_token_expire_minutes * 60
-        assert isinstance(data["access_token"], str)
-        assert len(data["access_token"]) > 0
+        assert data == {
+            "access_token": IsStr(min_length=1),
+            "refresh_token": IsStr(regex=r"rt-.*"),
+            "token_type": "bearer",
+            "expires_in": settings.access_token_expire_minutes * 60,
+            "password_change": None,
+        }
 
     def test_login_locked_after_failed_attempts(
         self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
@@ -341,10 +344,14 @@ class TestGetCurrentDeveloper:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == str(developer.id)
-        assert data["email"] == "test@example.com"
-        assert "created_at" in data
-        assert "updated_at" in data
+        assert data == {
+            "id": str(developer.id),
+            "first_name": None,
+            "last_name": None,
+            "email": "test@example.com",
+            "created_at": IsDatetime(iso_string=True),
+            "updated_at": IsDatetime(iso_string=True),
+        }
 
     def test_get_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting current developer fails without authentication."""

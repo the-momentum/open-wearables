@@ -15,6 +15,7 @@ from uuid import UUID
 import httpx
 import pytest
 import respx
+from dirty_equals import IsDatetime, IsPartialDict
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
@@ -188,23 +189,17 @@ class TestConnectionsEndpoints:
         assert len(data) == 1
         connection_data = data[0]
 
-        # Verify essential fields are present
-        assert "id" in connection_data
-        assert "user_id" in connection_data
-        assert "provider" in connection_data
-        assert "provider_user_id" in connection_data
-        assert "provider_username" in connection_data
-        assert "status" in connection_data
-        assert "created_at" in connection_data
-        assert "updated_at" in connection_data
-        assert "icon_url" in connection_data
-
-        # Verify values
-        assert connection_data["id"] == str(connection.id)
-        assert connection_data["user_id"] == str(user.id)
-        assert connection_data["provider"] == "garmin"
-        assert connection_data["status"] == ConnectionStatus.ACTIVE.value
-        assert connection_data["icon_url"] == "/static/provider-icons/garmin.svg"
+        assert connection_data == IsPartialDict(
+            id=str(connection.id),
+            user_id=str(user.id),
+            provider="garmin",
+            provider_user_id="test_user_123",
+            provider_username="test_user",
+            status=ConnectionStatus.ACTIVE.value,
+            created_at=IsDatetime(iso_string=True),
+            updated_at=IsDatetime(iso_string=True),
+            icon_url="/static/provider-icons/garmin.svg",
+        )
 
     def test_get_connections_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""
