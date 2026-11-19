@@ -25,7 +25,7 @@ class TestXMLImportEndpoint:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
     ) -> None:
         """Test presigned URL endpoint (may fail if S3 not configured in test env)."""
         # Arrange
@@ -76,7 +76,7 @@ class TestXMLImportEndpoint:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
     ) -> None:
         """Test presigned URL generation with invalid payload."""
         # Arrange
@@ -101,7 +101,7 @@ class TestXMLImportEndpoint:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
     ) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
@@ -112,7 +112,7 @@ class TestXMLImportEndpoint:
         )
 
         assert response.status_code == 404
-        mock_external_apis["s3"].generate_presigned_post.assert_not_called()
+        mock_s3.generate_presigned_post.assert_not_called()
 
     def test_generate_presigned_url_rejects_non_uuid_user_id(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)

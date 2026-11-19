@@ -203,6 +203,7 @@ def set_factory_session(request: pytest.FixtureRequest) -> Generator[None]:
 @pytest.fixture
 def client(db: Session) -> Generator[TestClient, None, None]:
     """Create a test client with database dependency override."""
+
     def override_get_db() -> Generator[Session, None, None]:
         yield db
 
@@ -395,10 +396,27 @@ def _celery_in_memory_broker() -> None:
 
 @pytest.fixture(autouse=True)
 def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
-    """Mock external API calls (Garmin, Polar, Suunto, AWS)."""
-    mocks: dict[str, MagicMock] = {}
+    """Block outgoing HTTP calls and stub Garmin backfill state for every test."""
+    garmin_handler = "app.services.providers.garmin.webhook_handler"
 
-    # Configure boto3 S3 mock
+    with (
+        patch("httpx.AsyncClient") as mock_httpx,
+        patch("requests.Session") as mock_requests,
+        patch(f"{garmin_handler}.mark_type_success", return_value=False),
+        patch(
+            f"{garmin_handler}.get_backfill_status",
+            return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
+        ),
+    ):
+        yield {"httpx": mock_httpx, "requests": mock_requests}
+
+
+@pytest.fixture
+def mock_s3() -> Generator[MagicMock, None, None]:
+    """Replace the S3 clients used by the Apple XML upload flow with one mock.
+
+    Opt in from tests that exercise presigned/multipart uploads or the AWS upload task.
+    """
     mock_s3 = MagicMock()
     mock_s3.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test-key"
     mock_s3.generate_presigned_post.return_value = {
@@ -423,55 +441,17 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
     mock_s3.complete_multipart_upload.return_value = {"ETag": "test-etag", "Key": "test-user/raw/test.xml"}
     mock_s3.abort_multipart_upload.return_value = {}
 
-    garmin_handler = "app.services.providers.garmin.webhook_handler"
+    apple_xml = "app.services.providers.apple.apple_xml"
 
     with (
-        patch("httpx.AsyncClient") as mock_httpx,
-        patch("boto3.client", return_value=mock_s3) as mock_boto3,
-        patch("requests.Session") as mock_requests,
         patch.object(settings, "aws_bucket_name", "test-bucket"),
-        patch("app.services.providers.apple.apple_xml.aws_service.get_s3_client", return_value=mock_s3),
-        patch("app.services.providers.apple.apple_xml.presigned_url_service.get_s3_client", return_value=mock_s3),
-        patch("app.services.providers.apple.apple_xml.multipart_upload_service.get_s3_client", return_value=mock_s3),
-        patch(
-            "app.services.providers.apple.apple_xml.presigned_url_service.get_public_s3_client", return_value=mock_s3
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.multipart_upload_service.get_public_s3_client", return_value=mock_s3
-        ),
+        patch(f"{apple_xml}.presigned_url_service.get_s3_client", return_value=mock_s3),
+        patch(f"{apple_xml}.presigned_url_service.get_public_s3_client", return_value=mock_s3),
+        patch(f"{apple_xml}.multipart_upload_service.get_s3_client", return_value=mock_s3),
+        patch(f"{apple_xml}.multipart_upload_service.get_public_s3_client", return_value=mock_s3),
         patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", return_value=mock_s3),
-        patch(
-            "app.services.providers.apple.apple_xml.presigned_url_service.presigned_url_service.s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.presigned_url_service.presigned_url_service.public_s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.multipart_upload_service.multipart_upload_service.s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.multipart_upload_service.multipart_upload_service.public_s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(f"{garmin_handler}.mark_type_success", return_value=False),
-        patch(
-            f"{garmin_handler}.get_backfill_status",
-            return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
-        ),
     ):
-        mocks["httpx"] = mock_httpx
-        mocks["boto3"] = mock_boto3
-        mocks["requests"] = mock_requests
-        mocks["s3"] = mock_s3
-
-        yield mocks
+        yield mock_s3
 
 
 @pytest.fixture(scope="session", autouse=True)
