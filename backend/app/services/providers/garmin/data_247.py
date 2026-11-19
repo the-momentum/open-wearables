@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from redis.exceptions import RedisError
@@ -51,6 +52,14 @@ from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_garmin_url(url: str) -> bool:
+    """Only Garmin gets the user's bearer token."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    return parsed.scheme == "https" and (host == "garmin.com" or host.endswith(".garmin.com"))
+
 
 # Series types to skip when parsing FIT files — already present from activityDetails.
 # Derived from ACTIVITY_SAMPLE_SERIES so additions to the map are automatically
@@ -1902,6 +1911,16 @@ class Garmin247Data(Base247DataTemplate):
                         if not callback_url:
                             continue
                         activity_id = str(item.get("activityId", ""))
+                        if not _is_garmin_url(callback_url):
+                            logger.warning(
+                                "Skipped FIT download from a non-Garmin host",
+                                provider="garmin",
+                                task="process_items_batch",
+                                user_id=str(user_id),
+                                activity_id=activity_id,
+                                host=urlparse(callback_url).hostname,
+                            )
+                            continue
                         try:
                             fit_bytes = download_binary_content(
                                 db=db,
@@ -2006,27 +2025,33 @@ class Garmin247Data(Base247DataTemplate):
 
         # Single bulk insert for EventRecords
         if all_records:
-            inserted_ids = event_record_service.bulk_create(db, all_records)
+            stored = event_record_service.bulk_create(db, all_records)
             db.flush()
 
-            inserted_set = set(inserted_ids)
+            inserted_set = {record_id for record_id, stored_id in stored.items() if record_id == stored_id}
 
             # Bulk create sleep details for actually inserted records
             sleep_details = [d for d in all_sleep_details if d.record_id in inserted_set]
             if sleep_details:
                 event_record_service.bulk_create_details(db, sleep_details, detail_type=EventCategory.SLEEP)
 
-            # Bulk create workout details for actually inserted records
-            workout_details = [d for d in all_workout_details if d.record_id in inserted_set]
+            # Workout details also refresh the stored workouts matched on external_id
+            workout_details = [
+                d.model_copy(update={"record_id": stored[d.record_id]})
+                for d in all_workout_details
+                if d.record_id in stored
+            ]
             if workout_details:
-                event_record_service.bulk_create_details(db, workout_details, detail_type=EventCategory.WORKOUT)
+                event_record_service.bulk_create_details(
+                    db, workout_details, detail_type=EventCategory.WORKOUT, created=inserted_set
+                )
 
             # Bulk create MCT details for actually inserted records
             mct_details = [d for d in all_mct_details if d.record_id in inserted_set]
             if mct_details:
                 event_record_service.bulk_create_details(db, mct_details, detail_type=EventCategory.MENSTRUAL_CYCLE)  # ty:ignore[invalid-argument-type]
 
-            count += WriteCounts(len(inserted_ids), 0)
+            count += WriteCounts(len(inserted_set), 0)
 
         if all_health_scores:
             count += health_score_service.bulk_create(db, all_health_scores)

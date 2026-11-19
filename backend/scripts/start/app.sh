@@ -210,6 +210,13 @@ echo 'Queueing HealthKit condensed series repair...'
 uv run python scripts/data_migrations/repair_condensed_series.py \
     || echo "Warning: HealthKit condensed series repair not queued — will retry on next startup."
 
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Deletes workouts re-delivered with revised times that were stored twice under one external_id, keeping
+# the newest copy of each overlapping set. Runs once per instance (data_migration).
+echo 'Running workout external_id dedupe...'
+uv run python scripts/data_migrations/dedupe_workouts_by_external_id.py \
+    || echo "Warning: workout external_id dedupe failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

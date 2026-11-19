@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from kombu.exceptions import EncodeError
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
@@ -362,6 +363,7 @@ class TestOutgoingWebhooksAPI:
             m.is_enabled.return_value = True
             m.ensure_application.return_value = "app_uid_123"
             m.user_id_from_endpoint.return_value = None
+            m.event_types = svix_service.event_types  # calls no Svix server
             yield m
 
     def test_list_event_types(self, client: TestClient) -> None:
@@ -372,6 +374,21 @@ class TestOutgoingWebhooksAPI:
         names = {e["name"] for e in data}
         assert "workout.created" in names
         assert "sleep.created" in names
+
+    def test_extension_event_types_are_listed(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "app.services.outgoing_webhooks.svix.collect_webhook_event_types",
+            lambda: {"my_extension.thing.created": "A thing was created."},
+        )
+
+        data = client.get("/api/v1/webhooks/event-types").json()
+
+        assert data[-1] == {
+            "name": "my_extension.thing.created",
+            "description": "A thing was created.",
+            "child_events": None,
+        }
+        assert len(data) == len(WebhookEventType) + 1
 
     def test_create_endpoint(
         self,
@@ -936,3 +953,36 @@ def test_event_type_sync_reads_every_page_before_deciding_what_to_create() -> No
     assert [c.args[0].iterator for c in client.event_type.list.call_args_list] == [None, "it_1"]
     client.event_type.create.assert_not_called()
     client.event_type.patch.assert_not_called()
+
+
+def test_event_type_sync_registers_the_extensions_types() -> None:
+    client = MagicMock()
+    client.event_type.list.return_value = MagicMock(data=_event_types(list(WebhookEventType)), done=True, iterator=None)
+
+    with (
+        patch("app.services.outgoing_webhooks.svix._client", client),
+        patch(
+            "app.services.outgoing_webhooks.svix.collect_webhook_event_types",
+            return_value={"my_extension.thing.created": "A thing was created."},
+        ),
+    ):
+        assert _register_event_types() is True
+
+    client.event_type.patch.assert_not_called()
+    [created] = [c.args[0] for c in client.event_type.create.call_args_list]
+    assert (created.name, created.description) == ("my_extension.thing.created", "A thing was created.")
+
+
+def test_dispatch_logs_an_unserializable_payload_as_an_error_and_does_not_raise() -> None:
+    with (
+        patch("app.services.outgoing_webhooks.events.svix_service.is_enabled", return_value=True),
+        patch("app.services.outgoing_webhooks.events.celery_app") as celery_app,
+        patch("app.services.outgoing_webhooks.events.logger") as logger,
+    ):
+        celery_app.send_task.side_effect = EncodeError("not JSON")
+
+        _dispatch("my_extension.thing.created", {"type": "my_extension.thing.created", "data": {"ids": {1, 2}}})
+
+    logger.error.assert_called_once()
+    assert logger.error.call_args.args[0] == "Webhook event payload can't be serialized"
+    logger.warning.assert_not_called()

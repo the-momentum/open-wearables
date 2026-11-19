@@ -1,5 +1,7 @@
 """Tests for SDK authentication utilities."""
 
+from unittest.mock import patch
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -13,40 +15,49 @@ class TestGetSDKAuth:
     """Tests for SDK authentication dependency."""
 
     @pytest.mark.asyncio
-    async def test_sdk_token_returns_context(self, db: Session) -> None:
-        """Valid SDK token should return SDKAuthContext."""
+    async def test_sdk_token_returns_context(self) -> None:
+        """Valid SDK token should return SDKAuthContext without opening a session."""
         user_id = "123e4567-e89b-12d3-a456-426614174000"
         token = create_sdk_user_token("app_123", user_id)
 
-        result = await get_sdk_auth(db=db, token=token, x_open_wearables_api_key=None)
+        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+            result = get_sdk_auth(token=token, x_open_wearables_api_key=None)
 
         assert result.auth_type == "sdk_token"
         assert str(result.user_id) == user_id
         assert result.app_id == "app_123"
+        mock_session_local.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_api_key_returns_context(self, db: Session) -> None:
-        """Valid API key should return SDKAuthContext."""
+        """Valid API key should return SDKAuthContext, validated on a session closed before return."""
         api_key = ApiKeyFactory()
 
-        result = await get_sdk_auth(db=db, token=None, x_open_wearables_api_key=api_key.plain_key)
+        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+            mock_session_local.return_value.__enter__.return_value = db
+            result = get_sdk_auth(token=None, x_open_wearables_api_key=api_key.plain_key)
 
         assert result.auth_type == "api_key"
         assert result.api_key_id == str(api_key.id)
+        mock_session_local.return_value.__exit__.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_no_auth_raises_401(self, db: Session) -> None:
         """Missing auth should raise 401."""
-        with pytest.raises(HTTPException) as exc_info:
-            await get_sdk_auth(db=db, token=None, x_open_wearables_api_key=None)
+        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+            mock_session_local.return_value.__enter__.return_value = db
+            with pytest.raises(HTTPException) as exc_info:
+                get_sdk_auth(token=None, x_open_wearables_api_key=None)
 
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_invalid_api_key_raises_401(self, db: Session) -> None:
         """Invalid API key should raise 401."""
-        with pytest.raises(HTTPException) as exc_info:
-            await get_sdk_auth(db=db, token=None, x_open_wearables_api_key="invalid_key")
+        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+            mock_session_local.return_value.__enter__.return_value = db
+            with pytest.raises(HTTPException) as exc_info:
+                get_sdk_auth(token=None, x_open_wearables_api_key="invalid_key")
 
         assert exc_info.value.status_code == 401
 
@@ -57,7 +68,7 @@ class TestGetSDKAuth:
         user_id = "123e4567-e89b-12d3-a456-426614174001"
         token = create_sdk_user_token("app_123", user_id)
 
-        result = await get_sdk_auth(db=db, token=token, x_open_wearables_api_key=api_key.plain_key)
+        result = get_sdk_auth(token=token, x_open_wearables_api_key=api_key.plain_key)
 
         assert result.auth_type == "sdk_token"
         assert str(result.user_id) == user_id

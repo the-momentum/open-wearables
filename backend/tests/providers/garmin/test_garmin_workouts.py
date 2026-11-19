@@ -1,6 +1,6 @@
 """Tests for Garmin workouts implementation."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -53,7 +53,7 @@ class TestGarminWorkouts:
             "activityId": "12345678901",
             "summaryId": "summary_123",
             "activityType": "RUNNING",
-            "startTimeInSeconds": 1705309200,  # 2024-01-15 08:00:00
+            "startTimeInSeconds": 1705309200,  # 2024-01-15 09:00:00 UTC
             "durationInSeconds": 3600,
             "deviceName": "Garmin Forerunner 945",
             "distanceInMeters": 10000,
@@ -83,6 +83,33 @@ class TestGarminWorkouts:
             assert params["uploadStartTimeInSeconds"] == int(start_date.timestamp())
             assert params["uploadEndTimeInSeconds"] == int(end_date.timestamp())
 
+    @pytest.mark.usefixtures("non_utc_process_timezone")
+    def test_get_workouts_from_api_keeps_chunks_at_24h_across_dst_change(
+        self, garmin_workouts: GarminWorkouts, db: Session
+    ) -> None:
+        """Test every chunk spans at most 24 real hours when the range crosses a DST change on the host."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        start_ts = int(datetime(2025, 10, 25, tzinfo=timezone.utc).timestamp())
+        end_ts = int(datetime(2025, 10, 28, tzinfo=timezone.utc).timestamp())  # spans the 2025-10-26 fall-back
+
+        with patch.object(garmin_workouts, "_make_api_request", return_value=[]) as mock_request:
+            # Act
+            garmin_workouts.get_workouts_from_api(
+                db, user.id, summary_start_time=str(start_ts), summary_end_time=str(end_ts)
+            )
+
+            # Assert
+            ranges = [
+                (c.kwargs["params"]["uploadStartTimeInSeconds"], c.kwargs["params"]["uploadEndTimeInSeconds"])
+                for c in mock_request.call_args_list
+            ]
+            assert ranges[0][0] == start_ts
+            assert ranges[-1][1] == end_ts
+            assert all(end - start <= 24 * 3600 for start, end in ranges)
+            assert all(prev[1] == nxt[0] for prev, nxt in zip(ranges, ranges[1:]))
+
     def test_parse_timestamp_unix_format(self, garmin_workouts: GarminWorkouts) -> None:
         """Test parsing Unix timestamp."""
         result = garmin_workouts._parse_timestamp("1705309200")
@@ -94,6 +121,22 @@ class TestGarminWorkouts:
         assert result is not None
         assert isinstance(result, int)
 
+    @pytest.mark.usefixtures("non_utc_process_timezone")
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("2024-01-15", 1705276800),  # 2024-01-15 00:00 UTC
+            ("2024-01-15T09:00:00", 1705309200),  # 2024-01-15 09:00 UTC
+            ("2024-01-15T09:00:00Z", 1705309200),
+            ("2024-01-15T10:00:00+01:00", 1705309200),
+        ],
+    )
+    def test_parse_timestamp_reads_offsetless_iso_as_utc(
+        self, garmin_workouts: GarminWorkouts, value: str, expected: int
+    ) -> None:
+        """Test an ISO string without an offset means UTC, not the host's local time."""
+        assert garmin_workouts._parse_timestamp(value) == expected
+
     def test_parse_timestamp_invalid_format(self, garmin_workouts: GarminWorkouts) -> None:
         """Test parsing invalid timestamp returns None."""
         result = garmin_workouts._parse_timestamp("invalid_timestamp")
@@ -104,17 +147,17 @@ class TestGarminWorkouts:
         result = garmin_workouts._parse_timestamp(None)
         assert result is None
 
-    def test_extract_dates(self, garmin_workouts: GarminWorkouts) -> None:
-        """Test extracting dates from timestamps."""
-        start_ts = 1705309200  # 2024-01-15 08:00:00
-        end_ts = 1705312800  # 2024-01-15 09:00:00
+    @pytest.mark.usefixtures("non_utc_process_timezone")
+    def test_extract_dates_returns_utc_instants_on_non_utc_host(self, garmin_workouts: GarminWorkouts) -> None:
+        """Test Unix timestamps become UTC instants regardless of the host timezone."""
+        start_ts = 1705309200  # 2024-01-15 09:00:00 UTC
+        end_ts = 1705312800  # 2024-01-15 10:00:00 UTC
 
         start_date, end_date = garmin_workouts._extract_dates(start_ts, end_ts)
 
-        assert isinstance(start_date, datetime)
-        assert isinstance(end_date, datetime)
-        assert start_date.timestamp() == start_ts
-        assert end_date.timestamp() == end_ts
+        assert start_date == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
+        assert end_date == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
+        assert start_date.utcoffset() == end_date.utcoffset() == timedelta(0)
 
     def test_build_metrics_with_all_values(
         self,
@@ -187,6 +230,7 @@ class TestGarminWorkouts:
 
         assert garmin_workouts._build_metrics(manual)["label"] == "Trail Run"
 
+    @pytest.mark.usefixtures("non_utc_process_timezone")
     def test_normalize_workout(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
         """Test normalizing Garmin activity to event record."""
         user_id = uuid4()
@@ -201,6 +245,8 @@ class TestGarminWorkouts:
         assert record.source_name == "Garmin Forerunner 945"
         assert record.device_model == "Garmin Forerunner 945"
         assert record.duration_seconds == 3600
+        assert record.start_datetime == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
+        assert record.end_datetime == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
         assert record.external_id == "12345678901"
         assert record.user_id == user_id
 

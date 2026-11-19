@@ -518,9 +518,10 @@ def test_captured_sync_step_reports_failures_not_a_users_state(captured: list[di
     assert [event["contexts"]["log"]["data_type"] for event in captured] == ["activity"]
 
 
+@pytest.mark.parametrize("provider", ["strava", "garmin"])
 @pytest.mark.parametrize("captured", [False, True], indirect=True, ids=["default", "sensitive"])
 def test_webhook_callback_token_never_reaches_sentry(
-    captured: list[dict[str, Any]], transport: _CapturingTransport
+    captured: list[dict[str, Any]], transport: _CapturingTransport, provider: str
 ) -> None:
     app = FastAPI()
 
@@ -529,10 +530,10 @@ def test_webhook_callback_token_never_reaches_sentry(
         raise RuntimeError("boom")
 
     client = TestClient(app, raise_server_exceptions=False)
-    client.post(f"/api/v1/providers/strava/webhooks/{FAKE_TOKEN}")
+    client.post(f"/api/v1/providers/{provider}/webhooks/{FAKE_TOKEN}")
     sentry_sdk.flush()
 
     event = captured[0]
-    assert event["request"]["url"].endswith("/api/v1/providers/strava/webhooks/redacted")
+    assert event["request"]["url"].endswith(f"/api/v1/providers/{provider}/webhooks/redacted")
     assert FAKE_TOKEN not in _dump(event)
     assert FAKE_TOKEN not in _dump(transport.transactions[-1])

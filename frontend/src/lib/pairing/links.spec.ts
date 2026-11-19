@@ -3,15 +3,15 @@ import { pairingLink, safeReturnUrl } from './links';
 
 describe('pairingLink', () => {
 	it('builds an absolute link an admin can paste into a message', () => {
-		expect(pairingLink('https://app.example.com', 'abc-123')).toBe(
-			'https://app.example.com/users/abc-123/pair'
+		expect(pairingLink('https://app.example.com', 'abc-123', 'tok')).toBe(
+			'https://app.example.com/users/abc-123/pair?t=tok'
 		);
 	});
 
 	// origin from a proxy or config sometimes arrives with a trailing slash.
 	it('does not double the slash', () => {
-		expect(pairingLink('https://app.example.com/', 'abc-123')).toBe(
-			'https://app.example.com/users/abc-123/pair'
+		expect(pairingLink('https://app.example.com/', 'abc-123', 'tok')).toBe(
+			'https://app.example.com/users/abc-123/pair?t=tok'
 		);
 	});
 });

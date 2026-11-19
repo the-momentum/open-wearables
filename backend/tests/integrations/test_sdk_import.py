@@ -30,7 +30,7 @@ from app.schemas.enums.series_types import get_series_type_from_id
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
-from app.services.sdk.import_service import ImportService
+from app.services.sdk.import_service import ImportService, _parse_sync_request
 from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
 
 SDK_ENVELOPE: dict[str, str] = {
@@ -554,6 +554,35 @@ class TestAppleSDKImport:
         assert details is not None
         assert details.steps_count == 4500
         assert details.distance == Decimal("3200")
+
+    def test_last_delivery_of_a_workout_in_one_request_keeps_its_details(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        user = UserFactory()
+
+        def delivery(end: str, steps: int) -> dict[str, Any]:
+            return {
+                "id": "ABAB0000-1111-2222-3333-444455556666",
+                "type": "walking",
+                "startDate": "2025-01-29T12:00:00Z",
+                "endDate": end,
+                "source": {"name": "Apple Watch", "bundleIdentifier": "com.apple.health"},
+                "values": [{"type": "stepCount", "unit": "count", "value": steps}],
+            }
+
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {"workouts": [delivery("2025-01-29T12:40:00Z", 4000), delivery("2025-01-29T12:45:00Z", 4500)]},
+        }
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["workouts_saved"] == 1
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+        assert details.steps_count == 4500
 
     def test_import_workout_with_fractional_steps(
         self,
@@ -1158,6 +1187,66 @@ class TestSDKImportUnitConversion:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.height
         assert samples[0].value == Decimal("175.2600")
+
+    @pytest.mark.parametrize("metric_type", ["ACTIVITY_INTENSITY_MODERATE", "ACTIVITY_INTENSITY_VIGOROUS"])
+    def test_health_connect_activity_intensity_minutes_are_exercise_time(
+        self,
+        import_service: ImportService,
+        metric_type: str,
+    ) -> None:
+        """Moderate and vigorous minutes are both exercise_time, taken from the record's length, not its value."""
+        record = self._record(metric_type, 999, unit="s") | {
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": "2025-04-10T10:25:00Z",
+        }
+        request = self._build_request("health_connect", [record])
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.exercise_time
+        assert samples[0].value == Decimal("25")
+
+    @pytest.mark.parametrize("end", ["2025-04-10T09:35:00Z", "2025-04-10T10:00:00Z"])
+    def test_health_connect_activity_intensity_without_minutes_is_dropped(self, end: str) -> None:
+        """A reversed or empty interval holds no minutes; the import reports it as dropped."""
+        intensity = self._record("ACTIVITY_INTENSITY_MODERATE", 999, unit="s") | {
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": end,
+        }
+        raw = {
+            "provider": "health_connect",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2025-04-10T12:00:00Z",
+            "data": {"records": [intensity, self._record("STEPS", 100)]},
+        }
+
+        request, dropped = _parse_sync_request(raw)
+
+        assert [record.type for record in request.data.records] == ["STEPS"]
+        assert [(record["collection"], record["index"]) for record in dropped] == [("records", 0)]
+
+    def test_health_connect_moderate_and_vigorous_with_one_start_keep_one_sample(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """Both intensities are exercise_time, so the later record from one source with the same start overwrites."""
+        user = UserFactory()
+        moderate = self._record("ACTIVITY_INTENSITY_MODERATE", 0) | {
+            "id": "moderate",
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": "2025-04-10T10:30:00Z",
+        }
+        vigorous = self._record("ACTIVITY_INTENSITY_VIGOROUS", 0) | {
+            "id": "vigorous",
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": "2025-04-10T10:10:00Z",
+        }
+        payload = {**SDK_ENVELOPE, "provider": "health_connect", "data": {"records": [moderate, vigorous]}}
+
+        import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
+
+        stored = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).one()
+        assert stored.series_type_definition_id == get_series_type_id(SeriesType.exercise_time)
+        assert (stored.external_id, stored.value) == ("vigorous", Decimal("10"))
 
     @pytest.mark.parametrize(
         ("unit", "expected"),

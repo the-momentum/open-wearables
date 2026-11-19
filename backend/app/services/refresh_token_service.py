@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from app.config import settings
@@ -153,7 +153,12 @@ class RefreshTokenService:
         Raises:
             AuthenticationError: If the refresh token is invalid or revoked
         """
-        token = self.repo.claim_valid_token(db_session, refresh_token_str)
+        developer_max_age = timedelta(days=settings.developer_refresh_token_expire_days)
+        token = self.repo.claim_valid_token(
+            db_session,
+            refresh_token_str,
+            developer_max_age=developer_max_age,
+        )
         if not token:
             raise AuthenticationError("Invalid or revoked refresh token")
 

@@ -12,7 +12,13 @@ from celery.schedules import crontab
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
-from app.extensions import collect_beat_schedule, collect_event_handlers, events, get_active_extensions
+from app.extensions import (
+    collect_beat_schedule,
+    collect_celery_queues,
+    collect_event_handlers,
+    events,
+    get_active_extensions,
+)
 from app.integrations.otel import init_otel, shutdown_otel
 from app.services import raw_payload_storage
 from app.utils.config_utils import LogFormat
@@ -80,7 +86,7 @@ _worker_service_name = "open-wearables-worker"
 
 
 def _worker_service_name_for(hostname: str | None) -> str:
-    # scripts/start/worker.sh names its workers io@%h and cpu@%h.
+    # scripts/start/worker.sh names its workers io@%h, cpu@%h and ext@%h.
     prefix = (hostname or "").split("@", 1)[0]
     return f"open-wearables-worker-{prefix}" if prefix and prefix != "celery" else "open-wearables-worker"
 
@@ -191,7 +197,7 @@ def create_celery() -> Celery:
         result_expires=3600,
         control_queue_ttl=300,
         control_queue_expires=300,
-        task_queues={queue: {} for queue in CeleryQueue},
+        task_queues={queue: {} for queue in (*CeleryQueue, *collect_celery_queues())},
         task_routes={
             CeleryTask.PROCESS_SDK_UPLOAD: {"queue": CeleryQueue.SDK_SYNC},
             CeleryTask.SAVE_SDK_SLEEP: {"queue": CeleryQueue.SDK_SYNC},

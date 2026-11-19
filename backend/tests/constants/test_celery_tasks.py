@@ -36,6 +36,12 @@ def test_beat_schedule_and_routes_use_constants() -> None:
 
 def test_workers_consume_every_queue_and_only_those() -> None:
     worker_script = Path(__file__).resolve().parents[2] / "scripts" / "start" / "worker.sh"
-    consumed = {queue for flag in re.findall(r"-Q (\S+)", worker_script.read_text()) for queue in flag.split(",")}
+    consumed = {
+        queue
+        for flag in re.findall(r"-Q (\S+)", worker_script.read_text())
+        # The extension worker's -Q is a variable
+        if not flag.startswith('"$')
+        for queue in flag.split(",")
+    }
 
     assert consumed == set(CeleryQueue)
