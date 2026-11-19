@@ -23,6 +23,7 @@ from app.services.providers.garmin.handlers.activities import process_activity_n
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
+from tests.providers.factories import GarminActivityFactory
 
 
 class TestGarminWorkouts:
@@ -50,20 +51,16 @@ class TestGarminWorkouts:
     @pytest.fixture
     def sample_activity(self) -> dict[str, Any]:
         """Sample Garmin activity data."""
-        return {
-            "userId": "garmin_user_123",
-            "activityId": "12345678901",
-            "summaryId": "summary_123",
-            "activityType": "RUNNING",
-            "startTimeInSeconds": 1705309200,  # 2024-01-15 09:00:00 UTC
-            "durationInSeconds": 3600,
-            "deviceName": "Garmin Forerunner 945",
-            "distanceInMeters": 10000,
-            "steps": 8500,
-            "activeKilocalories": 650,
-            "averageHeartRateInBeatsPerMinute": 145,
-            "maxHeartRateInBeatsPerMinute": 175,
-        }
+        return GarminActivityFactory.build_payload(
+            activityId="12345678901",
+            summaryId="summary_123",
+            deviceName="Garmin Forerunner 945",
+            distanceInMeters=10000,
+            steps=8500,
+            activeKilocalories=650,
+            averageHeartRateInBeatsPerMinute=145,
+            maxHeartRateInBeatsPerMinute=175,
+        )
 
     def test_get_workouts_builds_correct_params(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test get_workouts builds correct API parameters."""

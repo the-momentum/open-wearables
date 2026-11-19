@@ -10,6 +10,7 @@ from app.schemas.enums import EntrySource, WorkoutIntensity, WorkoutType
 from app.schemas.providers.oura import OuraWorkoutJSON
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.oura.workouts import OuraWorkouts
+from tests.providers.factories import OuraWorkoutFactory
 
 
 class TestOuraWorkoutTypeMapping:
@@ -54,17 +55,14 @@ class TestOuraWorkoutsNormalization:
 
     @pytest.fixture
     def sample_oura_workout(self) -> OuraWorkoutJSON:
-        return OuraWorkoutJSON(
+        return OuraWorkoutFactory.build(
             id="oura-workout-abc123",
             activity="running",
             calories=350.5,
-            day="2024-01-15",
             distance=5000.0,
-            end_datetime="2024-01-15T09:00:00+00:00",
             intensity="moderate",
             label="Morning Run",
             source="autodetected",
-            start_datetime="2024-01-15T08:00:00+00:00",
         )
 
     def test_normalize_workout_creates_records(

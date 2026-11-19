@@ -27,31 +27,6 @@ class TestOura247SleepNormalization:
         strategy = OuraStrategy()
         return strategy.data_247
 
-    @pytest.fixture
-    def sample_oura_sleep(self) -> dict:
-        return {
-            "id": "sleep-abc123",
-            "average_breath": 15.5,
-            "average_heart_rate": 55.0,
-            "average_hrv": 45,
-            "awake_time": 1800,
-            "bedtime_end": "2024-01-15T07:00:00+00:00",
-            "bedtime_start": "2024-01-15T23:00:00+00:00",
-            "day": "2024-01-15",
-            "deep_sleep_duration": 5400,
-            "efficiency": 88,
-            "latency": 300,
-            "light_sleep_duration": 14400,
-            "low_battery_alert": False,
-            "lowest_heart_rate": 48,
-            "period": 0,
-            "rem_sleep_duration": 7200,
-            "restless_periods": 5,
-            "time_in_bed": 28800,
-            "total_sleep_duration": 27000,
-            "type": "long_sleep",
-        }
-
     def test_normalize_sleep_basic_fields(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
         result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
@@ -262,17 +237,6 @@ class TestOura247ReadinessNormalization:
     def data_247(self) -> Oura247Data:
         strategy = OuraStrategy()
         return strategy.data_247
-
-    @pytest.fixture
-    def sample_oura_readiness(self) -> dict:
-        return {
-            "id": "readiness-abc123",
-            "day": "2024-01-15",
-            "score": 82,
-            "temperature_deviation": 0.15,
-            "temperature_trend_deviation": 0.05,
-            "timestamp": "2024-01-15T07:00:00+00:00",
-        }
 
     def test_normalize_readiness_score(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()

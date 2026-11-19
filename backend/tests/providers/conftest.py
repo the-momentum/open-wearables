@@ -9,6 +9,8 @@ from collections.abc import Generator
 
 import pytest
 
+from tests.providers.factories import OuraReadinessFactory, OuraSleepFactory, OuraWorkoutFactory, PolarExerciseFactory
+
 
 @pytest.fixture
 def non_utc_process_timezone(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
@@ -57,27 +59,21 @@ def sample_garmin_heart_rate_samples() -> list[dict]:
 @pytest.fixture
 def sample_polar_exercise() -> dict:
     """Sample Polar exercise JSON data."""
-    return {
-        "id": "ABC123",
-        "upload_time": "2024-01-15T09:00:00.000Z",
-        "polar_user": "https://www.polaraccesslink.com/v3/users/12345",
-        "transaction_id": 67890,
-        "device": "Polar Vantage V2",
-        "device_id": "12345678",
-        "start_time": "2024-01-15T08:00:00",
-        "start_time_utc_offset": 60,
-        "duration": "PT1H0M0S",
-        "calories": 650,
-        "distance": 10000,
-        "heart_rate": {
+    return PolarExerciseFactory.build_payload(
+        id="ABC123",
+        upload_time="2024-01-15T09:00:00.000Z",
+        polar_user="https://www.polaraccesslink.com/v3/users/12345",
+        device_id="12345678",
+        calories=650,
+        distance=10000,
+        heart_rate={
             "average": 145,
             "maximum": 175,
         },
-        "training_load": 150.0,
-        "sport": "RUNNING",
-        "has_route": True,
-        "detailed_sport_info": "RUNNING",
-    }
+        training_load=150.0,
+        has_route=True,
+        detailed_sport_info="RUNNING",
+    )
 
 
 @pytest.fixture
@@ -145,56 +141,49 @@ def sample_apple_healthkit_workout() -> dict:
 @pytest.fixture
 def sample_oura_workout() -> dict:
     """Sample Oura workout JSON data."""
-    return {
-        "id": "oura-workout-abc123",
-        "activity": "running",
-        "calories": 350.5,
-        "day": "2024-01-15",
-        "distance": 5000.0,
-        "end_datetime": "2024-01-15T09:00:00+00:00",
-        "intensity": "moderate",
-        "start_datetime": "2024-01-15T08:00:00+00:00",
-    }
+    return OuraWorkoutFactory.build_payload(
+        id="oura-workout-abc123",
+        activity="running",
+        calories=350.5,
+        distance=5000.0,
+        intensity="moderate",
+    )
 
 
 @pytest.fixture
 def sample_oura_sleep() -> dict:
     """Sample Oura sleep JSON data."""
-    return {
-        "id": "sleep-abc123",
-        "average_breath": 15.5,
-        "average_heart_rate": 55.0,
-        "average_hrv": 45,
-        "awake_time": 1800,
-        "bedtime_end": "2024-01-15T07:00:00+00:00",
-        "bedtime_start": "2024-01-15T23:00:00+00:00",
-        "day": "2024-01-15",
-        "deep_sleep_duration": 5400,
-        "efficiency": 88,
-        "latency": 300,
-        "light_sleep_duration": 14400,
-        "low_battery_alert": False,
-        "lowest_heart_rate": 48,
-        "period": 0,
-        "rem_sleep_duration": 7200,
-        "restless_periods": 5,
-        "time_in_bed": 28800,
-        "total_sleep_duration": 27000,
-        "type": "long_sleep",
-    }
+    return OuraSleepFactory.build_payload(
+        id="sleep-abc123",
+        average_breath=15.5,
+        average_heart_rate=55.0,
+        average_hrv=45,
+        awake_time=1800,
+        bedtime_start="2024-01-15T23:00:00+00:00",
+        deep_sleep_duration=5400,
+        efficiency=88,
+        latency=300,
+        light_sleep_duration=14400,
+        low_battery_alert=False,
+        lowest_heart_rate=48,
+        period=0,
+        rem_sleep_duration=7200,
+        restless_periods=5,
+        time_in_bed=28800,
+        total_sleep_duration=27000,
+        type="long_sleep",
+    )
 
 
 @pytest.fixture
 def sample_oura_readiness() -> dict:
     """Sample Oura daily readiness JSON data."""
-    return {
-        "id": "readiness-abc123",
-        "day": "2024-01-15",
-        "score": 82,
-        "temperature_deviation": 0.15,
-        "temperature_trend_deviation": 0.05,
-        "timestamp": "2024-01-15T07:00:00+00:00",
-    }
+    return OuraReadinessFactory.build_payload(
+        id="readiness-abc123",
+        score=82,
+        temperature_deviation=0.15,
+        temperature_trend_deviation=0.05,
+    )
 
 
 @pytest.fixture
