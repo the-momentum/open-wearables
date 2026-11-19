@@ -62,6 +62,7 @@ dev = [
     "respx>=0.23.1",
     "pytest-mock>=3.17.0",
     "dirty-equals>=0.11",
+    "inline-snapshot>=0.37.0",
 ]
 
 [tool.ruff]
@@ -128,6 +129,12 @@ filterwarnings = [
 ]
 addopts = "-v --tb=short -n auto --maxprocesses=4"
 timeout = 10
+
+[tool.inline-snapshot]
+# Ordinary test runs only compare snapshots; source edits require explicit CLI flags.
+default-flags = ["short-report"]
+default-flags-tui = ["short-report"]
+format-command = "ruff format --stdin-filename '{filename}'"
 
 [build-system]
 requires = ["uv_build"]

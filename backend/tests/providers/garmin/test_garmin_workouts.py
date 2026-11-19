@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from inline_snapshot import snapshot
 from psycopg.errors import ForeignKeyViolation, NotNullViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -169,13 +170,18 @@ class TestGarminWorkouts:
         activity = GarminActivityJSON(**sample_activity)
         metrics = garmin_workouts._build_metrics(activity)
 
-        assert metrics["heart_rate_avg"] == Decimal("145")
-        assert metrics["heart_rate_max"] == 175
-        assert metrics["heart_rate_min"] is None
-        assert metrics["steps_count"] == 8500
-        assert metrics["energy_burned"] == Decimal("650")
-        assert metrics["energy_series"] == SeriesType.total_energy
-        assert metrics["distance"] == Decimal("10000")
+        assert metrics == snapshot(
+            {
+                "heart_rate_min": None,
+                "heart_rate_max": 175,
+                "heart_rate_avg": Decimal("145"),
+                "steps_count": 8500,
+                "energy_burned": Decimal("650"),
+                "energy_series": SeriesType.total_energy,
+                "distance": Decimal("10000"),
+                "average_cadence": None,
+            }
+        )
 
     def test_build_metrics_with_missing_values(self, garmin_workouts: GarminWorkouts) -> None:
         """Test building metrics with missing values."""
@@ -241,15 +247,33 @@ class TestGarminWorkouts:
 
         assert isinstance(record, EventRecordCreate)
         assert isinstance(detail, EventRecordDetailCreate)
-        assert record.category == "workout"
-        assert record.type == WorkoutType.RUNNING.value
-        assert record.source_name == "Garmin Forerunner 945"
-        assert record.device_model == "Garmin Forerunner 945"
-        assert record.duration_seconds == 3600
-        assert record.start_datetime == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
-        assert record.end_datetime == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        assert record.external_id == "12345678901"
         assert record.user_id == user_id
+        assert detail.record_id == record.id
+        assert {
+            "record": record.model_dump(mode="json", exclude={"id", "user_id"}, exclude_none=True),
+            "detail": detail.model_dump(mode="json", exclude={"record_id"}, exclude_none=True),
+        } == snapshot(
+            {
+                "record": {
+                    "category": "workout",
+                    "type": "running",
+                    "source_name": "Garmin Forerunner 945",
+                    "device_model": "Garmin Forerunner 945",
+                    "duration_seconds": 3600,
+                    "start_datetime": "2024-01-15T09:00:00Z",
+                    "end_datetime": "2024-01-15T10:00:00Z",
+                    "external_id": "12345678901",
+                    "source": "garmin",
+                },
+                "detail": {
+                    "heart_rate_max": 175,
+                    "heart_rate_avg": "145",
+                    "steps_count": 8500,
+                    "energy_burned": "650",
+                    "distance": "10000",
+                },
+            }
+        )
 
     def test_normalize_workout_with_different_types(self, garmin_workouts: GarminWorkouts) -> None:
         """Test normalizing different workout types."""
