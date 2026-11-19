@@ -153,12 +153,12 @@ jobs:
         run: uv sync --group dev --extra otel
       - name: Run tests with coverage
         working-directory: backend
-        run: uv run pytest -v --cov=app --cov-report=xml --cov-report=term-missing
+        run: uv run pytest --cov=app --cov-report=xml --cov-report=term-missing
       - name: Run OpenTelemetry tests without the otel extra
         working-directory: backend
         run: |
           uv sync --group dev
-          uv run pytest -v tests/utils_tests/test_otel_wiring.py tests/utils_tests/test_otel_export.py
+          uv run pytest tests/utils_tests/test_otel_wiring.py tests/utils_tests/test_otel_export.py
 
   backend-migrations:
     needs: changes
