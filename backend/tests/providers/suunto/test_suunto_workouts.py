@@ -31,6 +31,7 @@ from app.schemas.providers.suunto import HeartRateJSON
 from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
+from tests.providers.factories import SuuntoWorkoutFactory
 
 
 class TestSuuntoWorkouts:
@@ -58,19 +59,14 @@ class TestSuuntoWorkouts:
     @pytest.fixture
     def sample_workout_data(self) -> dict:
         """Sample Suunto workout data for testing."""
-        return {
-            "workoutId": 0,
-            "workoutKey": "6aa10da139e69418a2fa8db1",
-            "activityId": 1,  # Running
-            "startTime": 1705309200000,  # 2024-01-15T09:00:00Z in milliseconds
-            "stopTime": 1705312800000,  # 2024-01-15T10:00:00Z in milliseconds
-            "totalTime": 3600.0,  # 1 hour in seconds
-            "totalDistance": 10000,
-            "stepCount": 8500,
-            "energyConsumption": 650,
-            "avgSpeed": 2.78,
-            "maxSpeed": 4.1,
-            "hrdata": {
+        return SuuntoWorkoutFactory.build_payload(
+            workoutKey="6aa10da139e69418a2fa8db1",
+            totalDistance=10000,
+            stepCount=8500,
+            energyConsumption=650,
+            avgSpeed=2.78,
+            maxSpeed=4.1,
+            hrdata={
                 "workoutMaxHR": 175,
                 "workoutAvgHR": 145,
                 "userMaxHR": 190,
@@ -79,13 +75,13 @@ class TestSuuntoWorkouts:
                 "max": 175,
                 "min": 120,  # Minimum HR during workout
             },
-            "gear": {
+            gear={
                 "manufacturer": "Suunto",
                 "name": "Suunto 9 Peak",
                 "displayName": "Suunto 9 Peak",
                 "serialNumber": "SN123456",
             },
-        }
+        )
 
     @pytest.fixture
     def sample_hrdata(self) -> HeartRateJSON:

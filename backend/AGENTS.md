@@ -337,6 +337,10 @@ uv run pytest -v --cov=app
 Use `uv add <package-name>` to add new dependencies (automatically updates pyproject.toml, lockfile, and venv).
 Run `uv run ruff check . --fix && uv run ruff format .` after making changes.
 
+### Provider test data
+
+Use the Polyfactory factories in `tests/providers/factories.py` for synthetic provider data:
+
 ## Detailed Layer Rules
 
 ### Models Layer (`app/models/`)

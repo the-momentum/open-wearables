@@ -63,6 +63,7 @@ dev = [
     "pytest-mock>=3.17.0",
     "dirty-equals>=0.11",
     "inline-snapshot>=0.37.0",
+    "polyfactory>=3.5.0",
 ]
 
 [tool.ruff]
@@ -107,6 +108,7 @@ ignore = [
 "{tests,scripts,migrations}/**" = ["TID251"]
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
+"tests/providers/factories.py" = ["N815"]  # factory attributes match provider model fields
 
 [tool.ruff.lint.isort]
 known-third-party = ["celery"]
