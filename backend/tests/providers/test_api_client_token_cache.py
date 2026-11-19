@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from freezegun import freeze_time
+import time_machine
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -80,7 +80,7 @@ def test_cached_token_close_to_expiry_is_refreshed(db: Session, connection: Any,
     oauth.refresh_access_token.return_value.access_token = "refreshed"
     get_valid_token(db, connection.user_id, "whoop", repo, oauth)
 
-    with freeze_time(datetime.now(timezone.utc) + timedelta(minutes=58)):
+    with time_machine.travel(datetime.now(timezone.utc) + timedelta(minutes=58), tick=False):
         token = get_valid_token(db, connection.user_id, "whoop", repo, oauth)
 
     assert token == "refreshed"
@@ -95,7 +95,7 @@ def test_a_refreshed_token_is_reused(db: Session, connection: Any, repo: Any) ->
     oauth = MagicMock()
     oauth.refresh_access_token.side_effect = refresh
 
-    with freeze_time(datetime.now(timezone.utc) + timedelta(minutes=58)):
+    with time_machine.travel(datetime.now(timezone.utc) + timedelta(minutes=58), tick=False):
         tokens = [get_valid_token(db, connection.user_id, "whoop", repo, oauth) for _ in range(3)]
 
     assert tokens == ["refreshed"] * 3

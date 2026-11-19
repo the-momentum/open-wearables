@@ -10,10 +10,12 @@ import json
 import threading
 import time
 from collections.abc import Generator
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+import time_machine
 
 import app.services.sync_status_service as sync_status_service
 from app.constants.celery_tasks import CeleryTask
@@ -57,7 +59,6 @@ class TestEmitAndPersist:
         first = _build_event(user_id)
         second = _build_event(user_id)
         sync_status_service.emit(first)
-        time.sleep(0.005)
         sync_status_service.emit(second)
 
         recent = sync_status_service.get_recent_events(user_id, limit=10)
@@ -258,10 +259,13 @@ class TestAllRunSummaries:
     """The admin view reads one global index instead of scanning Redis for users."""
 
     def test_runs_of_all_users_are_merged_newest_first(self) -> None:
-        events = [_build_event(str(uuid4())) for _ in range(3)]
+        events = []
+        with time_machine.travel(datetime.now(timezone.utc), tick=False) as traveller:
+            for _ in range(3):
+                events.append(_build_event(str(uuid4())))
+                traveller.shift(timedelta(seconds=1))
         for event in events:
             sync_status_service.emit(event)
-            time.sleep(0.005)
 
         summaries = sync_status_service.get_all_run_summaries(limit=2)
 
