@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 ENTRY_POINT_GROUP = "open_wearables.extensions"
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
 _EVENT_TYPE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
+_QUEUE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 
 # The fields Celery documents for a beat_schedule entry; beat fails to start on an unknown one.
 _BEAT_ENTRY_FIELDS = frozenset({"task", "schedule", "args", "kwargs", "options", "relative"})
@@ -53,7 +54,8 @@ class OWExtension:
     celery_task_packages: list[str] = field(default_factory=list)
     # Alembic script location of the extension's own history, e.g. "my_extension:migrations".
     migrations: str = ""
-    # Celery queues the extension routes its tasks to; worker.sh runs them in a worker of their own.
+    # Celery queues the extension routes its tasks to, "<name>" or "<name>.<suffix>"; worker.sh runs them in a worker
+    # of their own. Tasks are acknowledged on receipt: give long ones acks_late=True so a stop doesn't lose them.
     celery_queues: list[str] | tuple[str, ...] = field(default_factory=list)
 
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
@@ -96,11 +98,18 @@ def _name_error(ext: OWExtension) -> str | None:
 
 
 def _queue_error(ext: OWExtension) -> str | None:
-    """A str would be read as one queue per character, and None breaks create_celery() in every process."""
+    """A str would be read as one queue per character, and None breaks create_celery() in every process. A core queue,
+    or another extension's, would put the tasks on a worker that doesn't expect them."""
     queues = ext.celery_queues
-    if isinstance(queues, list | tuple) and all(isinstance(queue, str) and _NAME.fullmatch(queue) for queue in queues):
-        return None
-    return f"invalid celery_queues {queues!r}, must be a list or tuple of lowercase identifiers"
+    if not isinstance(queues, list | tuple) or not all(isinstance(q, str) and _QUEUE.fullmatch(q) for q in queues):
+        return f"invalid celery_queues {queues!r}, must be a list or tuple of dotted lowercase names"
+    core = {queue.value for queue in CeleryQueue}
+    for queue in queues:
+        if queue in core:
+            return f"celery queue {queue!r} is one of the core's"
+        if queue != ext.name and not queue.startswith(f"{ext.name}."):
+            return f"celery queue {queue!r} must be {ext.name!r} or start with {ext.name + '.'!r}"
+    return None
 
 
 def _compatibility_error(ext: OWExtension) -> str | None:
@@ -239,9 +248,8 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
 
 
 def collect_celery_queues() -> tuple[str, ...]:
-    """Each declared queue once; core queues are skipped."""
-    core = {queue.value for queue in CeleryQueue}
-    return tuple(dict.fromkeys(q for ext in get_active_extensions() for q in ext.celery_queues if q not in core))
+    """Each declared queue once."""
+    return tuple(dict.fromkeys(q for ext in get_active_extensions() for q in ext.celery_queues))
 
 
 @cache

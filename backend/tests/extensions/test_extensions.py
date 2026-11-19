@@ -193,13 +193,13 @@ def _broken() -> OWExtension:
 @dataclass
 class QueuesExtension(OWExtension):
     name: str = "queues"
-    celery_queues: list[str] = field(default_factory=lambda: ["queues_long", "default", "queues_long"])
+    celery_queues: list[str] = field(default_factory=lambda: ["queues.long", "queues", "queues.long"])
 
 
 @dataclass
 class OtherQueuesExtension(OWExtension):
     name: str = "other_queues"
-    celery_queues: list[str] = field(default_factory=lambda: ["queues_long", "other_long"])
+    celery_queues: list[str] = field(default_factory=lambda: ["other_queues.long"])
 
 
 @dataclass
@@ -463,12 +463,35 @@ class TestBeatSchedule:
 
 
 class TestCeleryQueues:
-    def test_each_queue_is_collected_once_and_core_queues_are_skipped(self, installed: Callable[..., None]) -> None:
+    def test_each_queue_is_collected_once(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("queues", QueuesExtension), FakeEntryPoint("other_queues", OtherQueuesExtension))
 
-        assert collect_celery_queues() == ("queues_long", "other_long")
+        assert collect_celery_queues() == ("queues.long", "queues", "other_queues.long")
 
-    @pytest.mark.parametrize("queues", ["queues_long", None, ["Bad-Name"]], ids=["str", "none", "invalid_name"])
+    @pytest.mark.parametrize(
+        ("queues", "reason"),
+        [
+            (["default"], "one of the core's"),
+            (["other_queues.long"], "must be 'queues' or start with 'queues.'"),
+            (["queues_long"], "must be 'queues' or start with 'queues.'"),
+        ],
+        ids=["core_queue", "other_extensions_queue", "no_separator"],
+    )
+    def test_a_queue_outside_the_extensions_namespace_disables_it(
+        self, installed: Callable[..., None], queues: list[str], reason: str
+    ) -> None:
+        installed(
+            FakeEntryPoint("queues", lambda: OWExtension(name="queues", celery_queues=queues)),
+            FakeEntryPoint("other_queues", OtherQueuesExtension),
+        )
+
+        loaded = {e.name: e for e in get_extensions()}
+
+        assert not loaded["queues"].active
+        assert reason in (loaded["queues"].error or "")
+        assert collect_celery_queues() == ("other_queues.long",)
+
+    @pytest.mark.parametrize("queues", ["queues.long", None, ["Bad-Name"]], ids=["str", "none", "invalid_name"])
     def test_invalid_celery_queues_disable_the_extension(self, installed: Callable[..., None], queues: Any) -> None:
         installed(
             FakeEntryPoint("queues", lambda: OWExtension(name="queues", celery_queues=queues)),
@@ -479,20 +502,20 @@ class TestCeleryQueues:
 
         assert not loaded["queues"].active
         assert "invalid celery_queues" in (loaded["queues"].error or "")
-        assert collect_celery_queues() == ("queues_long", "other_long")
+        assert collect_celery_queues() == ("other_queues.long",)
 
     def test_a_tuple_of_queues_is_accepted(self, installed: Callable[..., None]) -> None:
-        installed(FakeEntryPoint("queues", lambda: OWExtension(name="queues", celery_queues=("queues_long",))))
+        installed(FakeEntryPoint("queues", lambda: OWExtension(name="queues", celery_queues=("queues.long",))))
 
         assert [e.name for e in get_active_extensions()] == ["queues"]
-        assert collect_celery_queues() == ("queues_long",)
+        assert collect_celery_queues() == ("queues.long",)
 
     def test_celery_declares_the_extension_queues(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("queues", QueuesExtension))
 
         queues = set(create_celery().conf.task_queues)
 
-        assert {"default", "xml_sync", "queues_long"} <= queues
+        assert {"default", "xml_sync", "queues.long"} <= queues
 
 
 class TestWebhookEventTypes:
