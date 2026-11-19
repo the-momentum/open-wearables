@@ -8,6 +8,7 @@ from app.database import DbSession
 from app.schemas.auth import PasswordChangePrompt, TokenResponse
 from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.services import DeveloperDep, developer_service, refresh_token_service
+from app.utils import login_throttle
 from app.utils.config_utils import EnvironmentType
 from app.utils.problem import problem_doc
 from app.utils.security import create_access_token, verify_password
@@ -32,6 +33,7 @@ def _password_change_prompt(password: str) -> PasswordChangePrompt | None:
         **problem_doc(
             401, "Incorrect email or password, or a field missing from the form", "Incorrect email or password"
         ),
+        **problem_doc(429, "Too many failed attempts for this email", "Too many failed login attempts"),
     },
 )
 def login(
@@ -39,6 +41,13 @@ def login(
     db: DbSession,
 ) -> TokenResponse:
     """Authenticate developer and return access token with refresh token."""
+    if wait := login_throttle.count_attempt(form_data.username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(wait)},
+        )
+
     # The default is public, so in production it must never yield a session - not even one
     # that only allows a password change, since whoever logs in first could set their own.
     # Checked before the account lookup so the response does not reveal who still uses it.
@@ -70,6 +79,7 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    login_throttle.clear(form_data.username)
     access_token = create_access_token(subject=str(developer.id))
     refresh_token = refresh_token_service.create_developer_refresh_token(db, developer.id)
 
