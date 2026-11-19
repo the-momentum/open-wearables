@@ -42,7 +42,7 @@ _NONRETRIABLE_UPSTREAM_STATUSES = frozenset({400, 403, 404, 410, 422})
 # Providers whose webhook deliveries are surfaced in the sync log via this task.
 # Garmin self-reports sync status from its own handler/backfill, so it is excluded
 # here to avoid duplicate run entries.
-_SYNC_LOG_PROVIDERS = frozenset({"oura", "strava", "polar", "whoop", "suunto"})
+_SYNC_LOG_PROVIDERS = frozenset({"oura", "strava", "polar", "whoop", "suunto", "google_health"})
 
 # process_payload "status" values that mean data was actually persisted.
 _SAVED_STATUSES = frozenset({"processed", "saved", "accepted", "deleted", "success"})
@@ -106,9 +106,25 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
     deliveries are recorded as SKIPPED so the UI can filter them out.
     Deliveries that never resolved to a user (invalid payload, user_not_found)
     are skipped entirely — there is no user to attribute the run to.
+
+    Batch handlers (google_health notifications) return one entry per
+    notification under ``results``; each is emitted as its own run so it is
+    attributed to that notification's user and data type.
     """
+    if provider_name not in _SYNC_LOG_PROVIDERS or not isinstance(result, dict):
+        return
+    results = result.get("results")
+    if isinstance(results, list):
+        for item in results:
+            _emit_webhook_result(provider_name, item)
+        return
+    _emit_webhook_result(provider_name, result)
+
+
+def _emit_webhook_result(provider_name: str, result: Any) -> None:
+    """Record one webhook delivery result in the sync log (best-effort, never raises)."""
     try:
-        if provider_name not in _SYNC_LOG_PROVIDERS or not isinstance(result, dict):
+        if not isinstance(result, dict):
             return
 
         raw_user_id = result.get("user_id")
