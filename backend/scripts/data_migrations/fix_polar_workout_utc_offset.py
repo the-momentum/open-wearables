@@ -36,7 +36,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
 
@@ -49,6 +49,7 @@ from app.services.data_migration_service import data_migration_service
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.polar.workouts import PolarWorkouts
 from app.utils.dates import iso_to_timezone
+from app.utils.exceptions import ProviderConnectionError, ProviderError
 
 PROVIDER = "polar"
 
@@ -144,8 +145,10 @@ def _served_exercises(workouts_api: PolarWorkouts, db: Session, user_id: UUID) -
     """The exercises Polar still lists for the user, by id; none if it refuses the token."""
     try:
         exercises = workouts_api.get_workouts_from_api(db, user_id) or []
-    except HTTPException as exc:
-        if exc.status_code in _REFUSED:
+    except ProviderConnectionError:
+        return {}
+    except ProviderError as exc:
+        if exc.upstream_status in _REFUSED:
             return {}
         raise
     # One the sync couldn't parse either counts as not listed

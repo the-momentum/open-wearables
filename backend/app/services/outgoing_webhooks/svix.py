@@ -11,7 +11,6 @@ Responsibilities:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Iterator
 from typing import Any
 from uuid import UUID
@@ -43,9 +42,11 @@ from svix.api.errors.http_error import HttpError
 
 from app.config import settings
 from app.constants.webhooks.test_payloads import get_test_payload
+from app.extensions import collect_webhook_event_types
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Fixed org UID used for this self-hosted instance.
 _SVIX_ORG_ID = "org_openwearables"
@@ -133,8 +134,14 @@ def is_enabled() -> bool:
     return _client is not None
 
 
+def event_types() -> dict[str, str]:
+    """Name -> description of the core's event types and the active extensions'."""
+    core = {evt.value: EVENT_TYPE_DESCRIPTIONS.get(evt, "") for evt in WebhookEventType}
+    return {**core, **collect_webhook_event_types()}
+
+
 def register_event_types() -> bool:
-    """Sync every WebhookEventType into Svix: create the missing, update the changed (idempotent).
+    """Sync every core and extension event type into Svix: create the missing, update the changed (idempotent).
 
     Returns:
         True if the sync completed with no failures (or nothing needed to run). False if
@@ -157,31 +164,30 @@ def register_event_types() -> bool:
                 "event types",
             )
         }
-    except Exception:
-        logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).")
+    except Exception as e:
+        logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).", error=str(e))
         return False
 
     all_ok = True
-    for evt in WebhookEventType:
-        description = EVENT_TYPE_DESCRIPTIONS.get(evt, "")
-        current = existing.get(evt.value)
+    for name, description in event_types().items():
+        current = existing.get(name)
         if current is None:
             try:
-                _client.event_type.create(EventTypeIn(name=evt.value, description=description))
-                logger.info("Registered event type: %s", evt.value)
+                _client.event_type.create(EventTypeIn(name=name, description=description))
+                logger.info("Registered event type", event_type=name)
             except Exception:
                 # Deemed missing but create failed (archived/race) — update so it is never left unregistered.
                 try:
-                    _client.event_type.patch(evt.value, EventTypePatch(description=description))
-                except Exception:
-                    logger.exception("Failed to register/update event type %s", evt.value)
+                    _client.event_type.patch(name, EventTypePatch(description=description))
+                except Exception as e:
+                    logger.error("Failed to register/update event type", exc_info=e, event_type=name)
                     all_ok = False
         elif current != description:
             try:
-                _client.event_type.patch(evt.value, EventTypePatch(description=description))
-                logger.info("Updated event type description: %s", evt.value)
-            except Exception:
-                logger.exception("Failed to update event type %s", evt.value)
+                _client.event_type.patch(name, EventTypePatch(description=description))
+                logger.info("Updated event type description", event_type=name)
+            except Exception as e:
+                logger.error("Failed to update event type", exc_info=e, event_type=name)
                 all_ok = False
 
     return all_ok
@@ -201,9 +207,9 @@ def ensure_application(developer_id: str, developer_email: str) -> str:
             ApplicationIn(name=developer_email, uid=uid),
         )
     except httpx.ConnectError:
-        logger.warning("Svix server unreachable — skipping application setup for developer %s", uid)
-    except Exception:
-        logger.exception("Failed to ensure Svix application for developer %s", uid)
+        logger.warning("Svix server unreachable — skipping application setup for developer", developer_id=uid)
+    except Exception as e:
+        logger.error("Failed to ensure Svix application for developer", exc_info=e, developer_id=uid)
     return uid
 
 
@@ -233,24 +239,24 @@ def send(
         )
     except httpx.ConnectError:
         logger.warning(
-            "Svix server unreachable — dropping event=%s for app=%s (no retry)",
-            event_type,
-            app_id,
+            "Svix server unreachable — dropping event (no retry)",
+            event_type=event_type,
+            app_id=app_id,
         )
-        return True  # type: ignore[return-value]  # truthy = don't count as failure  # ty:ignore[invalid-return-type]
+        return True  # type: ignore[return-value]  # truthy = don't count as failure  # ty:ignore[invalid-explicit-return]
     except HttpError as exc:
         if exc.status_code == 409:
             # Svix deduplication: the same event_id was already delivered.
             # Treat as success so the Celery task does not retry.
             logger.debug(
-                "Svix duplicate event_id=%s already delivered (409), skipping",
-                idempotency_key,
+                "Svix duplicate event_id already delivered (409), skipping",
+                idempotency_key=idempotency_key,
             )
-            return True  # ty:ignore[invalid-return-type]
-        logger.exception("Failed to send webhook event=%s to app=%s", event_type, app_id)
+            return True  # ty:ignore[invalid-explicit-return]
+        logger.error("Failed to send webhook event", exc_info=exc, event_type=event_type, app_id=app_id)
         return None
-    except Exception:
-        logger.exception("Failed to send webhook event=%s to app=%s", event_type, app_id)
+    except Exception as e:
+        logger.error("Failed to send webhook event", exc_info=e, event_type=event_type, app_id=app_id)
         return None
 
 
@@ -359,7 +365,7 @@ def get_message(app_id: str, msg_id: str) -> MessageOut | None:
     try:
         return _client.message.get(app_id, msg_id, MessageGetOptions(with_content=True))
     except Exception:
-        logger.debug("Could not fetch message %s for app %s", msg_id, app_id)
+        logger.debug("Could not fetch message", msg_id=msg_id, app_id=app_id)
         return None
 
 
@@ -451,6 +457,6 @@ def send_test_message(app_id: str, endpoint_id: str, event_type: str) -> Message
                 payload_retention_period=settings.outgoing_webhook_payload_retention_days,
             ),
         )
-    except Exception:
-        logger.exception("Failed to send test webhook event=%s to endpoint=%s", event_type, endpoint_id)
+    except Exception as e:
+        logger.error("Failed to send test webhook event", exc_info=e, event_type=event_type, endpoint_id=endpoint_id)
         return None

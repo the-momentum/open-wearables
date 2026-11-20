@@ -83,7 +83,7 @@ def raise_garmin_body_battery_peaks(db: Session, *, dry_run: bool) -> int:
     found = 0
     for user_id, source_ids in db.execute(_USERS, params).all():
         result = db.execute(statement, {**params, "user_id": user_id, "source_ids": source_ids})
-        found += (result.scalar() or 0) if dry_run else result.rowcount  # ty: ignore[unresolved-attribute]
+        found += (result.scalar() or 0) if dry_run else result.rowcount  # ty: ignore[missing-attribute]
         if not dry_run:
             db.commit()
     if dry_run:

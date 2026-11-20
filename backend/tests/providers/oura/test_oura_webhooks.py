@@ -107,7 +107,7 @@ class TestOuraWebhookLastSyncedAt:
         connection = self._connection()
         before = connection.last_synced_at
 
-        with patch.object(handler.data_247, "_make_api_request") as api:
+        with patch.object(handler.data_247, "_make_api_request", autospec=True) as api:
             result = handler.process_payload(db, self._payload(), "trace-1")
         db.refresh(connection)
 
@@ -121,8 +121,8 @@ class TestOuraWebhookLastSyncedAt:
         before = connection.last_synced_at
 
         with (
-            patch.object(handler.data_247, "_make_api_request", return_value={"id": "tag-1"}),
-            patch("app.services.providers.oura.webhook_handler.store_raw_payload"),
+            patch.object(handler.data_247, "_make_api_request", autospec=True, return_value={"id": "tag-1"}),
+            patch("app.services.providers.oura.webhook_handler.store_raw_payload", autospec=True),
         ):
             result = handler.process_payload(db, self._payload(data_type="tag", object_id="tag-1"), "trace-2")
         db.refresh(connection)
@@ -135,7 +135,7 @@ class TestOuraWebhookLastSyncedAt:
         connection = self._connection()
         before = connection.last_synced_at
 
-        with patch.object(handler.data_247, "_make_api_request", return_value={}) as api:
+        with patch.object(handler.data_247, "_make_api_request", autospec=True, return_value={}) as api:
             result = handler.process_payload(db, self._payload(object_id="spo2-1"), "trace-3")
         db.refresh(connection)
 

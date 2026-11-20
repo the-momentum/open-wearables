@@ -3,9 +3,8 @@
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { page } from '$app/state';
 	import { fullName } from '$lib/users/avatar';
-	import { pairingLink } from '$lib/pairing/links';
+	import { fetchPairingLink } from '$lib/pairing/links';
 	import { getRowActions } from '$lib/users/row-actions';
 	import type { User } from '$lib/users/types';
 	import { createCopier } from '$lib/utils/clipboard.svelte';
@@ -28,7 +27,7 @@
 	</button>
 	<button
 		type="button"
-		onclick={() => copier.copy(pairingLink(page.url.origin, user.id))}
+		onclick={() => copier.copyPending(fetchPairingLink(user.id))}
 		aria-label={copier.copied ? 'Pairing link copied' : `Copy pairing link for ${who}`}
 		class={base}
 	>

@@ -13,15 +13,13 @@ API and the sync-log sink are replaced.
           to reconnect.
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
-import httpx
 import pytest
+import respx
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -32,6 +30,7 @@ from app.services.providers.factory import ProviderFactory
 from tests.factories import UserConnectionFactory
 
 WHOOP_USER_ID = 424242
+WORKOUT_URL = "https://api.prod.whoop.com/developer/v2/activity/workout"
 
 
 def _whoop_connection(**overrides: Any) -> Any:
@@ -43,17 +42,10 @@ def _whoop_connection(**overrides: Any) -> Any:
     )
 
 
-def _http_client_returning(body: dict) -> MagicMock:
-    response = httpx.Response(200, json=body, request=httpx.Request("GET", "https://api.prod.whoop.com/x"))
-    client = MagicMock()
-    client.__enter__.return_value.request.return_value = response
-    return client
-
-
-def _unscored_workout() -> dict:
+def _unscored_workout(workout_id: str) -> dict:
     now = datetime.now(timezone.utc)
     return {
-        "id": str(uuid4()),
+        "id": workout_id,
         "user_id": WHOOP_USER_ID,
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
@@ -64,48 +56,54 @@ def _unscored_workout() -> dict:
     }
 
 
-def _run_webhook(db: Session, http_client: MagicMock | None = None) -> tuple[dict, list[dict], bool]:
+def _run_webhook(db: Session, workout_id: str) -> tuple[dict, list[dict]]:
     """Run one workout.updated delivery through process_webhook_push on the test session."""
-    payload = {"user_id": WHOOP_USER_ID, "id": str(uuid4()), "type": "workout.updated"}
+    payload = {"user_id": WHOOP_USER_ID, "id": workout_id, "type": "workout.updated"}
     emitted: list[dict] = []
     with (
-        patch.object(task, "SessionLocal") as session_local,
-        patch("app.services.providers.api_client.httpx.Client", return_value=http_client or MagicMock()) as client,
-        patch("app.services.providers.templates.base_oauth.on_connection_revoked"),
+        patch.object(task, "SessionLocal", autospec=True) as session_local,
+        patch("app.services.providers.templates.base_oauth.on_connection_revoked", autospec=True),
         patch.object(
-            task.sync_status_service, "emit_webhook_delivered", side_effect=lambda *a, **kw: emitted.append(kw)
+            task.sync_status_service,
+            "emit_webhook_delivered",
+            autospec=True,
+            side_effect=lambda *a, **kw: emitted.append(kw),
         ),
     ):
         session_local.return_value.__enter__.return_value = db
         result = task.process_webhook_push.run("whoop", payload, "repro-1825")
-    return result, emitted, client.called
+    return result, emitted
 
 
-def test_legit_skipped_unscored_workout(db: Session) -> None:
+def test_legit_skipped_unscored_workout(respx_mock: respx.MockRouter, db: Session) -> None:
     connection = _whoop_connection()
     before = connection.last_synced_at
+    workout_id = str(uuid4())
+    route = respx_mock.get(f"{WORKOUT_URL}/{workout_id}").respond(200, json=_unscored_workout(workout_id))
 
-    result, emitted, http_called = _run_webhook(db, _http_client_returning(_unscored_workout()))
+    result, emitted = _run_webhook(db, workout_id)
     db.refresh(connection)
 
-    assert http_called is True
+    assert route.call_count == 1
     assert result["records_saved"] == 0
     assert emitted[0]["status"] == SyncStatus.SKIPPED
     assert connection.last_synced_at > before
     assert connection.status == ConnectionStatus.ACTIVE
 
 
-def test_dead_connection_fails_and_is_revoked(db: Session) -> None:
+def test_dead_connection_fails_and_is_revoked(respx_mock: respx.MockRouter, db: Session) -> None:
     connection = _whoop_connection(
         refresh_token=None,
         token_expires_at=datetime.now(timezone.utc) - timedelta(days=20),
     )
     before = connection.last_synced_at
+    workout_id = str(uuid4())
+    route = respx_mock.get(f"{WORKOUT_URL}/{workout_id}").respond(200, json=_unscored_workout(workout_id))
 
-    result, emitted, http_called = _run_webhook(db)
+    result, emitted = _run_webhook(db, workout_id)
     db.refresh(connection)
 
-    assert http_called is False
+    assert not route.called
     assert result["status"] == "error"
     assert emitted[0]["status"] == SyncStatus.FAILED
     assert emitted[0]["error"] == "reauth_required"
@@ -118,7 +116,9 @@ def test_workout_fetch_error_propagates(db: Session) -> None:
     connection = _whoop_connection()
     workouts = ProviderFactory().get_provider("whoop").webhooks.workouts
     with (
-        patch.object(workouts, "get_workout_detail_from_api", side_effect=HTTPException(status_code=503)),
+        patch.object(
+            workouts, "get_workout_detail_from_api", autospec=True, side_effect=HTTPException(status_code=503)
+        ),
         pytest.raises(HTTPException),
     ):
         workouts.load_single_workout(db, connection.user_id, str(uuid4()))
@@ -128,5 +128,5 @@ def test_unparseable_workout_is_skipped(db: Session) -> None:
     """A record that cannot be parsed is skipped, not raised."""
     connection = _whoop_connection()
     workouts = ProviderFactory().get_provider("whoop").webhooks.workouts
-    with patch.object(workouts, "get_workout_detail_from_api", return_value={"id": "broken"}):
+    with patch.object(workouts, "get_workout_detail_from_api", autospec=True, return_value={"id": "broken"}):
         assert workouts.load_single_workout(db, connection.user_id, "broken") == 0

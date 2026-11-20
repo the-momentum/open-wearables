@@ -4,9 +4,12 @@ Tests for Ultrahuman OAuth implementation.
 Tests the UltrahumanOAuth class for OAuth 2.0 authentication flow with Ultrahuman Partnership API.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
+import redis
+import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -92,9 +95,9 @@ class TestUltrahumanOAuthConfiguration:
 class TestUltrahumanOAuthAuthorization:
     """Tests for Ultrahuman OAuth authorization URL generation."""
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
-    def test_get_authorization_url(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_get_authorization_url(self, mocker: MockerFixture, db: Session) -> None:
         """Test generating authorization URL for Ultrahuman."""
+        mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -104,7 +107,7 @@ class TestUltrahumanOAuthAuthorization:
         connection_repo = UserConnectionRepository()
 
         # Setup mock redis before creating OAuth instance
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -134,9 +137,9 @@ class TestUltrahumanOAuthAuthorization:
         assert call_args[0][1] == 900  # TTL
         assert str(user.id) in call_args[0][2]  # State contains user_id
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
-    def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_authorization_url_includes_scope(self, mocker: MockerFixture, db: Session) -> None:
         """Test authorization URL includes default scope."""
+        mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -145,7 +148,7 @@ class TestUltrahumanOAuthAuthorization:
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -168,8 +171,7 @@ class TestUltrahumanOAuthAuthorization:
 class TestUltrahumanOAuthUserInfo:
     """Tests for extracting Ultrahuman user info from token response."""
 
-    @patch("httpx.get")
-    def test_get_provider_user_info_with_user_id(self, mock_get: MagicMock, db: Session) -> None:
+    def test_get_provider_user_info_with_user_id(self, respx_mock: respx.MockRouter, db: Session) -> None:
         """Test extracting user info when user_id is present."""
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
@@ -193,11 +195,9 @@ class TestUltrahumanOAuthUserInfo:
             token_type="Bearer",
         )
 
-        # Mock the profile API call
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"user_id": "test_user_123", "email": "test@example.com"}
-        mock_get.return_value = mock_response
+        profile = respx_mock.get("https://partner.ultrahuman.com/user_data/user_info").respond(
+            200, json={"user_id": "test_user_123", "email": "test@example.com"}
+        )
 
         # Act
         user_info = oauth._get_provider_user_info(token_response, str(user.id))
@@ -205,10 +205,10 @@ class TestUltrahumanOAuthUserInfo:
         # Assert
         assert user_info["user_id"] == "test_user_123"
         assert user_info["username"] == "test@example.com"
-        mock_get.assert_called_once()
+        assert profile.call_count == 1
+        assert profile.calls.last.request.headers["Authorization"] == "Bearer test_access_token"
 
-    @patch("httpx.get")
-    def test_get_provider_user_info_handles_failure(self, mock_get: MagicMock, db: Session) -> None:
+    def test_get_provider_user_info_handles_failure(self, respx_mock: respx.MockRouter, db: Session) -> None:
         """Test extracting user info when API call fails."""
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
@@ -232,8 +232,9 @@ class TestUltrahumanOAuthUserInfo:
             token_type="Bearer",
         )
 
-        # Mock a failed API call
-        mock_get.side_effect = httpx.RequestError("Network error")
+        respx_mock.get("https://partner.ultrahuman.com/user_data/user_info").mock(
+            side_effect=httpx.ConnectError("Network error")
+        )
 
         # Act
         user_info = oauth._get_provider_user_info(token_response, str(user.id))

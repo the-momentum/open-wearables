@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+import time_machine
 from sqlalchemy.orm import Session
 
 from app.models import UserConnection
@@ -278,16 +279,13 @@ class TestUserConnectionRepository:
     def test_mark_as_revoked(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test marking a connection as revoked."""
         # Arrange
-        connection = UserConnectionFactory(provider="garmin", status=ConnectionStatus.ACTIVE)
-        original_updated_at = connection.updated_at
+        with time_machine.travel(datetime.now(timezone.utc), tick=False) as traveller:
+            connection = UserConnectionFactory(provider="garmin", status=ConnectionStatus.ACTIVE)
+            original_updated_at = connection.updated_at
+            traveller.shift(timedelta(seconds=1))
 
-        # Wait to ensure timestamp difference
-        import time
-
-        time.sleep(0.01)
-
-        # Act
-        result = connection_repo.mark_as_revoked(db, connection)
+            # Act
+            result = connection_repo.mark_as_revoked(db, connection)
 
         # Assert
         assert result.status == ConnectionStatus.REVOKED
@@ -302,33 +300,29 @@ class TestUserConnectionRepository:
     def test_update_tokens(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test updating connection tokens."""
         # Arrange
-        connection = UserConnectionFactory(
-            access_token="old_access",
-            refresh_token="old_refresh",
-        )
-        original_updated_at = connection.updated_at
+        with time_machine.travel(datetime.now(timezone.utc), tick=False) as traveller:
+            connection = UserConnectionFactory(
+                access_token="old_access",
+                refresh_token="old_refresh",
+            )
+            original_updated_at = connection.updated_at
+            traveller.shift(timedelta(seconds=1))
 
-        # Wait to ensure timestamp difference
-        import time
-
-        time.sleep(0.01)
-
-        # Act
-        result = connection_repo.update_tokens(
-            db,
-            connection,
-            access_token="new_access",
-            refresh_token="new_refresh",
-            expires_in=3600,
-        )
+            # Act
+            result = connection_repo.update_tokens(
+                db,
+                connection,
+                access_token="new_access",
+                refresh_token="new_refresh",
+                expires_in=3600,
+            )
+            expected_expiry = datetime.now(timezone.utc) + timedelta(seconds=3600)
 
         # Assert
         assert result.access_token == "new_access"
         assert result.refresh_token == "new_refresh"
         assert result.updated_at > original_updated_at
-        # Token should expire in approximately 1 hour
-        expected_expiry = datetime.now(timezone.utc) + timedelta(seconds=3600)
-        assert abs((result.token_expires_at - expected_expiry).total_seconds()) < 5
+        assert result.token_expires_at == expected_expiry
 
     def test_update_tokens_with_none_refresh_token(
         self,

@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
+from sqlalchemy.orm import Session
 
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import CalendarPeriod, SessionValue
@@ -39,6 +41,7 @@ def base_sleep() -> dict:
 def timeseries_service_mock() -> Generator[MagicMock, None, None]:
     with patch(
         "app.services.providers.suunto.data_247.timeseries_service",
+        autospec=True,
     ) as mock:
         yield mock
 
@@ -329,8 +332,10 @@ class TestSuuntoSaveSleepSkipSignal:
             "suunto_sleep_id": 1,
         }
 
-        with patch("app.services.providers.suunto.data_247.event_record_service") as event_record_service_mock:
-            result = data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+        with patch(
+            "app.services.providers.suunto.data_247.event_record_service", autospec=True
+        ) as event_record_service_mock:
+            result = data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
 
         assert result is False
         event_record_service_mock.create_or_merge_sleep.assert_not_called()
@@ -352,8 +357,10 @@ class TestSuuntoSaveSleepSkipSignal:
             "efficiency_percent": None,
         }
 
-        with patch("app.services.providers.suunto.data_247.event_record_service") as event_record_service_mock:
-            result = data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+        with patch(
+            "app.services.providers.suunto.data_247.event_record_service", autospec=True
+        ) as event_record_service_mock:
+            result = data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
 
         assert result is True
         record = event_record_service_mock.create_or_merge_sleep.call_args[0][2]
@@ -368,7 +375,7 @@ class TestSuuntoSleepSeriesPersistence:
         base_sleep: dict,
         timeseries_service_mock: MagicMock,
     ) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         recorded_at = datetime(2026, 5, 17, 9, 19, tzinfo=timezone.utc)
 
         data_247._persist_sleep_series(db, base_sleep["user_id"], base_sleep, recorded_at)
@@ -396,7 +403,7 @@ class TestSuuntoSleepSeriesPersistence:
         base_sleep["max_spo2_percent"] = 98.0
 
         data_247._persist_sleep_series(
-            MagicMock(),
+            MagicMock(spec=Session),
             base_sleep["user_id"],
             base_sleep,
             datetime(2025, 1, 6, 7, 0, tzinfo=timezone.utc),
@@ -424,7 +431,7 @@ class TestSuuntoSleepSeriesPersistence:
         base_sleep["is_nap"] = True
 
         data_247._persist_sleep_series(
-            MagicMock(),
+            MagicMock(spec=Session),
             base_sleep["user_id"],
             base_sleep,
             datetime.now(timezone.utc),
@@ -441,7 +448,7 @@ class TestSuuntoSleepSeriesPersistence:
         base_sleep["min_heart_rate_bpm"] = None
 
         data_247._persist_sleep_series(
-            MagicMock(),
+            MagicMock(spec=Session),
             base_sleep["user_id"],
             base_sleep,
             datetime.now(timezone.utc),
@@ -456,7 +463,7 @@ class TestSuuntoSleepSeriesPersistence:
         timeseries_service_mock: MagicMock,
     ) -> None:
         timeseries_service_mock.bulk_create_samples.side_effect = RuntimeError("db down")
-        db = MagicMock()
+        db = MagicMock(spec=Session)
 
         data_247._persist_sleep_series(
             db,
@@ -488,11 +495,14 @@ def _normalized_sleep(**overrides: Any) -> dict[str, Any]:
 
 
 class TestSuuntoSleepWindow:
-    @patch("app.services.providers.suunto.data_247.event_record_service")
     def test_duration_and_time_in_bed_follow_the_window_not_duration(
-        self, mock_event: MagicMock, data_247: Suunto247Data
+        self, mocker: MockerFixture, data_247: Suunto247Data
     ) -> None:
-        assert data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep(duration_seconds=21600)) is True
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
+        assert (
+            data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), _normalized_sleep(duration_seconds=21600))
+            is True
+        )
 
         record, detail = mock_event.create_or_merge_sleep.call_args[0][2:4]
         assert record.duration_seconds == 23520
@@ -504,16 +514,16 @@ class TestSuuntoSleepSyncStats:
     (saved, skipped) counts, so a fully-dropped backfill is never reported as a
     successful sync."""
 
-    @patch("app.services.providers.suunto.data_247.event_record_service")
-    def test_save_sleep_data_reports_success(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
-        assert data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep()) is True
+    def test_save_sleep_data_reports_success(self, mocker: MockerFixture, data_247: Suunto247Data) -> None:
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
+        assert data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), _normalized_sleep()) is True
         mock_event.create_or_merge_sleep.assert_called_once()
 
-    @patch("app.services.providers.suunto.data_247.event_record_service")
-    def test_save_sleep_data_keeps_unreported_stages_none(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+    def test_save_sleep_data_keeps_unreported_stages_none(self, mocker: MockerFixture, data_247: Suunto247Data) -> None:
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
         stages = {"deep_seconds": None, "light_seconds": None, "rem_seconds": None, "awake_seconds": 0}
 
-        data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep(stages=stages))
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), _normalized_sleep(stages=stages))
 
         detail = mock_event.create_or_merge_sleep.call_args[0][3]
         assert detail.sleep_deep_minutes is None
@@ -522,17 +532,19 @@ class TestSuuntoSleepSyncStats:
         assert detail.sleep_total_duration_minutes is None
         assert detail.sleep_awake_minutes == 0
 
-    @patch("app.services.providers.suunto.data_247.event_record_service")
     def test_save_sleep_data_reports_skip_for_missing_window(
-        self, mock_event: MagicMock, data_247: Suunto247Data
+        self, mocker: MockerFixture, data_247: Suunto247Data
     ) -> None:
-        skipped = data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep(start_time=None, end_time=None))
+        mock_event = mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
+        skipped = data_247.save_sleep_data(
+            MagicMock(spec=Session), uuid4(), _normalized_sleep(start_time=None, end_time=None)
+        )
 
         assert skipped is False
         mock_event.create_or_merge_sleep.assert_not_called()
 
-    @patch("app.services.providers.suunto.data_247.event_record_service")
-    def test_load_and_save_sleep_counts_saved_and_skipped(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+    def test_load_and_save_sleep_counts_saved_and_skipped(self, mocker: MockerFixture, data_247: Suunto247Data) -> None:
+        mocker.patch("app.services.providers.suunto.data_247.event_record_service", autospec=True)
         saveable = {
             "timestamp": "2026-06-06T23:40:00+02:00",
             "entryData": {
@@ -544,21 +556,21 @@ class TestSuuntoSleepSyncStats:
         }
         unsaveable = {"timestamp": "2026-06-07T13:00:00+02:00", "entryData": {"Duration": 0.0, "SleepId": 2}}
 
-        with patch.object(data_247, "get_sleep_data", return_value=[saveable, unsaveable]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[saveable, unsaveable]):
             saved, skipped = data_247.load_and_save_sleep(
-                MagicMock(), uuid4(), datetime.now(timezone.utc), datetime.now(timezone.utc)
+                MagicMock(spec=Session), uuid4(), datetime.now(timezone.utc), datetime.now(timezone.utc)
             )
 
         assert (saved, skipped) == (1, 1)
 
     def test_load_and_save_all_surfaces_skipped_count(self, data_247: Suunto247Data) -> None:
         with (
-            patch.object(data_247, "load_and_save_sleep", return_value=(2, 3)),
-            patch.object(data_247, "load_and_save_recovery", return_value=0),
-            patch.object(data_247, "get_activity_samples", return_value=[]),
-            patch.object(data_247, "get_daily_activity_statistics", return_value=[]),
+            patch.object(data_247, "load_and_save_sleep", autospec=True, return_value=(2, 3)),
+            patch.object(data_247, "load_and_save_recovery", autospec=True, return_value=0),
+            patch.object(data_247, "get_activity_samples", autospec=True, return_value=[]),
+            patch.object(data_247, "get_daily_activity_statistics", autospec=True, return_value=[]),
         ):
-            results = data_247.load_and_save_all(MagicMock(), uuid4())
+            results = data_247.load_and_save_all(MagicMock(spec=Session), uuid4())
 
         assert results.outcomes["sleep"].rows_written == 2
         assert results.outcomes["sleep"].skipped == 3
@@ -572,7 +584,11 @@ class TestSuuntoSleepSessionValues:
         night = {**base_sleep, "max_spo2_percent": 98.0}
 
         data_247._persist_sleep_series(
-            MagicMock(), base_sleep["user_id"], night, datetime(2025, 1, 6, 7, tzinfo=timezone.utc), record_id
+            MagicMock(spec=Session),
+            base_sleep["user_id"],
+            night,
+            datetime(2025, 1, 6, 7, tzinfo=timezone.utc),
+            record_id,
         )
 
         samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
@@ -589,7 +605,7 @@ class TestSuuntoDailyActivityStatistics:
     ) -> None:
         stats = [{"type": "stepcount", "daily_values": [{"date": "2025-01-06T00:00:00.000+02:00", "value": 8000}]}]
 
-        data_247.save_daily_activity_statistics(MagicMock(), uuid4(), stats)
+        data_247.save_daily_activity_statistics(MagicMock(spec=Session), uuid4(), stats)
 
         samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
         assert [s.period for s in samples] == [CalendarPeriod.of_date(date(2025, 1, 6), "+02:00")]

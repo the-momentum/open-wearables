@@ -66,7 +66,7 @@ def _clean_lease() -> Generator[None, None, None]:
 
 @pytest.fixture
 def fast_renewal() -> Generator[None, None, None]:
-    with patch.object(sync_coordination, "_renew_interval", return_value=RENEW_INTERVAL):
+    with patch.object(sync_coordination, "_renew_interval", autospec=True, return_value=RENEW_INTERVAL):
         yield
 
 
@@ -124,7 +124,7 @@ class TestRenewalThread:
 
     def test_renews_until_the_lease_is_cleared(self, fast_renewal: None) -> None:
         calls = _Counter()
-        with patch.object(sync_coordination, "renew_primary", side_effect=calls.hit(True)):
+        with patch.object(sync_coordination, "renew_primary", autospec=True, side_effect=calls.hit(True)):
             bind_primary_lease(PROVIDER, PROVIDER_USER_ID, uuid4(), "tok")
             assert calls.reached(2)
             _, thread = sync_coordination._renewer.state
@@ -137,7 +137,7 @@ class TestRenewalThread:
 
     def test_stops_renewing_once_another_holder_has_the_lock(self, fast_renewal: None) -> None:
         calls = _Counter()
-        with patch.object(sync_coordination, "renew_primary", side_effect=calls.hit(False)):
+        with patch.object(sync_coordination, "renew_primary", autospec=True, side_effect=calls.hit(False)):
             bind_primary_lease(PROVIDER, PROVIDER_USER_ID, uuid4(), "tok")
             _, thread = sync_coordination._renewer.state
             assert _eventually(lambda: not thread.is_alive())
@@ -145,14 +145,16 @@ class TestRenewalThread:
 
     def test_an_unreachable_redis_does_not_drop_the_lease(self, fast_renewal: None) -> None:
         calls = _Counter()
-        with patch.object(sync_coordination, "renew_primary", side_effect=calls.hit(ConnectionError("redis down"))):
+        with patch.object(
+            sync_coordination, "renew_primary", autospec=True, side_effect=calls.hit(ConnectionError("redis down"))
+        ):
             bind_primary_lease(PROVIDER, PROVIDER_USER_ID, uuid4(), "tok")
             assert calls.reached(2)  # keeps trying rather than giving the lock up
             _, thread = sync_coordination._renewer.state
             assert thread.is_alive()
 
     def test_a_second_bind_replaces_the_first_renewer(self, fast_renewal: None) -> None:
-        with patch.object(sync_coordination, "renew_primary", return_value=True):
+        with patch.object(sync_coordination, "renew_primary", autospec=True, return_value=True):
             bind_primary_lease(PROVIDER, PROVIDER_USER_ID, uuid4(), "tok")
             _, first = sync_coordination._renewer.state
             bind_primary_lease(PROVIDER, PROVIDER_USER_ID, uuid4(), "tok2")
@@ -161,7 +163,7 @@ class TestRenewalThread:
             assert sync_coordination._renewer.state[1] is not first
 
     def test_lease_is_per_thread(self, fast_renewal: None) -> None:
-        with patch.object(sync_coordination, "renew_primary", return_value=True):
+        with patch.object(sync_coordination, "renew_primary", autospec=True, return_value=True):
             bind_primary_lease(PROVIDER, PROVIDER_USER_ID, uuid4(), "tok")
             with ThreadPoolExecutor(max_workers=1) as pool:
                 # Another task thread sees no lease, and clearing there touches nothing.

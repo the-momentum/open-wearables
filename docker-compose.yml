@@ -87,6 +87,8 @@ services:
         - action: sync
           path: ./backend/scripts
           target: /root_project/scripts
+    # worker.sh exits when the core schema isn't ready in time or a worker stops
+    restart: on-failure
 
   celery-beat:
     container_name: celery-beat__open-wearables

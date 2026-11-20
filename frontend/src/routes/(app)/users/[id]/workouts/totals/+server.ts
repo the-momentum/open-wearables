@@ -10,7 +10,8 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 	const totals = await fetchWorkoutTotals(params.id, accessToken, {
 		period: parsePeriod(url.searchParams),
 		provider: url.searchParams.get('provider') ?? '',
-		type: url.searchParams.get('type') ?? ''
+		type: url.searchParams.get('type') ?? '',
+		topSourceOnly: url.searchParams.get('top') === '1'
 	});
 	return json(toWorkoutTotals(totals));
 };

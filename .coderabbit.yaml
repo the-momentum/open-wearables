@@ -176,7 +176,7 @@ reviews:
         do not flag breaking changes there as long as frontend/ is updated
         in the same PR.
 
-    - path: "backend/app/api/routes/v1/{webhooks,deprecated_webhooks,oura_webhooks,strava_webhooks,oauth}.py"
+    - path: "backend/app/api/routes/v1/{webhooks,deprecated_webhooks,oura_webhooks,oauth}.py"
       instructions: |
         Incoming webhook and OAuth callback URLs are registered by hand in
         each provider's developer portal, separately on every instance.

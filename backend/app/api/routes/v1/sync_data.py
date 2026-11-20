@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any
@@ -16,10 +15,7 @@ from app.schemas.responses.upload import SyncDetails, SyncQueuedResponse, SyncRe
 from app.services import ApiKeyDep
 from app.services.providers.base_strategy import DEFAULT_HISTORICAL_DAYS
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import UnsupportedProviderError
 from app.utils.sync_params import build_sync_params
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -296,13 +292,8 @@ def sync_historical_data(
     """
     strategy = factory.get_provider(provider.value)
 
-    try:
-        result = strategy.start_historical_sync(user_id, days)
-    except UnsupportedProviderError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=exc.detail,
-        )
+    # UnsupportedProviderError is an InvalidInputError: the global handler answers 400
+    result = strategy.start_historical_sync(user_id, days)
 
     return {
         "success": True,

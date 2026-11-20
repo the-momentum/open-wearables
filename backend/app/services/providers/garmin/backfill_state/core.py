@@ -1,6 +1,5 @@
 """Core backfill state: Redis key helper, trace IDs, lock."""
 
-import logging
 from uuid import UUID, uuid4
 
 from app.integrations.redis_client import get_redis_client
@@ -9,8 +8,6 @@ from app.services.providers.garmin.backfill_config import (
     REDIS_PREFIX,
     REDIS_TTL,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _get_key(user_id: str | UUID, *parts: str) -> str:
@@ -33,8 +30,8 @@ def set_trace_id(user_id: str | UUID) -> str:
 def get_trace_id(user_id: str | UUID, data_type: str | None = None) -> str | None:
     """Return the active backfill trace ID for a user, optionally per-type."""
     if data_type:
-        return get_redis_client().get(_get_key(user_id, "types", data_type, "trace_id"))  # ty:ignore[invalid-return-type]
-    return get_redis_client().get(_get_key(user_id, "trace_id"))  # ty:ignore[invalid-return-type]
+        return get_redis_client().get(_get_key(user_id, "types", data_type, "trace_id"))  # ty:ignore[invalid-explicit-return]
+    return get_redis_client().get(_get_key(user_id, "trace_id"))  # ty:ignore[invalid-explicit-return]
 
 
 def set_type_trace_id(user_id: str | UUID, data_type: str) -> str:

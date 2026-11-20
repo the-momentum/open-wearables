@@ -6,12 +6,12 @@ An extension registers an ``OWExtension`` subclass in its pyproject.toml:
     my_extension = "my_extension.extension:MyExtension"
 
 This module is the supported surface for extensions, with ``app.extensions.migrations`` for
-their database tables. Everything else in ``app`` can be imported too, but may change between
-releases - pin ``requires_core`` accordingly.
+their database tables and ``app.extensions.webhooks`` for their webhook events. Everything else in ``app`` can
+be imported too, but may change between releases - pin ``requires_core`` accordingly.
 """
 
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
@@ -19,22 +19,25 @@ from functools import cache
 from importlib import import_module
 from importlib.metadata import entry_points
 from importlib.util import find_spec
-from logging import getLogger
+from types import MappingProxyType
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, params
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from app import __version__ as core_version
+from app.constants.celery_tasks import CeleryQueue
 from app.database import engine
 from app.extensions import events, migrations
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.schemas.webhooks.event_types import WebhookEventType
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 ENTRY_POINT_GROUP = "open_wearables.extensions"
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
+_EVENT_TYPE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
+_QUEUE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*")
 
 # The fields Celery documents for a beat_schedule entry; beat fails to start on an unknown one.
 _BEAT_ENTRY_FIELDS = frozenset({"task", "schedule", "args", "kwargs", "options", "relative"})
@@ -51,6 +54,9 @@ class OWExtension:
     celery_task_packages: list[str] = field(default_factory=list)
     # Alembic script location of the extension's own history, e.g. "my_extension:migrations".
     migrations: str = ""
+    # Celery queues the extension routes its tasks to, "<name>" or "<name>.<suffix>"; worker.sh runs them in a worker
+    # of their own. Tasks are acknowledged on receipt: give long ones acks_late=True so a stop doesn't lose them.
+    celery_queues: list[str] | tuple[str, ...] = field(default_factory=list)
 
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
         return {}
@@ -65,6 +71,11 @@ class OWExtension:
 
     def event_handlers(self) -> dict[str, str]:
         """Celery task queued with ``user_id`` per event, e.g. ``{"sync.completed": "my_ext.tasks.recompute"}``."""
+        return {}
+
+    def webhook_event_types(self) -> dict[str, str]:
+        """Event types emitted with ``app.extensions.webhooks.emit``, name -> description, e.g.
+        ``{"my_extension.thing.created": "A thing was created."}``; names start with ``<name>.``."""
         return {}
 
 
@@ -86,6 +97,21 @@ def _name_error(ext: OWExtension) -> str | None:
     return f"name {ext.name!r} must be a lowercase identifier"
 
 
+def _queue_error(ext: OWExtension) -> str | None:
+    """A str would be read as one queue per character, and None breaks create_celery() in every process. A core queue,
+    or another extension's, would put the tasks on a worker that doesn't expect them."""
+    queues = ext.celery_queues
+    if not isinstance(queues, list | tuple) or not all(isinstance(q, str) and _QUEUE.fullmatch(q) for q in queues):
+        return f"invalid celery_queues {queues!r}, must be a list or tuple of dotted lowercase names"
+    core = {queue.value for queue in CeleryQueue}
+    for queue in queues:
+        if queue in core:
+            return f"celery queue {queue!r} is one of the core's"
+        if queue != ext.name and not queue.startswith(f"{ext.name}."):
+            return f"celery queue {queue!r} must be {ext.name!r} or start with {ext.name + '.'!r}"
+    return None
+
+
 def _compatibility_error(ext: OWExtension) -> str | None:
     """Return an error message when the extension does not support this core version."""
     if not ext.requires_core:
@@ -104,7 +130,7 @@ def _migration_error(ext: OWExtension) -> str | None:
     try:
         migrations.upgrade(ext.name, ext.migrations, engine)
     except Exception as exc:
-        log_and_capture_error(exc, logger, "Extension migrations failed", extra={"extension": ext.name})
+        logger.error("Extension migrations failed", exc_info=exc, extension=ext.name)
         return f"migrations failed: {exc}"
     return None
 
@@ -118,9 +144,7 @@ def _task_import_error(ext: OWExtension) -> str | None:
             if find_spec(module) is not None:
                 import_module(module)
         except Exception as exc:
-            log_and_capture_error(
-                exc, logger, "Extension task module failed to import", extra={"extension": ext.name, "module": module}
-            )
+            logger.error("Extension task module failed to import", exc_info=exc, extension=ext.name, module=module)
             return f"cannot import {module}: {exc}"
     return None
 
@@ -133,7 +157,7 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
         try:
             ext = ep.load()()
         except Exception as exc:
-            log_and_capture_error(exc, logger, "Failed to load extension", extra={"extension": ep.name})
+            logger.error("Failed to load extension", exc_info=exc, extension=ep.name)
             loaded.append(LoadedExtension(name=ep.name, extension=None, error=str(exc)))
             continue
 
@@ -143,16 +167,18 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
             # Without @dataclass the inherited __init__ resets the subclass's attributes to the defaults.
             error = f"{type(ext).__name__} must be declared with @dataclass"
         else:
-            error = _name_error(ext) or _compatibility_error(ext) or _migration_error(ext) or _task_import_error(ext)
+            error = (
+                _name_error(ext)
+                or _queue_error(ext)
+                or _compatibility_error(ext)
+                or _migration_error(ext)
+                or _task_import_error(ext)
+            )
         name = getattr(ext, "name", "") or ep.name
         if error:
-            log_structured(
-                logger, "warning", "Extension disabled", action="extension_disabled", extension=name, reason=error
-            )
+            logger.warning("Extension disabled", action="extension_disabled", extension=name, reason=error)
         else:
-            log_structured(
-                logger, "info", "Extension loaded", action="extension_loaded", extension=name, version=ext.version
-            )
+            logger.info("Extension loaded", action="extension_loaded", extension=name, version=ext.version)
         extension = ext if isinstance(ext, OWExtension) else None
         loaded.append(LoadedExtension(name=name, extension=extension, error=error))
     return tuple(loaded)
@@ -166,11 +192,8 @@ def _hook_routers(ext: OWExtension, hook: str) -> list[APIRouter]:
     try:
         contributed = list(getattr(ext, hook)())
     except Exception as exc:
-        log_and_capture_error(
-            exc,
-            logger,
-            f"Extension {hook}() failed, its endpoints are not mounted",
-            extra={"extension": ext.name},
+        logger.error(
+            "Extension hook failed, its endpoints are not mounted", exc_info=exc, extension=ext.name, hook=hook
         )
         return []
     routers: list[APIRouter] = []
@@ -178,9 +201,7 @@ def _hook_routers(ext: OWExtension, hook: str) -> list[APIRouter]:
         if isinstance(router, APIRouter):
             routers.append(router)
             continue
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Extension router skipped",
             action="extension_router_skipped",
             extension=ext.name,
@@ -206,9 +227,7 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
         try:
             declared = dict(ext.event_handlers())
         except Exception as exc:
-            log_and_capture_error(
-                exc, logger, "Extension event_handlers() failed, it receives no events", extra={"extension": ext.name}
-            )
+            logger.error("Extension event_handlers() failed, it receives no events", exc_info=exc, extension=ext.name)
             continue
         for event, task in declared.items():
             if event not in events.SUPPORTED_EVENTS:
@@ -218,9 +237,7 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
             else:
                 handlers.setdefault(event, []).append(task)
                 continue
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Extension event handler skipped",
                 action="extension_event_handler_skipped",
                 extension=ext.name,
@@ -228,6 +245,50 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
                 reason=error,
             )
     return {event: tuple(tasks) for event, tasks in handlers.items()}
+
+
+def collect_celery_queues() -> tuple[str, ...]:
+    """Each declared queue once."""
+    return tuple(dict.fromkeys(q for ext in get_active_extensions() for q in ext.celery_queues))
+
+
+@cache
+def collect_webhook_event_types() -> Mapping[str, str]:
+    """Name -> description of the active extensions' webhook event types. A name outside the extension's ``<name>.``
+    namespace or in one of the core's (``workout.``, ``sync.``, ...), or a description that isn't a string, is skipped.
+    Cached: emit() checks every event against it."""
+    # The core may add any type to its namespaces later, which would take over the extension's events.
+    core_namespaces = {evt.value.split(".", 1)[0] for evt in WebhookEventType}
+    types: dict[str, str] = {}
+    for ext in get_active_extensions():
+        try:
+            declared = dict(ext.webhook_event_types())
+        except Exception as exc:
+            logger.error(
+                "Extension webhook_event_types() failed, its events are not registered",
+                exc_info=exc,
+                extension=ext.name,
+            )
+            continue
+        for name, description in declared.items():
+            if not isinstance(name, str) or not _EVENT_TYPE.fullmatch(name) or not name.startswith(f"{ext.name}."):
+                error = f"event type {name!r} is not a dotted lowercase name starting with {ext.name + '.'!r}"
+            elif (namespace := name.split(".", 1)[0]) in core_namespaces:
+                error = f"{name!r} is in the core's {namespace!r} namespace"
+            elif not isinstance(description, str):
+                error = f"invalid description for {name!r}"
+            else:
+                types[name] = description
+                continue
+            logger.error(
+                "Extension webhook event type skipped",
+                alert=True,
+                action="extension_webhook_event_type_skipped",
+                extension=ext.name,
+                event_type=str(name),
+                reason=error,
+            )
+    return MappingProxyType(types)
 
 
 def _beat_entry_error(key: str, entry: Any, reserved: Collection[str], scheduled: Collection[str]) -> str | None:
@@ -254,19 +315,16 @@ def collect_beat_schedule(reserved: Collection[str] = ()) -> dict[str, dict[str,
         try:
             entries = dict(ext.beat_schedule())
         except Exception as exc:
-            log_and_capture_error(
-                exc,
-                logger,
+            logger.error(
                 "Extension beat_schedule() failed, its periodic tasks are not scheduled",
-                extra={"extension": ext.name},
+                exc_info=exc,
+                extension=ext.name,
             )
             continue
         for key, entry in entries.items():
             error = _beat_entry_error(key, entry, reserved, schedule)
             if error:
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Extension beat entry skipped",
                     action="extension_beat_entry_skipped",
                     extension=ext.name,
@@ -283,7 +341,9 @@ __all__ = [
     "LoadedExtension",
     "OWExtension",
     "collect_beat_schedule",
+    "collect_celery_queues",
     "collect_event_handlers",
+    "collect_webhook_event_types",
     "get_active_extensions",
     "get_extensions",
     "mount_routers",

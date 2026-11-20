@@ -7,8 +7,6 @@ Runs once per day (via beat schedule) to:
 Both are configured by the admin via archival_settings.
 """
 
-from logging import getLogger
-
 from celery import Task, shared_task
 
 from app.config import settings
@@ -16,9 +14,9 @@ from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.integrations import rollup_queue
 from app.services.archival_service import archival_service
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(name=CeleryTask.ROLL_UP_QUEUED_DAYS, soft_time_limit=120, time_limit=150)
@@ -40,6 +38,16 @@ def roll_up_queued_days() -> dict:
         # Days left over start the next run right away, so a busy instance does not wait 15 minutes per minute of work.
         roll_up_queued_days.apply_async(countdown=1)
     return {"rolled_up_days": rolled_up}
+
+
+@shared_task(name=CeleryTask.DROP_RECONCILED_DAYS, soft_time_limit=120, time_limit=150)
+def drop_reconciled_days() -> dict:
+    """Delete the stored merged days a priority change left in the old order, in batches; reads merge them anew."""
+    with SessionLocal() as db:
+        dropped, done = archival_service.drop_reconciled_days(db)
+    if not done:
+        drop_reconciled_days.apply_async(countdown=1)
+    return {"dropped_rows": dropped}
 
 
 @shared_task(
@@ -68,11 +76,11 @@ def run_daily_archival(self: Task) -> dict:
     try:
         with SessionLocal() as db:
             summary = archival_service.run_daily_archival(db)
-            log_structured(logger, "info", "Daily archival completed", **summary)
+            logger.info("Daily archival completed", **summary)
             return summary
     except Exception:
-        # Raised on to Celery, whose integration reports it to Sentry.
-        log_structured(logger, "error", "Daily archival task failed")
+        # Raised on to Celery, whose integration reports it as unhandled; exc_info here would report it handled.
+        logger.error("Daily archival task failed")
         raise
     finally:
         rollup_queue.release_lock(token)

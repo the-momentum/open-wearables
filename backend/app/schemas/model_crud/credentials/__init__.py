@@ -13,6 +13,7 @@ from .application import (
 )
 from .oauth import (
     AuthorizationURLResponse,
+    ConnectTokenResponse,
     OAuthState,
     OAuthTokenResponse,
     ProviderCredentials,
@@ -43,6 +44,7 @@ __all__ = [
     "ProviderEndpoints",
     "ProviderCredentials",
     "AuthorizationURLResponse",
+    "ConnectTokenResponse",
     # UserInvitationCode
     "UserInvitationCodeCreate",
     "UserInvitationCodeRead",

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.schemas.enums import ProviderName
+from app.services.priority_service import priority_service
 from tests.factories import (
     ApiKeyFactory,
     DataSourceFactory,
@@ -85,6 +86,37 @@ class TestWorkoutTotals:
             "calories_kcal": None,
             "distance_meters": None,
         }
+
+    def test_per_session_counts_the_same_workouts_as_the_list(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        strava = DataSourceFactory(user=user, provider=ProviderName.STRAVA, source="strava")
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE)
+        start = datetime.now(timezone.utc) - timedelta(days=2)
+        for ds in (strava, apple):
+            workout = EventRecordFactory(
+                mapping=ds,
+                category="workout",
+                type_="cycling",
+                start_datetime=start,
+                end_datetime=start + timedelta(minutes=30),
+                duration_seconds=1800,
+            )
+            WorkoutDetailsFactory(event_record=workout, energy_burned=Decimal("200"), distance=Decimal("10000"))
+        priority_service.update_provider_priority(db, ProviderName.STRAVA, 1)
+        priority_service.update_provider_priority(db, ProviderName.APPLE, 2)
+
+        # Off by default: both copies are added up.
+        assert self._totals(client, user.id)["count"] == 2
+        # On: the Apple copy of the Strava ride is left out, as it is in the list.
+        filtered = self._totals(client, user.id, source_selection="per_session")
+        assert filtered == {
+            "count": 1,
+            "duration_seconds": 1800,
+            "calories_kcal": 200.0,
+            "distance_meters": 10000.0,
+        }
+        listed = _get(client, f"/api/v1/users/{user.id}/events/workouts", limit=100, source_selection="per_session")
+        assert filtered["count"] == len(listed["data"])
 
 
 class TestSleepTotals:

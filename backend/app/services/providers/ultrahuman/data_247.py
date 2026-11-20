@@ -5,8 +5,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
-
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
@@ -27,7 +25,10 @@ from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES, D
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import as_int, seconds_to_minutes
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ProviderConnectionError, ProviderError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Ultrahuman sleep_graph.data stage names → our canonical SleepStageType.
 SLEEP_GRAPH_STAGE_MAP: dict[str, SleepStageType] = {
@@ -85,7 +86,8 @@ class Ultrahuman247Data(Base247DataTemplate):
             list[dict[str, Any]]: List of metrics for the day, or empty list on recoverable errors.
 
         Raises:
-            HTTPException: For fatal errors (401, 403) that require token refresh/invalidate connection.
+            ProviderConnectionError: The connection can't be used (token rejected or missing).
+            ProviderError: Ultrahuman answered 403, which every remaining day would get too.
         """
         date_str = date.strftime("%Y-%m-%d")
         try:
@@ -111,37 +113,40 @@ class Ultrahuman247Data(Base247DataTemplate):
                     if "object" in item and isinstance(item["object"], dict):
                         item["object"]["ultrahuman_date"] = date_str
                 return metrics
-        except HTTPException as e:
+        except ProviderConnectionError as e:
             # Fatal errors - should be raised to trigger token refresh or invalidate connection
-            if e.status_code in (401, 403):
-                log_structured(
-                    self.logger,
-                    "error",
+            logger.error(
+                "Authorization failed while fetching daily metrics",
+                provider="ultrahuman",
+                task="fetch_daily_metrics",
+                date=date_str,
+                error=e.detail,
+            )
+            raise
+        except ProviderError as e:
+            if e.upstream_status in (401, 403):
+                logger.error(
                     "Authorization failed while fetching daily metrics",
                     provider="ultrahuman",
                     task="fetch_daily_metrics",
                     date=date_str,
-                    status_code=e.status_code,
+                    upstream_status=e.upstream_status,
                     error=e.detail,
                 )
                 raise
             # Recoverable errors - log and continue with next day
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "API error while fetching daily metrics",
                 provider="ultrahuman",
                 task="fetch_daily_metrics",
                 date=date_str,
-                status_code=e.status_code,
+                upstream_status=e.upstream_status,
                 error=e.detail,
             )
             return []
         except Exception as e:
             # Network errors and other unexpected errors - log and continue
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to fetch daily metrics",
                 provider="ultrahuman",
                 task="fetch_daily_metrics",
@@ -260,9 +265,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         end_dt = normalized_sleep.get("end_time")
 
         if not start_dt or not end_dt:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Skipping sleep record: missing start/end time",
                 provider="ultrahuman",
                 task="save_sleep_data",
@@ -482,9 +485,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                         )
                     )
                 except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Failed to build activity sample",
                         provider="ultrahuman",
                         task="build_activity_samples",
@@ -522,9 +523,9 @@ class Ultrahuman247Data(Base247DataTemplate):
 
         start_time, end_time = self.resolve_window(start_time, end_time)
 
-        # HTTPException from _fetch_daily_metrics (401/403) invalidates every remaining
+        # A lost grant or a 403 from _fetch_daily_metrics invalidates every remaining
         # day, so it propagates instead of being recorded against one data type.
-        run = self.sync_run(db, user_id, fatal=(HTTPException,))
+        run = self.sync_run(db, user_id, fatal=(ProviderConnectionError, ProviderError))
         run.expect("sleep", "activity_samples")
 
         current_date = datetime.combine(start_time.date(), datetime.min.time(), tzinfo=timezone.utc)
@@ -562,7 +563,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         """
         try:
             metrics_list = self._fetch_daily_metrics(db, user_id, day)
-        except HTTPException:
+        except (ProviderConnectionError, ProviderError):
             raise
         except Exception as e:
             run.fail("daily_metrics", e)

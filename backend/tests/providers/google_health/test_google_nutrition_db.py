@@ -5,15 +5,18 @@ Runs the handler the way ``GoogleHealth247Data.load_and_save_all`` does: inside
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition
+from app.services.providers.google_health.oauth import GoogleOAuth
 from app.services.providers.google_health.webhook_handler import GoogleWebhookHandler
+from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 from tests.factories import DataSourceFactory, UserFactory
 
 START = datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
@@ -46,13 +49,18 @@ def _existing_source(user) -> None:  # noqa: ANN001
 
 def _sync_like_data_247(db: Session, user_id: UUID, points: list[dict]) -> int:
     """Run the handler exactly as load_and_save_all does: under a savepoint, commit after."""
-    nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
+    nutrition = GoogleHealthApiNutrition(
+        oauth=create_autospec(GoogleOAuth, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
+        api_base_url=API,
+    )
     with (
         patch(
             "app.services.providers.google_health.nutrition.make_authenticated_request",
+            autospec=True,
             return_value={"dataPoints": points},
         ),
-        patch("app.services.providers.google_health.nutrition.store_raw_payload"),
+        patch("app.services.providers.google_health.nutrition.store_raw_payload", autospec=True),
     ):
         with db.begin_nested():
             count = nutrition.load_and_save(db, user_id, *WINDOW)
@@ -127,8 +135,8 @@ class TestMealCreatedWebhook:
         db.commit()
 
         with (
-            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
-            patch("app.services.event_record_service.on_meal_created") as on_meal_created,
+            patch("app.services.event_record_service.svix_service.is_enabled", autospec=True, return_value=True),
+            patch("app.services.event_record_service.on_meal_created", autospec=True) as on_meal_created,
         ):
             _sync_like_data_247(db, user.id, [_point("Chicken")])
             _sync_like_data_247(db, user.id, [_point("Chicken")])
@@ -145,15 +153,22 @@ class TestWebhookPath:
         """No savepoint wraps the handler here, so _fetch_and_save must commit itself."""
         user = UserFactory()
         db.commit()
-        data_247 = GoogleHealth247Data(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
-        handler = GoogleWebhookHandler(data_247=data_247, workouts=MagicMock())
+        data_247 = GoogleHealth247Data(
+            oauth=create_autospec(GoogleOAuth, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
+            api_base_url=API,
+        )
+        handler = GoogleWebhookHandler(
+            data_247=data_247, workouts=create_autospec(GoogleHealthApiWorkouts, instance=True)
+        )
 
         with (
             patch(
                 "app.services.providers.google_health.nutrition.make_authenticated_request",
+                autospec=True,
                 return_value={"dataPoints": [_point("Chicken")]},
             ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
+            patch("app.services.providers.google_health.nutrition.store_raw_payload", autospec=True),
         ):
             saved = handler._fetch_and_save(db, user.id, "nutrition-log", *WINDOW)
 

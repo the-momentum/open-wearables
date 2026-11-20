@@ -1,13 +1,16 @@
 """Tests for SNS notification dispatch gating by completion mode."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.config import settings
 from app.schemas.providers.apple.apple_xml import SNSNotification
 from app.services.providers.apple.apple_xml.sns_service import SNSService
+from tests.utils.aws import mock_sns_client
+
+# botocore builds client methods at runtime, so the mock is specced from a real (never called) client.
 
 S3_RECORDS = {
     "Records": [
@@ -39,7 +42,7 @@ def _notification(message: dict) -> SNSNotification:
 
 def _service() -> SNSService:
     service = SNSService()
-    service.sns_client = MagicMock()
+    service.sns_client = mock_sns_client()
     return service
 
 
@@ -48,7 +51,7 @@ class TestProcessS3Notification:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "client")
         service = _service()
 
-        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
+        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload", autospec=True) as mock_task:
             result = service._process_s3_notification(_notification(S3_RECORDS))
 
         assert result.status_code == 200
@@ -59,7 +62,7 @@ class TestProcessS3Notification:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "sns")
         service = _service()
 
-        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
+        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload", autospec=True) as mock_task:
             result = service._process_s3_notification(_notification(S3_RECORDS))
 
         assert result.status_code == 202
@@ -71,7 +74,7 @@ class TestProcessS3Notification:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "sns")
         service = _service()
 
-        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
+        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload", autospec=True) as mock_task:
             result = service._process_s3_notification(_notification({"Event": "s3:TestEvent"}))
 
         assert result.status_code == 200
