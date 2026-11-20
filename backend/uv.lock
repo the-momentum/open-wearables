@@ -1219,6 +1219,7 @@ dev = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "respx" },
+    { name = "ruff" },
     { name = "testcontainers", extra = ["redis"] },
     { name = "time-machine" },
 ]
@@ -1279,6 +1280,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "respx", specifier = ">=0.23.1" },
+    { name = "ruff", specifier = ">=0.17.5" },
     { name = "testcontainers", extras = ["postgres", "redis"], specifier = ">=4.15.0" },
     { name = "time-machine", specifier = ">=3.6.0" },
 ]
