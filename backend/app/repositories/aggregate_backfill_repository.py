@@ -140,7 +140,7 @@ class AggregateBackfillRepository:
     def divide_suunto_speed(self, db_session: DbSession, source_id: UUID) -> int:
         """A batch of the source's speeds stored in km/h before the fix, back to m/s; returns the workouts divided."""
         params = {"source": source_id, "speed": get_series_type_id(SeriesType.speed), "limit": UPDATE_BATCH_SIZE}
-        return db_session.execute(_SUUNTO_SPEED, params).rowcount  # ty: ignore[unresolved-attribute]
+        return db_session.execute(_SUUNTO_SPEED, params).rowcount  # ty: ignore[missing-attribute]
 
     def sources_with_workouts(self, db_session: DbSession, after: UUID, limit: int) -> list[tuple[UUID, str]]:
         return [
@@ -180,7 +180,7 @@ class AggregateBackfillRepository:
         """The source's days archived in [lo, hi) as open_wearables day rows; a day the rollup already holds is
         kept."""
         params = {"source": source_id, "lo": lo, "hi": hi}
-        return db_session.execute(_ARCHIVE_DAYS, params).rowcount  # ty: ignore[unresolved-attribute]
+        return db_session.execute(_ARCHIVE_DAYS, params).rowcount  # ty: ignore[missing-attribute]
 
     def history_sources(self, db_session: DbSession, after: UUID, limit: int) -> list[tuple[UUID, str]]:
         """Data sources of the providers whose history holds day or session values as samples."""
@@ -209,7 +209,7 @@ class AggregateBackfillRepository:
                 "to_day": to_day,
                 **_stat_params(rule),
             }
-            written += db_session.execute(statement, params).rowcount  # ty: ignore[unresolved-attribute]
+            written += db_session.execute(statement, params).rowcount  # ty: ignore[missing-attribute]
             moves.append((_MOVES[rule], params))
         # After every copy: a sample two rules match is still there for the second.
         for move, params in moves:

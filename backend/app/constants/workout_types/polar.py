@@ -1,131 +1,206 @@
 from app.schemas.enums import WorkoutType
 
-# Polar uses two fields: 'sport' (basic category) and 'detailed_sport_info' (specific activity)
-# Format: (polar_sport_value, polar_detailed_sport_info, unified_type)
-POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
-    # Running variants - sport="RUNNING"
-    ("RUNNING", None, WorkoutType.RUNNING),
-    ("RUNNING", "RUNNING_ROAD", WorkoutType.RUNNING),
-    ("RUNNING", "RUNNING_TRAIL", WorkoutType.TRAIL_RUNNING),
-    ("RUNNING", "RUNNING_TREADMILL", WorkoutType.TREADMILL),
-    # Cycling variants - sport="CYCLING" or "OTHER"
-    ("CYCLING", None, WorkoutType.CYCLING),
-    ("CYCLING", "CYCLING_ROAD", WorkoutType.CYCLING),
-    ("CYCLING", "CYCLING_MOUNTAIN", WorkoutType.MOUNTAIN_BIKING),
-    ("CYCLING", "CYCLING_INDOOR", WorkoutType.INDOOR_CYCLING),
-    ("CYCLING", "INDOOR_CYCLING", WorkoutType.INDOOR_CYCLING),
-    ("OTHER", "CYCLING_MOUNTAIN_BIKE", WorkoutType.MOUNTAIN_BIKING),
-    ("OTHER", "CYCLING_CYCLOCROSS", WorkoutType.CYCLOCROSS),
-    # Swimming - sport="SWIMMING" or "OTHER"
-    ("SWIMMING", None, WorkoutType.SWIMMING),
-    ("SWIMMING", "SWIMMING_POOL", WorkoutType.POOL_SWIMMING),
-    ("SWIMMING", "SWIMMING_OPEN_WATER", WorkoutType.OPEN_WATER_SWIMMING),
-    ("OTHER", "AQUATICS_SWIMMING", WorkoutType.SWIMMING),
-    # Walking & Hiking - sport="WALKING" or "OTHER"
-    ("WALKING", None, WorkoutType.WALKING),
-    ("OTHER", "WALKING", WorkoutType.WALKING),
-    ("OTHER", "WALKING_NORDIC", WorkoutType.WALKING),
-    ("OTHER", "HIKING", WorkoutType.HIKING),
-    ("OTHER", "MOUNTAINEERING", WorkoutType.MOUNTAINEERING),
-    # Winter Sports - sport="OTHER"
-    ("OTHER", "WINTERSPORTS_CROSS_COUNTRY_SKIING", WorkoutType.CROSS_COUNTRY_SKIING),
-    ("OTHER", "WINTERSPORTS_ALPINE_SKIING", WorkoutType.ALPINE_SKIING),
-    ("OTHER", "WINTERSPORTS_BACKCOUNTRY_SKIING", WorkoutType.BACKCOUNTRY_SKIING),
-    ("OTHER", "WINTERSPORTS_DOWNHILL_SKIING", WorkoutType.ALPINE_SKIING),
-    ("OTHER", "WINTERSPORTS_SNOWBOARDING", WorkoutType.SNOWBOARDING),
-    ("OTHER", "WINTERSPORTS_SNOWSHOEING", WorkoutType.SNOWSHOEING),
-    ("OTHER", "WINTERSPORTS_ICE_SKATING", WorkoutType.ICE_SKATING),
-    # Strength & Gym - sport="STRENGTH_TRAINING" or "OTHER"
-    ("STRENGTH_TRAINING", None, WorkoutType.STRENGTH_TRAINING),
-    ("OTHER", "FITNESS_CARDIO", WorkoutType.CARDIO_TRAINING),
-    ("OTHER", "JUMP_ROPE", WorkoutType.CARDIO_TRAINING),
-    ("OTHER", "FITNESS_ELLIPTICAL", WorkoutType.ELLIPTICAL),
-    ("OTHER", "FITNESS_INDOOR_ROWING", WorkoutType.ROWING_MACHINE),
-    ("OTHER", "FITNESS_STAIR_CLIMBING", WorkoutType.STAIR_CLIMBING),
-    # Water Sports - sport="OTHER"
-    ("OTHER", "WATERSPORTS_ROWING", WorkoutType.ROWING),
-    ("OTHER", "WATERSPORTS_KAYAKING", WorkoutType.KAYAKING),
-    ("OTHER", "WATERSPORTS_CANOEING", WorkoutType.CANOEING),
-    ("OTHER", "WATERSPORTS_STAND_UP_PADDLING", WorkoutType.STAND_UP_PADDLEBOARDING),
-    ("OTHER", "WATERSPORTS_SURFING", WorkoutType.SURFING),
-    ("OTHER", "WATERSPORTS_KITESURFING", WorkoutType.KITESURFING),
-    ("OTHER", "WATERSPORTS_WINDSURFING", WorkoutType.WINDSURFING),
-    ("OTHER", "WATERSPORTS_SAILING", WorkoutType.SAILING),
-    ("OTHER", "WATERSPORTS_WATERSKI", WorkoutType.WATER_SKIING),
-    # Team Sports - sport="BASKETBALL", "SOCCER", etc. or "OTHER"
-    ("BASKETBALL", None, WorkoutType.BASKETBALL),
-    ("SOCCER", None, WorkoutType.SOCCER),
-    ("OTHER", "TEAMSPORTS_SOCCER", WorkoutType.SOCCER),
-    ("OTHER", "TEAMSPORTS_FOOTBALL", WorkoutType.FOOTBALL),
-    ("OTHER", "TEAMSPORTS_AMERICAN_FOOTBALL", WorkoutType.AMERICAN_FOOTBALL),
-    ("OTHER", "TEAMSPORTS_BASEBALL", WorkoutType.BASEBALL),
-    ("OTHER", "TEAMSPORTS_BASKETBALL", WorkoutType.BASKETBALL),
-    ("OTHER", "TEAMSPORTS_VOLLEYBALL", WorkoutType.VOLLEYBALL),
-    ("OTHER", "TEAMSPORTS_HANDBALL", WorkoutType.HANDBALL),
-    ("OTHER", "TEAMSPORTS_RUGBY", WorkoutType.RUGBY),
-    ("OTHER", "TEAMSPORTS_HOCKEY", WorkoutType.HOCKEY),
-    ("OTHER", "TEAMSPORTS_FLOORBALL", WorkoutType.FLOORBALL),
-    # Racket Sports - sport="TENNIS" or "OTHER"
-    ("TENNIS", None, WorkoutType.TENNIS),
-    ("OTHER", "RACKET_SPORTS_TENNIS", WorkoutType.TENNIS),
-    ("OTHER", "RACKET_SPORTS_BADMINTON", WorkoutType.BADMINTON),
-    ("OTHER", "RACKET_SPORTS_SQUASH", WorkoutType.SQUASH),
-    ("OTHER", "RACKET_SPORTS_TABLE_TENNIS", WorkoutType.TABLE_TENNIS),
-    ("OTHER", "RACKET_SPORTS_PADEL", WorkoutType.PADEL),
-    # Mind-Body - sport="OTHER"
-    ("OTHER", "FITNESS_YOGA", WorkoutType.YOGA),
-    ("OTHER", "FITNESS_PILATES", WorkoutType.PILATES),
-    ("OTHER", "FITNESS_STRETCHING", WorkoutType.STRETCHING),
-    # Combat Sports - sport="OTHER"
-    ("OTHER", "COMBAT_SPORTS_BOXING", WorkoutType.BOXING),
-    ("OTHER", "COMBAT_SPORTS_MARTIAL_ARTS", WorkoutType.MARTIAL_ARTS),
-    ("OTHER", "KICKBOXING_MARTIAL_ARTS", WorkoutType.BOXING),
-    # Outdoor Activities - sport="OTHER"
-    ("OTHER", "OUTDOOR_CLIMBING", WorkoutType.ROCK_CLIMBING),
-    ("OTHER", "INDOOR_CLIMBING", WorkoutType.INDOOR_CLIMBING),
-    ("OTHER", "ORIENTEERING", WorkoutType.ORIENTEERING),
-    # Other Sports - sport="OTHER"
-    ("OTHER", "GOLF", WorkoutType.GOLF),
-    ("OTHER", "INLINE_SKATING", WorkoutType.INLINE_SKATING),
-    ("OTHER", "SKATEBOARDING", WorkoutType.SKATEBOARDING),
-    ("OTHER", "HORSEBACK_RIDING", WorkoutType.HORSEBACK_RIDING),
+# Polar Flow sport identifiers, used in both 'sport' and 'detailed_sport_info'. From the AccessLink docs
+# appendix "Detailed sport info values in exercise entity" (https://www.polar.com/accesslink-api/).
+POLAR_SPORT_TO_UNIFIED: dict[str, WorkoutType] = {
+    # Running
+    "RUNNING": WorkoutType.RUNNING,
+    "ROAD_RUNNING": WorkoutType.RUNNING,
+    "JOGGING": WorkoutType.RUNNING,
+    "CROSS_COUNTRY_RUNNING": WorkoutType.RUNNING,
+    "TRACK_AND_FIELD_RUNNING": WorkoutType.RUNNING,
+    "ULTRARUNNING_RUNNING": WorkoutType.RUNNING,
+    "TRAIL_RUNNING": WorkoutType.TRAIL_RUNNING,
+    "TREADMILL_RUNNING": WorkoutType.TREADMILL,
+    "OBSTACLE_COURSE_RACING": WorkoutType.RUNNING,
+    # Cycling
+    "CYCLING": WorkoutType.CYCLING,
+    "ROAD_BIKING": WorkoutType.CYCLING,
+    "GRAVEL": WorkoutType.CYCLING,
+    "MOUNTAIN_BIKING": WorkoutType.MOUNTAIN_BIKING,
+    "INDOOR_CYCLING": WorkoutType.INDOOR_CYCLING,
+    "SPINNING": WorkoutType.INDOOR_CYCLING,
+    "E_BIKE": WorkoutType.E_BIKING,
+    # Swimming
+    "SWIMMING": WorkoutType.SWIMMING,
+    "POOL_SWIMMING": WorkoutType.POOL_SWIMMING,
+    "OPEN_WATER_SWIMMING": WorkoutType.OPEN_WATER_SWIMMING,
+    # Walking & hiking
+    "WALKING": WorkoutType.WALKING,
+    "NORDIC_WALKING": WorkoutType.WALKING,
+    "RUCKING": WorkoutType.WALKING,
+    "HIKING": WorkoutType.HIKING,
     # Multisport
-    ("MULTISPORT", None, WorkoutType.MULTISPORT),
-    ("OTHER", "TRIATHLON", WorkoutType.TRIATHLON),
-    # Motor Sports
-    ("OTHER", "MOTORSPORTS", WorkoutType.MOTORCYCLING),
+    "MULTISPORT": WorkoutType.MULTISPORT,
+    "FREE_MULTISPORT": WorkoutType.MULTISPORT,
+    "TRIATHLON": WorkoutType.TRIATHLON,
+    "TRIATHLON_CYCLING": WorkoutType.CYCLING,
+    "TRIATHLON_RUNNING": WorkoutType.RUNNING,
+    "TRIATHLON_SWIMMING": WorkoutType.OPEN_WATER_SWIMMING,
+    "OFFROADTRIATHLON": WorkoutType.TRIATHLON,
+    "OFFROADTRIATHLON_CYCLING": WorkoutType.MOUNTAIN_BIKING,
+    "OFFROADTRIATHLON_RUNNING": WorkoutType.TRAIL_RUNNING,
+    "OFFROADTRIATHLON_SWIMMING": WorkoutType.OPEN_WATER_SWIMMING,
+    "DUATHLON": WorkoutType.MULTISPORT,
+    "DUATHLON_CYCLING": WorkoutType.CYCLING,
+    "DUATHLON_RUNNING": WorkoutType.RUNNING,
+    "OFFROADDUATHLON": WorkoutType.MULTISPORT,
+    "OFFROADDUATHLON_CYCLING": WorkoutType.MOUNTAIN_BIKING,
+    "OFFROADDUATHLON_RUNNING": WorkoutType.TRAIL_RUNNING,
+    # Gym & fitness
+    "STRENGTH_TRAINING": WorkoutType.STRENGTH_TRAINING,
+    "FUNCTIONAL_TRAINING": WorkoutType.STRENGTH_TRAINING,
+    "CORE": WorkoutType.STRENGTH_TRAINING,
+    "KETTLEBELL": WorkoutType.STRENGTH_TRAINING,
+    "CALISTHENICS": WorkoutType.STRENGTH_TRAINING,
+    "FITNESS_RACING": WorkoutType.CARDIO_TRAINING,
+    "SKIERG": WorkoutType.FITNESS_EQUIPMENT,
+    "STAIR_WORKOUT": WorkoutType.STAIR_CLIMBING,
+    "CIRCUIT_TRAINING": WorkoutType.CARDIO_TRAINING,
+    "BOOTCAMP": WorkoutType.CARDIO_TRAINING,
+    "HIIT": WorkoutType.CARDIO_TRAINING,
+    "JUMP_ROPE": WorkoutType.CARDIO_TRAINING,
+    "CROSS_TRAINER": WorkoutType.ELLIPTICAL,
+    "INDOOR_ROWING": WorkoutType.ROWING_MACHINE,
+    "AEROBICS": WorkoutType.AEROBICS,
+    "FITNESS_STEP": WorkoutType.AEROBICS,
+    "GROUP_EXERCISE": WorkoutType.GROUP_EXERCISE,
+    "GYMNASTICK": WorkoutType.GYMNASTICS,
+    "LES_MILLS_BARRE": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_BODYATTACK": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_BODYBALANCE": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_BODYCOMBAT": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_BODYJAM": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_BODYPUMP": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_BODYSTEP": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_CXWORKS": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_GRIT_ATHLETIC": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_GRIT_CARDIO": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_GRIT_STRENGTH": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_SHBAM": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_TONE": WorkoutType.GROUP_EXERCISE,
+    "LES_MILLS_RPM": WorkoutType.INDOOR_CYCLING,
+    "LES_MILLS_SPRINT": WorkoutType.INDOOR_CYCLING,
+    "LES_MILLS_TRIP": WorkoutType.INDOOR_CYCLING,
+    # Mind & body
+    "YOGA": WorkoutType.YOGA,
+    "BODY_AND_MIND": WorkoutType.YOGA,
+    "PILATES": WorkoutType.PILATES,
+    "STRETCHING": WorkoutType.STRETCHING,
+    "MOBILITY_DYNAMIC": WorkoutType.STRETCHING,
+    "MOBILITY_STATIC": WorkoutType.STRETCHING,
     # Dance
-    ("OTHER", "DANCE", WorkoutType.DANCE),
-    # Generic/Other
-    ("OTHER", None, WorkoutType.GENERIC),
-]
-
-
-POLAR_TO_UNIFIED: dict[tuple[str, str | None], WorkoutType] = {
-    (sport, detailed): unified_type for sport, detailed, unified_type in POLAR_WORKOUT_TYPE_MAPPINGS
+    "DANCING": WorkoutType.DANCE,
+    "BALLET_DANCING": WorkoutType.DANCE,
+    "BALLROOM_DANCING": WorkoutType.DANCE,
+    "FITNESS_DANCING": WorkoutType.DANCE,
+    "JAZZ_DANCING": WorkoutType.DANCE,
+    "LATIN_DANCING": WorkoutType.DANCE,
+    "MODERN_DANCING": WorkoutType.DANCE,
+    "SHOW_DANCING": WorkoutType.DANCE,
+    "STREET_DANCING": WorkoutType.DANCE,
+    # Combat sports
+    "BOXING": WorkoutType.BOXING,
+    "KICKBOXING_MARTIAL_ARTS": WorkoutType.BOXING,
+    "FITNESS_BOXING": WorkoutType.BOXING,
+    "FITNESS_MARTIAL_ARTS": WorkoutType.MARTIAL_ARTS,
+    "JUDO_MARTIAL_ARTS": WorkoutType.MARTIAL_ARTS,
+    "TAEKWONDO_MARTIAL_ARTS": WorkoutType.MARTIAL_ARTS,
+    # Racket sports
+    "TENNIS": WorkoutType.TENNIS,
+    "BEACH_TENNIS": WorkoutType.TENNIS,
+    "BADMINTON": WorkoutType.BADMINTON,
+    "SQUASH": WorkoutType.SQUASH,
+    "TABLE_TENNIS": WorkoutType.TABLE_TENNIS,
+    "PADEL": WorkoutType.PADEL,
+    "PICKLEBALL": WorkoutType.PICKLEBALL,
+    # Team sports
+    "SOCCER": WorkoutType.SOCCER,
+    "FUTSAL": WorkoutType.SOCCER,
+    "AMERICAN_FOOTBALL": WorkoutType.AMERICAN_FOOTBALL,
+    "BASEBALL": WorkoutType.BASEBALL,
+    "FINNISH_BASEBALL": WorkoutType.BASEBALL,
+    "BASKETBALL": WorkoutType.BASKETBALL,
+    "VOLLEYBALL": WorkoutType.VOLLEYBALL,
+    "BEACH_VOLLEYBALL": WorkoutType.VOLLEYBALL,
+    "HANDBALL": WorkoutType.HANDBALL,
+    "RUGBY": WorkoutType.RUGBY,
+    "ICE_HOCKEY": WorkoutType.HOCKEY,
+    "FIELD_HOCKEY": WorkoutType.HOCKEY,
+    "RINGETTE": WorkoutType.HOCKEY,
+    "FLOORBALL": WorkoutType.FLOORBALL,
+    "CRICKET": WorkoutType.CRICKET,
+    # Winter sports
+    "DOWNHILL_SKIING": WorkoutType.ALPINE_SKIING,
+    "TELEMARK_SKIING": WorkoutType.ALPINE_SKIING,
+    "BACKCOUNTRY_SKIING": WorkoutType.BACKCOUNTRY_SKIING,
+    "CROSS-COUNTRY_SKIING": WorkoutType.CROSS_COUNTRY_SKIING,
+    "XC_SKIING_CLASSIC": WorkoutType.CROSS_COUNTRY_SKIING,
+    "XC_SKIING_FREESTYLE": WorkoutType.CROSS_COUNTRY_SKIING,
+    "ROLLER_SKIING_CLASSIC": WorkoutType.CROSS_COUNTRY_SKIING,
+    "ROLLER_SKIING_FREESTYLE": WorkoutType.CROSS_COUNTRY_SKIING,
+    "BIATHLON": WorkoutType.CROSS_COUNTRY_SKIING,
+    "SNOWBOARDING": WorkoutType.SNOWBOARDING,
+    "SNOWSHOE_TREKKING": WorkoutType.SNOWSHOEING,
+    "ICE_SKATING": WorkoutType.ICE_SKATING,
+    "CURLING": WorkoutType.CURLING,
+    # Water sports
+    "ROWING": WorkoutType.ROWING,
+    "SUP": WorkoutType.STAND_UP_PADDLEBOARDING,
+    "WATERSPORTS_CANOEING": WorkoutType.CANOEING,
+    "WATERSPORTS_KAYAKING": WorkoutType.KAYAKING,
+    "WATERSPORTS_KITESURFING": WorkoutType.KITESURFING,
+    "WATERSPORTS_SAILING": WorkoutType.SAILING,
+    "WATERSPORTS_SURFING": WorkoutType.SURFING,
+    "WATERSPORTS_WAKEBOARDING": WorkoutType.WAKEBOARDING,
+    "WATERSPORTS_WATERSKI": WorkoutType.WATER_SKIING,
+    "WATERSPORTS_WINDSURFING": WorkoutType.WINDSURFING,
+    "AQUATICS": WorkoutType.WATER_SPORTS,
+    "WATER_EXERCISE": WorkoutType.WATER_SPORTS,
+    "WATER_RUNNING": WorkoutType.WATER_SPORTS,
+    # Climbing & outdoor
+    "CLIMBING": WorkoutType.ROCK_CLIMBING,
+    "VERTICALSPORTS_OUTCLIMBING": WorkoutType.ROCK_CLIMBING,
+    "VERTICALSPORTS_WALLCLIMBING": WorkoutType.INDOOR_CLIMBING,
+    "ORIENTEERING": WorkoutType.ORIENTEERING,
+    "ORIENTEERING_MTB": WorkoutType.ORIENTEERING,
+    "ORIENTEERING_SKI": WorkoutType.ORIENTEERING,
+    # Skating & boards
+    "INLINE_SKATING": WorkoutType.INLINE_SKATING,
+    "ROLLER_BLADING": WorkoutType.INLINE_SKATING,
+    "SKATING": WorkoutType.SKATING,
+    "SKATEBOARDING": WorkoutType.SKATEBOARDING,
+    # Other sports
+    "GOLF": WorkoutType.GOLF,
+    "FRISBEEGOLF": WorkoutType.DISC_SPORTS,
+    "ULTIMATE": WorkoutType.DISC_SPORTS,
+    "ESPORTS": WorkoutType.GAMING,
+    "AGILITY": WorkoutType.OTHER,
+    "KICKBIKE": WorkoutType.OTHER,
+    "SHOOTING_SPORT_INDOOR": WorkoutType.OTHER,
+    "SHOOTING_SPORT_OUTDOOR": WorkoutType.OTHER,
+    "RIDING": WorkoutType.HORSEBACK_RIDING,
+    "TROTTING": WorkoutType.HORSEBACK_RIDING,
+    "PARASPORTS_WHEELCHAIR": WorkoutType.WHEELCHAIR,
+    "PARASPORTS_HAND_CYCLING": WorkoutType.PARA_SPORTS,
+    "PARASPORTS_SLED_HOCKEY": WorkoutType.PARA_SPORTS,
+    "PARASPORTS_WATER_SKIING": WorkoutType.PARA_SPORTS,
+    "PARASPORTS_WHEELCHAIR_BASKETBALL": WorkoutType.PARA_SPORTS,
+    "PARASPORTS_WHEELCHAIR_TENNIS": WorkoutType.PARA_SPORTS,
+    "MOTORSPORTS_CAR_RACING": WorkoutType.MOTOR_SPORTS,
+    "MOTORSPORTS_ENDURO": WorkoutType.MOTORCYCLING,
+    "MOTORSPORTS_HARD_ENDURO": WorkoutType.MOTORCYCLING,
+    "MOTORSPORTS_MOTOCROSS": WorkoutType.MOTORCYCLING,
+    "MOTORSPORTS_ROADRACING": WorkoutType.MOTORCYCLING,
+    "MOTORSPORTS_SNOCROSS": WorkoutType.SNOWMOBILING,
+    "OTHER_INDOOR": WorkoutType.GENERIC,
+    "OTHER_OUTDOOR": WorkoutType.GENERIC,
 }
 
 
 def get_unified_workout_type(polar_sport: str, polar_detailed_sport_info: str | None = None) -> WorkoutType:
-    """
-    Convert Polar sport types to unified WorkoutType.
-
-    Args:
-        polar_sport: Polar 'sport' field (e.g., "RUNNING", "OTHER")
-        polar_detailed_sport_info: Polar 'detailed_sport_info' field (optional)
-
-    Returns:
-        Unified WorkoutType enum value
-    """
-    # Try exact match first (with detailed_sport_info)
-    if polar_detailed_sport_info:
-        key = (polar_sport, polar_detailed_sport_info)
-        if key in POLAR_TO_UNIFIED:
-            return POLAR_TO_UNIFIED[key]
-    # Fall back to sport-only match
-    key = (polar_sport, None)
-    if key in POLAR_TO_UNIFIED:
-        return POLAR_TO_UNIFIED[key]
-
-    # Default to OTHER
-    return WorkoutType.OTHER
+    """The detailed sport's type, else the sport's; GENERIC for an unmapped "OTHER", OTHER for anything else."""
+    for key in (polar_detailed_sport_info, polar_sport):
+        if key and key in POLAR_SPORT_TO_UNIFIED:
+            return POLAR_SPORT_TO_UNIFIED[key]
+    return WorkoutType.GENERIC if polar_sport == "OTHER" else WorkoutType.OTHER

@@ -10,6 +10,12 @@ export function createCopier(resetMs = RESET_MS) {
 
 	$effect(() => () => clearTimeout(timer));
 
+	function confirm() {
+		copied = true;
+		clearTimeout(timer);
+		timer = setTimeout(() => (copied = false), resetMs);
+	}
+
 	return {
 		get copied() {
 			return copied;
@@ -17,9 +23,20 @@ export function createCopier(resetMs = RESET_MS) {
 		async copy(text: string) {
 			try {
 				await navigator.clipboard.writeText(text);
-				copied = true;
-				clearTimeout(timer);
-				timer = setTimeout(() => (copied = false), resetMs);
+				confirm();
+			} catch {
+				// Clipboard access can be denied; there is nothing useful to say.
+			}
+		},
+		/**
+		 * For text that has to be fetched first. Safari drops the click's permission
+		 * across an await, so the pending text goes into the ClipboardItem instead.
+		 */
+		async copyPending(text: Promise<string>) {
+			try {
+				const blob = text.then((value) => new Blob([value], { type: 'text/plain' }));
+				await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+				confirm();
 			} catch {
 				// Clipboard access can be denied; there is nothing useful to say.
 			}

@@ -4,23 +4,29 @@ A malformed page must fail its own metric loudly instead of reading as an exhaus
 window, which is what let a failed fetch pass as "no data" (#1545).
 """
 
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.providers.google import DataPointsPage
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.helpers import parse_page
+from app.services.providers.google_health.oauth import GoogleOAuth
 
 USER_ID = uuid4()
+END = datetime(2026, 9, 3, tzinfo=timezone.utc)
+START = datetime(2026, 9, 1, tzinfo=timezone.utc)
 
 
 @pytest.fixture
 def data_247() -> GoogleHealth247Data:
     return GoogleHealth247Data(
-        oauth=MagicMock(),
-        connection_repo=MagicMock(),
+        oauth=create_autospec(GoogleOAuth, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
         api_base_url="https://health.googleapis.com",
     )
 
@@ -69,7 +75,7 @@ class TestFailureIsolation:
     """One bad response fails its metric; the rest of the chain still syncs."""
 
     def test_a_malformed_page_does_not_stop_other_metrics(self, data_247: GoogleHealth247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         calls: list[str] = []
 
         def fake_request(*args: object, **kwargs: object) -> object:
@@ -81,14 +87,15 @@ class TestFailureIsolation:
         with (
             patch(
                 "app.services.providers.google_health.data_247.make_authenticated_request",
+                autospec=True,
                 side_effect=fake_request,
             ),
-            patch.object(data_247.sleep, "load_and_save", return_value=0),
-            patch.object(data_247.nutrition, "load_and_save", return_value=0),
-            patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
-            patch("app.services.providers.google_health.data_247.store_raw_payload"),
+            patch.object(data_247.sleep, "load_and_save", autospec=True, return_value=0),
+            patch.object(data_247.nutrition, "load_and_save", autospec=True, return_value=0),
+            patch.object(data_247.settings_repo, "get_data_granularity", autospec=True, return_value=None),
+            patch("app.services.providers.google_health.data_247.store_raw_payload", autospec=True),
         ):
-            results = data_247.load_and_save_all(db, USER_ID, MagicMock(), MagicMock())
+            results = data_247.load_and_save_all(db, USER_ID, START, END)
 
         assert results.rows_written == 0  # nothing had samples, but the run completed
         assert any("heart-rate/" in c for c in calls)
@@ -109,17 +116,18 @@ class TestPerMetricTransactions:
         with (
             patch(
                 "app.services.providers.google_health.data_247.make_authenticated_request",
+                autospec=True,
                 side_effect=fake_request,
             ),
-            patch.object(data_247.sleep, "load_and_save", return_value=0),
-            patch.object(data_247.nutrition, "load_and_save", return_value=0),
-            patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
-            patch("app.services.providers.google_health.data_247.store_raw_payload"),
+            patch.object(data_247.sleep, "load_and_save", autospec=True, return_value=0),
+            patch.object(data_247.nutrition, "load_and_save", autospec=True, return_value=0),
+            patch.object(data_247.settings_repo, "get_data_granularity", autospec=True, return_value=None),
+            patch("app.services.providers.google_health.data_247.store_raw_payload", autospec=True),
         ):
-            return data_247.load_and_save_all(db, USER_ID, MagicMock(), MagicMock())
+            return data_247.load_and_save_all(db, USER_ID, START, END)
 
     def test_a_failing_type_rolls_back_and_the_rest_continue(self, data_247: GoogleHealth247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
 
         self._run(data_247, db, failing="heart-rate")
 
@@ -127,7 +135,7 @@ class TestPerMetricTransactions:
         assert db.commit.call_count >= 1  # other types still committed
 
     def test_a_failing_commit_does_not_cascade(self, data_247: GoogleHealth247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         db.commit.side_effect = [RuntimeError("commit blew up")] + [None] * 50
 
         self._run(data_247, db, failing="nothing-fails")

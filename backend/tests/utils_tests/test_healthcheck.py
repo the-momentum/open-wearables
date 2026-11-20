@@ -4,9 +4,12 @@ Tests for healthcheck utilities.
 Tests database health check endpoint and pool status monitoring.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
+from pytest_mock import MockerFixture
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import QueuePool
 
 from app.utils.healthcheck import database_health, get_pool_status
 
@@ -14,11 +17,11 @@ from app.utils.healthcheck import database_health, get_pool_status
 class TestGetPoolStatus:
     """Test suite for get_pool_status function."""
 
-    @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_returns_all_fields(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_returns_all_fields(self, mocker: MockerFixture) -> None:
         """Test that get_pool_status returns all required pool fields."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
-        mock_pool = MagicMock()
+        mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 10
         mock_pool.checkedin.return_value = 5
         mock_pool.checkedout.return_value = 3
@@ -34,11 +37,11 @@ class TestGetPoolStatus:
         assert "active_connections" in result
         assert "overflow" in result
 
-    @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_returns_string_values(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_returns_string_values(self, mocker: MockerFixture) -> None:
         """Test that all pool status values are returned as strings."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
-        mock_pool = MagicMock()
+        mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 10
         mock_pool.checkedin.return_value = 5
         mock_pool.checkedout.return_value = 3
@@ -55,11 +58,11 @@ class TestGetPoolStatus:
         assert result["overflow"] == "0"
         assert all(isinstance(v, str) for v in result.values())
 
-    @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_with_zero_connections(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_with_zero_connections(self, mocker: MockerFixture) -> None:
         """Test pool status when no connections are active."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
-        mock_pool = MagicMock()
+        mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 5
         mock_pool.checkedin.return_value = 5
         mock_pool.checkedout.return_value = 0
@@ -73,11 +76,11 @@ class TestGetPoolStatus:
         assert result["active_connections"] == "0"
         assert result["connections_ready_for_reuse"] == "5"
 
-    @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_with_overflow(self, mock_engine: MagicMock) -> None:
+    def test_get_pool_status_with_overflow(self, mocker: MockerFixture) -> None:
         """Test pool status when overflow connections exist."""
+        mock_engine = mocker.patch("app.utils.healthcheck.engine", autospec=True)
         # Arrange
-        mock_pool = MagicMock()
+        mock_pool = create_autospec(QueuePool, instance=True)
         mock_pool.size.return_value = 10
         mock_pool.checkedin.return_value = 0
         mock_pool.checkedout.return_value = 10
@@ -99,10 +102,10 @@ class TestDatabaseHealth:
     async def test_database_health_success(self) -> None:
         """Test database health check when database is healthy."""
         # Arrange
-        mock_db = MagicMock()
+        mock_db = MagicMock(spec=Session)
         mock_db.execute.return_value = None
 
-        with patch("app.utils.healthcheck.get_pool_status") as mock_pool_status:
+        with patch("app.utils.healthcheck.get_pool_status", autospec=True) as mock_pool_status:
             mock_pool_status.return_value = {
                 "max_pool_size": "10",
                 "connections_ready_for_reuse": "5",
@@ -126,9 +129,9 @@ class TestDatabaseHealth:
     async def test_database_health_executes_test_query(self) -> None:
         """Test that database health check executes SELECT 1 query."""
         # Arrange
-        mock_db = MagicMock()
+        mock_db = MagicMock(spec=Session)
 
-        with patch("app.utils.healthcheck.get_pool_status") as mock_pool_status:
+        with patch("app.utils.healthcheck.get_pool_status", autospec=True) as mock_pool_status:
             mock_pool_status.return_value = {
                 "max_pool_size": "5",
                 "connections_ready_for_reuse": "2",
@@ -149,7 +152,7 @@ class TestDatabaseHealth:
     async def test_database_health_failure(self) -> None:
         """Test database health check when database connection fails."""
         # Arrange
-        mock_db = MagicMock()
+        mock_db = MagicMock(spec=Session)
         error_message = "Connection refused"
         mock_db.execute.side_effect = Exception(error_message)
 
@@ -166,7 +169,7 @@ class TestDatabaseHealth:
     async def test_database_health_with_connection_timeout(self) -> None:
         """Test database health check with connection timeout error."""
         # Arrange
-        mock_db = MagicMock()
+        mock_db = MagicMock(spec=Session)
         mock_db.execute.side_effect = TimeoutError("Connection timeout")
 
         # Act
@@ -180,7 +183,7 @@ class TestDatabaseHealth:
     async def test_database_health_with_database_error(self) -> None:
         """Test database health check with database-specific error."""
         # Arrange
-        mock_db = MagicMock()
+        mock_db = MagicMock(spec=Session)
         mock_db.execute.side_effect = Exception("Database is shutting down")
 
         # Act
@@ -194,7 +197,7 @@ class TestDatabaseHealth:
     async def test_database_health_includes_pool_status_on_success(self) -> None:
         """Test that successful health check includes pool status."""
         # Arrange
-        mock_db = MagicMock()
+        mock_db = MagicMock(spec=Session)
         expected_pool = {
             "max_pool_size": "20",
             "connections_ready_for_reuse": "10",
@@ -202,7 +205,7 @@ class TestDatabaseHealth:
             "overflow": "2",
         }
 
-        with patch("app.utils.healthcheck.get_pool_status") as mock_pool_status:
+        with patch("app.utils.healthcheck.get_pool_status", autospec=True) as mock_pool_status:
             mock_pool_status.return_value = expected_pool
 
             # Act

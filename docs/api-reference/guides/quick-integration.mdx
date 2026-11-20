@@ -78,23 +78,50 @@ curl -X GET "http://localhost:8000/api/v1/oauth/garmin/authorize?user_id=550e840
 
 Redirect the user to `authorization_url`. After they authorize, they'll be redirected back to your `redirect_uri`.
 
+<Note>
+  `redirect_uri` must be allowed by the instance: its origin must be `FRONTEND_URL` or one of `CORS_ORIGINS`, or it must be listed in `OAUTH_REDIRECT_ALLOWLIST` (comma-separated; web URLs match by origin, app schemes such as `myapp://oauth/callback` match exactly). Any other value gets a `400`. The user comes back with `provider`, `status` (`success` or `error`) and, on error, `message` in the query, replacing any parameters of the same name. Errors land there too, so check `status` rather than assuming the connection succeeded.
+</Note>
+
 <Warning>
   Provider names must be **lowercase**: `garmin`, `polar`, `suunto`, `apple`
 </Warning>
 
+`authorize` needs a credential: your API key, or a token scoped to that one user. Calls without one get `401`.
+
 ### Frontend Example
 
+Keep the API key on your backend. Have it mint a connect token for the user, and let the browser use that instead:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-446655440000/connect-token" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+```json
+{
+  "token": "eyJhbGciOi...",
+  "expires_at": "2026-01-08T12:00:00Z",
+  "pair_url": "https://your-dashboard.example.com/users/550e8400-e29b-41d4-a716-446655440000/pair?t=eyJhbGciOi..."
+}
+```
+
 ```javascript
-// Get OAuth URL
+// connectToken comes from your backend (the call above)
 const response = await fetch(
   `${API_URL}/api/v1/oauth/garmin/authorize?user_id=${userId}&redirect_uri=${encodeURIComponent(callbackUrl)}`,
-  { headers: { 'X-Open-Wearables-API-Key': API_KEY } }
+  { headers: { 'X-Open-Wearables-Connect-Token': connectToken } }
 );
 const { authorization_url } = await response.json();
 
 // Redirect user to provider
 window.location.href = authorization_url;
 ```
+
+The token works only on `authorize` and only for the user it was minted for (another `user_id` gets `403`). It expires after `CONNECT_TOKEN_EXPIRE_DAYS` (default 7).
+
+### Shareable Link
+
+To let someone connect without building any UI, send them `pair_url` from the same response. It opens the Open Wearables pairing page, where they pick a provider and sign in. Links without a token are refused, so mint a new one when it expires. The dashboard's **Copy pairing link** button does the same.
 
 ## Step 3: Sync Data
 

@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.backfill_data_type_coverage_task import backfill_data_type_coverage
-from app.models import DataPointSeriesArchive, DataTypeCoverage, EventRecord, SeriesSample
+from app.models import ArchivalSetting, DataPointSeriesArchive, DataTypeCoverage, EventRecord, SeriesSample
 from app.repositories.archival_repository import BatchedRun
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.repositories.data_source_repository import DataSourceRepository
@@ -391,14 +391,14 @@ class TestCoverageFollowsRemovals:
 
     @pytest.mark.parametrize(("complete", "trimmed"), [(True, True), (False, False)])
     def test_retention_trims_only_once_nothing_older_is_left(self, complete: bool, trimmed: bool) -> None:
-        setting = MagicMock(rollup_enabled=False, delete_after_days=30, deleted_before=None)
+        setting = ArchivalSetting(rollup_enabled=False, delete_after_days=30, deleted_before=None)
         with (
-            patch.object(archival_service.settings_repo, "get", return_value=setting),
-            patch.object(archival_service, "_delete_before", return_value=BatchedRun(5, complete)),
-            patch.object(archival_service, "_delete_archive_before", return_value=0),
-            patch.object(data_type_coverage_repository, "trim_series_before") as trim,
+            patch.object(archival_service.settings_repo, "get", autospec=True, return_value=setting),
+            patch.object(archival_service, "_delete_before", autospec=True, return_value=BatchedRun(5, complete)),
+            patch.object(archival_service, "_delete_archive_before", autospec=True, return_value=0),
+            patch.object(data_type_coverage_repository, "trim_series_before", autospec=True) as trim,
         ):
-            archival_service.run_daily_archival(MagicMock())
+            archival_service.run_daily_archival(MagicMock(spec=Session))
 
         assert trim.called is trimmed
         if trimmed:
@@ -480,7 +480,7 @@ class TestBackfillFromHeldData:
 
 def test_backfill_task_runs_once_under_its_migration_name() -> None:
     task = "app.integrations.celery.tasks.backfill_data_type_coverage_task"
-    with patch(f"{task}.engine"), patch(f"{task}.data_migration_service") as service:
+    with patch(f"{task}.engine", autospec=True), patch(f"{task}.data_migration_service", autospec=True) as service:
         backfill_data_type_coverage()
 
     name, migrate = service.run.call_args.args[1:3]

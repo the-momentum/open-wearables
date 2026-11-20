@@ -26,7 +26,7 @@ const noop = () => {};
 
 describe('ConnectionHeader', () => {
 	it('puts the scope count behind a control, so the list costs no height', async () => {
-		render(ConnectionHeader, {
+		await render(ConnectionHeader, {
 			connection: connection(),
 			label: 'Oura',
 			onrevoke: noop,
@@ -37,7 +37,7 @@ describe('ConnectionHeader', () => {
 	});
 
 	it('offers no badge at all when the provider reported no scope', async () => {
-		render(ConnectionHeader, {
+		await render(ConnectionHeader, {
 			connection: connection({ scope: null }),
 			label: 'Suunto',
 			onrevoke: noop,
@@ -54,7 +54,7 @@ describe('ConnectionRoutes', () => {
 	// An SDK connection carries no capability flags, so without the hint it read
 	// as unconfigured and unsupported.
 	it('shows an SDK connection as fed by the SDK, with nothing to start here', async () => {
-		render(ConnectionRoutes, {
+		await render(ConnectionRoutes, {
 			connection: connection({
 				provider: 'apple',
 				rest_pull: false,

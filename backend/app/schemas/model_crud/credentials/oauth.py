@@ -59,6 +59,14 @@ class AuthorizationURLResponse(BaseModel):
     state: str
 
 
+class ConnectTokenResponse(BaseModel):
+    """Token that lets an end user start provider OAuth for one user, plus the pairing link carrying it."""
+
+    token: str
+    expires_at: datetime
+    pair_url: str
+
+
 class Token(BaseModel):
     """JWT access token response."""
 

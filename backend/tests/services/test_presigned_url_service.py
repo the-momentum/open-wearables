@@ -1,15 +1,19 @@
 """Tests for the Apple XML presigned-POST service, focused on SSE enforcement."""
 
-from logging import getLogger
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
 
 from app.config import settings
 from app.schemas.providers.apple.apple_xml import PresignedURLRequest
 from app.services.providers.apple.apple_xml import presigned_url_service as presign_module
 from app.services.providers.apple.apple_xml.presigned_url_service import PresignedURLService
+from app.utils.exceptions import AppError
+from tests.utils.aws import mock_s3_client
+
+# botocore builds client methods at runtime, so mocks are specced from a real (never called) client.
+# spec= instead of create_autospec: botocore methods take (*args, **kwargs), so autospec adds no
+# signature checks, yet costs ~28 ms per mock.
 
 _clients: dict[str, MagicMock | None] = {"internal": None, "public": None}
 
@@ -20,17 +24,18 @@ def _patch_client_accessors(monkeypatch: pytest.MonkeyPatch) -> None:
     _clients["public"] = None
     monkeypatch.setattr(presign_module, "get_s3_client", lambda: _clients["internal"])
     monkeypatch.setattr(presign_module, "get_public_s3_client", lambda: _clients["public"])
+    monkeypatch.setattr(settings, "aws_bucket_name", "test-bucket")
 
 
 def _service(client: MagicMock) -> PresignedURLService:
     # Same object for the presigning client by default, so single-client assertions hold.
     _clients["internal"] = client
     _clients["public"] = client
-    return PresignedURLService(getLogger(__name__))
+    return PresignedURLService()
 
 
 def _client() -> MagicMock:
-    client = MagicMock()
+    client = mock_s3_client()
     client.head_bucket.return_value = {}
     client.generate_presigned_post.return_value = {"url": "https://storage/bucket", "fields": {}}
     return client
@@ -41,14 +46,14 @@ class TestPublicEndpoint:
     validation (head_bucket) uses the internal client."""
 
     def test_presign_uses_public_client_and_validates_via_internal(self) -> None:
-        internal = MagicMock()
+        internal = mock_s3_client()
         internal.head_bucket.return_value = {}
-        public = MagicMock()
+        public = mock_s3_client()
         public.generate_presigned_post.return_value = {"url": "http://localhost:8333/bucket", "fields": {}}
 
         _clients["internal"] = internal
         _clients["public"] = public
-        service = PresignedURLService(getLogger(__name__))
+        service = PresignedURLService()
 
         service.create_presigned_url("user-1", PresignedURLRequest(filename="export.xml"))
 
@@ -70,7 +75,7 @@ def test_missing_bucket_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "aws_bucket_name", None)
     client = _client()
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AppError) as exc:
         _service(client).create_presigned_url("user-1", PresignedURLRequest(filename="export.xml"))
 
     assert exc.value.status_code == 503

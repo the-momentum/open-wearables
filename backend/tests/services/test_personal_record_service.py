@@ -4,12 +4,12 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import PersonalRecord
 from app.schemas.model_crud.activities import PersonalRecordUpdate
 from app.services.personal_record_service import personal_record_service
+from app.utils.exceptions import NotFoundError
 from tests.factories import PersonalRecordFactory, UserFactory
 
 
@@ -33,7 +33,7 @@ class TestGetForUser:
         assert record.id == existing.id
 
     def test_unknown_user_raises_404(self, db: Session) -> None:
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             personal_record_service.get_for_user(db, uuid4())
         assert exc_info.value.status_code == 404
 
@@ -51,6 +51,6 @@ class TestUpsertForUser:
         assert record.sex is True
 
     def test_unknown_user_raises_404(self, db: Session) -> None:
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             personal_record_service.upsert_for_user(db, uuid4(), PersonalRecordUpdate())
         assert exc_info.value.status_code == 404

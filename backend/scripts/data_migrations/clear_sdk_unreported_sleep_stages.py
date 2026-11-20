@@ -93,7 +93,7 @@ def clear_sdk_unreported_sleep_stages(db: Session, *, dry_run: bool) -> int:
     db.commit()
     cleared = 0
     while ids := list(db.execute(_NEXT, {"batch_size": _BATCH_SIZE}).scalars()):
-        cleared += db.execute(_CLEAR, {"ids": ids}).rowcount  # ty: ignore[unresolved-attribute]
+        cleared += db.execute(_CLEAR, {"ids": ids}).rowcount  # ty: ignore[missing-attribute]
         db.execute(_FORGET, {"ids": ids})
         db.commit()
     db.execute(_DROP)

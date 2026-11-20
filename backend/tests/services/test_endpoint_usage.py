@@ -189,7 +189,7 @@ class TestEndpointUsageMiddleware:
         client = _build_client()
         with (
             patch.object(settings, "telemetry_usage_flush_interval_seconds", 0.0),
-            patch("app.services.endpoint_usage.get_redis_client", side_effect=ConnectionError("down")),
+            patch("app.services.endpoint_usage.get_redis_client", autospec=True, side_effect=ConnectionError("down")),
         ):
             response = client.get(f"{settings.api_v1}/users/{USER_ID}")
 

@@ -6,12 +6,21 @@
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 	import ProviderLogo from '$lib/components/providers/ProviderLogo.svelte';
 
-	let { provider, returnUrl }: { provider: Provider; returnUrl: string | null } = $props();
+	let {
+		provider,
+		returnUrl,
+		token
+	}: { provider: Provider; returnUrl: string | null; token: string } = $props();
 
 	const submit = createSubmitFlag();
 </script>
 
-<form method="POST" action="?/connect" use:enhance={submit.enhance}>
+<!-- The token rides in the action URL so a no-JS post lands back on a page that still has it. -->
+<form
+	method="POST"
+	action="?/connect&{new URLSearchParams({ t: token })}"
+	use:enhance={submit.enhance}
+>
 	<input type="hidden" name="provider" value={provider.provider} />
 	{#if returnUrl}
 		<input type="hidden" name="return_url" value={returnUrl} />

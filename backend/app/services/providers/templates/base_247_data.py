@@ -1,6 +1,5 @@
 """Base template for 247 data (sleep, recovery, activity samples)."""
 
-import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -30,7 +29,6 @@ class Base247DataTemplate(ABC):
         self.provider_name = provider_name
         self.api_base_url = api_base_url
         self.oauth = oauth
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     # -------------------------------------------------------------------------
     # Sleep Data
@@ -197,7 +195,7 @@ class Base247DataTemplate(ABC):
 
     def sync_run(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Sync247Run:
         """Start a 24/7 sync run bound to this provider."""
-        return Sync247Run(self.provider_name, db, user_id, self.logger, **kwargs)
+        return Sync247Run(self.provider_name, db, user_id, **kwargs)
 
     def resolve_window(
         self,

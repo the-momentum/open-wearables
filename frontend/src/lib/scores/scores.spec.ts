@@ -239,6 +239,15 @@ describe('byCategory', () => {
 		]);
 	});
 
+	it('knows previous_day_activity and puts it right after activity', () => {
+		expect(knownCategory('previous_day_activity')).toBe(true);
+		expect(['stress', 'previous_day_activity', 'activity'].sort(byCategory)).toEqual([
+			'activity',
+			'previous_day_activity',
+			'stress'
+		]);
+	});
+
 	// A category the backend grows later still renders; it just sorts after the
 	// ones this build knows about rather than jumping the queue.
 	it('puts one it has never heard of last', () => {
