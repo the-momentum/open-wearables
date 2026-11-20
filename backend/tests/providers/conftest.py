@@ -9,7 +9,7 @@ from collections.abc import Generator
 
 import pytest
 
-from tests.providers.factories import OuraReadinessFactory, OuraSleepFactory, OuraWorkoutFactory, PolarExerciseFactory
+from tests.providers.factories import OuraReadinessFactory, OuraSleepFactory, PolarExerciseFactory
 
 
 @pytest.fixture
@@ -24,36 +24,6 @@ def non_utc_process_timezone(monkeypatch: pytest.MonkeyPatch) -> Generator[None,
         finally:
             mp.undo()
             time.tzset()
-
-
-@pytest.fixture
-def sample_garmin_activity() -> dict:
-    """Sample Garmin activity JSON data."""
-    return {
-        "activityId": 12345678901,
-        "activityName": "Morning Run",
-        "activityType": {"typeKey": "running"},
-        "startTimeLocal": "2024-01-15T08:00:00",
-        "startTimeGMT": "2024-01-15T07:00:00",
-        "duration": 3600.0,
-        "distance": 10000.0,
-        "averageHR": 145.0,
-        "maxHR": 175,
-        "calories": 650.0,
-        "steps": 8500,
-    }
-
-
-@pytest.fixture
-def sample_garmin_heart_rate_samples() -> list[dict]:
-    """Sample Garmin heart rate time series data."""
-    return [
-        {"startTimeGMT": "2024-01-15T07:00:00", "heartRate": 120},
-        {"startTimeGMT": "2024-01-15T07:01:00", "heartRate": 135},
-        {"startTimeGMT": "2024-01-15T07:02:00", "heartRate": 145},
-        {"startTimeGMT": "2024-01-15T07:03:00", "heartRate": 150},
-        {"startTimeGMT": "2024-01-15T07:04:00", "heartRate": 155},
-    ]
 
 
 @pytest.fixture
@@ -73,80 +43,6 @@ def sample_polar_exercise() -> dict:
         training_load=150.0,
         has_route=True,
         detailed_sport_info="RUNNING",
-    )
-
-
-@pytest.fixture
-def sample_polar_heart_rate_zones() -> dict:
-    """Sample Polar heart rate zones data."""
-    return {
-        "zone_1": {"lower_limit": 93, "upper_limit": 111, "in_zone": "PT10M"},
-        "zone_2": {"lower_limit": 111, "upper_limit": 130, "in_zone": "PT15M"},
-        "zone_3": {"lower_limit": 130, "upper_limit": 149, "in_zone": "PT20M"},
-        "zone_4": {"lower_limit": 149, "upper_limit": 167, "in_zone": "PT10M"},
-        "zone_5": {"lower_limit": 167, "upper_limit": 186, "in_zone": "PT5M"},
-    }
-
-
-@pytest.fixture
-def sample_suunto_workout() -> dict:
-    """Sample Suunto workout JSON data."""
-    return {
-        "workoutKey": "suunto-workout-123",
-        "activityId": 1,
-        "workoutName": "Morning Run",
-        "startTime": 1705309200000,  # 2024-01-15T08:00:00 in milliseconds
-        "totalTime": 3600000,  # 1 hour in milliseconds
-        "totalDistance": 10000.0,
-        "totalAscent": 150.0,
-        "totalDescent": 140.0,
-        "maxSpeed": 15.0,
-        "avgSpeed": 10.0,
-        "avgHR": 145,
-        "maxHR": 175,
-        "avgCadence": 85,
-        "totalCalories": 650,
-    }
-
-
-@pytest.fixture
-def sample_suunto_samples() -> dict:
-    """Sample Suunto workout samples data."""
-    return {
-        "Samples": [
-            {"TimeISO8601": "2024-01-15T08:00:00Z", "HR": 120},
-            {"TimeISO8601": "2024-01-15T08:01:00Z", "HR": 135},
-            {"TimeISO8601": "2024-01-15T08:02:00Z", "HR": 145},
-        ],
-    }
-
-
-@pytest.fixture
-def sample_apple_healthkit_workout() -> dict:
-    """Sample Apple HealthKit workout JSON data."""
-    return {
-        "uuid": "12345678-1234-1234-1234-123456789012",
-        "workoutActivityType": "HKWorkoutActivityTypeRunning",
-        "duration": 3600.0,
-        "totalDistance": 10000.0,
-        "totalEnergyBurned": 650.0,
-        "startDate": "2024-01-15T08:00:00-05:00",
-        "endDate": "2024-01-15T09:00:00-05:00",
-        "sourceName": "Apple Watch",
-        "sourceVersion": "10.0",
-        "device": "Apple Watch Series 9",
-    }
-
-
-@pytest.fixture
-def sample_oura_workout() -> dict:
-    """Sample Oura workout JSON data."""
-    return OuraWorkoutFactory.build_payload(
-        id="oura-workout-abc123",
-        activity="running",
-        calories=350.5,
-        distance=5000.0,
-        intensity="moderate",
     )
 
 
@@ -184,131 +80,6 @@ def sample_oura_readiness() -> dict:
         temperature_deviation=0.15,
         temperature_trend_deviation=0.05,
     )
-
-
-@pytest.fixture
-def sample_oura_webhook_notification() -> dict:
-    """Sample Oura webhook notification payload."""
-    return {
-        "event_type": "create",
-        "data_type": "daily_sleep",
-        "user_id": "oura-user-123",
-        "event_timestamp": "2024-01-15T08:00:00+00:00",
-        "data_timestamp": "2024-01-15",
-    }
-
-
-@pytest.fixture
-def mock_oauth_token_response() -> dict:
-    """Mock OAuth token exchange response."""
-    return {
-        "access_token": "test_access_token_abc123",
-        "refresh_token": "test_refresh_token_xyz789",
-        "expires_in": 3600,
-        "token_type": "Bearer",
-        "scope": "activity:read profile:read",
-    }
-
-
-@pytest.fixture
-def mock_oauth_refresh_response() -> dict:
-    """Mock OAuth token refresh response."""
-    return {
-        "access_token": "new_access_token_def456",
-        "refresh_token": "new_refresh_token_uvw123",
-        "expires_in": 3600,
-        "token_type": "Bearer",
-    }
-
-
-@pytest.fixture
-def mock_provider_user_info() -> dict:
-    """Mock provider user info response."""
-    return {
-        "user_id": "provider_user_12345",
-        "username": "test_user",
-        "email": "test@example.com",
-    }
-
-
-@pytest.fixture
-def sample_ultrahuman_sleep_data() -> dict:
-    """Sample Ultrahuman sleep data object from API."""
-    return {
-        "date": "2024-01-15",
-        "bedtime_start": 1705309200,  # 2024-01-15T01:00:00Z
-        "bedtime_end": 1705334400,  # 2024-01-15T08:00:00Z
-        "quick_metrics": [
-            {"type": "time_in_bed", "value": 25200},
-            {"type": "sleep_efic", "value": 90.5},
-            {"type": "total_sleep", "value": 23400},
-        ],
-        "sleep_stages": [
-            {"type": "deep_sleep", "stage_time": 3600},
-            {"type": "light_sleep", "stage_time": 16200},
-            {"type": "rem_sleep", "stage_time": 3600},
-            {"type": "awake", "stage_time": 1800},
-        ],
-    }
-
-
-@pytest.fixture
-def sample_ultrahuman_minimal_sleep() -> dict:
-    """Sample Ultrahuman sleep data with minimal fields."""
-    return {
-        "date": "2024-01-15",
-    }
-
-
-@pytest.fixture
-def sample_ultrahuman_activity_samples() -> dict:
-    """Sample Ultrahuman activity samples from API."""
-    return {
-        "date": "2024-01-15",
-        "hr": {
-            "values": [
-                {"timestamp": 1705309200, "value": 62},
-                {"timestamp": 1705309500, "value": 65},
-                {"timestamp": 1705309800, "value": 68},
-                {"timestamp": 1705310100, "value": 72},
-                {"timestamp": 1705310400, "value": 75},
-            ]
-        },
-        "hrv": {
-            "values": [
-                {"timestamp": 1705309200, "value": 45},
-                {"timestamp": 1705309500, "value": 48},
-                {"timestamp": 1705309800, "value": 52},
-            ]
-        },
-        "temp": {
-            "values": [
-                {"timestamp": 1705309200, "value": 36.5},
-                {"timestamp": 1705309500, "value": 36.6},
-                {"timestamp": 1705309800, "value": 36.7},
-                {"timestamp": 1705310100, "value": 36.8},
-            ]
-        },
-        "steps": {
-            "values": [
-                {"timestamp": 1705309200, "value": 0},
-                {"timestamp": 1705309500, "value": 50},
-                {"timestamp": 1705309800, "value": 100},
-                {"timestamp": 1705310100, "value": 250},
-            ]
-        },
-    }
-
-
-@pytest.fixture
-def sample_ultrahuman_recovery_data() -> dict:
-    """Sample Ultrahuman recovery data."""
-    return {
-        "date": "2024-01-15",
-        "recovery_index": {"value": 85},
-        "movement_index": {"value": 72},
-        "metabolic_score": {"value": 78},
-    }
 
 
 @pytest.fixture
