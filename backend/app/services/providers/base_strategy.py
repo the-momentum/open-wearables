@@ -6,6 +6,7 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.config import settings
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
@@ -20,6 +21,8 @@ from app.services.providers.templates.base_webhook_handler import BaseWebhookHan
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.exceptions import UnsupportedProviderError
+
+DEFAULT_HISTORICAL_DAYS = 90
 
 
 @dataclass
@@ -212,11 +215,13 @@ class BaseProviderStrategy(ABC):
             queue=CeleryQueue.WEBHOOK_SYNC,
         )
 
-    def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
+    def start_historical_sync(self, user_id: UUID, days: int, since: datetime | None = None) -> HistoricalSyncResult:
         """Dispatch an async historical data sync.
 
         Default implementation works for pull-based providers. Override for
         providers that use a different mechanism (e.g. Garmin webhook backfill).
+        ``since`` limits the sync to the gap since the last sync on a reconnect,
+        never reaching further back than ``days``.
 
         Raises UnsupportedProviderError for providers that don't support historical sync.
         """
@@ -227,6 +232,8 @@ class BaseProviderStrategy(ABC):
             days = min(days, self.capabilities.max_historical_days)
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
+        if since is not None:
+            start_date = max(since - (settings.pull_sync_lookback or timedelta()), start_date)
 
         task = celery_app.send_task(
             CeleryTask.SYNC_VENDOR_DATA,

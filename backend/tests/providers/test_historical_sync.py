@@ -8,7 +8,7 @@ Tests cover:
 - HistoricalSyncResult dataclass contract
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import create_autospec
 from uuid import uuid4
 
@@ -16,6 +16,7 @@ import pytest
 from celery.result import AsyncResult
 from pytest_mock import MockerFixture
 
+from app.config import settings
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import HistoricalSyncResult
 from app.services.providers.garmin.strategy import GarminStrategy
@@ -116,6 +117,30 @@ class TestPullBasedHistoricalSync:
         end = datetime.fromisoformat(result.end_date)
         assert (end - start).days == 365
 
+    def test_since_limits_sync_to_gap_with_lookback(self, mocker: MockerFixture) -> None:
+        """On a reconnect only the gap since the last sync is pulled, widened by the pull lookback."""
+        mock_celery = mocker.patch("app.services.providers.base_strategy.celery_app", autospec=True)
+        mock_celery.send_task.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
+        mocker.patch.object(settings, "pull_sync_lookback", timedelta(days=1))
+        since = datetime.now(timezone.utc) - timedelta(days=5)
+
+        result = OuraStrategy().start_historical_sync(uuid4(), days=90, since=since)
+
+        assert datetime.fromisoformat(result.start_date) == since - timedelta(days=1)
+        call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
+        assert call_kwargs["start_date"] == result.start_date
+
+    def test_gap_longer_than_window_is_clamped(self, mocker: MockerFixture) -> None:
+        mock_celery = mocker.patch("app.services.providers.base_strategy.celery_app", autospec=True)
+        mock_celery.send_task.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
+        since = datetime.now(timezone.utc) - timedelta(days=200)
+
+        result = OuraStrategy().start_historical_sync(uuid4(), days=90, since=since)
+
+        start = datetime.fromisoformat(result.start_date)
+        end = datetime.fromisoformat(result.end_date)
+        assert (end - start).days == 90
+
 
 class TestGarminHistoricalSync:
     """Tests for Garmin's overridden start_historical_sync."""
@@ -135,7 +160,7 @@ class TestGarminHistoricalSync:
         start = datetime.fromisoformat(result.start_date)
         end = datetime.fromisoformat(result.end_date)
         assert (end - start).days == 30
-        mock_backfill.delay.assert_called_once_with(str(user_id))
+        mock_backfill.delay.assert_called_once_with(str(user_id), None)
 
     def test_ignores_days_parameter(self, mocker: MockerFixture) -> None:
         """Garmin always uses its own 30-day limit regardless of days param."""
@@ -146,7 +171,19 @@ class TestGarminHistoricalSync:
         result = GarminStrategy().start_historical_sync(user_id, days=365)
 
         assert result.days == 30
-        mock_backfill.delay.assert_called_once_with(str(user_id))
+        mock_backfill.delay.assert_called_once_with(str(user_id), None)
+
+    def test_since_is_passed_to_backfill(self, mocker: MockerFixture) -> None:
+        """On a reconnect the backfill only covers the gap since the last sync."""
+        mock_backfill = mocker.patch("app.services.providers.garmin.strategy.start_garmin_full_backfill", autospec=True)
+        mock_backfill.delay.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
+        user_id = uuid4()
+        since = datetime.now(timezone.utc) - timedelta(days=5)
+
+        result = GarminStrategy().start_historical_sync(user_id, days=90, since=since)
+
+        assert result.start_date == since.isoformat()
+        mock_backfill.delay.assert_called_once_with(str(user_id), since.isoformat())
 
 
 class TestUnsupportedHistoricalSync:

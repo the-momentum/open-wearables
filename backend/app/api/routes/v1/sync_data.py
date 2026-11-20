@@ -13,12 +13,12 @@ from app.integrations.celery.tasks import (
 from app.schemas.enums import ProviderName
 from app.schemas.responses.upload import SyncDetails, SyncQueuedResponse, SyncResponse
 from app.services import ApiKeyDep
+from app.services.providers.base_strategy import DEFAULT_HISTORICAL_DAYS
 from app.services.providers.factory import ProviderFactory
 from app.utils.sync_params import build_sync_params
 
 router = APIRouter()
 factory = ProviderFactory()
-DEFAULT_HISTORICAL_DAYS = 90
 
 
 def _queue_pull_sync(
