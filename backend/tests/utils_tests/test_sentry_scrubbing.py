@@ -92,7 +92,7 @@ def captured(
     try:
         yield transport.events
     finally:
-        sentry_sdk.flush()
+        sentry_sdk.get_client().close()  # flushes and stops the SDK's monitor thread, which outlives the test
         sentry_sdk.get_global_scope().set_client(None)
 
 

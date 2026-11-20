@@ -63,6 +63,7 @@ dev = [
     "pytest-mock>=3.17.0",
     "dirty-equals>=0.11",
     "inline-snapshot>=0.37.0",
+    "ruff>=0.17.5",  # inline-snapshot formats fixed snapshots with ruff
     "polyfactory>=3.5.0",
 ]
 
@@ -129,7 +130,7 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
 ]
-addopts = "--full-trace --showlocals -n auto --maxprocesses=4"
+addopts = "--tb=short -n auto --maxprocesses=4"
 verbosity_assertions = 2
 strict = true
 timeout = 10

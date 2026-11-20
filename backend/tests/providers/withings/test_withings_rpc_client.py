@@ -84,7 +84,7 @@ def test_throttle_is_retried_through_the_shared_client(mocker: MockerFixture, re
     # Withings answers a throttle with HTTP 200 and an ``error`` next to the status. The
     # shared client used to raise on that message before the envelope was ever read.
     mocker.patch("app.services.providers.api_client.get_valid_token", autospec=True, return_value="token")
-    mock_sleep = mocker.patch("app.services.providers.withings.handlers.rpc_client.time.sleep", autospec=True)
+    mock_sleep = mocker.patch.object(rpc_client, "time", autospec=True).sleep
     respx_mock.post(MEASURE_URL).mock(
         side_effect=[
             httpx.Response(200, json=THROTTLED),
@@ -100,7 +100,7 @@ def test_throttle_is_retried_through_the_shared_client(mocker: MockerFixture, re
 
 def test_throttle_that_persists_is_a_rate_limit_error(mocker: MockerFixture, respx_mock: respx.MockRouter) -> None:
     mocker.patch("app.services.providers.api_client.get_valid_token", autospec=True, return_value="token")
-    mock_sleep = mocker.patch("app.services.providers.withings.handlers.rpc_client.time.sleep", autospec=True)
+    mock_sleep = mocker.patch.object(rpc_client, "time", autospec=True).sleep
     route = respx_mock.post(MEASURE_URL).respond(200, json=THROTTLED)
 
     with pytest.raises(ProviderRateLimitError) as exc_info:

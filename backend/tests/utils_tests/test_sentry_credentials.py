@@ -129,6 +129,7 @@ def sentry_transport(request: pytest.FixtureRequest) -> Generator[_CapturingTran
     try:
         yield transport
     finally:
+        sentry_sdk.get_client().close()  # stops the SDK's monitor thread, which outlives the test
         sentry_sdk.get_global_scope().set_client(None)
 
 
