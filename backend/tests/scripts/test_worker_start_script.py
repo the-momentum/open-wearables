@@ -21,8 +21,8 @@ _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "start" / "work
 
 # Fake `uv`: identifies the worker by its node name (io@%h / cpu@%h / ext@%h), records what
 # happens to it in $EVENTS_LOG and exits as configured through the environment:
-#   EXIT_NOW_<role>=<code>      exit after EXIT_DELAY seconds without being signalled
-#   SHUTDOWN_DELAY_<role>=<s>   take this long to shut down after SIGTERM
+#   EXIT_NOW_<role>=<code>      exit without being signalled, once EXIT_GATE exists (if set)
+#   SHUTDOWN_GATE_<role>=<path> wait for this file before completing shutdown
 #   EXIT_ON_TERM_<role>=<code>  exit code after SIGTERM
 # The TERM trap is installed before "started" is logged, so a test that waits for
 # "started" can signal right away.
@@ -58,11 +58,15 @@ for arg in "$@"; do
     esac
 done
 
-shutdown_delay_var="SHUTDOWN_DELAY_$role"
+wait_for_release() {
+    while [ -n "$1" ] && [ ! -e "$1" ]; do sleep 0.01; done
+}
+
+shutdown_gate_var="SHUTDOWN_GATE_$role"
 exit_on_term_var="EXIT_ON_TERM_$role"
 on_term() {
     echo "$role got TERM" >> "$EVENTS_LOG"
-    sleep "${!shutdown_delay_var:-0}"
+    wait_for_release "${!shutdown_gate_var}"
     echo "$role stopped" >> "$EVENTS_LOG"
     exit "${!exit_on_term_var:-0}"
 }
@@ -73,13 +77,13 @@ echo "$role started" >> "$EVENTS_LOG"
 
 exit_now_var="EXIT_NOW_$role"
 if [ -n "${!exit_now_var}" ]; then
-    sleep "${EXIT_DELAY:-0}"
+    wait_for_release "$EXIT_GATE"
     echo "$role exited" >> "$EVENTS_LOG"
     exit "${!exit_now_var}"
 fi
 
 while true; do
-    sleep 0.05
+    sleep 0.01
 done
 """
 
@@ -133,17 +137,22 @@ def _events(events_log: Path) -> list[str]:
 def _wait_for(events_log: Path, *expected: str) -> None:
     deadline = time.monotonic() + _TIMEOUT_S
     while time.monotonic() < deadline:
-        if all(event in _events(events_log) for event in expected):
+        events = _events(events_log)
+        if all(events.count(event) >= expected.count(event) for event in expected):
             return
-        time.sleep(0.05)
+        time.sleep(0.01)
     pytest.fail(f"Timed out waiting for {expected}; events so far: {_events(events_log)}")
 
 
-def test_sigterm_is_forwarded_to_every_worker(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="my_queue", SHUTDOWN_DELAY_ext="0.5")
+def test_sigterm_is_forwarded_to_every_worker(run_worker_script: Callable, tmp_path: Path) -> None:
+    shutdown_gate = tmp_path / "shutdown"
+    process, events_log = run_worker_script(EXT_QUEUES="my_queue", SHUTDOWN_GATE_ext=str(shutdown_gate))
     _wait_for(events_log, "io started", "cpu started", "ext started")
 
     process.send_signal(signal.SIGTERM)
+    _wait_for(events_log, "io stopped", "cpu stopped", "ext got TERM")
+    assert process.poll() is None
+    shutdown_gate.touch()
 
     assert process.wait(timeout=_TIMEOUT_S) == 0
     assert "io got TERM" in _events(events_log)
@@ -162,12 +171,16 @@ def test_exit_status_comes_from_the_cpu_worker(run_worker_script: Callable, cpu_
 
 
 def test_failing_io_worker_on_shutdown_does_not_skip_waiting_for_the_cpu_worker(
-    run_worker_script: Callable,
+    run_worker_script: Callable, tmp_path: Path
 ) -> None:
-    process, events_log = run_worker_script(EXIT_ON_TERM_io="1", SHUTDOWN_DELAY_cpu="0.5")
+    shutdown_gate = tmp_path / "shutdown"
+    process, events_log = run_worker_script(EXIT_ON_TERM_io="1", SHUTDOWN_GATE_cpu=str(shutdown_gate))
     _wait_for(events_log, "io started", "cpu started")
 
     process.send_signal(signal.SIGTERM)
+    _wait_for(events_log, "io stopped", "cpu got TERM")
+    assert process.poll() is None
+    shutdown_gate.touch()
 
     assert process.wait(timeout=_TIMEOUT_S) == 0
     assert "cpu stopped" in _events(events_log)
@@ -185,15 +198,19 @@ def _wait_until_reaped(pid: int) -> None:
     pytest.fail(f"Process {pid} was not reaped")
 
 
-def test_second_signal_does_not_cut_a_slow_shutdown_short(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(SHUTDOWN_DELAY_io="1.5", SHUTDOWN_DELAY_cpu="0.2")
+def test_second_signal_does_not_cut_a_slow_shutdown_short(run_worker_script: Callable, tmp_path: Path) -> None:
+    shutdown_gate = tmp_path / "shutdown"
+    process, events_log = run_worker_script(SHUTDOWN_GATE_io=str(shutdown_gate))
     _wait_for(events_log, "io started", "cpu started")
     [cpu_pid] = [int(event.split()[-1]) for event in _events(events_log) if event.startswith("cpu pid ")]
 
     process.send_signal(signal.SIGTERM)
-    _wait_for(events_log, "cpu stopped")
+    _wait_for(events_log, "cpu stopped", "io got TERM")
     _wait_until_reaped(cpu_pid)
     process.send_signal(signal.SIGTERM)
+    _wait_for(events_log, "io got TERM", "io got TERM")
+    assert process.poll() is None
+    shutdown_gate.touch()
 
     assert process.wait(timeout=_TIMEOUT_S) == 0
     assert "io stopped" in _events(events_log)
@@ -205,19 +222,25 @@ _ROLES = ("io", "cpu", "ext")
 @pytest.mark.parametrize(("worker_status", "container_status"), [(0, 1), (2, 2), (127, 127), (255, 255)])
 @pytest.mark.parametrize("role", _ROLES)
 def test_a_worker_exit_stops_the_other_workers_and_the_container(
-    run_worker_script: Callable, role: str, worker_status: int, container_status: int
+    run_worker_script: Callable, tmp_path: Path, role: str, worker_status: int, container_status: int
 ) -> None:
     """The worker's own exit code is kept, including 127 and 255 that bash 5 also uses for a lost status. A worker
     ending with 0, e.g. shut down from Flower, still fails the container, so an on-failure policy restarts it."""
     others = [other for other in _ROLES if other != role]
+    exit_gate = tmp_path / "exit"
+    shutdown_gate = tmp_path / "shutdown"
     process, events_log = run_worker_script(
         EXT_QUEUES="my_queue",
-        EXIT_DELAY="0.5",
+        EXIT_GATE=str(exit_gate),
         **{f"EXIT_NOW_{role}": str(worker_status)},
-        **{f"SHUTDOWN_DELAY_{other}": "0.5" for other in others},
+        **{f"SHUTDOWN_GATE_{other}": str(shutdown_gate) for other in others},
         **{f"EXIT_ON_TERM_{other}": "1" for other in others},
     )
     _wait_for(events_log, "io started", "cpu started", "ext started")
+    exit_gate.touch()
+    _wait_for(events_log, *(f"{other} got TERM" for other in others))
+    assert process.poll() is None
+    shutdown_gate.touch()
 
     assert process.wait(timeout=_TIMEOUT_S) == container_status
     for other in others:
@@ -237,11 +260,16 @@ def test_a_worker_crashing_at_start_stops_the_container(run_worker_script: Calla
 @pytest.mark.parametrize(
     "env", [{}, {"EXT_QUEUES": "my_queue", "LOOKUP_FAILS": "1"}], ids=["none_declared", "lookup_failed"]
 )
-def test_only_the_core_workers_start_without_extension_queues(run_worker_script: Callable, env: dict[str, str]) -> None:
-    process, events_log = run_worker_script(**env)
+def test_only_the_core_workers_start_without_extension_queues(
+    run_worker_script: Callable, tmp_path: Path, env: dict[str, str]
+) -> None:
+    exit_gate = tmp_path / "exit"
+    process, events_log = run_worker_script(**env, EXIT_NOW_cpu="3", EXIT_GATE=str(exit_gate))
     _wait_for(events_log, "io started", "cpu started")
 
-    time.sleep(0.5)
+    # A worker exit lets the script finish every startup branch before it handles the shutdown.
+    exit_gate.touch()
+    assert process.wait(timeout=_TIMEOUT_S) == 3
     assert "ext started" not in _events(events_log)
 
 
@@ -256,25 +284,30 @@ def test_extension_worker_runs_the_extension_queues(run_worker_script: Callable)
     assert "--disable-prefetch" in args
 
 
-def test_worker_roles_start_only_the_named_workers(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="my_queue", WORKER_ROLES="ext")
+def test_worker_roles_start_only_the_named_workers(run_worker_script: Callable, tmp_path: Path) -> None:
+    exit_gate = tmp_path / "exit"
+    process, events_log = run_worker_script(
+        EXT_QUEUES="my_queue", WORKER_ROLES="ext", EXIT_NOW_ext="3", EXIT_GATE=str(exit_gate)
+    )
     _wait_for(events_log, "ext started")
 
-    time.sleep(0.5)
+    exit_gate.touch()
+    assert process.wait(timeout=_TIMEOUT_S) == 3
     assert "io started" not in _events(events_log)
     assert "cpu started" not in _events(events_log)
-
-    process.send_signal(signal.SIGTERM)
-    assert process.wait(timeout=_TIMEOUT_S) == 0
 
 
 def test_without_the_ext_role_the_extensions_queues_are_not_looked_up(
     run_worker_script: Callable, tmp_path: Path
 ) -> None:
-    process, events_log = run_worker_script(EXT_QUEUES="my_queue", WORKER_ROLES="io,cpu")
+    exit_gate = tmp_path / "exit"
+    process, events_log = run_worker_script(
+        EXT_QUEUES="my_queue", WORKER_ROLES="io,cpu", EXIT_NOW_cpu="3", EXIT_GATE=str(exit_gate)
+    )
     _wait_for(events_log, "io started", "cpu started")
 
-    time.sleep(0.5)
+    exit_gate.touch()
+    assert process.wait(timeout=_TIMEOUT_S) == 3
     assert "ext started" not in _events(events_log)
     assert "Extension disabled" not in (tmp_path / "container.log").read_text()
 
