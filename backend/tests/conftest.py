@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import bcrypt
 import pytest
 import redis as redis_lib
+from anyio.from_thread import BlockingPortal, start_blocking_portal
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -194,7 +195,7 @@ def set_factory_session(request: pytest.FixtureRequest) -> Generator[None]:
 
 
 @pytest.fixture
-def client(db: Session) -> Generator[TestClient, None, None]:
+def client(db: Session, _client_portal: BlockingPortal) -> Generator[TestClient, None, None]:
     """Create a test client with database dependency override."""
 
     def override_get_db() -> Generator[Session, None, None]:
@@ -203,9 +204,17 @@ def client(db: Session) -> Generator[TestClient, None, None]:
     api.dependency_overrides[_get_db_dependency] = override_get_db
 
     test_client = TestClient(api)
+    test_client.portal = _client_portal
     yield test_client
     test_client.close()  # Avoid `with`, which runs app lifespan on every test.
     api.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="session")
+def _client_portal() -> Generator[BlockingPortal, None, None]:
+    """Reuse the event loop and worker threads instead of starting them for each HTTP request."""
+    with start_blocking_portal() as portal:
+        yield portal
 
 
 # ============================================================================
@@ -338,9 +347,10 @@ def _guarded_connect_ex(self: socket.socket, address: Any) -> int:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _block_network(_postgres_url: str, _redis_url: str) -> Generator[None, None, None]:
+def _block_network(_redis_url: str) -> Generator[None, None, None]:
     """Refuse TCP connections to anything but loopback and the test Postgres/Redis."""
-    for url, default_port in ((_postgres_url, 5432), (_redis_url, 6379)):
+    # Worker databases share the same address; allowing it must not create a database for unit tests.
+    for url, default_port in ((_infrastructure_urls["postgres"], 5432), (_redis_url, 6379)):
         parsed = urlparse(url)
         if not parsed.hostname:
             continue
@@ -402,20 +412,26 @@ def respx_mock() -> Generator[RecordingRouter, None, None]:
         pytest.fail(f"Unmocked HTTP request: {', '.join(f'{r.method} {r.url}' for r in router.unmatched)}")
 
 
-@pytest.fixture(autouse=True)
-def mock_external_apis() -> Generator[None, None, None]:
-    """Stub Garmin backfill state for every test."""
+@pytest.fixture(scope="session")
+def _garmin_backfill_mocks() -> Generator[tuple[Any, Any], None, None]:
+    """Build signature-checked mocks once; mock_external_apis resets their state per test."""
     garmin_handler = "app.services.providers.garmin.webhook_handler"
-
     with (
-        patch(f"{garmin_handler}.mark_type_success", autospec=True, return_value=False),
-        patch(
-            f"{garmin_handler}.get_backfill_status",
-            autospec=True,
-            return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
-        ),
+        patch(f"{garmin_handler}.mark_type_success", autospec=True) as mark_success,
+        patch(f"{garmin_handler}.get_backfill_status", autospec=True) as backfill_status,
     ):
-        yield
+        yield mark_success, backfill_status
+
+
+@pytest.fixture(autouse=True)
+def mock_external_apis(_garmin_backfill_mocks: tuple[Any, Any]) -> None:
+    """Stub Garmin backfill state with fresh call history and responses for every test."""
+    mark_success, backfill_status = _garmin_backfill_mocks
+    for mock in _garmin_backfill_mocks:
+        mock.reset_mock()
+        mock.side_effect = None
+    mark_success.return_value = False
+    backfill_status.return_value = {"overall_status": "complete", "current_window": 0, "total_windows": 0}
 
 
 @pytest.fixture
