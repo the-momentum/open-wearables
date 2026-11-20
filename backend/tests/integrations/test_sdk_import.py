@@ -1311,6 +1311,41 @@ class TestSDKImportUnitConversion:
         assert samples[0].series_type == SeriesType.blood_glucose
         assert samples[0].value == Decimal("105")
 
+    def test_health_connect_bone_and_water_mass_map_to_body_series(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """BoneMassRecord and BodyWaterMassRecord share the series Withings body composition fills."""
+        request = self._build_request(
+            "health_connect",
+            [
+                self._record("BONE_MASS", 3.1, unit="kg"),
+                self._record("BODY_WATER_MASS", 42.6, unit="kg"),
+            ],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4()))
+
+        values = {sample.series_type: sample.value for sample in samples}
+        assert values == {
+            SeriesType.bone_mass: Decimal("3.100"),
+            SeriesType.body_water_mass: Decimal("42.600"),
+        }
+
+    def test_health_connect_basal_metabolic_rate_gets_own_series(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """A scale's kcal/day BMR estimate is a rate, not interval energy - it must not land in basal_energy."""
+        request = self._build_request(
+            "health_connect",
+            [self._record("BASAL_METABOLIC_RATE", 1520.0, unit="kcal/day")],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.basal_metabolic_rate
+        assert samples[0].value == Decimal("1520.000")
+
 
 class TestSDKImportPercentageScale:
     """Percentage metrics: iOS SDK builds before `APPLE_SDK_PERCENT_SCALE_MIN_VERSION` send a
