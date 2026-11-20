@@ -176,6 +176,8 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 
 Nutrients logged as standalone samples are returned as timeseries. Nutrients logged as part of a meal are attached to that meal in `/events/meals` instead.
 
+Food apps often log every item of a meal at the same time. From the mobile SDK, each standalone `dietary_*` and `hydration` sample is kept as its own entry, keyed on its sample id, so items at one instant add up and a sample sent again is stored once. Samples without an id, other providers and every other series keep one value per source and instant, and a later value replaces the stored one.
+
 | Type | Unit | Description |
 |------|------|-------------|
 | `dietary_energy_consumed` | kcal | Energy consumed |
