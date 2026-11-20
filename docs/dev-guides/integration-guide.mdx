@@ -175,16 +175,22 @@ Each connection has a `provider` and a `status` (`active`, `revoked` or `expired
 
 ---
 
-## Step 3: Historical Backfill (Automatic)
+## Step 3: Historical Backfill
 
-You don't need to trigger a sync after OAuth. When a user connects a provider, Open Wearables dispatches a historical backfill:
+Connecting a provider only sets up live sync - no history is fetched until you ask for it. Once the user is back on your `redirect_uri`, trigger the backfill with [`POST /api/v1/providers/{provider}/users/{user_id}/sync/historical`](/api-reference/external:-data-sync/sync-historical-data):
 
-- up to **90 days** for pull-based providers (Polar, Suunto, Oura, Whoop, Strava, ...)
-- up to **30 days** for Garmin, whose backfill is capped at 30 days before the user's consent date
+```bash
+curl -X POST "http://localhost:8000/api/v1/providers/oura/users/USER_ID/sync/historical?days=90" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
 
-After that, new data arrives automatically - via provider webhooks or periodic polling, depending on the provider. See [Historical Data](/providers/historical-data) for each provider's maximum range.
+`days` defaults to 90 and is capped at the provider's maximum range - see [Historical Data](/providers/historical-data). Garmin ignores it: its backfill covers 30 days and is only allowed within 30 days of the user's consent date, so call the endpoint right after the user connects.
 
-This is controlled by `HISTORICAL_SYNC_ON_CONNECT` (default `true`). The default is planned to change in a future release. To control the range yourself, set it to `false` and call [`POST /api/v1/providers/{provider}/users/{user_id}/sync/historical`](/api-reference/external:-data-sync/sync-historical-data) (`days` defaults to 90, max 365).
+After that, new data arrives automatically - via provider webhooks or periodic polling, depending on the provider.
+
+<Note>
+To have Open Wearables run this backfill after every OAuth connect, set `HISTORICAL_SYNC_ON_CONNECT=true` (default `false`). It uses the default range and, on a reconnect, only fills the gap since the last sync.
+</Note>
 
 ---
 
@@ -303,7 +309,7 @@ sleep = await ow.get_all(f"/api/v1/users/{user_id}/summaries/sleep", start_date=
   <Accordion title="Data endpoints return empty results right after OAuth">
     The backfill runs asynchronously and takes from seconds to several minutes, depending on the provider and the amount of history - Garmin can take hours. `last_synced_at` on the connection is set when the user connects, so it doesn't tell you whether the backfill finished. Check [`GET /api/v1/users/{user_id}/sync/runs`](/api-reference/external:-sync-status/list-sync-run-summaries) for sync progress instead.
 
-    If `HISTORICAL_SYNC_ON_CONNECT=false` on your instance, no backfill runs automatically - see [Step 3](#step-3-historical-backfill-automatic).
+    No backfill runs unless you call `/sync/historical` or your instance sets `HISTORICAL_SYNC_ON_CONNECT=true` - see [Step 3](#step-3-historical-backfill).
   </Accordion>
 
   <Accordion title="Timeseries endpoint returns empty data">

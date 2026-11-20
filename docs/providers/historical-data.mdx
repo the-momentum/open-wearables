@@ -17,9 +17,9 @@ This page documents how far back historical data can be backfilled from each pro
 Use it to compare providers when planning an integration. For the full list of data types per provider, see the [Coverage Matrix](/providers/coverage).
 
 <Info>
-In v0.7 and below, Open Wearables runs a historical sync automatically when a user connects a provider through OAuth (`HISTORICAL_SYNC_ON_CONNECT=true`). If you haven't changed that setting, the range you actually get on connect is **90 days** for pull-based providers, and **30 days** for Garmin, whose webhook-based backfill is capped at 30 days from the user's consent date - no matter how far back the provider itself would let you go. This default is planned to change in a future release.
+Connecting a provider through OAuth only sets up live sync. To backfill, call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` after the callback, where `days` defaults to 90 and is capped at the provider's max range below (and at 3650 overall). The response's `days`, `start_date` and `end_date` reflect the window scheduled for sync, not the value you requested. See [Historical Backfill](/dev-guides/integration-guide#step-3-historical-backfill) in the Integration Guide for the full flow.
 
-To control the range yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` explicitly, where `days` defaults to 90 and is capped at the provider's max range below (and at 3650 overall). The response's `days`, `start_date` and `end_date` reflect the window scheduled for sync, not the value you requested. See [Historical Backfill](/dev-guides/integration-guide#step-3-historical-backfill-automatic) in the Integration Guide for the full flow.
+If your instance sets `HISTORICAL_SYNC_ON_CONNECT=true`, Open Wearables runs that sync on every connect with the default range: up to **90 days** for pull-based providers, and **30 days** for Garmin, whose webhook-based backfill is capped at 30 days from the user's consent date.
 </Info>
 
 ## Maximum Historical Range

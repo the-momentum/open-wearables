@@ -19,7 +19,7 @@ from jose import jwt
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import Settings, settings
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.connect_token import create_connect_token
 from app.utils.exceptions import UnsupportedProviderError
@@ -583,6 +583,9 @@ class TestOAuthCallbackHistoricalSync:
         assert self._callback(client, mocker, strategy, flag=False) == 303
 
         strategy.start_historical_sync.assert_not_called()
+
+    def test_flag_is_off_by_default(self) -> None:
+        assert Settings.model_fields["historical_sync_on_connect"].default is False
 
     def test_unsupported_provider_still_connects(self, client: TestClient, mocker: MockerFixture, db: Session) -> None:
         strategy = self._strategy(uuid4())
