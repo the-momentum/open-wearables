@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -11,6 +13,37 @@ class StravaGearJSON(BaseModel):
     name: str
     resource_state: int
     distance: int
+
+
+class StravaLapJSON(BaseModel):
+    """A single lap from a DetailedActivity's ``laps`` array."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    lap_index: int
+    distance: float | None = None  # meters
+    elapsed_time: int | None = None  # seconds
+    moving_time: int | None = None  # seconds
+    start_date: datetime | None = None
+    average_speed: float | None = None  # meters/second
+    average_heartrate: float | None = None
+    max_heartrate: float | None = None
+    average_cadence: float | None = None
+    average_watts: float | None = None
+    total_elevation_gain: float | None = None
+
+
+class StravaSplitJSON(BaseModel):
+    """A single auto per-kilometre split from a DetailedActivity's ``splits_metric`` array."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    split: int  # 1-based split index
+    distance: float | None = None  # meters
+    elapsed_time: int | None = None  # seconds
+    moving_time: int | None = None  # seconds
+    average_speed: float | None = None  # meters/second
+    average_heartrate: float | None = None
 
 
 class ActivityJSON(BaseModel):
@@ -71,3 +104,7 @@ class ActivityJSON(BaseModel):
     start_date_local: str | None = None  # ISO 8601 local
     timezone: str | None = None
     utc_offset: float | None = None
+
+    # Sub-activity breakdown (DetailedActivity only)
+    laps: list[StravaLapJSON] | None = None
+    splits_metric: list[StravaSplitJSON] | None = None

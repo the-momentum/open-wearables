@@ -36,6 +36,7 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "moving_time_seconds",
         "entry_source",
         "label",
+        "segments",
     }
 )
 

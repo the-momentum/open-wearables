@@ -21,6 +21,7 @@ from app.schemas.providers.strava import (
     ActivityJSON as StravaActivityJSON,
 )
 from app.schemas.providers.strava import (
+    StravaLapJSON,
     StravaStreamSet,
 )
 from app.services.event_record_service import event_record_service
@@ -34,6 +35,11 @@ from app.utils.structured_logging import get_logger
 logger = get_logger(__name__)
 
 _STREAM_SERIES_TYPES = frozenset(STREAM_KEY_SERIES_TYPE.values())
+
+
+def _r2(v: float | None) -> float | None:
+    """Round a metric to 2 decimals, like the FIT parser does for segment fields."""
+    return None if v is None else round(float(v), 2)
 
 
 class StravaWorkouts(BaseWorkoutsTemplate):
@@ -258,10 +264,61 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         detail = EventRecordDetailCreate(
             record_id=workout_id,
+            segments=self._build_segments(raw_workout),
             **metrics,
         )
 
         return record, detail
+
+    def _build_segments(self, activity: StravaActivityJSON) -> list[dict[str, Any]] | None:
+        """Build lap-kind segments in the dict shape the FIT parser stores for Garmin.
+
+        Manual/device laps win when an activity has more than one (intervals); the single
+        whole-activity lap Strava always returns is replaced by the auto per-kilometre
+        splits, so the two sources never overlap. DetailedActivity only — the summary
+        list endpoint carries neither field, so backfilled workouts keep no segments.
+        """
+        laps = activity.laps or []
+        splits = activity.splits_metric or []
+        if len(laps) > 1 or (laps and not splits):
+            return [self._lap_segment(index, lap) for index, lap in enumerate(laps)]
+        start_dt, _ = self._extract_dates_from_iso(activity.start_date, activity.elapsed_time)
+        segments: list[dict[str, Any]] = []
+        offset = 0
+        for index, split in enumerate(splits):
+            seg: dict[str, Any] = {
+                "kind": "lap",
+                "index": index,
+                "start_time": (start_dt + timedelta(seconds=offset)).isoformat(),
+                "elapsed_seconds": _r2(split.elapsed_time),
+                "distance_meters": _r2(split.distance),
+                "avg_speed": _r2(split.average_speed),
+                "avg_heart_rate": _r2(split.average_heartrate),
+            }
+            segments.append({k: v for k, v in seg.items() if v is not None})
+            offset += split.elapsed_time or 0
+        return segments or None
+
+    @staticmethod
+    def _lap_segment(index: int, lap: StravaLapJSON) -> dict[str, Any]:
+        start_time = None
+        if lap.start_date is not None:
+            ts = lap.start_date if lap.start_date.tzinfo else lap.start_date.replace(tzinfo=timezone.utc)
+            start_time = ts.isoformat()
+        seg: dict[str, Any] = {
+            "kind": "lap",
+            "index": index,
+            "start_time": start_time,
+            "elapsed_seconds": _r2(lap.elapsed_time),
+            "distance_meters": _r2(lap.distance),
+            "avg_speed": _r2(lap.average_speed),
+            "avg_heart_rate": _r2(lap.average_heartrate),
+            "max_heart_rate": _r2(lap.max_heartrate),
+            "avg_cadence": _r2(lap.average_cadence),
+            "avg_power": _r2(lap.average_watts),
+            "total_ascent": _r2(lap.total_elevation_gain),
+        }
+        return {k: v for k, v in seg.items() if v is not None}
 
     def _build_workout_samples(
         self,
