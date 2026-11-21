@@ -27,3 +27,14 @@ export function cursorHrefs(url: URL, key = 'cursor') {
 
 	return { at, hrefFor, stepHref };
 }
+
+/**
+ * The query without the list's position or page size, for what sums the whole
+ * filtered set: totals do not change from one page to the next, so stepping
+ * through the list must not ask for them again.
+ */
+export function filterSearch(url: URL, key = 'cursor'): string {
+	const next = new URL(url);
+	for (const param of [key, 'at', 'size']) next.searchParams.delete(param);
+	return next.search;
+}

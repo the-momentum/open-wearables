@@ -12,7 +12,7 @@
 	import Segmented from '$lib/components/ui/Segmented.svelte';
 	import { providerLabel } from '$lib/providers/labels';
 	import type { SleepSession } from '$lib/sleep/types';
-	import { cursorHrefs } from '$lib/lists/cursor';
+	import { cursorHrefs, filterSearch } from '$lib/lists/cursor';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -68,7 +68,7 @@
 </FilterBar>
 
 <div class="flex flex-col gap-4 border-t border-border pt-6">
-	<SleepSummary userId={page.params.id ?? ''} search={page.url.search} />
+	<SleepSummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 
 	{#if sessions.length === 0}
 		<Card>

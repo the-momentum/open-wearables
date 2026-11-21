@@ -10,7 +10,7 @@
 	import DeleteEventDialog from '$lib/components/events/DeleteEventDialog.svelte';
 	import { providerLabel } from '$lib/providers/labels';
 	import type { Meal } from '$lib/meals/types';
-	import { cursorHrefs } from '$lib/lists/cursor';
+	import { cursorHrefs, filterSearch } from '$lib/lists/cursor';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -37,7 +37,7 @@
 />
 
 <div class="flex flex-col gap-4 border-t border-border pt-6">
-	<MealSummary userId={page.params.id ?? ''} search={page.url.search} />
+	<MealSummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 
 	{#if meals.length === 0}
 		<Card>

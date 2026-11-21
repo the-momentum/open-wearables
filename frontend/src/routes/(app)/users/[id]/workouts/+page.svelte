@@ -14,7 +14,7 @@
 	import WorkoutSummary from '$lib/components/workouts/WorkoutSummary.svelte';
 	import { providerLabel } from '$lib/providers/labels';
 	import { humanise } from '$lib/utils/text';
-	import { cursorHrefs } from '$lib/lists/cursor';
+	import { cursorHrefs, filterSearch } from '$lib/lists/cursor';
 	import type { Workout } from '$lib/workouts/types';
 	import type { PageData } from './$types';
 
@@ -85,7 +85,7 @@
 	     labelled figures do not need a label of their own. It fetches its own
 	     numbers, because summing them reads every record in the period and the
 	     cards below should not queue behind that. -->
-	<WorkoutSummary userId={page.params.id ?? ''} search={page.url.search} />
+	<WorkoutSummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 
 	{#if workouts.length === 0}
 		<Card>
