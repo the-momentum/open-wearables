@@ -34,6 +34,10 @@ class ActivityJSON(BaseModel):
     averageRunCadenceInStepsPerMinute: float | None = None
     averageBikingCadenceInRevPerMinute: float | None = None
     averageSwimCadenceInStrokesPerMinute: float | None = None
+    totalElevationGainInMeters: float | int | None = None
+    totalElevationLossInMeters: float | int | None = None
+    elevationGainInMeters: float | int | None = None
+    elevationLossInMeters: float | int | None = None
     isWebUpload: bool | None = None
     manual: bool | None = None
 
@@ -48,6 +52,16 @@ class ActivityJSON(BaseModel):
             or data.get("averageBikingCadenceInRevPerMinute")
             or data.get("averageSwimCadenceInStrokesPerMinute"),
         )
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unify_elevation(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("totalElevationGainInMeters") is None and data.get("elevationGainInMeters") is not None:
+                data["totalElevationGainInMeters"] = data["elevationGainInMeters"]
+            if data.get("totalElevationLossInMeters") is None and data.get("elevationLossInMeters") is not None:
+                data["totalElevationLossInMeters"] = data["elevationLossInMeters"]
         return data
 
 
