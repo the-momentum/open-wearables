@@ -1028,6 +1028,7 @@ class Polar247Data(Base247DataTemplate):
         )
         if stored is not None and stored.external_id is None:
             stored.external_id = record.external_id
+            db.flush()
 
     def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> WriteCounts:
         counts = WriteCounts(0, 0)
@@ -1059,7 +1060,7 @@ class Polar247Data(Base247DataTemplate):
                 for record, detail, score, hr_samples in self.normalize_sleep([raw], user_id):
                     self._claim_night_stored_without_id(db, user_id, record)
                     stored = event_record_service.create_or_merge_sleep(
-                        db, user_id, record, detail, settings.sleep_end_gap_minutes
+                        db, user_id, record, detail, settings.sleep_end_gap_minutes, merge_adjacent=False
                     )
                     count += 1
                     if score:
@@ -1151,7 +1152,7 @@ class Polar247Data(Base247DataTemplate):
             try:
                 self._claim_night_stored_without_id(db, user_id, record)
                 stored = event_record_service.create_or_merge_sleep(
-                    db, user_id, record, detail, settings.sleep_end_gap_minutes
+                    db, user_id, record, detail, settings.sleep_end_gap_minutes, merge_adjacent=False
                 )
                 count += 1
                 # A re-sync keeps the stored night, not the id normalize_sleep drew for it

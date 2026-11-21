@@ -68,6 +68,10 @@ def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
     return flagged_nap if is_nap else ~flagged_nap
 
 
+# Categories a bulk insert matches on external_id before the time window
+_EXTERNAL_ID_CATEGORIES = frozenset({EventCategory.WORKOUT, EventCategory.SLEEP})
+
+
 # What the user's other devices recorded inside a sleep, for the series the sleep's own device has no value of:
 # a sleep logged by an app while a watch measured the night.
 # Only the (sleep, series) pairs the sleep lacks: the sleep's own device's readings inside it (rolled up within
@@ -185,41 +189,42 @@ class EventRecordRepository(
             .one_or_none()
         )
 
-    def _workout_key(self, creator: EventRecordCreate) -> tuple[UUID, str, str] | None:
-        """The user, provider and external_id that identify a workout across deliveries."""
-        if creator.category != EventCategory.WORKOUT or not creator.external_id or not creator.user_id:
+    def _external_key(self, creator: EventRecordCreate) -> tuple[UUID, str, str, str] | None:
+        """The user, provider, category and external_id that identify a workout or sleep across deliveries."""
+        if creator.category not in _EXTERNAL_ID_CATEGORIES or not creator.external_id or not creator.user_id:
             return None
-        return creator.user_id, self.data_source_repo.provider_of(creator).value, creator.external_id
+        provider = self.data_source_repo.provider_of(creator).value
+        return creator.user_id, provider, creator.category, creator.external_id
 
-    def _fetch_workouts_by_external_id(
+    def _fetch_by_external_id(
         self, db_session: DbSession, creators: list[EventRecordCreate]
     ) -> dict[UUID, EventRecord]:
-        """Creator id -> newest stored workout of its user and provider with its external_id, in one query."""
-        keys = {key: creator.id for creator in creators if (key := self._workout_key(creator))}
+        """Creator id -> newest stored record of its user, provider and category with its external_id, in one query."""
+        keys = {key: creator.id for creator in creators if (key := self._external_key(creator))}
         if not keys:
             return {}
         source_ids = select(DataSource.id).where(
-            DataSource.user_id.in_({user_id for user_id, _, _ in keys}),
-            DataSource.provider.in_({provider for _, provider, _ in keys}),
+            DataSource.user_id.in_({user_id for user_id, _, _, _ in keys}),
+            DataSource.provider.in_({provider for _, provider, _, _ in keys}),
         )
         rows = (
             db_session.query(self.model, DataSource.user_id, DataSource.provider)
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
                 self.model.data_source_id.in_(source_ids.scalar_subquery()),
-                self.model.category == EventCategory.WORKOUT,
-                self.model.external_id.in_({external_id for _, _, external_id in keys}),
+                self.model.category.in_({category for _, _, category, _ in keys}),
+                self.model.external_id.in_({external_id for _, _, _, external_id in keys}),
             )
             .order_by(self.model.created_at.desc())
         )
         found: dict[UUID, EventRecord] = {}
         for record, user_id, provider in rows:
-            if creator_id := keys.get((user_id, provider, record.external_id)):
+            if creator_id := keys.get((user_id, provider, record.category, record.external_id)):
                 found.setdefault(creator_id, record)
         return found
 
     def _refresh_from(self, db_session: DbSession, record: EventRecord, creator: EventRecordCreate) -> EventRecord:
-        """Update a stored workout to the newest delivery's times and type.
+        """Update a stored workout or sleep to the newest delivery's times and type.
 
         If another copy already holds those times, that copy is returned instead.
         """
@@ -370,7 +375,7 @@ class EventRecordRepository(
         return len(deleted)
 
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        if existing := self._fetch_workouts_by_external_id(db_session, [creator]).get(creator.id):
+        if existing := self._fetch_by_external_id(db_session, [creator]).get(creator.id):
             record = self._refresh_from(db_session, existing, creator)
             db_session.commit()
             return record
@@ -387,9 +392,9 @@ class EventRecordRepository(
             return creation
         except IntegrityError:
             db_session.rollback()
-            if existing := self._fetch_workouts_by_external_id(db_session, [creator]).get(
-                creator.id
-            ) or self._fetch_existing(db_session, data_source_id, creation):
+            if existing := self._fetch_by_external_id(db_session, [creator]).get(creator.id) or self._fetch_existing(
+                db_session, data_source_id, creation
+            ):
                 return existing
             raise
 
@@ -450,25 +455,25 @@ class EventRecordRepository(
     ) -> dict[UUID, UUID]:
         """Insert non-meal records, skipping existing ones. Meals go through bulk_upsert_meals.
 
-        Returns creator id -> stored record id, for the records inserted and the workouts matched on external_id.
+        Returns creator id -> stored record id, for the records inserted and the ones matched on external_id.
         """
         if not creators:
             return {}
 
-        # Several deliveries of one workout in a batch: the last stands for all, the earlier ones map to it
-        latest = {key: creator.id for creator in creators if (key := self._workout_key(creator))}
+        # Several deliveries of one workout or sleep in a batch: the last stands for all, the earlier ones map to it
+        latest = {key: creator.id for creator in creators if (key := self._external_key(creator))}
         copies = {
             creator.id: latest[key]
             for creator in creators
-            if (key := self._workout_key(creator)) and latest[key] != creator.id
+            if (key := self._external_key(creator)) and latest[key] != creator.id
         }
         creators = [creator for creator in creators if creator.id not in copies]
 
-        # Workouts already stored under their external_id take the newest delivery instead of inserting
+        # Records already stored under their external_id take the newest delivery instead of inserting
         creators_by_id = {creator.id: creator for creator in creators}
         stored = {
             creator_id: self._refresh_from(db_session, record, creators_by_id[creator_id]).id
-            for creator_id, record in self._fetch_workouts_by_external_id(db_session, creators).items()
+            for creator_id, record in self._fetch_by_external_id(db_session, creators).items()
         }
         values_list = self._resolve_values(db_session, [c for c in creators if c.id not in stored])
 
@@ -1644,6 +1649,34 @@ class EventRecordRepository(
             .options(selectinload(self.model.sleep_detail))
             .filter(*filters)
             .order_by(self.model.start_datetime.desc())
+            .with_for_update(of=self.model)
+            .first()
+        )
+
+    def find_sleep_by_external_id(
+        self, db_session: DbSession, user_id: UUID, provider: str, external_id: str, start_time: datetime
+    ) -> EventRecord | None:
+        """The user's sleep session from this provider stored under external_id, wherever it sits now.
+
+        Of several, the one starting closest to start_time. Locks the id until commit, so a concurrent
+        first delivery waits for this one's insert instead of storing a second night.
+        """
+        db_session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"sleep:{user_id}:{provider}:{external_id}"},
+        )
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.sleep_detail))
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.provider == provider,
+                self.model.category == EventCategory.SLEEP,
+                self.model.type == "sleep_session",
+                self.model.external_id == external_id,
+            )
+            .order_by(func.abs(func.extract("epoch", self.model.start_datetime - start_time)))
             .with_for_update(of=self.model)
             .first()
         )
