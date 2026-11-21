@@ -24,7 +24,6 @@
 				bind:value={draft.users}
 				min={LIMITS.users[0]}
 				max={LIMITS.users[1]}
-				unit="users"
 			/>
 			<WindowPicker bind:value={draft.window} />
 			<NumberField

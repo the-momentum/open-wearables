@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { ICON } from '$lib/components/ui/icon';
 
 	let { label, onclick }: { label: string; onclick: () => void } = $props();
 </script>
@@ -12,6 +13,6 @@
 	class="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors
 		hover:text-danger"
 >
-	<Trash2 size={14} aria-hidden="true" />
+	<Trash2 size={ICON.xs} aria-hidden="true" />
 	{label}
 </button>

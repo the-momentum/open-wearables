@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { openapiEnum } from '$lib/testing/openapi';
-import { formatDuration, formatWindow, itemsLabel, statusTone } from './format';
+import { formatDuration, formatWindow, itemsLabel, savedCounts, statusTone } from './format';
 import { overview, pageOf, runFilters, SYNC_STATUSES } from './runs';
 import { SYNC_SOURCES, sourceLabel } from './source';
 import type { SyncRunSummary, SyncStatus } from './types';
@@ -116,14 +116,14 @@ describe('overview', () => {
 			run('stale', 'c'),
 			run('in_progress')
 		]);
-		expect(counts).toMatchObject({ running: 1, failed: 1, attention: 1, completed: 3, users: 3 });
-		expect(counts.mix.map((part) => [part.key, part.value])).toEqual([
-			['in_progress', 1],
-			['success', 1],
-			['failed', 1],
-			['skipped', 2],
-			['stale', 1]
-		]);
+		expect(counts).toEqual({
+			running: 1,
+			failed: 1,
+			attention: 1,
+			completed: 3,
+			total: 6,
+			users: 3
+		});
 	});
 });
 
@@ -132,5 +132,17 @@ describe('itemsLabel', () => {
 		expect(itemsLabel({ items_processed: 40, items_total: 100 })).toBe('40/100');
 		expect(itemsLabel({ items_processed: 40, items_total: null })).toBe('40');
 		expect(itemsLabel({ items_processed: null, items_total: 100 })).toBeNull();
+	});
+});
+
+describe('savedCounts', () => {
+	it('reads a missing pair as untold, and one missing half as none of it', () => {
+		expect(savedCounts({})).toBeNull();
+		expect(savedCounts({ items_inserted: null, items_updated: null })).toBeNull();
+		expect(savedCounts({ items_inserted: 0, items_updated: 1 })).toEqual({
+			inserted: 0,
+			updated: 1
+		});
+		expect(savedCounts({ items_updated: 3 })).toEqual({ inserted: 0, updated: 3 });
 	});
 });

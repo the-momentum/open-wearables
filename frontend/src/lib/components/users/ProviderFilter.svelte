@@ -5,6 +5,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import ToggleChip from '$lib/components/ui/ToggleChip.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { toggled } from '$lib/utils/collect';
 	import type { Provider } from '$lib/server/providers';
 	import { usersQueryHref, withUsersQuery, type UsersQuery } from '$lib/users/query';
@@ -39,7 +40,7 @@
 	aria-expanded={open}
 	class="w-full px-3"
 >
-	<SlidersHorizontal size={15} aria-hidden="true" />
+	<SlidersHorizontal size={ICON.sm} aria-hidden="true" />
 	Provider
 	{#if query.providers.length > 0}
 		<Badge tone="primary" class="px-1.5 tabular-nums">{query.providers.length}</Badge>
@@ -58,7 +59,7 @@
 		{/each}
 	</div>
 
-	<div class="flex items-center justify-between gap-2 border-t border-border/60 px-4 pt-3">
+	<div class="flex items-center justify-between gap-2 border-t border-border px-4 pt-3">
 		<button
 			type="button"
 			onclick={() => (draft = [])}

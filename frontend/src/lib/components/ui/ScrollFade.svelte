@@ -3,6 +3,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import type { Snippet } from 'svelte';
 	import { cn } from '$lib/utils/cn';
+	import { ICON } from './icon';
 
 	let {
 		scroller = $bindable(),
@@ -26,7 +27,15 @@
 		atEnd = scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 1;
 	}
 
-	$effect(track);
+	// Items change width after mount too (the web font arriving, a count filling in), and the
+	// window never hears of it, so watch the strip and each item rather than measuring once.
+	$effect(() => {
+		if (!scroller) return;
+		const observer = new ResizeObserver(track);
+		observer.observe(scroller);
+		for (const item of scroller.children) observer.observe(item);
+		return () => observer.disconnect();
+	});
 
 	// Firefox reports a mouse wheel in lines, not pixels; a line is roughly this many pixels
 	const LINE_PX = 40;
@@ -70,7 +79,7 @@
 	<div
 		aria-hidden="true"
 		class={cn(
-			'pointer-events-none absolute top-0 bottom-px w-8 from-background to-transparent pointer-fine:w-16 pointer-fine:from-40%',
+			'pointer-events-none absolute top-0 bottom-px w-8 from-card to-transparent pointer-fine:w-16 pointer-fine:from-40%',
 			at,
 			fade
 		)}
@@ -85,11 +94,9 @@
 		)}
 		onclick={() => step(direction)}
 	>
-		<Icon size={18} strokeWidth={2.5} aria-hidden="true" />
+		<Icon size={ICON.md} aria-hidden="true" />
 	</button>
 {/snippet}
-
-<svelte:window onresize={track} />
 
 <div class="relative">
 	<!-- Horizontal only: overflow-x alone makes the other axis scroll too, and a

@@ -5,11 +5,12 @@
  */
 export type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'muted';
 
+/** The design's StatusBadge: the colour on a 10% tint of itself, AA as small text. */
 export const TONE: Record<Tone, string> = {
-	primary: 'bg-primary/12 text-primary',
-	success: 'bg-success/12 text-success',
-	warning: 'bg-warning/15 text-warning',
-	danger: 'bg-danger/12 text-danger',
+	primary: 'bg-primary/10 text-primary',
+	success: 'bg-success/10 text-success',
+	warning: 'bg-warning/10 text-warning',
+	danger: 'bg-danger/10 text-danger',
 	neutral: 'bg-surface-muted text-muted-foreground',
 	muted: 'bg-surface-muted text-secondary-foreground'
 };

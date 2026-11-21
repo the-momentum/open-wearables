@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import { ICON } from '$lib/components/ui/icon';
 	import Wordmark from '$lib/components/layout/Wordmark.svelte';
 
 	let { title, lead, children }: { title: string; lead: string; children: Snippet } = $props();
@@ -18,7 +19,7 @@
 		<div class="w-full">{@render children()}</div>
 
 		<p class="flex items-center gap-2 text-xs text-muted-foreground">
-			<ShieldCheck size={14} aria-hidden="true" />
+			<ShieldCheck size={ICON.xs} aria-hidden="true" />
 			You sign in with the provider - we never see your password.
 		</p>
 	</div>

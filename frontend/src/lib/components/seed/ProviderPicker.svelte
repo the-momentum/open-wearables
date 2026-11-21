@@ -2,7 +2,7 @@
 	import type { ProviderBrand } from '$lib/providers/labels';
 	import ProviderLogo from '$lib/components/providers/ProviderLogo.svelte';
 	import NumberField from '$lib/components/ui/NumberField.svelte';
-	import { tagClass } from '$lib/components/ui/chip';
+	import { chipClass } from '$lib/components/ui/chip';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { MAX_CONNECTIONS } from '$lib/seed/catalogue';
 	import { LIMITS } from '$lib/seed/draft';
@@ -30,7 +30,7 @@
 				type="button"
 				aria-pressed={chosen.length === 0}
 				onclick={() => (chosen = [])}
-				class={tagClass(chosen.length === 0)}
+				class={chipClass(chosen.length === 0)}
 			>
 				Any
 			</button>
@@ -41,7 +41,7 @@
 					aria-pressed={on}
 					disabled={!on && full}
 					onclick={() => (chosen = toggled(chosen, provider.provider))}
-					class={cn(tagClass(on), 'inline-flex items-center gap-1.5 disabled:opacity-40')}
+					class={cn(chipClass(on), 'normal-case')}
 				>
 					<ProviderLogo {provider} size="xs" />
 					{provider.name}

@@ -24,16 +24,18 @@
 	const resend = createSubmitFlag();
 </script>
 
-<SettingRow>
+<SettingRow below>
 	{#snippet title()}
 		<span class="truncate text-sm font-medium text-foreground">{invitation.email}</span>
-		<Badge tone={invitationTone(invitation.status)}>{invitation.status}</Badge>
+		<Badge tone={invitationTone(invitation.status)} class="max-sm:ml-auto"
+			>{invitation.status}</Badge
+		>
 	{/snippet}
 
 	{#snippet meta()}
 		<span>
 			{emailEnabled ? 'Sent' : 'Created'}
-			{formatDate(invitation.created_at)} · expires {formatDate(invitation.expires_at)}
+			{formatDate(invitation.created_at)}, expires {formatDate(invitation.expires_at)}
 		</span>
 	{/snippet}
 

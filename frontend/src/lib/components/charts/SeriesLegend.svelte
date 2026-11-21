@@ -32,14 +32,14 @@
 			type="button"
 			onclick={() => ontoggle(line.label)}
 			aria-pressed={on}
-			class="flex items-center gap-1.5 text-xs transition-opacity {on ? '' : 'opacity-40'}"
+			class="flex items-center gap-2 text-xs transition-opacity {on ? '' : 'opacity-40'}"
 		>
 			<span
 				aria-hidden="true"
 				class="h-0.5 w-4 rounded-full"
 				style="background: {colourFor(line.type)}; {line.dash ? DASHED : ''}"
 			></span>
-			<span class="text-secondary-foreground">{line.label}</span>
+			<span class="text-foreground">{line.label}</span>
 		</button>
 	{/each}
 </div>

@@ -7,6 +7,7 @@
 	import { enhance } from '$app/forms';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { menuItemClass } from '$lib/components/ui/menu';
 	import { fetchPairingLink } from '$lib/pairing/links';
 	import type { User } from '$lib/users/types';
@@ -30,13 +31,13 @@
 		variant="outline"
 		onclick={copyPairingLink}
 		title="Copy the pairing link for this user"
-		class="hidden px-3 sm:inline-flex"
+		class="hidden sm:inline-flex"
 	>
 		{#if copier.copied}
-			<Check size={15} aria-hidden="true" class="text-success" />
+			<Check size={ICON.sm} aria-hidden="true" class="text-success" />
 			Copied
 		{:else}
-			<Link2 size={15} aria-hidden="true" />
+			<Link2 size={ICON.sm} aria-hidden="true" />
 			Pairing link
 		{/if}
 	</Button>
@@ -46,22 +47,27 @@
 			type="submit"
 			variant="outline"
 			title="Generate a code to connect the Open Wearables app"
-			class="px-3"
 		>
-			<Smartphone size={15} aria-hidden="true" />
+			<Smartphone size={ICON.sm} aria-hidden="true" />
 			Mobile app
 		</Button>
 	</form>
 
-	<ActionMenu bind:open={menuOpen} label="More user actions" title="User actions">
+	<!-- Bordered among the buttons; alone on a phone it is the design's bare glyph. -->
+	<ActionMenu
+		bind:open={menuOpen}
+		label="More user actions"
+		title="User actions"
+		class="max-sm:size-9 max-sm:min-h-0 max-sm:border-0 max-sm:px-0 max-sm:text-muted-foreground"
+	>
 		<button type="button" onclick={copyPairingLink} class="{menuItemClass()} sm:hidden">
-			<Link2 size={16} aria-hidden="true" />
+			<Link2 size={ICON.sm} aria-hidden="true" />
 			Copy pairing link
 		</button>
 
 		<form method="POST" action="?/invite" use:enhance class="sm:hidden">
 			<button type="submit" class={menuItemClass()}>
-				<Smartphone size={16} aria-hidden="true" />
+				<Smartphone size={ICON.sm} aria-hidden="true" />
 				Connect mobile app
 			</button>
 		</form>
@@ -72,7 +78,7 @@
 			title="The Apple Health import is a multipart upload and is not built here yet"
 			class={menuItemClass()}
 		>
-			<Upload size={16} aria-hidden="true" />
+			<Upload size={ICON.sm} aria-hidden="true" />
 			Upload Apple Health XML
 		</button>
 
@@ -84,7 +90,7 @@
 			}}
 			class={menuItemClass(true)}
 		>
-			<Trash2 size={16} aria-hidden="true" />
+			<Trash2 size={ICON.sm} aria-hidden="true" />
 			Delete user
 		</button>
 	</ActionMenu>

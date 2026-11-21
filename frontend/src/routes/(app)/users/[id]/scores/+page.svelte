@@ -43,56 +43,54 @@
 	const days = $derived(groupByDay(data.scores.data));
 </script>
 
-<div class="flex flex-col gap-6">
-	<!-- No provider filter: a score is only interesting next to the other
-	     providers' answer for the same day, and OW's own score is one of those.
-	     The chart's legend hides a line without losing the comparison. -->
-	<FilterBar period={data.period} {hrefFor} providers={[]} labelFor={label} selected="">
-		<CategoryFilter category={data.category} {categories} {hrefFor} />
-	</FilterBar>
+<!-- No provider filter: a score is only interesting next to the other
+     providers' answer for the same day, and OW's own score is one of those.
+     The chart's legend hides a line without losing the comparison. -->
+<FilterBar period={data.period} {hrefFor} providers={[]} labelFor={label} selected="">
+	<CategoryFilter category={data.category} {categories} {hrefFor} />
+</FilterBar>
 
-	<div class="flex flex-col gap-5 border-t border-border pt-6">
-		<ScoreTrends
-			{trends}
-			settled={history.settled}
-			truncated={history.current?.truncated ?? false}
-			category={data.category}
-			{hrefFor}
-			{colourFor}
-		/>
+<div class="flex flex-col gap-4 border-t border-border pt-6">
+	<ScoreTrends
+		{trends}
+		settled={history.settled}
+		truncated={history.current?.truncated ?? false}
+		category={data.category}
+		{hrefFor}
+		{colourFor}
+	/>
 
-		{#if days.length === 0}
-			<Card>
-				<EmptyState
-					icon={Trophy}
-					title={data.narrowed ? 'No scores match these filters' : 'No scores recorded'}
-					description={data.narrowed
-						? 'Widen the period, or choose every category.'
-						: 'Scores come from the providers that compute them, and from Open Wearables itself.'}
-				/>
-			</Card>
-		{:else}
-			<div class="flex flex-col gap-2">
-				<Caption>A day at a time</Caption>
-				<div class="flex flex-col gap-3">
-					{#each days as day (day.day)}
-						<ScoreCard {day} labelFor={label} {colourFor} />
-					{/each}
-				</div>
-			</div>
-
-			<!-- Counted in days, because a card is a day: the endpoint pages by
-			     record, and a page of twenty records is two cards for a provider that
-			     scores every half hour. -->
-			<Pagination
-				page={data.page}
-				size={data.perPage}
-				total={data.total}
-				noun="days"
-				{...stepHrefs(data.page, data.pages)}
-				hrefFor={pageHref}
-				sizeHrefFor={sizeHref}
+	{#if days.length === 0}
+		<Card>
+			<EmptyState
+				icon={Trophy}
+				title={data.narrowed ? 'No scores match these filters' : 'No scores recorded'}
+				description={data.narrowed
+					? 'Widen the period, or choose every category.'
+					: 'Scores come from the providers that compute them, and from Open Wearables itself.'}
 			/>
-		{/if}
-	</div>
+		</Card>
+	{:else}
+		<div class="flex flex-col gap-2">
+			<Caption>A day at a time</Caption>
+			<div class="flex flex-col gap-3">
+				{#each days as day (day.day)}
+					<ScoreCard {day} labelFor={label} {colourFor} />
+				{/each}
+			</div>
+		</div>
+
+		<!-- Counted in days, because a card is a day: the endpoint pages by
+		     record, and a page of twenty records is two cards for a provider that
+		     scores every half hour. -->
+		<Pagination
+			page={data.page}
+			size={data.perPage}
+			total={data.total}
+			noun="days"
+			{...stepHrefs(data.page, data.pages)}
+			hrefFor={pageHref}
+			sizeHrefFor={sizeHref}
+		/>
+	{/if}
 </div>

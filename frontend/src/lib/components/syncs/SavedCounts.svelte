@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+	import { ICON } from '$lib/components/ui/icon';
 
 	let { inserted, updated }: { inserted: number; updated: number } = $props();
 </script>
@@ -11,14 +12,14 @@
 	{/if}
 	{#if inserted > 0}
 		<span class="flex items-center gap-1" title="Records created">
-			<Plus size={12} aria-hidden="true" class="text-muted-foreground/60" />
+			<Plus size={ICON.xs} aria-hidden="true" class="text-muted-foreground/60" />
 			<span class="text-secondary-foreground tabular-nums">{inserted}</span>
 			new
 		</span>
 	{/if}
 	{#if updated > 0}
 		<span class="flex items-center gap-1" title="Records already held, refreshed">
-			<RefreshCw size={11} aria-hidden="true" class="text-muted-foreground/60" />
+			<RefreshCw size={ICON.xs} aria-hidden="true" class="text-muted-foreground/60" />
 			<span class="text-secondary-foreground tabular-nums">{updated}</span>
 			updated
 		</span>

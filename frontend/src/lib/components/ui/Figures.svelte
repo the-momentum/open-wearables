@@ -1,13 +1,13 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
+	import { ICON } from './icon';
+	import { TONE } from './tone';
 	import { MICRO } from './typography';
 
 	export type Figure = {
 		icon: Component;
 		label: string;
 		value: string | number;
-		/** A third line, for what the figure is made of. */
-		note?: string;
 	};
 
 	let { figures, label }: { figures: Figure[]; label: string } = $props();
@@ -31,18 +31,16 @@
 		<div class="flex items-center gap-3">
 			<span
 				aria-hidden="true"
-				class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
+				class="grid size-8 shrink-0 place-items-center rounded-lg {TONE.primary}"
 			>
-				<figure.icon size={17} />
+				<figure.icon size={ICON.sm} />
 			</span>
-			<div class="min-w-0">
-				<dd class="truncate text-lg font-medium text-foreground tabular-nums sm:text-xl">
+			<!-- The term comes first, as a description list needs; the figure is drawn first. -->
+			<div class="flex min-w-0 flex-col-reverse">
+				<dt class="truncate {MICRO}">{figure.label}</dt>
+				<dd class="truncate text-base font-medium text-foreground tabular-nums">
 					{figure.value}
 				</dd>
-				<dt class="truncate {MICRO}">{figure.label}</dt>
-				{#if figure.note}
-					<dd class="text-xs text-muted-foreground/70">{figure.note}</dd>
-				{/if}
 			</div>
 		</div>
 	{/each}

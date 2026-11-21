@@ -1,17 +1,19 @@
 <script lang="ts">
 	import logo from '$lib/assets/logo.svg?raw';
-	import { AVATAR_TONE } from '$lib/users/avatar';
+	import { avatarTone } from '$lib/users/avatar';
 	import { cn } from '$lib/utils/cn';
 
 	let {
 		provider,
 		label,
 		size = 'md'
-	}: { provider: string; label: string; size?: 'sm' | 'md' | 'lg' } = $props();
+	}: { provider: string; label: string; size?: 'sm' | 'md' | 'tile' | 'lg' } = $props();
 
 	const SIZE = {
 		sm: 'size-6 text-xs',
 		md: 'size-9 text-xs',
+		// In place of ProviderLogo's 48px tile.
+		tile: 'size-12 rounded-xl text-sm',
 		lg: 'size-16 rounded-xl text-base'
 	} as const;
 
@@ -21,13 +23,14 @@
 </script>
 
 <!-- Letters where a logo would not fit, and what a logo falls back to when the
-     API has none to serve. -->
+     API has none to serve. The tint tells providers apart in a list, the way
+     avatars tell users apart; it is keyed on the provider, so it never changes. -->
 <span
 	aria-hidden="true"
 	class={cn(
 		'grid shrink-0 place-items-center rounded-lg font-medium',
 		SIZE[size],
-		own ? 'bg-inverted p-1 text-inverted-foreground [&>svg]:size-full' : AVATAR_TONE
+		own ? 'bg-inverted p-1 text-inverted-foreground [&>svg]:size-full' : avatarTone(provider)
 	)}
 >
 	{#if own}

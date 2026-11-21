@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { cn } from '$lib/utils/cn';
+	import { SEGMENTS, segmentClass } from './chip';
 
 	type Segment = { value: string; label: string; href?: string };
 
@@ -15,21 +15,11 @@
 		selected: string;
 		onselect?: (value: string) => void;
 	} = $props();
-
-	const track = 'inline-flex rounded-lg bg-surface-muted p-0.5';
-	const segment = (active: boolean) =>
-		cn(
-			'rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors',
-			// The design's tab list: a surface-3 bed, the chosen one inverted.
-			active
-				? 'bg-inverted text-inverted-foreground'
-				: 'text-secondary-foreground hover:bg-surface-hover hover:text-foreground'
-		);
 </script>
 
 <!-- Hrefs come from the caller, which resolves them. -->
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
-<div class={track} role="group" aria-label={label}>
+<div class="{SEGMENTS} p-0.5" role="group" aria-label={label}>
 	{#each items as item (item.value)}
 		{@const active = item.value === selected}
 		{#if item.href}
@@ -37,7 +27,7 @@
 				href={item.href}
 				aria-current={active ? 'true' : undefined}
 				data-sveltekit-noscroll
-				class={segment(active)}
+				class={segmentClass(active)}
 			>
 				{item.label}
 			</a>
@@ -46,7 +36,7 @@
 				type="button"
 				onclick={() => onselect?.(item.value)}
 				aria-pressed={active}
-				class={segment(active)}
+				class={segmentClass(active)}
 			>
 				{item.label}
 			</button>

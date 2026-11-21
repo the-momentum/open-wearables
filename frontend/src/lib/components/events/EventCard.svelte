@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
 	import ProviderMark from '$lib/components/providers/ProviderMark.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { deviceIcon } from '$lib/providers/devices';
 	import type { SourceMetadata } from '$lib/events/types';
 	import AccordionCard from './AccordionCard.svelte';
@@ -39,12 +40,17 @@
 		     `device_type` - a ring must not be drawn as a watch. -->
 		<span class="flex shrink-0 items-center gap-1.5" title={origin}>
 			<ProviderMark provider={source.provider} label={providerLabel} size="sm" />
-			<span class="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
+			<span class="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex">
 				{providerLabel}
 				{#if device}
-					<span aria-hidden="true" class="text-muted-foreground/40">·</span>
-					<DeviceIcon size={12} aria-hidden="true" class="shrink-0 text-muted-foreground/60" />
-					{device}
+					<span class="inline-flex items-center gap-1">
+						<DeviceIcon
+							size={ICON.xs}
+							aria-hidden="true"
+							class="shrink-0 text-muted-foreground/60"
+						/>
+						{device}
+					</span>
 				{/if}
 			</span>
 		</span>

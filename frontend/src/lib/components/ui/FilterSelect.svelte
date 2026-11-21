@@ -1,12 +1,18 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import { cn } from '$lib/utils/cn';
+	import { SELECT } from './field';
+	import { ICON } from './icon';
+	import { MICRO } from './typography';
 
 	let {
 		label,
 		value,
 		options,
 		onselect,
-		labelled = true
+		labelled = true,
+		size = 'md',
+		fill = false
 	}: {
 		label: string;
 		value: string | number;
@@ -15,33 +21,33 @@
 		onselect: (value: string) => void;
 		/** False when something outside already captions it, as `FilterGroup` does. */
 		labelled?: boolean;
+		/** `sm` beside a pager, where the page-size picker sits. */
+		size?: keyof typeof SELECT;
+		/** Fills its row on a phone, where filters stack one per line. */
+		fill?: boolean;
 	} = $props();
 
 	const id = $props.id();
 </script>
 
-<div class="relative inline-flex items-center">
-	<label
-		class={labelled
-			? 'sr-only text-xs text-muted-foreground/70 sm:not-sr-only sm:mr-1.5'
-			: 'sr-only'}
-		for={id}
-	>
+<div
+	class={cn('relative items-center', fill ? 'flex w-full sm:inline-flex sm:w-auto' : 'inline-flex')}
+>
+	<label class={labelled ? `sr-only sm:not-sr-only sm:mr-1.5 ${MICRO}` : 'sr-only'} for={id}>
 		{label}
 	</label>
 	<select
 		{id}
 		{value}
 		onchange={(event) => onselect(event.currentTarget.value)}
-		class="h-8 appearance-none rounded-md border border-border bg-surface pr-7 pl-2
-			text-xs text-foreground tabular-nums"
+		class={cn(SELECT[size], fill && 'w-full sm:w-auto')}
 	>
 		{#each options as option (option.value)}
 			<option value={option.value}>{option.label}</option>
 		{/each}
 	</select>
 	<ChevronDown
-		size={13}
+		size={ICON.xs}
 		aria-hidden="true"
 		class="pointer-events-none absolute right-2 text-muted-foreground"
 	/>

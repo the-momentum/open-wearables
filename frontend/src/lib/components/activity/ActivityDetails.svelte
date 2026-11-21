@@ -20,7 +20,7 @@
 	);
 </script>
 
-<div class="flex flex-col gap-5 border-t border-border pt-4">
+<div class="flex flex-col gap-5">
 	<div class="flex flex-col gap-1.5">
 		<Caption icon={Activity}>Through the day</Caption>
 

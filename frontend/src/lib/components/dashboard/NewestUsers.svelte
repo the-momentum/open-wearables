@@ -22,8 +22,8 @@
 			<!-- Fixed widths, not `auto`: a column sized to its own row's content
 			     starts somewhere different on every line. Below `sm` the badges take a
 			     row of their own rather than squeezing the name to nothing. -->
-			<span class="order-last w-full sm:order-none sm:ml-auto sm:w-44 sm:shrink-0">
-				<ConnectionBadges connections={user.connections} />
+			<span class="order-last w-full sm:order-none sm:ml-auto sm:w-35 sm:shrink-0">
+				<ConnectionBadges connections={user.connections} stacked />
 			</span>
 
 			<span class="ml-auto w-28 shrink-0 text-right sm:ml-0"><SyncCell {user} /></span>

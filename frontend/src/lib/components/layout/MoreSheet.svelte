@@ -24,5 +24,5 @@
 	</nav>
 
 	<!-- The sidebar is desktop-only, so this is the only way out on a phone. -->
-	<div class="mt-1"><AccountFooter class="pt-2" /></div>
+	<AccountFooter class="px-3 pt-3" />
 </Sheet>

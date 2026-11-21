@@ -41,7 +41,7 @@
 
 <!-- Every filter in one place, above the cards: they govern all of them, and a
      control tucked inside one card is a control nobody finds. -->
-<div class="flex flex-wrap items-end gap-x-8 gap-y-3">
+<div class="flex flex-wrap items-end gap-4 sm:gap-x-8">
 	<FilterGroup label={periodLabel}><PeriodFilter {period} {hrefFor} /></FilterGroup>
 
 	<!-- Nothing to choose between with a single connection. -->

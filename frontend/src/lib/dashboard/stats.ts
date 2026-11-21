@@ -32,22 +32,34 @@ export function coverageOf(info: SystemInfo): Coverage {
 	};
 }
 
-export type Tile = {
+type Figure = { label: string; value: string; exact?: string };
+
+export type Tile = Figure & {
 	icon: typeof Users;
-	label: string;
-	value: string;
 	note?: string;
-	parts: { label: string; value: string }[];
+	parts: Figure[];
 };
+
+/** Compact, with the whole figure behind it wherever compacting changed what it says. */
+function compact(label: string, count: number): Figure {
+	const value = formatCompact(count);
+	const whole = formatNumber(count);
+	return whole === value ? { label, value } : { label, value, exact: whole };
+}
 
 /**
  * Exact where the count is cheap and exact, compact where it is neither: the
  * data-point totals come from a cache that falls back to a planner estimate,
- * and seven digits of an approximation claim a precision it has not got.
+ * and seven digits of an approximation claim a precision it has not got - so
+ * those keep no exact figure behind them either. Event records are a true count,
+ * compacted only to fit, and give the whole one on hover.
  */
 export function statTiles(info: SystemInfo): Tile[] {
-	const records = info.event_records;
+	const { count, workouts, sleep, menstrual_cycles } = info.event_records;
 	const coverage = coverageOf(info);
+	// `count` sums every category and only three have a field of their own; the
+	// rest (meals, activity, ...) is named so the parts add up to the whole.
+	const other = Math.max(count - workouts - sleep - menstrual_cycles, 0);
 
 	return [
 		{
@@ -71,12 +83,12 @@ export function statTiles(info: SystemInfo): Tile[] {
 		},
 		{
 			icon: CalendarClock,
-			label: 'Event records',
-			value: formatCompact(records.count),
+			...compact('Event records', count),
 			parts: [
-				{ label: 'workouts', value: formatCompact(records.workouts) },
-				{ label: 'sleep', value: formatCompact(records.sleep) },
-				{ label: 'cycles', value: formatCompact(records.menstrual_cycles) }
+				compact('workouts', workouts),
+				compact('sleep', sleep),
+				compact('cycles', menstrual_cycles),
+				compact('other', other)
 			]
 		}
 	];
@@ -87,29 +99,20 @@ export function reachParts(info: SystemInfo): Part[] {
 	const coverage = coverageOf(info);
 
 	return [
-		{ key: 'connected', label: 'Connected', value: coverage.connected },
-		{ key: 'none', label: 'No connection', value: coverage.unconnected, shade: 'bg-border' }
+		{ key: 'connected', label: 'Connected', value: coverage.connected, shade: 'bg-primary-soft' },
+		{
+			key: 'none',
+			label: 'No connection',
+			value: coverage.unconnected,
+			shade: 'bg-surface-hover'
+		}
 	];
 }
 
-/**
- * The event mix. `count` is every category, and only three of them have a field
- * of their own - so whatever is left over is named rather than silently making
- * the parts fail to add up.
- */
-export function eventMix(info: SystemInfo): Record<string, number> {
-	const { count, workouts, sleep, menstrual_cycles } = info.event_records;
-	const other = count - workouts - sleep - menstrual_cycles;
-
-	// Named for the reader, not after the backend's category codes: "Menstrual
-	// cycle" truncates in a ranking row on a phone, and these are labels.
-	const mix: Record<string, number> = { workouts, sleep, cycles: menstrual_cycles, other };
-
-	return Object.fromEntries(Object.entries(mix).filter(([, value]) => value > 0));
-}
-
 /** The providers actually in use, ranked, as the backend already ordered them. */
-export const providerUse = (info: SystemInfo): Record<string, number> =>
-	Object.fromEntries(
-		info.connections_coverage.top_providers.map((entry) => [entry.provider, entry.count])
-	);
+export const providerUse = (info: SystemInfo, labelFor: (provider: string) => string): Part[] =>
+	info.connections_coverage.top_providers.map((entry) => ({
+		key: entry.provider,
+		label: labelFor(entry.provider),
+		value: entry.count
+	}));

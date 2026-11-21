@@ -7,15 +7,16 @@
 	const fieldId = $props.id();
 </script>
 
-<div class="flex flex-col gap-1.5">
+<div class="flex flex-col gap-2">
 	<label for={fieldId} class="text-sm font-medium">{label}</label>
-	<div class="flex items-center gap-2">
+	<div class="flex items-center gap-3">
+		<!-- The design's grey value box: borderless, so it reads as something to copy, not to edit. -->
 		<input
 			id={fieldId}
 			readonly
 			{value}
 			class={cn(
-				'min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface-muted px-3 text-sm',
+				'min-h-11 min-w-0 flex-1 rounded-lg bg-surface-muted px-4 text-sm',
 				mono && 'text-center font-mono tracking-widest'
 			)}
 		/>

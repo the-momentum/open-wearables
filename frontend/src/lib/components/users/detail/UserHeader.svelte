@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import BackLink from '$lib/components/ui/BackLink.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import DeleteUserDialog from '$lib/components/users/DeleteUserDialog.svelte';
 	import UserAvatar from '$lib/components/users/UserAvatar.svelte';
 	import UserFormDialog from '$lib/components/users/UserFormDialog.svelte';
@@ -41,32 +42,28 @@
 	<!-- No flex-wrap: the identity block is min-w-0 and shrinks instead, so the
 	     actions stay on the name's row rather than dropping to a line of their
 	     own. On a phone only the menu is left there. -->
-	<div class="flex items-start justify-between gap-3">
-		<div class="flex min-w-0 items-start gap-3 sm:gap-4">
+	<div class="flex items-start justify-between gap-4 sm:items-center">
+		<div class="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
 			<UserAvatar {user} size="lg" />
-			<div class="min-w-0 flex-1">
+			<div class="flex min-w-0 flex-1 flex-col gap-1.5 sm:gap-2">
 				<div class="flex flex-wrap items-center gap-2">
 					<h1 class="truncate text-xl font-medium text-foreground sm:text-2xl">{name}</h1>
 					<!-- Before the badge, so a narrow screen wraps the badge onto its own
 					     line rather than leaving the pencil stranded there. -->
-					<button
-						type="button"
-						onclick={() => (editing = true)}
-						aria-label="Edit user"
+					<IconButton
+						icon={Pencil}
+						label="Edit user"
 						title="Edit user"
-						class="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
-					>
-						<Pencil size={15} aria-hidden="true" />
-					</button>
+						onclick={() => (editing = true)}
+						class="size-8"
+					/>
 					{#if user.has_active_connection}
 						<Badge tone="success">Connected</Badge>
 					{:else}
 						<Badge tone="neutral">No active connection</Badge>
 					{/if}
 				</div>
-				<div class="mt-1">
-					<UserIdentityMeta {user} />
-				</div>
+				<UserIdentityMeta {user} />
 			</div>
 		</div>
 

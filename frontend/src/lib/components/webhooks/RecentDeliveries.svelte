@@ -18,11 +18,9 @@
 	<p class={NOTE}>Nothing has been delivered to this subscription yet.</p>
 {:else}
 	<div class="flex flex-col gap-2">
-		<div class="divide-y divide-border">
-			{#each deliveries as delivery (delivery.id)}
-				<DeliveryRow {delivery} />
-			{/each}
-		</div>
+		{#each deliveries as delivery (delivery.id)}
+			<DeliveryRow {delivery} />
+		{/each}
 
 		<a
 			href={resolve(`/webhooks/${id}/deliveries`)}

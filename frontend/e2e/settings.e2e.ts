@@ -286,19 +286,15 @@ test('catches a mismatched confirmation before sending it anywhere', async ({ pa
 	await expect(page.getByRole('alert')).toContainText('does not match');
 });
 
-test('marks Data Lifecycle as beta, in words on a desktop and as a mark on a phone', async ({
-	page
-}) => {
+test('marks Data Lifecycle as beta in words, on a phone too', async ({ page }) => {
 	await page.goto('/settings');
 
 	const tab = page.getByRole('link', { name: /Data Lifecycle/ });
-	await expect(tab).toContainText('Beta');
+	await expect(tab.getByText('Beta', { exact: true })).toBeVisible();
 
+	// The strip scrolls sideways on a phone, so the word costs no tab its place.
 	await page.setViewportSize({ width: 390, height: 844 });
-	// The word costs a tab's width on a phone, so the mark rides the icon - the
-	// same trade the bottom bar makes for Webhooks.
-	await expect(tab.getByText('Beta', { exact: true })).toBeHidden();
-	await expect(tab).toContainText('β');
+	await expect(tab.getByText('Beta', { exact: true })).toBeVisible();
 });
 
 test('keeps every settings tab inside the viewport on a phone', async ({ page }) => {

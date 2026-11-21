@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatCompact, formatPercent, formatShare } from '$lib/utils/format';
-import { coverageOf, eventMix, providerUse, statTiles } from './stats';
+import { coverageOf, providerUse, statTiles } from './stats';
 import type { SystemInfo } from './types';
 
 const info = (over: Partial<SystemInfo> = {}): SystemInfo => ({
@@ -78,29 +78,11 @@ describe('coverageOf', () => {
 	});
 });
 
-describe('eventMix', () => {
-	it('leaves out a category nothing was recorded in', () => {
-		const mix = eventMix(
-			info({ event_records: { count: 960, workouts: 400, sleep: 560, menstrual_cycles: 0 } })
-		);
-		expect(mix).toEqual({ workouts: 400, sleep: 560 });
-	});
-
-	// `count` is every category and only three have a field of their own, so the
-	// rest is named rather than leaving the parts short of the whole.
-	it('names whatever the three known categories do not account for', () => {
-		const mix = eventMix(
-			info({ event_records: { count: 1200, workouts: 400, sleep: 560, menstrual_cycles: 40 } })
-		);
-		expect(mix.other).toBe(200);
-	});
-});
-
 describe('providerUse', () => {
 	it('keeps the ranking the backend already made', () => {
-		expect(Object.entries(providerUse(info()))).toEqual([
-			['garmin', 500],
-			['oura', 300]
+		expect(providerUse(info(), (provider) => provider.toUpperCase())).toEqual([
+			{ key: 'garmin', label: 'GARMIN', value: 500 },
+			{ key: 'oura', label: 'OURA', value: 300 }
 		]);
 	});
 });
@@ -141,5 +123,38 @@ describe('statTiles', () => {
 			info({ data_points: { count: 10, archived: 0, aggregated: 0 } })
 		);
 		expect(points.parts).toEqual([{ label: 'day and session rows', value: '0' }]);
+	});
+
+	// `count` sums every category, meals and activity included, and only three
+	// have a field: the rest is named so the parts add up to the whole.
+	it('names whatever the three known categories do not account for', () => {
+		const [, , , records] = statTiles(
+			info({ event_records: { count: 1200, workouts: 400, sleep: 560, menstrual_cycles: 40 } })
+		);
+		expect(records.parts.map((part) => [part.label, part.value])).toEqual([
+			['workouts', '400'],
+			['sleep', '560'],
+			['cycles', '40'],
+			['other', '200']
+		]);
+	});
+
+	// The whole figure sits behind a compact one, and only where compacting
+	// changed it: "220" has nothing more to say.
+	it('keeps the exact count behind a compacted event figure', () => {
+		const [, , points, records] = statTiles(
+			info({
+				event_records: { count: 20_418, workouts: 8432, sleep: 11_766, menstrual_cycles: 220 }
+			})
+		);
+		expect([records.value, records.exact]).toEqual(['20.4K', '20,418']);
+		expect(records.parts.map((part) => part.exact)).toEqual([
+			'8,432',
+			'11,766',
+			undefined,
+			undefined
+		]);
+		// An estimate has no exact figure to give.
+		expect(points.exact).toBeUndefined();
 	});
 });

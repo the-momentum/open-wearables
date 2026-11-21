@@ -28,7 +28,7 @@
 	{#snippet control()}<Switch bind:checked={on} label="Generate {name.toLowerCase()}" />{/snippet}
 
 	{#snippet details()}
-		<div class="flex flex-col gap-4 border-t border-border pt-4" class:opacity-50={!on}>
+		<div class="flex flex-col gap-5" class:opacity-50={!on}>
 			{@render children()}
 		</div>
 	{/snippet}

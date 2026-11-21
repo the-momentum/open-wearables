@@ -1,7 +1,10 @@
 <script lang="ts">
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Send from '@lucide/svelte/icons/send';
 	import { enhance } from '$app/forms';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { SELECT } from '$lib/components/ui/field';
+	import { ICON } from '$lib/components/ui/icon';
 	import { MICRO, MONO } from '$lib/components/ui/typography';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 	import type { EventType, Subscription } from '$lib/webhooks/types';
@@ -33,28 +36,39 @@
 <form
 	method="POST"
 	action="?/test"
-	class="flex flex-wrap items-center gap-2"
+	class="flex min-w-0 flex-col gap-2"
 	use:enhance={submit.enhance}
 >
 	<input type="hidden" name="id" value={subscription.id} />
 
+	<span class={MICRO}>Send test</span>
 	<label class="sr-only" for="test-{subscription.id}">Event to send</label>
-	<select
-		id="test-{subscription.id}"
-		name="event_type"
-		bind:value={eventType}
-		class="h-8 w-full min-w-0 rounded-md border border-border bg-surface px-2 sm:w-auto
-			sm:max-w-xs {MONO}"
-	>
-		{#each choices as choice (choice.name)}
-			<option value={choice.name}>{choice.name}</option>
-		{/each}
-	</select>
+	<div class="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+		<!-- `min-w-0` and a full width: a select sizes itself to its widest option,
+		     and the longest event name would push the card wider than a phone. -->
+		<div class="relative flex w-full min-w-0 items-center sm:flex-1">
+			<select
+				id="test-{subscription.id}"
+				name="event_type"
+				bind:value={eventType}
+				class="w-full min-w-0 {SELECT.md} {MONO}"
+			>
+				{#each choices as choice (choice.name)}
+					<option value={choice.name}>{choice.name}</option>
+				{/each}
+			</select>
+			<ChevronDown
+				size={ICON.xs}
+				aria-hidden="true"
+				class="pointer-events-none absolute right-2 text-muted-foreground"
+			/>
+		</div>
 
-	<Button type="submit" variant="outline" size="sm" disabled={submit.submitting}>
-		<Send size={13} aria-hidden="true" />
-		{submit.submitting ? 'Sending…' : 'Send test'}
-	</Button>
+		<Button type="submit" variant="outline" size="sm" disabled={submit.submitting}>
+			<Send size={ICON.xs} aria-hidden="true" />
+			{submit.submitting ? 'Sending…' : 'Send test'}
+		</Button>
+	</div>
 
 	{#if message}
 		<span class="{MICRO} text-danger">{message}</span>

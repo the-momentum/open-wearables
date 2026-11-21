@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LegendItem from '$lib/components/charts/LegendItem.svelte';
 	import Sparkline from '$lib/components/charts/Sparkline.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
@@ -30,7 +31,7 @@
 	this={href ? 'a' : 'div'}
 	{href}
 	data-sveltekit-noscroll
-	class="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 transition-colors
+	class="flex flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-colors
 		{href ? 'hover:border-primary/40' : ''}"
 >
 	<div class="flex items-baseline justify-between gap-3">
@@ -54,16 +55,9 @@
 	<Sparkline lines={trend.lines} range={trend.range} {from} {to} {colourFor} />
 
 	<div class="flex items-center justify-between gap-3 {MICRO}">
-		<span class="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+		<span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
 			{#each trend.lines as line (line.type)}
-				<span class="flex items-center gap-1.5">
-					<span
-						aria-hidden="true"
-						class="size-1.5 shrink-0 rounded-full"
-						style="background: {colourFor(line.type)}"
-					></span>
-					<span class="truncate">{line.label}</span>
-				</span>
+				<LegendItem label={line.label} colour={colourFor(line.type)} />
 			{/each}
 		</span>
 

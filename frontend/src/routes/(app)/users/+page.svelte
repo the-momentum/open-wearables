@@ -53,44 +53,43 @@
 		hrefFor={pageHref}
 		sizeHrefFor={sizeHref}
 		label="Pagination {position} the list"
+		placement={position}
 	/>
 {/snippet}
 
-<div class="flex flex-col gap-4">
-	<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-		<div class="flex-1">
-			<SearchField
-				value={data.query.search}
-				hrefFor={searchHref}
-				label="Search users"
-				placeholder="Search by name, email or ID"
-				hidden={{ sort: data.query.sort, order: data.query.order }}
-			/>
+<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+	<div class="flex-1">
+		<SearchField
+			value={data.query.search}
+			hrefFor={searchHref}
+			label="Search users"
+			placeholder="Search by name, email or ID"
+			hidden={{ sort: data.query.sort, order: data.query.order }}
+		/>
+	</div>
+	<!-- Side by side on a phone: three stacked rows would push the list
+	     below the fold. -->
+	<div class="flex gap-2">
+		<div class="flex-1 sm:flex-none">
+			<ProviderFilter query={data.query} providers={data.providers} />
 		</div>
-		<!-- Side by side on a phone: three stacked rows would push the list
-		     below the fold. -->
-		<div class="flex gap-2">
-			<div class="flex-1 sm:flex-none">
-				<ProviderFilter query={data.query} providers={data.providers} />
-			</div>
-			<div class="flex-1 sm:flex-none">
-				<AddUserButton onclick={() => (creating = true)} />
-			</div>
+		<div class="flex-1 sm:flex-none">
+			<AddUserButton onclick={() => (creating = true)} />
 		</div>
 	</div>
-
-	<SelectedProviders query={data.query} providers={data.providers} />
-
-	{@render pager('above')}
-
-	{#if data.users.items.length === 0}
-		<UsersEmpty query={data.query} />
-	{:else}
-		<UsersList users={data.users.items} query={data.query} />
-	{/if}
-
-	{@render pager('below')}
 </div>
+
+<SelectedProviders query={data.query} providers={data.providers} />
+
+{@render pager('above')}
+
+{#if data.users.items.length === 0}
+	<UsersEmpty query={data.query} />
+{:else}
+	<UsersList users={data.users.items} query={data.query} />
+{/if}
+
+{@render pager('below')}
 
 <UserFormDialog bind:open={creating} message={messageFor('create')} />
 

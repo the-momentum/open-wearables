@@ -15,13 +15,11 @@
 	const active = $derived(activeSettingsTab(page.url.pathname));
 </script>
 
-<div class="flex flex-col gap-5">
-	<PageHeader
-		title="Settings"
-		description="Credentials, providers and the people who can sign in here."
-	/>
+<PageHeader
+	title="Settings"
+	description="Credentials, providers and the people who can sign in here."
+/>
 
-	<TabStrip label="Settings sections" {tabs} {active} />
+<TabStrip label="Settings sections" {tabs} {active} />
 
-	<PendingOutlet within={resolve('/settings')}>{@render children()}</PendingOutlet>
-</div>
+<PendingOutlet within={resolve('/settings')}>{@render children()}</PendingOutlet>

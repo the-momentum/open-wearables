@@ -30,7 +30,7 @@
 	summary={workoutSummary(workouts)}
 	bind:on={workouts.on}
 >
-	<div class="flex flex-wrap gap-x-6 gap-y-4">
+	<div class="flex flex-wrap gap-x-8 gap-y-4">
 		<NumberField
 			label="Per user"
 			bind:value={workouts.count}
@@ -46,14 +46,14 @@
 			unit="min"
 		/>
 	</div>
-	<div class="flex flex-wrap gap-x-6 gap-y-4">
+	<div class="flex flex-wrap gap-x-8 gap-y-4">
 		<RangeField label="Lowest heart rate" bind:value={workouts.hrMin} unit="bpm" />
 		<RangeField label="Highest heart rate" bind:value={workouts.hrMax} unit="bpm" />
 		<RangeField label="Steps" bind:value={workouts.steps} step={100} />
 	</div>
 
 	<div class="flex flex-col gap-3">
-		<div class="flex flex-col gap-1.5">
+		<div class="flex flex-col items-start gap-1.5">
 			<span class={MICRO}>Types</span>
 			<Segmented
 				label="Workout types"

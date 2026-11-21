@@ -27,6 +27,7 @@
 </script>
 
 <Card
+	section
 	title="Connected providers"
 	description="Wearables and health platforms this user has linked"
 	bodyClass={connections.length === 0 ? 'p-0' : undefined}

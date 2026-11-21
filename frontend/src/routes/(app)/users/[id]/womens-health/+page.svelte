@@ -29,7 +29,8 @@
 	let removeOpen = $state(false);
 </script>
 
-<div class="flex flex-col gap-5">
+<!-- No filters, so no rule separating results from them: the figures open the tab. -->
+<div class="flex flex-col gap-4 pt-6">
 	<CycleSummary userId={page.params.id ?? ''} />
 
 	{#if cycles.length === 0}
@@ -41,25 +42,23 @@
 			/>
 		</Card>
 	{:else}
-		<div class="flex flex-col gap-3 border-t border-border pt-5">
-			<PhaseLegend />
+		<PhaseLegend />
 
-			<div class="flex flex-col gap-3">
-				{#each cycles as cycle (cycle.id)}
-					<CycleCard
-						{cycle}
-						{days}
-						providerLabel={providerLabel(data.providers, cycle.source.provider)}
-						ondelete={() => {
-							removing = cycle;
-							removeOpen = true;
-						}}
-					/>
-				{/each}
-			</div>
-
-			<CursorBar {nav} pagination={data.cycles.pagination} size={data.pageSize} />
+		<div class="flex flex-col gap-3">
+			{#each cycles as cycle (cycle.id)}
+				<CycleCard
+					{cycle}
+					{days}
+					providerLabel={providerLabel(data.providers, cycle.source.provider)}
+					ondelete={() => {
+						removing = cycle;
+						removeOpen = true;
+					}}
+				/>
+			{/each}
 		</div>
+
+		<CursorBar {nav} pagination={data.cycles.pagination} size={data.pageSize} />
 	{/if}
 </div>
 

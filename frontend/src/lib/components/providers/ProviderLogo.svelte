@@ -19,13 +19,14 @@
 	const base = publicApiUrl();
 	const src = $derived(base && provider.icon_url ? `${base}${provider.icon_url}` : '');
 
+	// The design's Xs, Sm and Md tiles; lg is ours, for the pairing page.
 	const TILE = {
-		xs: 'size-5 rounded-md p-0.5',
-		sm: 'size-10 p-1.5',
-		md: 'size-12 p-2',
-		lg: 'size-16 p-2.5'
+		xs: 'size-6 rounded-md p-0.75',
+		sm: 'size-10 rounded-lg p-1.25',
+		md: 'size-12 rounded-xl p-1.5',
+		lg: 'size-16 rounded-xl p-2.5'
 	} as const;
-	const MARK = { xs: 'sm', sm: 'md', md: 'md', lg: 'lg' } as const;
+	const MARK = { xs: 'sm', sm: 'md', md: 'tile', lg: 'lg' } as const;
 </script>
 
 {#if src && !broken}
@@ -34,7 +35,7 @@
 	     and wordmarks read as one set. The ring is what shows it on a white card. -->
 	<span
 		class={cn(
-			'grid shrink-0 place-items-center rounded-xl bg-white shadow-sm ring-1 ring-border',
+			'grid shrink-0 place-items-center bg-white shadow-elevation-xs ring-1 ring-border',
 			TILE[size]
 		)}
 	>

@@ -17,8 +17,11 @@
 {#if switching}
 	<TabSkeleton />
 {:else}
+	<!-- Stacks a tab's sections as the panel stacks the page's, so no tab needs a wrapper of its own. -->
 	<div
-		class="transition-opacity duration-150 {refreshing ? 'pointer-events-none opacity-60' : ''}"
+		class="flex flex-col gap-4 transition-opacity duration-150 {refreshing
+			? 'pointer-events-none opacity-60'
+			: ''}"
 		aria-busy={refreshing}
 	>
 		{@render children()}

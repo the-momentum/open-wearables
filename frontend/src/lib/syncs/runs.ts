@@ -47,18 +47,6 @@ export function pageOf<T>(runs: T[], page: number, size: number) {
 	return { page: at, rows: runs.slice((at - 1) * size, at * size) };
 }
 
-/** How a status is drawn in the mix: the tone its badge wears, as a bar shade. */
-const SHADE: Record<SyncStatus, string> = {
-	success: 'bg-success',
-	skipped: 'bg-muted-foreground/30',
-	in_progress: 'bg-primary',
-	partial: 'bg-warning',
-	unfinished: 'bg-warning/70',
-	stale: 'bg-warning/45',
-	failed: 'bg-danger',
-	cancelled: 'bg-border'
-};
-
 export function overview(runs: SyncRunSummary[]) {
 	const count = (...statuses: SyncStatus[]) =>
 		runs.filter((run) => statuses.includes(run.status)).length;
@@ -70,11 +58,7 @@ export function overview(runs: SyncRunSummary[]) {
 		attention: count('partial', 'unfinished', 'stale'),
 		// "Skipped" is a sync that found nothing new - done, and most of them.
 		completed: count('success', 'skipped'),
-		users: new Set(runs.map((run) => run.user_id)).size,
-		mix: SYNC_STATUSES.map((status) => ({
-			key: status,
-			value: count(status),
-			shade: SHADE[status]
-		})).filter((part) => part.value > 0)
+		total: runs.length,
+		users: new Set(runs.map((run) => run.user_id)).size
 	};
 }

@@ -4,6 +4,7 @@
 	import { seriesColour, unitLabel } from '$lib/timeseries/samples';
 	import { toggled } from '$lib/utils/collect';
 	import { formatNumber } from '$lib/utils/format';
+	import Gridlines from './Gridlines.svelte';
 	import HoverReadout from './HoverReadout.svelte';
 	import SeriesLegend from './SeriesLegend.svelte';
 
@@ -156,8 +157,8 @@
 			>
 				<!-- On their own background, because a line drawn to the top of the
 				     frame crosses the very number that says how high it reached. -->
-				<span class="rounded bg-surface/85 px-0.5">{Math.round(first.high)}</span>
-				<span class="rounded bg-surface/85 px-0.5">{Math.round(first.low)}</span>
+				<span class="rounded bg-card/85 px-0.5">{Math.round(first.high)}</span>
+				<span class="rounded bg-card/85 px-0.5">{Math.round(first.low)}</span>
 			</div>
 		{/if}
 
@@ -173,6 +174,12 @@
 			</span>
 		{/each}
 		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="h-44 w-full">
+			<!-- Zones are the guide when there are any: quarter lines beside them would
+			     read as zone edges they are not. -->
+			{#if bands.length === 0}
+				<Gridlines box={CHART_BOX} />
+			{/if}
+
 			{#each bands as band (band.zone)}
 				<rect
 					x="0"
@@ -202,9 +209,7 @@
 					x2={x(hovered)}
 					y1="0"
 					y2={H}
-					stroke="var(--color-foreground)"
-					stroke-width="1"
-					opacity="0.35"
+					class="stroke-muted-foreground/40"
 					vector-effect="non-scaling-stroke"
 				/>
 			{/if}

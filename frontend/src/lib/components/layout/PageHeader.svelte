@@ -22,7 +22,7 @@
 <div class="flex flex-wrap items-start justify-between gap-3">
 	<div class="flex min-w-0 flex-col gap-0.5">
 		{@render above?.()}
-		<h1 class="text-lg font-medium text-foreground">{title}</h1>
+		<h1 class="text-base font-medium text-foreground lg:text-lg">{title}</h1>
 		<p class={cn(MICRO, truncate && 'truncate')}>{description}</p>
 	</div>
 	{@render actions?.()}

@@ -24,9 +24,13 @@
 	{/snippet}
 
 	{#snippet when()}
-		<span class={MICRO}>
-			{formatLocalDay(meal.timestamp, null)} · {formatLocalTime(meal.timestamp, null)}
-			{#if type}· {type}{/if}
+		<!-- The record card's time row: the date muted, the clock time not. -->
+		<span class="flex flex-wrap items-center gap-x-2 {MICRO}">
+			<span>{formatLocalDay(meal.timestamp, null)}</span>
+			<span class="text-secondary-foreground tabular-nums">
+				{formatLocalTime(meal.timestamp, null)}
+			</span>
+			{#if type}<span>· {type}</span>{/if}
 		</span>
 	{/snippet}
 

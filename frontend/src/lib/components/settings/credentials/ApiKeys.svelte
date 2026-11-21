@@ -9,7 +9,8 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import { MONO } from '$lib/components/ui/typography';
+	import { ICON } from '$lib/components/ui/icon';
+	import { ID_CHIP } from '$lib/components/ui/typography';
 	import NameDialog from '../NameDialog.svelte';
 	import CredentialRow from './CredentialRow.svelte';
 	import SecretReveal from './SecretReveal.svelte';
@@ -41,11 +42,12 @@
 <Card
 	icon={KeyRound}
 	title="API keys"
+	stack
 	description="Authenticate API requests and embed widgets. The full key is shown only once, when it is created or rotated."
 >
 	{#snippet action()}
 		<Button size="sm" onclick={() => (createOpen = true)}>
-			<Plus size={14} aria-hidden="true" />
+			<Plus size={ICON.xs} aria-hidden="true" />
 			New key
 		</Button>
 	{/snippet}
@@ -61,7 +63,7 @@
 			{#each keys as key (key.id)}
 				<CredentialRow icon={KeyRound} name={key.name} created={key.created_at}>
 					{#snippet identifier()}
-						<code class="rounded bg-surface-muted px-1.5 py-0.5 {MONO}">{key.key_prefix}…</code>
+						<code class={ID_CHIP}>{key.key_prefix}…</code>
 					{/snippet}
 
 					{#snippet actions()}

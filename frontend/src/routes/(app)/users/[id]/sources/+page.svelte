@@ -13,7 +13,7 @@
 </script>
 
 {#if data.groups.length === 0}
-	<Card>
+	<Card section>
 		<EmptyState
 			icon={MonitorSmartphone}
 			title="No sources yet"
@@ -21,12 +21,14 @@
 		/>
 	</Card>
 {:else}
-	<div class="flex flex-col gap-2">
-		<Caption>In priority order</Caption>
-		<div class="flex flex-col gap-3">
-			{#each data.groups as group (group.provider)}
-				<SourceGroupCard {group} brand={brandOf(data.providers, group.provider)} />
-			{/each}
+	<div class="flex flex-col gap-4">
+		<div class="flex flex-col gap-2">
+			<Caption>In priority order</Caption>
+			<div class="flex flex-col gap-3">
+				{#each data.groups as group (group.provider)}
+					<SourceGroupCard {group} brand={brandOf(data.providers, group.provider)} />
+				{/each}
+			</div>
 		</div>
 		<p class={FOOTNOTE}>
 			Where sources cover the same day, summaries use the one higher in this order.

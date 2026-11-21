@@ -42,80 +42,78 @@
 	let removeOpen = $state(false);
 </script>
 
-<div class="flex flex-col gap-6">
-	<FilterBar
-		period={data.period}
-		{hrefFor}
-		providers={connected}
-		labelFor={label}
-		selected={data.provider}
-	>
-		{#if data.types.length > 1}
-			<FilterGroup label="Type">
-				<FilterSelect
-					label="Type"
-					labelled={false}
-					value={data.type}
-					options={typeOptions}
-					onselect={(type) =>
-						// eslint-disable-next-line svelte/no-navigation-without-resolve -- hrefFor resolves
-						goto(hrefFor({ type: type || null }), { noScroll: true })}
-				/>
-			</FilterGroup>
-		{/if}
-
-		<!-- One ride often reaches us from two providers. This is the same ranking
-		     the summaries use, applied by the backend so paging and the totals
-		     agree with it; done here it would have thinned each page instead. -->
-		<FilterGroup label="Sources">
-			<Segmented
-				label="Sources"
-				selected={data.topSourceOnly ? 'top' : 'all'}
-				items={[
-					{ value: 'all', label: 'Show duplicates', href: hrefFor({ top: null }) },
-					{ value: 'top', label: 'Hide duplicates', href: hrefFor({ top: '1' }) }
-				]}
+<FilterBar
+	period={data.period}
+	{hrefFor}
+	providers={connected}
+	labelFor={label}
+	selected={data.provider}
+>
+	{#if data.types.length > 1}
+		<FilterGroup label="Type">
+			<FilterSelect
+				label="Type"
+				labelled={false}
+				value={data.type}
+				options={typeOptions}
+				onselect={(type) =>
+					// eslint-disable-next-line svelte/no-navigation-without-resolve -- hrefFor resolves
+					goto(hrefFor({ type: type || null }), { noScroll: true })}
 			/>
 		</FilterGroup>
-	</FilterBar>
+	{/if}
 
-	<!-- A rule under the controls: the figures answer to them, so they have to
-	     read as results rather than as more of the toolbar. -->
-	<div class="flex flex-col gap-5 border-t border-border pt-6">
-		<!-- No card, no heading: the filters above say what is in scope, and four
-		     labelled figures do not need a label of their own. It fetches its own
-		     numbers, because summing them reads every record in the period and the
-		     cards below should not queue behind that. -->
-		<WorkoutSummary userId={page.params.id ?? ''} search={page.url.search} />
+	<!-- One ride often reaches us from two providers. This is the same ranking
+	     the summaries use, applied by the backend so paging and the totals
+	     agree with it; done here it would have thinned each page instead. -->
+	<FilterGroup label="Sources">
+		<Segmented
+			label="Sources"
+			selected={data.topSourceOnly ? 'top' : 'all'}
+			items={[
+				{ value: 'all', label: 'Show duplicates', href: hrefFor({ top: null }) },
+				{ value: 'top', label: 'Hide duplicates', href: hrefFor({ top: '1' }) }
+			]}
+		/>
+	</FilterGroup>
+</FilterBar>
 
-		{#if workouts.length === 0}
-			<Card>
-				<EmptyState
-					icon={Dumbbell}
-					title={filtered ? 'No workouts match these filters' : 'No workouts recorded'}
-					description={filtered
-						? 'Widen the period, or clear the provider and type.'
-						: 'Nothing this user’s providers have delivered is a workout.'}
+<!-- A rule under the controls: the figures answer to them, so they have to
+     read as results rather than as more of the toolbar. -->
+<div class="flex flex-col gap-4 border-t border-border pt-6">
+	<!-- No card, no heading: the filters above say what is in scope, and four
+	     labelled figures do not need a label of their own. It fetches its own
+	     numbers, because summing them reads every record in the period and the
+	     cards below should not queue behind that. -->
+	<WorkoutSummary userId={page.params.id ?? ''} search={page.url.search} />
+
+	{#if workouts.length === 0}
+		<Card>
+			<EmptyState
+				icon={Dumbbell}
+				title={filtered ? 'No workouts match these filters' : 'No workouts recorded'}
+				description={filtered
+					? 'Widen the period, or clear the provider and type.'
+					: 'Nothing this user’s providers have delivered is a workout.'}
+			/>
+		</Card>
+	{:else}
+		<div class="flex flex-col gap-3">
+			{#each workouts as workout (workout.id)}
+				<WorkoutCard
+					{workout}
+					userId={page.params.id ?? ''}
+					providerLabel={label(workout.source.provider)}
+					ondelete={() => {
+						removing = workout;
+						removeOpen = true;
+					}}
 				/>
-			</Card>
-		{:else}
-			<div class="flex flex-col gap-3">
-				{#each workouts as workout (workout.id)}
-					<WorkoutCard
-						{workout}
-						userId={page.params.id ?? ''}
-						providerLabel={label(workout.source.provider)}
-						ondelete={() => {
-							removing = workout;
-							removeOpen = true;
-						}}
-					/>
-				{/each}
-			</div>
+			{/each}
+		</div>
 
-			<CursorBar {nav} pagination={data.workouts.pagination} size={data.pageSize} />
-		{/if}
-	</div>
+		<CursorBar {nav} pagination={data.workouts.pagination} size={data.pageSize} />
+	{/if}
 </div>
 
 <DeleteEventDialog

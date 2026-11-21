@@ -1,12 +1,16 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
 	import type { HTMLButtonAttributes } from 'svelte/elements';
-	import Button from './Button.svelte';
+	import { cn } from '$lib/utils/cn';
+	import { ICON_BUTTON } from './button';
+	import { ICON } from './icon';
 
 	let {
 		icon: Icon,
 		label,
 		danger = false,
+		type = 'button',
+		class: className,
 		...rest
 	}: HTMLButtonAttributes & {
 		icon: Component;
@@ -18,12 +22,11 @@
 	} = $props();
 </script>
 
-<Button
-	variant="outline"
-	size="sm"
+<button
+	{type}
 	aria-label={label}
-	class={danger ? 'hover:border-danger/40 hover:text-danger' : undefined}
 	{...rest}
+	class={cn(ICON_BUTTON, danger && 'hover:text-danger', className)}
 >
-	<Icon size={13} aria-hidden="true" />
-</Button>
+	<Icon size={ICON.sm} aria-hidden="true" />
+</button>

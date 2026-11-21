@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import X from '@lucide/svelte/icons/x';
+	import { ICON } from './icon';
+	import { HEADING } from './typography';
 
 	let {
 		open = $bindable(false),
@@ -35,7 +37,8 @@
 
 <!-- Bottom sheet on a phone, centred panel from sm up. Setting both insets
      stretches the box, so the phone pins with top-auto and the centred panel
-     needs h-fit for margin:auto to have anything to centre. -->
+     needs h-fit for margin:auto to have anything to centre. A dark page swallows
+     the shadow, so there the edge is a border. -->
 <dialog
 	bind:this={dialog}
 	onclose={() => (open = false)}
@@ -45,28 +48,29 @@
 	}}
 	aria-labelledby={headingId}
 	class="fixed inset-x-0 top-auto bottom-0 m-0 h-auto max-h-[85dvh] w-full max-w-none rounded-t-2xl
-		bg-surface p-0 text-foreground backdrop:bg-black/50
-		sm:inset-0 sm:m-auto sm:h-fit sm:max-h-[80dvh] sm:w-[min(28rem,calc(100vw-2rem))] sm:rounded-2xl
-		sm:border sm:border-border"
+		bg-card p-0 text-foreground shadow-elevation-s backdrop:bg-black/40
+		sm:inset-0 sm:m-auto
+		sm:h-fit sm:max-h-[80dvh] sm:w-[min(28rem,calc(100vw-2rem))] sm:rounded-2xl sm:shadow-dialog dark:border-t
+		dark:border-border sm:dark:border"
 >
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div
 		onclick={(event) => event.stopPropagation()}
-		class="flex flex-col pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-4"
+		class="flex flex-col pb-[max(2rem,env(safe-area-inset-bottom))] sm:pb-4"
 	>
 		<!-- Drag affordance only makes sense on the bottom sheet. -->
-		<div class="mx-auto mt-3 h-1 w-9 shrink-0 rounded-full bg-border sm:hidden"></div>
+		<div class="mx-auto mt-2 mb-1 h-1 w-9 shrink-0 rounded-full bg-surface-strong sm:hidden"></div>
 
-		<div class="flex items-center justify-between px-4 py-2">
-			<h2 id={headingId} class="text-sm font-medium">{title}</h2>
+		<div class="flex h-13 items-center justify-between gap-2 px-4">
+			<h2 id={headingId} class={HEADING}>{title}</h2>
 			<button
 				type="button"
 				onclick={() => (open = false)}
 				aria-label="Close"
-				class="grid size-9 place-items-center rounded-lg text-muted-foreground
+				class="grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground
 					transition-colors hover:bg-surface-muted hover:text-foreground"
 			>
-				<X size={18} aria-hidden="true" />
+				<X size={ICON.md} aria-hidden="true" />
 			</button>
 		</div>
 

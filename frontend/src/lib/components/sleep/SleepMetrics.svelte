@@ -30,7 +30,7 @@
 <MetricRow {metrics}>
 	<MetricCell icon={Layers} label="Stages">
 		{#if total > 0}
-			<span class="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-muted">
+			<span class="flex h-2 w-40 max-w-full overflow-hidden rounded-full bg-surface-muted">
 				{#each stages as row (row.label)}
 					<span
 						class={row.shade}

@@ -32,76 +32,74 @@
 	let removeOpen = $state(false);
 </script>
 
-<div class="flex flex-col gap-6">
-	<FilterBar
-		period={data.period}
-		{hrefFor}
-		providers={connected}
-		labelFor={label}
-		selected={data.provider}
-	>
-		<!-- Filtered by the backend, so paging and the totals agree with it; done
-		     here it would have thinned each page instead. -->
-		<FilterGroup label="Sessions">
-			<Segmented
-				label="Sessions"
-				selected={data.kind}
-				items={[
-					{ value: 'all', label: 'All', href: hrefFor({ kind: null }) },
-					{ value: 'night', label: 'Night sleep', href: hrefFor({ kind: 'night' }) },
-					{ value: 'nap', label: 'Naps', href: hrefFor({ kind: 'nap' }) }
-				]}
+<FilterBar
+	period={data.period}
+	{hrefFor}
+	providers={connected}
+	labelFor={label}
+	selected={data.provider}
+>
+	<!-- Filtered by the backend, so paging and the totals agree with it; done
+	     here it would have thinned each page instead. -->
+	<FilterGroup label="Sessions">
+		<Segmented
+			label="Sessions"
+			selected={data.kind}
+			items={[
+				{ value: 'all', label: 'All', href: hrefFor({ kind: null }) },
+				{ value: 'night', label: 'Night sleep', href: hrefFor({ kind: 'night' }) },
+				{ value: 'nap', label: 'Naps', href: hrefFor({ kind: 'nap' }) }
+			]}
+		/>
+	</FilterGroup>
+
+	<!-- Two watches can both claim one night. This is the same ranking the
+	     summaries use, and it answers "why are there two of these". -->
+	<FilterGroup label="Sources">
+		<Segmented
+			label="Sources"
+			selected={data.topSourceOnly ? 'top' : 'all'}
+			items={[
+				{ value: 'all', label: 'All', href: hrefFor({ top: null }) },
+				{ value: 'top', label: 'Highest priority', href: hrefFor({ top: '1' }) }
+			]}
+		/>
+	</FilterGroup>
+</FilterBar>
+
+<div class="flex flex-col gap-4 border-t border-border pt-6">
+	<SleepSummary userId={page.params.id ?? ''} search={page.url.search} />
+
+	{#if sessions.length === 0}
+		<Card>
+			<EmptyState
+				icon={Moon}
+				title={filtered
+					? data.kind === 'nap'
+						? 'No naps in this period'
+						: 'No sessions match these filters'
+					: 'No sleep recorded'}
+				description={filtered
+					? 'Widen the period, or clear a filter.'
+					: 'Nothing this user’s providers have delivered is a sleep session.'}
 			/>
-		</FilterGroup>
-
-		<!-- Two watches can both claim one night. This is the same ranking the
-		     summaries use, and it answers "why are there two of these". -->
-		<FilterGroup label="Sources">
-			<Segmented
-				label="Sources"
-				selected={data.topSourceOnly ? 'top' : 'all'}
-				items={[
-					{ value: 'all', label: 'All', href: hrefFor({ top: null }) },
-					{ value: 'top', label: 'Highest priority', href: hrefFor({ top: '1' }) }
-				]}
-			/>
-		</FilterGroup>
-	</FilterBar>
-
-	<div class="flex flex-col gap-5 border-t border-border pt-6">
-		<SleepSummary userId={page.params.id ?? ''} search={page.url.search} />
-
-		{#if sessions.length === 0}
-			<Card>
-				<EmptyState
-					icon={Moon}
-					title={filtered
-						? data.kind === 'nap'
-							? 'No naps in this period'
-							: 'No sessions match these filters'
-						: 'No sleep recorded'}
-					description={filtered
-						? 'Widen the period, or clear a filter.'
-						: 'Nothing this user’s providers have delivered is a sleep session.'}
+		</Card>
+	{:else}
+		<div class="flex flex-col gap-3">
+			{#each sessions as session (session.id)}
+				<SleepCard
+					{session}
+					providerLabel={label(session.source.provider)}
+					ondelete={() => {
+						removing = session;
+						removeOpen = true;
+					}}
 				/>
-			</Card>
-		{:else}
-			<div class="flex flex-col gap-3">
-				{#each sessions as session (session.id)}
-					<SleepCard
-						{session}
-						providerLabel={label(session.source.provider)}
-						ondelete={() => {
-							removing = session;
-							removeOpen = true;
-						}}
-					/>
-				{/each}
-			</div>
+			{/each}
+		</div>
 
-			<CursorBar {nav} pagination={data.sessions.pagination} size={data.pageSize} />
-		{/if}
-	</div>
+		<CursorBar {nav} pagination={data.sessions.pagination} size={data.pageSize} />
+	{/if}
 </div>
 
 <DeleteEventDialog

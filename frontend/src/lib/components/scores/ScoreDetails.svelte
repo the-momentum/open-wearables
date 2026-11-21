@@ -18,7 +18,7 @@
 	const sections = $derived(detailSections(day.categories, labelFor).filter(hasDetail));
 </script>
 
-<div class="flex flex-col gap-5 border-t border-border pt-4">
+<div class="flex flex-col gap-5">
 	{#each sections as section (section.category)}
 		<ScoreSection {section} zoneOffset={day.zoneOffset} {colourFor} />
 	{/each}

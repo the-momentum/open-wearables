@@ -13,7 +13,7 @@
 	{#each runs as run (run.run_key)}
 		{@const covered = formatWindow(run.window_start, run.window_end)}
 		{@const duration = formatDuration(run.started_at, run.ended_at)}
-		<li class="rounded-lg border border-border bg-background px-3 py-2">
+		<li class="rounded-lg border border-border bg-card px-3 py-2">
 			<div class="flex flex-wrap items-center justify-between gap-2">
 				<div class="flex items-center gap-2">
 					<RunStatus {run} />

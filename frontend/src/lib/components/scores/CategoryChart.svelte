@@ -22,7 +22,7 @@
 
 <!-- Framed like a tile, because it stands where the tiles were: one category at
      full size, with the exact value under the pointer. -->
-<div class="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4">
+<div class="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
 	<LineChart
 		series={trend.lines}
 		zones={null}

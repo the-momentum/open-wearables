@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Layers from '@lucide/svelte/icons/layers';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import SaveBar from '$lib/components/settings/SaveBar.svelte';
@@ -28,7 +29,7 @@
 	let retainOn = $derived(saved.delete_after_days !== null);
 	// The days outlive their switch: a number typed while deletion is off is kept across saves,
 	// and only a saved window replaces it.
-	let retainDays = $state<number | null>(lifecycle.settings.delete_after_days ?? 365);
+	let retainDays = $state<number | null>(untrack(() => saved.delete_after_days) ?? 365);
 	$effect(() => {
 		if (saved.delete_after_days !== null) retainDays = saved.delete_after_days;
 	});
@@ -46,12 +47,12 @@
 	const drawn = $derived<Policy>(problem ? policyOf(saved) : policy);
 </script>
 
-<div class="flex flex-col gap-5">
+<div class="flex flex-col gap-4">
 	<StorageOverview storage={lifecycle.storage} />
 
 	<GrowthProjection storage={lifecycle.storage} policy={drawn} />
 
-	<div class="grid gap-5 lg:grid-cols-2">
+	<div class="grid gap-3 lg:grid-cols-2">
 		<PolicyCard
 			icon={Layers}
 			title="Rollup"

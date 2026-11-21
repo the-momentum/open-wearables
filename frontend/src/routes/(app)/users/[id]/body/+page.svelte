@@ -31,48 +31,46 @@
 	};
 </script>
 
-<div class="flex flex-col gap-6">
-	<!-- Only the period: this endpoint takes no provider, and the one it read from
-	     is named beside the figures instead. -->
-	<FilterBar
-		period={data.period}
-		{hrefFor}
-		providers={[]}
-		labelFor={(entry) => entry}
-		selected=""
-		periodLabel="Trend period"
-	/>
+<!-- Only the period: this endpoint takes no provider, and the one it read from
+     is named beside the figures instead. -->
+<FilterBar
+	period={data.period}
+	{hrefFor}
+	providers={[]}
+	labelFor={(entry) => entry}
+	selected=""
+	periodLabel="Trend period"
+/>
 
-	{#if !data.body}
-		<Card>
-			<EmptyState
-				icon={Scale}
-				title="No body data recorded"
-				description="Weight, composition and vitals all come from the time series, so a user whose providers send none has nothing here."
-			/>
-		</Card>
-	{:else}
-		<div class="flex flex-col gap-6 border-t border-border pt-6">
-			<div class="flex flex-col gap-3">
-				<Figures figures={composition(data.body)} label="Body composition" />
-				<p class="flex items-center gap-1.5 {MICRO}">
-					<ProviderMark provider={data.body.source.provider} {label} size="sm" />
-					Latest reading from {label}{data.body.source.device_name
-						? ` · ${data.body.source.device_name}`
-						: ''}
-				</p>
-			</div>
-
-			<div class="flex flex-col gap-2">
-				<Caption>Vitals over the period</Caption>
-				<VitalTrends
-					url={trendUrl}
-					from={data.window!.from.getTime()}
-					to={data.window!.to.getTime()}
-				/>
-			</div>
-
-			<FieldGroups groups={bodyGroups(data.body)} />
+{#if !data.body}
+	<Card>
+		<EmptyState
+			icon={Scale}
+			title="No body data recorded"
+			description="Weight, composition and vitals all come from the time series, so a user whose providers send none has nothing here."
+		/>
+	</Card>
+{:else}
+	<div class="flex flex-col gap-6 border-t border-border pt-6">
+		<div class="flex flex-col gap-3">
+			<Figures figures={composition(data.body)} label="Body composition" />
+			<p class="flex items-center gap-1.5 {MICRO}">
+				<ProviderMark provider={data.body.source.provider} {label} size="sm" />
+				Latest reading from {label}{data.body.source.device_name
+					? ` · ${data.body.source.device_name}`
+					: ''}
+			</p>
 		</div>
-	{/if}
-</div>
+
+		<div class="flex flex-col gap-2">
+			<Caption>Vitals over the period</Caption>
+			<VitalTrends
+				url={trendUrl}
+				from={data.window!.from.getTime()}
+				to={data.window!.to.getTime()}
+			/>
+		</div>
+
+		<FieldGroups groups={bodyGroups(data.body)} />
+	</div>
+{/if}

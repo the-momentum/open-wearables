@@ -2,7 +2,6 @@
 	import ShareBar from '$lib/components/charts/ShareBar.svelte';
 	import { stageShade } from '$lib/sleep/stages';
 	import type { Range } from '$lib/seed/types';
-	import { formatPercent } from '$lib/utils/format';
 
 	let { deep, rem, awake }: { deep: Range; rem: Range; awake: Range } = $props();
 
@@ -21,4 +20,4 @@
 	});
 </script>
 
-<ShareBar {parts} format={(part, total) => formatPercent(part.value, total)} />
+<ShareBar {parts} />

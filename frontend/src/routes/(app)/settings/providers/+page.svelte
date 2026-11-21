@@ -19,33 +19,31 @@
 	const changed = $derived(flipped(data.providers, draft));
 </script>
 
-<div class="flex flex-col gap-5">
-	{#if form?.message}
-		<Alert>{form.message}</Alert>
-	{/if}
+{#if form?.message}
+	<Alert>{form.message}</Alert>
+{/if}
 
-	<Card
-		icon={Plug}
-		title="OAuth providers"
-		description="Which services your users can connect. Disabling one hides it from the pairing page; data already synced stays."
-	>
-		{#if data.providers.length === 0}
-			<EmptyState icon={Plug} title="No providers available" />
-		{:else}
-			<!-- A grid, not a list: a row per provider left two thirds of a desktop
-			     width empty between the name and its switch. -->
-			<ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-				{#each data.providers as provider (provider.provider)}
-					<ProviderCard
-						{provider}
-						enabled={draft[provider.provider] ?? provider.is_enabled}
-						ontoggle={(next) => (draft = { ...draft, [provider.provider]: next })}
-					/>
-				{/each}
-			</ul>
-		{/if}
-	</Card>
-</div>
+<Card
+	icon={Plug}
+	title="OAuth providers"
+	description="Which services your users can connect. Disabling one hides it from the pairing page; data already synced stays."
+>
+	{#if data.providers.length === 0}
+		<EmptyState icon={Plug} title="No providers available" />
+	{:else}
+		<!-- A grid, not a list: a row per provider left two thirds of a desktop
+		     width empty between the name and its switch. -->
+		<ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+			{#each data.providers as provider (provider.provider)}
+				<ProviderCard
+					{provider}
+					enabled={draft[provider.provider] ?? provider.is_enabled}
+					ontoggle={(next) => (draft = { ...draft, [provider.provider]: next })}
+				/>
+			{/each}
+		</ul>
+	{/if}
+</Card>
 
 {#if changed.length > 0}
 	<SaveBar

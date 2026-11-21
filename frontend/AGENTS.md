@@ -111,12 +111,16 @@ heavy aggregate runs only on the tab that shows it.
 - Tailwind v4 with semantic tokens only (`bg-surface`, `text-muted-foreground`),
   never raw colours. Tokens are `light-dark()` pairs in `app.css`, and the theme follows
   the OS or the theme cookie.
-- Palette, fonts (Switzer 400/500, Fragment Mono), 1px Lucide stroke and 200ms
-  motion come from the Open Wearables design system. **Its 1px corners were rejected**:
-  keep our radius scale.
+- Palette, fonts (Switzer 400/500, Fragment Mono), radius scale (6/10/14), 1px Lucide
+  stroke and 200ms motion come from the Open Wearables design system in Figma.
+- **The design covers light mode only.** Dark keeps its own palette: the dark half of a
+  new token reuses a colour that palette already has. Where the design's light colour
+  fails WCAG AA as text, the token is darkened and says so in a comment.
+- Icon sizes come from `ICON` in `ui/icon.ts` (the design's scale); no other sizes.
 - Shared class strings live in `ui/button.ts`, `chip.ts`, `field.ts`, `tone.ts`,
-  `typography.ts` (`CAPTION`, `HEADING`, `NOTE`, `MICRO`, `INLINE_LINK`). Reuse them;
-  do not paste class strings.
+  `table.ts` (`LIST_FRAME`, `LIST_ROW`, `TABLE_HEAD`, ...), `typography.ts` (`CAPTION`,
+  `HEADING`, `TITLE`, `STAT`, `NOTE`, `MICRO`, `INLINE_LINK`). Reuse them; do not paste
+  class strings.
 - Component `<style>` is scoped. `app.css` holds only tokens and base element
   styles.
 - Numbers have no thousands separator (`formatNumber`). `formatCompact` is for

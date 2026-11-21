@@ -13,28 +13,26 @@
 	const dispatched = $derived(form?.action === 'run' && 'dispatched' in form);
 </script>
 
-<div class="flex flex-col gap-5">
-	{#if messageFrom(form, 'save')}
-		<Alert>{messageFrom(form, 'save')}</Alert>
-	{/if}
+{#if messageFrom(form, 'save')}
+	<Alert>{messageFrom(form, 'save')}</Alert>
+{/if}
 
-	{#await data.lifecycle}
-		<!-- Roughly the shape of what is coming, so nothing jumps when it lands. -->
-		<Skeleton class="h-40" />
-		<Skeleton class="h-72" />
-		<div class="grid gap-5 lg:grid-cols-2">
-			<Skeleton class="h-32" />
-			<Skeleton class="h-32" />
-		</div>
-	{:then lifecycle}
-		<LifecycleForm {lifecycle} message={messageFrom(form, 'run')} {dispatched} />
-	{:catch}
-		<Card>
-			<EmptyState
-				icon={HardDrive}
-				title="Could not read the storage estimate"
-				description="The backend did not answer in time. On a large database the estimate scans the series table, which can take a while - try again in a moment."
-			/>
-		</Card>
-	{/await}
-</div>
+{#await data.lifecycle}
+	<!-- Roughly the shape of what is coming, so nothing jumps when it lands. -->
+	<Skeleton class="h-40" />
+	<Skeleton class="h-72" />
+	<div class="grid gap-3 lg:grid-cols-2">
+		<Skeleton class="h-32" />
+		<Skeleton class="h-32" />
+	</div>
+{:then lifecycle}
+	<LifecycleForm {lifecycle} message={messageFrom(form, 'run')} {dispatched} />
+{:catch}
+	<Card>
+		<EmptyState
+			icon={HardDrive}
+			title="Could not read the storage estimate"
+			description="The backend did not answer in time. On a large database the estimate scans the series table, which can take a while - try again in a moment."
+		/>
+	</Card>
+{/await}

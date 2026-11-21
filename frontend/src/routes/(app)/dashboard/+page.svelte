@@ -1,14 +1,14 @@
 <script lang="ts">
 	import Users from '@lucide/svelte/icons/users';
+	import DonutChart from '$lib/components/charts/DonutChart.svelte';
 	import ShareBar from '$lib/components/charts/ShareBar.svelte';
 	import NewestUsers from '$lib/components/dashboard/NewestUsers.svelte';
 	import StatTile from '$lib/components/dashboard/StatTile.svelte';
-	import CountRanking from '$lib/components/summary/CountRanking.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import { eventMix, providerUse, reachParts, statTiles } from '$lib/dashboard/stats';
+	import { providerUse, reachParts, statTiles } from '$lib/dashboard/stats';
 	import { providerLabel } from '$lib/providers/labels';
-	import { formatShare } from '$lib/utils/format';
+	import { formatNumber } from '$lib/utils/format';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -26,39 +26,51 @@
 		/>
 	</Card>
 {:else}
-	<div class="flex flex-col gap-4">
-		<!-- One column on a phone, two on a tablet, four on a desktop. -->
-		<section aria-label="Platform totals" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+	<!-- 12px apart on a phone (the design's), where the shell would put 16. -->
+	<div class="flex flex-col gap-3 sm:gap-4">
+		<!-- A phone stacks the four tiles in one shared band; from two columns up
+		     each tile draws its own. -->
+		<section
+			aria-label="Platform totals"
+			class="grid gap-1 rounded-lg border border-border bg-surface p-1 sm:grid-cols-2 sm:gap-4
+			sm:border-0 sm:bg-transparent sm:p-0 lg:grid-cols-4"
+		>
 			{#each statTiles(info) as tile (tile.label)}
 				<StatTile {...tile} />
 			{/each}
 		</section>
 
-		<div class="grid gap-4 lg:grid-cols-2">
-			<Card title="Connections" description="How much of the user base is sending anything">
-				<div class="flex flex-col gap-5">
-					<ShareBar
-						parts={reachParts(info)}
-						format={(part, total) => formatShare(part.value, total)}
-					/>
+		<div class="grid gap-3 sm:gap-4 lg:grid-cols-2">
+			<!-- The design's height, with the ring centred in whatever the bar leaves. -->
+			<Card
+				title="Connections"
+				description="How much of the user base is sending anything"
+				class="flex flex-col lg:min-h-105"
+				bodyClass="flex flex-1 flex-col gap-6 sm:gap-5"
+			>
+				<ShareBar parts={reachParts(info)} value={(part) => formatNumber(part.value)} />
 
-					<!-- A count and its share of every live connection: 480 means little
-					     without knowing whether that is half the estate or a tenth. -->
-					<CountRanking
-						counts={providerUse(info)}
-						labelFor={label}
-						format={(count) => formatShare(count, info.active_conn.count)}
+				<!-- Shares of every live connection, not of the six the backend names:
+				     the rest is drawn as "Other", so the ring adds up to the total. -->
+				<div class="flex flex-1 flex-col justify-center">
+					<DonutChart
+						parts={providerUse(info, label)}
+						total={info.active_conn.count}
+						caption="connections"
+						label="Connections per provider"
 					/>
 				</div>
 			</Card>
 
-			<Card title="Event records" description="Every session and cycle stored, by kind">
-				<CountRanking counts={eventMix(info)} />
+			<!-- Beside the connections it takes their height and scrolls: `contain-size`
+			     keeps the list's own length out of the row's. -->
+			<Card
+				title="Newest users"
+				class="flex flex-col lg:contain-size"
+				bodyClass="min-h-0 flex-1 overflow-y-auto py-1 sm:py-1"
+			>
+				<NewestUsers users={data.users} />
 			</Card>
 		</div>
-
-		<Card title="Newest users">
-			<NewestUsers users={data.users} />
-		</Card>
 	</div>
 {/if}

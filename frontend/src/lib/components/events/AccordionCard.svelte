@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import type { Component, Snippet } from 'svelte';
 	import { togglesCard } from './accordion';
 
@@ -45,65 +46,64 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <article
 	onclick={toggleUnlessBusy}
-	class="flex cursor-pointer flex-col gap-3.5 rounded-xl border bg-surface p-4 transition-colors
-		{expanded ? 'border-primary/30' : 'border-border'}"
+	class="flex cursor-pointer flex-col rounded-xl border border-border bg-card"
 >
-	<!-- A heading wrapping the toggle is the accordion pattern: the card keeps a
-	     place in the document outline, and only the header toggles, so the metrics
-	     below stay selectable text rather than sitting inside a button. -->
-	<div class="group flex items-start gap-1.5">
-		<h3 class="min-w-0 flex-1">
-			<button
-				type="button"
-				data-accordion-toggle
-				aria-expanded={expanded}
-				aria-controls={panelId}
-				class="flex w-full cursor-pointer items-start gap-3 text-left"
-			>
-				{#if Icon}
-					<span
-						aria-hidden="true"
-						class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
-					>
-						<Icon size={18} />
+	<div class="flex flex-col gap-3.5 p-4">
+		<!-- A heading wrapping the toggle is the accordion pattern: the card keeps a
+		     place in the document outline, and only the header toggles, so the metrics
+		     below stay selectable text rather than sitting inside a button. -->
+		<div class="group flex items-start gap-2 sm:items-center">
+			<h3 class="min-w-0 flex-1">
+				<button
+					type="button"
+					data-accordion-toggle
+					aria-expanded={expanded}
+					aria-controls={panelId}
+					class="flex w-full cursor-pointer items-start gap-3 text-left sm:items-center"
+				>
+					{#if Icon}
+						<span
+							aria-hidden="true"
+							class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
+						>
+							<Icon size={ICON.md} />
+						</span>
+					{/if}
+
+					<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+						{@render title()}
+						{@render when?.()}
 					</span>
-				{/if}
 
-				<span class="flex min-w-0 flex-1 flex-col gap-0.5">
-					{@render title()}
-					{@render when?.()}
-				</span>
+					{#if aside}
+						<span class="flex shrink-0 items-center gap-1.5">{@render aside()}</span>
+					{/if}
+				</button>
+			</h3>
 
-				{#if aside}
-					<span class="flex shrink-0 items-center gap-1.5">{@render aside()}</span>
-				{/if}
-			</button>
-		</h3>
+			{@render control?.()}
 
-		{@render control?.()}
+			<!-- Outside the button so a control can sit between them; a click on it
+			     still reaches the card, which is what opens it. A bordered target, not
+			     a bare glyph: at the end of a long source string a muted chevron reads
+			     as decoration, and nothing else on the card says it opens. -->
+			<ExpandChevron open={expanded} boxed />
+		</div>
 
-		<!-- Outside the button so a control can sit between them; a click on it
-		     still reaches the card, which is what opens it. A bordered target, not
-		     a bare glyph: at the end of a long source string a muted chevron reads
-		     as decoration, and nothing else on the card says it opens. -->
-		<span
-			aria-hidden="true"
-			class="grid size-7 shrink-0 place-items-center rounded-lg border border-border
-				text-muted-foreground transition-colors group-hover:border-primary/40
-				group-hover:bg-primary/10 group-hover:text-primary"
-		>
-			<ExpandChevron open={expanded} size={15} class="text-current" />
-		</span>
+		{#if metrics}<div>{@render metrics()}</div>{/if}
 	</div>
 
-	{#if metrics}<div>{@render metrics()}</div>{/if}
-
 	<!-- The panel is its own thing: selecting a value or following a link inside
-	     it must not fold the card away underneath. -->
+	     it must not fold the card away underneath. The rule runs edge to edge, so
+	     it reads as the card opening rather than as more of the header. -->
 	{#if expanded}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div id={panelId} class="cursor-auto" onclick={(event) => event.stopPropagation()}>
+		<div
+			id={panelId}
+			class="cursor-auto border-t border-border p-4"
+			onclick={(event) => event.stopPropagation()}
+		>
 			{@render details()}
 		</div>
 	{/if}

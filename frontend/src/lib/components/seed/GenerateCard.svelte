@@ -7,6 +7,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import CopyButton from '$lib/components/ui/CopyButton.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { INLINE_LINK, MICRO, MONO } from '$lib/components/ui/typography';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 
@@ -32,12 +33,18 @@
 	<form method="POST" action="?/generate" use:enhance={submit.enhance} class="flex flex-col gap-4">
 		<input type="hidden" name="seed" value={payload} />
 
-		<!-- The whole request read back in one sentence, so nothing a collapsed
-		     section holds comes as a surprise. -->
-		<p class="text-sm text-secondary-foreground">
-			<strong class="font-medium text-foreground">{summary.who}</strong>, each with {summary.what},
-			over the {summary.when}.
-		</p>
+		<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+			<!-- The whole request read back in one sentence, so nothing a collapsed
+			     section holds comes as a surprise. -->
+			<p class="text-sm text-secondary-foreground">
+				{summary.who}, each with {summary.what}, over the {summary.when}.
+			</p>
+
+			<Button type="submit" disabled={problems.length > 0 || submit.submitting}>
+				<Play size={ICON.sm} aria-hidden="true" />
+				{submit.submitting ? 'Queuing…' : 'Generate'}
+			</Button>
+		</div>
 
 		{#if message}
 			<Alert>{message}</Alert>
@@ -63,17 +70,10 @@
 					href={resolve('/users')}
 					class="inline-flex items-center gap-1.5 sm:ml-auto {INLINE_LINK}"
 				>
-					<Users size={14} aria-hidden="true" />
+					<Users size={ICON.sm} aria-hidden="true" />
 					They appear in Users as the job runs
 				</a>
 			</div>
 		{/if}
-
-		<div>
-			<Button type="submit" disabled={problems.length > 0 || submit.submitting}>
-				<Play size={14} aria-hidden="true" />
-				{submit.submitting ? 'Queuing…' : 'Generate'}
-			</Button>
-		</div>
 	</form>
 </Card>

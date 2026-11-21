@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Database from '@lucide/svelte/icons/database';
+	import { ICON } from '$lib/components/ui/icon';
 	import Skeleton from '$lib/components/ui/Skeleton.svelte';
 	import Fact from '$lib/components/ui/Fact.svelte';
 	import Facts from '$lib/components/ui/Facts.svelte';
@@ -20,9 +21,9 @@
 	const stored = $derived(fetched.current?.stored ?? null);
 </script>
 
-<div class="flex flex-col gap-3 rounded-lg border border-border/70 bg-surface-muted/30 p-3">
+<div class="flex flex-col gap-3 rounded-lg border border-border bg-card p-3">
 	<span class="inline-flex items-center gap-1.5 {CAPTION}">
-		<Database size={12} aria-hidden="true" />
+		<Database size={ICON.xs} aria-hidden="true" />
 		Stored record
 	</span>
 
@@ -31,7 +32,7 @@
 	{:else if fetched.current === null}
 		<p class="text-sm text-danger">Could not read the stored record. Try opening it again.</p>
 	{:else if !stored}
-		<p class="text-sm text-secondary-foreground">
+		<p class="text-sm text-muted-foreground">
 			None - a live sync is only kept in the 24-hour buffer above, and leaves it with the rest.
 		</p>
 	{:else}
@@ -47,7 +48,7 @@
 		</Facts>
 
 		{#if stored.data_types.length > 0}
-			<ul class="divide-y divide-border/70 border-t border-border/70">
+			<ul class="divide-y divide-border border-t border-border">
 				{#each stored.data_types as type (type.data_type)}
 					{@const covered = formatWindow(type.covered_start, type.covered_end)}
 					<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">

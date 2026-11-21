@@ -197,7 +197,7 @@ test('filters by provider, with the list coming from the backend', async ({ page
 	await expect(
 		page
 			.getByRole('table')
-			.getByTitle(/garmin/)
+			.getByRole('button', { name: /^Garmin:/ })
 			.first()
 	).toBeVisible();
 });
@@ -303,8 +303,9 @@ test.describe('mobile', () => {
 		await expect(pager(page).getByText('1–20 of 47')).toBeVisible();
 	});
 
-	test('keeps the page counter compact instead of numbered links', async ({ page }) => {
-		await expect(pager(page).getByText('1 / 3')).toBeVisible();
-		await expect(pager(page).getByRole('link', { name: 'Page 3' })).toBeHidden();
+	test('keeps the numbered steps to one row by dropping the neighbours', async ({ page }) => {
+		await page.goto('/users?size=10');
+		await expect(pager(page).getByRole('link', { name: 'Page 5' })).toBeVisible();
+		await expect(pager(page).getByRole('link', { name: 'Page 2' })).toBeHidden();
 	});
 });

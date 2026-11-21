@@ -52,7 +52,7 @@
 	});
 </script>
 
-<div class="flex flex-col gap-5">
+<div class="flex flex-col gap-4">
 	<Alert tone="warning">
 		Seeded data doesn't match real device volumes or sampling frequency. Don't use it to estimate
 		how much data a real user generates.
@@ -62,12 +62,10 @@
 
 	<SeedBasics bind:draft {providers} />
 
-	<div class="flex flex-col gap-3">
-		<WorkoutSection bind:workouts={draft.workouts} />
-		<SleepSection bind:sleep={draft.sleep} profiles={sleepProfiles} />
-		<SeriesSection bind:series={draft.series} groups={series} workouts={draft.workouts.on} />
-		<MealSection bind:meals={draft.meals} />
-	</div>
+	<WorkoutSection bind:workouts={draft.workouts} />
+	<SleepSection bind:sleep={draft.sleep} profiles={sleepProfiles} />
+	<SeriesSection bind:series={draft.series} groups={series} workouts={draft.workouts.on} />
+	<MealSection bind:meals={draft.meals} />
 
 	<GenerateCard
 		payload={JSON.stringify({ draft, preset: active })}

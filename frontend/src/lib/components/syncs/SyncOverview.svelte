@@ -3,28 +3,70 @@
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import CircleX from '@lucide/svelte/icons/circle-x';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import ShareBar from '$lib/components/charts/ShareBar.svelte';
-	import Figures from '$lib/components/ui/Figures.svelte';
-	import { formatNumber, formatPercent } from '$lib/utils/format';
-	import { humanise } from '$lib/utils/text';
+	import type { Snippet } from 'svelte';
+	import { ICON } from '$lib/components/ui/icon';
+	import { LIST_FRAME } from '$lib/components/ui/table';
+	import { TONE, TONE_COLOUR } from '$lib/components/ui/tone';
+	import { MICRO } from '$lib/components/ui/typography';
 	import type { overview } from '$lib/syncs/runs';
+	import { DASH, formatNumber, formatPercent } from '$lib/utils/format';
 
-	let { counts }: { counts: ReturnType<typeof overview> } = $props();
+	let {
+		counts,
+		children
+	}: {
+		counts: ReturnType<typeof overview>;
+		/** The footer: how many runs from how many users, and what the window left out. */
+		children: Snippet;
+	} = $props();
 
-	const figures = $derived([
-		{ icon: LoaderCircle, label: 'Running now', value: formatNumber(counts.running) },
-		{ icon: CircleX, label: 'Failed', value: formatNumber(counts.failed) },
-		{ icon: CircleAlert, label: 'Need a look', value: formatNumber(counts.attention) },
-		{ icon: CircleCheck, label: 'Completed', value: formatNumber(counts.completed) }
+	const tiles = $derived([
+		{ icon: CircleCheck, label: 'Completed', value: counts.completed, tone: 'success' as const },
+		{ icon: CircleAlert, label: 'Need a look', value: counts.attention, tone: 'warning' as const },
+		{ icon: CircleX, label: 'Failed', value: counts.failed, tone: 'danger' as const },
+		{ icon: LoaderCircle, label: 'Running now', value: counts.running, tone: 'primary' as const }
 	]);
-
-	const mix = $derived(counts.mix.map((part) => ({ ...part, label: humanise(part.key) })));
 </script>
 
-<div class="flex flex-col gap-4">
-	<Figures {figures} label="Syncs in the window" />
-	<ShareBar
-		parts={mix}
-		format={(part, total) => `${formatNumber(part.value)} · ${formatPercent(part.value, total)}`}
-	/>
-</div>
+<section aria-label="Syncs in the window" class="overflow-hidden {LIST_FRAME}">
+	<!-- A phone stacks the tiles with the figure beside its label; four columns
+	     put it under, at the size the design gives a headline figure. -->
+	<dl class="grid lg:grid-cols-4">
+		{#each tiles as tile (tile.label)}
+			<div
+				class="grid grid-cols-[1fr_auto] items-center gap-2 border-border p-4 not-last:border-b
+					lg:grid-cols-1 lg:p-5 lg:not-last:border-r lg:not-last:border-b-0"
+			>
+				<dt class="flex items-center gap-1.5 text-sm text-secondary-foreground">
+					<span
+						aria-hidden="true"
+						class="grid size-8 shrink-0 place-items-center rounded-lg {TONE[tile.tone]}"
+					>
+						<tile.icon size={ICON.sm} />
+					</span>
+					{tile.label}
+				</dt>
+				<dd class="text-2xl font-medium text-foreground tabular-nums lg:text-3xl">
+					{formatNumber(tile.value)}
+				</dd>
+				<dd class="col-span-2 flex items-center gap-2 lg:col-span-1">
+					<span aria-hidden="true" class="h-1 flex-1 overflow-hidden rounded-full bg-surface-muted">
+						<span
+							class="block h-full rounded-full"
+							style="width: {counts.total
+								? (tile.value / counts.total) * 100
+								: 0}%; background: {TONE_COLOUR[tile.tone]}"
+						></span>
+					</span>
+					<span class="{MICRO} tabular-nums">
+						{counts.total ? formatPercent(tile.value, counts.total) : DASH}
+					</span>
+				</dd>
+			</div>
+		{/each}
+	</dl>
+
+	<p class="flex min-h-10 items-center border-t border-border px-4 py-2 lg:px-5 {MICRO}">
+		{@render children()}
+	</p>
+</section>

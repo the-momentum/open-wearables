@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
 	import { navigating } from '$app/state';
-	import BetaMark from './BetaMark.svelte';
 	import BetaTag from './BetaTag.svelte';
 	import ScrollFade from './ScrollFade.svelte';
 	import { cn } from '$lib/utils/cn';
+	import { ICON } from './icon';
 
 	export type Tab = {
 		href: string;
@@ -47,7 +47,7 @@
 <div class="-mx-4 sm:mx-0">
 	<ScrollFade bind:scroller class="snap-x border-b border-border px-4 sm:px-0">
 		<nav aria-label={label}>
-			<ul class="flex gap-1">
+			<ul class="flex">
 				{#each tabs as tab (tab.href)}
 					{@const current = tab.href === shown}
 					<li>
@@ -62,18 +62,10 @@
 							)}
 						>
 							{#if tab.icon}
-								<!-- The word costs a tab's width on a phone, so below sm the mark
-								     rides the icon instead - the same trade the bottom bar makes. -->
-								<span class="relative {tab.beta ? 'mr-1 sm:mr-0' : ''}">
-									<tab.icon size={15} aria-hidden="true" />
-									{#if tab.beta}<BetaMark class="sm:hidden" />{/if}
-								</span>
+								<tab.icon size={ICON.sm} aria-hidden="true" class="shrink-0" />
 							{/if}
 							{tab.label}
-							{#if tab.beta}
-								<span class="hidden sm:inline-flex"><BetaTag /></span>
-								<span class="sr-only"> (beta)</span>
-							{/if}
+							{#if tab.beta}<BetaTag />{/if}
 						</a>
 					</li>
 				{/each}

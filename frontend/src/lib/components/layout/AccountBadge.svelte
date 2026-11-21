@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { MICRO } from '$lib/components/ui/typography';
-	import { AVATAR_TONE, fullName, initials } from '$lib/users/avatar';
+	import { fullName } from '$lib/users/avatar';
+	import AccountAvatar from './AccountAvatar.svelte';
 
 	// The layout load already carries it, so this costs no request.
 	const developer = $derived(page.data.developer);
@@ -10,17 +11,10 @@
 
 {#if developer}
 	<div class="flex items-center gap-2.5 px-3 py-2">
-		<span
-			aria-hidden="true"
-			class="grid size-8 shrink-0 place-items-center rounded-full text-xs font-medium
-				{AVATAR_TONE}"
-		>
-			{initials(developer)}
-		</span>
+		<AccountAvatar {developer} />
 
-		<!-- Which account this is, on every screen: it was answerable nowhere
-		     before, and "whose dashboard am I looking at" matters most for the
-		     buttons right under it. -->
+		<!-- Which account this is, on every screen: "whose dashboard am I looking
+		     at" matters most for the buttons right under it. -->
 		<div class="min-w-0">
 			<span class="sr-only">Signed in as</span>
 			{#if name}

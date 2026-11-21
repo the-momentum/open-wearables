@@ -7,15 +7,15 @@
 	let { user }: { user: User } = $props();
 </script>
 
-<div
-	class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground [&>*]:after:mx-2 [&>*]:after:text-border [&>*:not(:last-child)]:after:content-['·']"
->
+<!-- One line on a desktop; a phone gives the email and the sync their own lines
+     and keeps the id beside the creation date, as the design does. -->
+<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
 	{#if user.email}
-		<span class="text-secondary-foreground">{user.email}</span>
+		<span class="min-w-0 truncate text-secondary-foreground max-sm:basis-full">{user.email}</span>
 	{/if}
-	<span><CopyableId value={user.id} label="User ID" /></span>
+	<CopyableId value={user.id} label="User ID" />
 	<span>Created {formatDate(user.created_at)}</span>
-	<span>
+	<span class="max-sm:basis-full">
 		{#if user.last_synced_at}
 			Synced {formatRelativeTime(user.last_synced_at)}
 			{#if user.last_synced_provider}

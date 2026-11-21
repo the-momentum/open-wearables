@@ -10,8 +10,8 @@
 </script>
 
 <div
-	class="-mx-1 grid divide-y divide-border/60 border-t border-border/60 pt-1
-		sm:grid-cols-2 sm:divide-x sm:divide-y-0"
+	class="grid divide-y divide-border border-t border-border sm:grid-cols-2 sm:divide-x
+		sm:divide-y-0 sm:pt-1"
 >
 	<LiveRoute {connection} {actionable} {viaSdk} />
 	<HistoryRoute {connection} {actionable} {viaSdk} />

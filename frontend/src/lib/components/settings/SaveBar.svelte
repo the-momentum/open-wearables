@@ -29,7 +29,7 @@
 	use:enhance={submit.enhance}
 	class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 mx-auto flex
 		w-[min(28rem,calc(100vw-2rem))] items-center justify-between gap-3 rounded-xl border
-		border-border bg-surface px-4 py-3 shadow-lg lg:bottom-6"
+		border-border bg-card px-4 py-3 shadow-dialog lg:bottom-6"
 >
 	{#each Object.entries(payload) as [name, value] (name)}
 		<input type="hidden" {name} {value} />

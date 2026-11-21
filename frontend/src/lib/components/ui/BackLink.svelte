@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import type { Snippet } from 'svelte';
+	import { ICON } from './icon';
 
 	let { href, children }: { href: string; children: Snippet } = $props();
 </script>
@@ -11,6 +12,6 @@
 	class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors
 		hover:text-foreground"
 >
-	<ArrowLeft size={16} aria-hidden="true" />
+	<ArrowLeft size={ICON.xs} aria-hidden="true" />
 	{@render children()}
 </a>

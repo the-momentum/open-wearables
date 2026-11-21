@@ -21,15 +21,15 @@ export function audienceSummary(draft: Draft, labelFor: (slug: string) => string
 export function workoutSummary(workouts: Draft['workouts']): string {
 	if (!workouts.on) return 'Not generated';
 	const types = workouts.types === null ? 'any type' : plural(workouts.types.length, 'type');
-	return `${plural(workouts.count, 'workout')} · ${workouts.duration[0]}–${workouts.duration[1]} min · ${types}`;
+	return `${plural(workouts.count, 'workout')}, ${workouts.duration[0]}–${workouts.duration[1]} min, ${types}`;
 }
 
 export function sleepSummary(sleep: Draft['sleep'], profiles: SleepProfile[]): string {
 	if (!sleep.on) return 'Not generated';
 	const stages =
 		profiles.find((profile) => profile.id === sleep.stageProfile)?.label ?? 'custom stages';
-	const naps = sleep.napChance > 0 ? ` · ${sleep.napChance}% naps` : '';
-	return `${plural(sleep.count, 'night')} · ${hours(sleep.duration[0])}–${hours(sleep.duration[1])} h · ${stages}${naps}`;
+	const naps = sleep.napChance > 0 ? `, ${sleep.napChance}% naps` : '';
+	return `${plural(sleep.count, 'night')}, ${hours(sleep.duration[0])}–${hours(sleep.duration[1])} h, ${stages}${naps}`;
 }
 
 export function seriesSummary(series: Draft['series']): string {
@@ -40,7 +40,7 @@ export function seriesSummary(series: Draft['series']): string {
 
 export function mealSummary(meals: Draft['meals']): string {
 	if (!meals.on) return 'Not generated';
-	return `${plural(meals.count, 'meal')} · ${meals.calories[0]}–${meals.calories[1]} kcal`;
+	return `${plural(meals.count, 'meal')}, ${meals.calories[0]}–${meals.calories[1]} kcal`;
 }
 
 /** What a profile makes for one user, in the counts that tell presets apart. */

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
 	import ChartRow from '$lib/components/ui/ChartRow.svelte';
+	import BarTrack from './BarTrack.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { HEAT_STEPS } from '$lib/summary/shades';
@@ -50,13 +51,11 @@
 			{#each spent as row, index (row.label)}
 				<ChartRow label={row.label} value={formatDuration(row.seconds)}>
 					<div class="flex items-center gap-2">
-						<span class="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-muted">
-							<span
-								aria-hidden="true"
-								class="block h-full rounded-full {shade(row, index)}"
-								style="width: {longest === 0 ? 0 : (row.seconds / longest) * 100}%"
-							></span>
-						</span>
+						<BarTrack
+							fraction={longest === 0 ? 0 : row.seconds / longest}
+							shade={shade(row, index)}
+							class="flex-1"
+						/>
 						<span class="w-8 shrink-0 text-right tabular-nums {MICRO}">
 							{share(row.seconds)}%
 						</span>

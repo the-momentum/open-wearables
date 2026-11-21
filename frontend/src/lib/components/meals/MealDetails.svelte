@@ -19,7 +19,7 @@
 	{#if energy.length > 0}
 		<div class="flex flex-col gap-1.5">
 			<Caption icon={Flame}>Energy from macros</Caption>
-			<ShareBar parts={energy} format={(part) => formatNumber(part.value, ' kcal')} />
+			<ShareBar parts={energy} value={(part) => formatNumber(part.value, ' kcal')} />
 		</div>
 	{/if}
 
