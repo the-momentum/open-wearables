@@ -36,7 +36,7 @@ class TestGarmin247Data:
     """Tests for Garmin247Data class."""
 
     @pytest.fixture
-    def garmin_247(self, db: Session) -> Garmin247Data:
+    def garmin_247(self) -> Garmin247Data:
         """Create Garmin247Data instance for testing."""
         connection_repo = UserConnectionRepository()
         oauth = GarminOAuth(
@@ -1022,6 +1022,7 @@ class TestGarmin247Data:
             "activityType": "RUNNING",
             "distanceInMeters": 5000,
             "activeKilocalories": 350,
+            "totalElevationGainInMeters": 150.5,
         }
         result = garmin_247._build_activity_record(user_id, activity)
 
@@ -1030,6 +1031,23 @@ class TestGarmin247Data:
         assert record.category == "workout"
         assert record.type == "running"
         assert detail.distance == Decimal("5000")
+        assert detail.total_elevation_gain == Decimal("150.5")
+
+    def test_build_activity_record_with_legacy_elevation(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_activity_record falls back to elevationGainInMeters."""
+        user_id = uuid4()
+        activity = {
+            "activityId": 123456,
+            "startTimeInSeconds": 1705309200,
+            "durationInSeconds": 3600,
+            "activityType": "RUNNING",
+            "elevationGainInMeters": 85.0,
+        }
+        result = garmin_247._build_activity_record(user_id, activity)
+
+        assert result is not None
+        _, detail = result
+        assert detail.total_elevation_gain == Decimal("85.0")
 
     def test_build_activity_record_missing_id(self, garmin_247: Garmin247Data) -> None:
         """Test _build_activity_record returns None for missing activityId."""

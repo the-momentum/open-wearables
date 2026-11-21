@@ -186,6 +186,12 @@ class GarminWorkouts(BaseWorkoutsTemplate):
 
         average_cadence = Decimal(str(raw_workout.averageCadence)) if raw_workout.averageCadence is not None else None
 
+        total_elevation_gain = (
+            Decimal(str(raw_workout.totalElevationGainInMeters))
+            if raw_workout.totalElevationGainInMeters is not None
+            else None
+        )
+
         metrics: EventRecordMetrics = {
             # Garmin activity payloads carry only average and max heart rate
             "heart_rate_min": None,
@@ -197,6 +203,9 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "distance": distance,
             "average_cadence": average_cadence,
         }
+
+        if total_elevation_gain is not None:
+            metrics["total_elevation_gain"] = total_elevation_gain
 
         entry_source = get_unified_garmin_entry_source(raw_workout.manual, raw_workout.isWebUpload)
         if entry_source is not None:
