@@ -77,6 +77,16 @@ test('breaks the event records down by category, exact on hover', async ({ page 
 	await expect(tiles.getByRole('tooltip').filter({ hasText: '11,766 sleep' })).toBeVisible();
 });
 
+test('keeps the event records compact on a phone, as the design draws it', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/dashboard');
+
+	const tiles = page.getByRole('region', { name: 'Platform totals' });
+	await expect(tiles.getByText('11.8K', { exact: true }).filter({ visible: true })).toHaveCount(1);
+	// No info icon and no bubbles: the phone tile has neither.
+	await expect(tiles.getByRole('button', { name: /^Exact / })).toHaveCount(0);
+});
+
 test('lists the newest users with how long ago each one synced', async ({ page }) => {
 	await page.goto('/dashboard');
 

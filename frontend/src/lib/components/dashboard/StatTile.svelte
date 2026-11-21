@@ -59,13 +59,17 @@
 			<div class="flex shrink-0 flex-col items-end sm:h-14 sm:items-center sm:justify-center">
 				<div class="flex items-center gap-1.5">
 					<span class={STAT}>{value}</span>
+					<!-- The exact figures are the desktop design's alone: the phone tile has
+					     neither the info icon nor the bubbles. -->
 					{#if exact}
-						<Hint label="Exact {label.toLowerCase()}">
-							{#snippet trigger()}
-								<Info size={ICON.sm} aria-hidden="true" class="text-muted-foreground" />
-							{/snippet}
-							{@render exactly({ label, value, exact })}
-						</Hint>
+						<span class="hidden sm:contents">
+							<Hint label="Exact {label.toLowerCase()}">
+								{#snippet trigger()}
+									<Info size={ICON.sm} aria-hidden="true" class="text-muted-foreground" />
+								{/snippet}
+								{@render exactly({ label, value, exact })}
+							</Hint>
+						</span>
 					{/if}
 				</div>
 				{#if note}<span class="text-xs text-foreground">{note}</span>{/if}
@@ -89,10 +93,16 @@
 					<dt class="{MICRO} truncate">{part.label}</dt>
 					<dd class="text-sm font-medium text-foreground tabular-nums">
 						{#if part.exact}
-							<Hint label="Exact {part.label}" align={index < parts.length / 2 ? 'left' : 'right'}>
-								{#snippet trigger()}{part.value}{/snippet}
-								{@render exactly(part)}
-							</Hint>
+							<span class="sm:hidden">{part.value}</span>
+							<span class="hidden sm:contents">
+								<Hint
+									label="Exact {part.label}"
+									align={index < parts.length / 2 ? 'left' : 'right'}
+								>
+									{#snippet trigger()}{part.value}{/snippet}
+									{@render exactly(part)}
+								</Hint>
+							</span>
 						{:else}
 							{part.value}
 						{/if}
