@@ -8,9 +8,9 @@ export const SERIES_TONES = [
 ];
 
 /**
- * The design's hues for a chart where colour names the thing, like a provider's
- * slice, in its order. Below 3:1 on a light card, so every slice is also named,
- * with its figure, in the legend. Six at most: fold the rest into one "other".
+ * Hues for a chart where colour names the thing, like a provider's slice. Below
+ * 3:1 on a light card, so every slice is also named in the legend. Six at most:
+ * fold the rest into one "other".
  */
 export const CATEGORY_TONES = [
 	'var(--color-chart-blue)',

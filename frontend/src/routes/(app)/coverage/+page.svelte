@@ -25,8 +25,6 @@
 	const total = $derived(data.coverage.providers.length);
 </script>
 
-<!-- Counted over the whole matrix, so the ranking says how much of it an
-     integration covers rather than how many rows it appears in. -->
 <ProviderCoverage totals={providerTotals(all)} capabilities={all.length} labelFor={label} />
 
 <CoverageFilters

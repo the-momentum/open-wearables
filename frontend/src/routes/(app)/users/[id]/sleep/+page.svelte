@@ -10,6 +10,7 @@
 	import CursorBar from '$lib/components/events/CursorBar.svelte';
 	import DeleteEventDialog from '$lib/components/events/DeleteEventDialog.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
+	import { RESULTS } from '$lib/components/ui/table';
 	import { providerLabel } from '$lib/providers/labels';
 	import type { SleepSession } from '$lib/sleep/types';
 	import { cursorHrefs, filterSearch } from '$lib/lists/cursor';
@@ -67,7 +68,7 @@
 	</FilterGroup>
 </FilterBar>
 
-<div class="flex flex-col gap-4 border-t border-border pt-6">
+<div class={RESULTS}>
 	<SleepSummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 
 	{#if sessions.length === 0}

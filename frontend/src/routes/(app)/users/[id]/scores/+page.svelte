@@ -10,6 +10,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
+	import { RESULTS } from '$lib/components/ui/table';
 	import { periodParams } from '$lib/filters/period';
 	import { offsetHrefs } from '$lib/lists/offset';
 	import { providerLabel } from '$lib/providers/labels';
@@ -50,7 +51,7 @@
 	<CategoryFilter category={data.category} {categories} {hrefFor} />
 </FilterBar>
 
-<div class="flex flex-col gap-4 border-t border-border pt-6">
+<div class={RESULTS}>
 	<ScoreTrends
 		{trends}
 		settled={history.settled}

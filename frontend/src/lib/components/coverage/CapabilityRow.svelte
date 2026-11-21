@@ -18,8 +18,7 @@
 </script>
 
 <!-- The supporters are named on the row rather than being dots under fourteen
-     columns, which have to scroll sideways on a phone. There they drop under the
-     name, with the count beside it. -->
+     columns, which have to scroll sideways on a phone. -->
 <div
 	class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-border py-3
 		last:border-b-0 sm:flex"

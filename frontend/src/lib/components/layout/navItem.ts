@@ -1,4 +1,4 @@
-/** A sidebar or More sheet row: the design's NavItem, also worn by Logout. */
+/** A sidebar or More sheet row, also worn by Logout. */
 export const NAV_ITEM =
 	'flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors';
 

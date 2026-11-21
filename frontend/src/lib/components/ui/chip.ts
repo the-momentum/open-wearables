@@ -8,8 +8,8 @@ export const CHIP_OFF =
 const CHIP = 'items-center border transition-colors disabled:opacity-50';
 
 /**
- * The design's SelectorChip at Md, for a short row of filters. Shared by
- * FilterChip (a link) and ToggleChip (a button) so the two cannot drift apart.
+ * For a short row of filters. Shared by FilterChip (a link) and ToggleChip
+ * (a button) so the two cannot drift apart.
  */
 export function chipClass(selected: boolean): string {
 	return cn(
@@ -19,10 +19,7 @@ export function chipClass(selected: boolean): string {
 	);
 }
 
-/**
- * The SelectorChip at Sm, for picking many from a long list - event types,
- * workout types, series.
- */
+/** For picking many from a long list - event types, workout types, series. */
 export const tagClass = (selected: boolean): string =>
 	cn(
 		CHIP,
@@ -33,7 +30,7 @@ export const tagClass = (selected: boolean): string =>
 /** The bed a segmented choice sits in; its padding and gap are the caller's. */
 export const SEGMENTS = 'inline-flex items-center rounded-lg border border-border bg-surface';
 
-/** One option of a segmented choice: the design's TabItem, the chosen one lifted. */
+/** One option of a segmented choice, the chosen one lifted. */
 export const segmentClass = (active: boolean): string =>
 	cn(
 		'inline-flex h-7.5 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors',

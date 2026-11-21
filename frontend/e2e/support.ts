@@ -23,9 +23,8 @@ export function pager(page: Page): Locator {
 export const resetAppCache = (request: APIRequestContext) => request.post('/__e2e/reset');
 
 /**
- * Types a `YYYY-MM-DD` day into a date field's segments and commits it, as a
- * keyboard user would: the desktop field is segments, not a native input. Year
- * and month go first, so a 31st is never checked against a shorter month.
+ * Types a `YYYY-MM-DD` day into a date field's segments and commits it. Year and
+ * month go first, so a 31st is never checked against a shorter month.
  */
 export async function typeDate(field: Locator, iso: string): Promise<void> {
 	const [year, month, day] = iso.split('-');

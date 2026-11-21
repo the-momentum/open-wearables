@@ -49,9 +49,8 @@
 
 			<!-- The wrapper owns the outline, the children round their own outer
 			     corners: no overflow-hidden, so a keyboard outline is not clipped.
-			     The range is the field here, so its focus ring - the design's
-			     Selected state - traces the whole rounded outline: drawn on the
-			     select alone it showed a square edge in the middle of the group. -->
+			     The select's focus ring is drawn on the wrapper, so it follows the
+			     rounded outline rather than squaring off mid-group. -->
 			<div
 				class="flex w-full items-stretch rounded-lg border border-border
 					has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2

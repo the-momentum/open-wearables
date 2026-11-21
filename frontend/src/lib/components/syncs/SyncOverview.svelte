@@ -29,8 +29,6 @@
 </script>
 
 <section aria-label="Syncs in the window" class="overflow-hidden {LIST_FRAME}">
-	<!-- A phone stacks the tiles with the figure beside its label; four columns
-	     put it under, at the size the design gives a headline figure. -->
 	<dl class="grid lg:grid-cols-4">
 		{#each tiles as tile (tile.label)}
 			<div

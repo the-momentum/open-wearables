@@ -7,8 +7,7 @@
 	let { user }: { user: User } = $props();
 </script>
 
-<!-- One line on a desktop; a phone gives the email and the sync their own lines
-     and keeps the id beside the creation date, as the design does. -->
+<!-- One line on a desktop; a phone gives the email and the sync lines of their own. -->
 <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
 	{#if user.email}
 		<span class="min-w-0 truncate text-secondary-foreground max-sm:basis-full">{user.email}</span>

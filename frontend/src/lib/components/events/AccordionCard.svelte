@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
-	import { ICON } from '$lib/components/ui/icon';
+	import { ICON, ICON_TILE } from '$lib/components/ui/icon';
 	import type { Component, Snippet } from 'svelte';
 	import { togglesCard } from './accordion';
 
@@ -62,10 +62,7 @@
 					class="flex w-full cursor-pointer items-start gap-3 text-left sm:items-center"
 				>
 					{#if Icon}
-						<span
-							aria-hidden="true"
-							class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
-						>
+						<span aria-hidden="true" class={ICON_TILE}>
 							<Icon size={ICON.md} />
 						</span>
 					{/if}
@@ -84,18 +81,16 @@
 			{@render control?.()}
 
 			<!-- Outside the button so a control can sit between them; a click on it
-			     still reaches the card, which is what opens it. A bordered target, not
-			     a bare glyph: at the end of a long source string a muted chevron reads
-			     as decoration, and nothing else on the card says it opens. -->
+			     still reaches the card. Boxed, because a bare chevron after a long
+			     source string reads as decoration. -->
 			<ExpandChevron open={expanded} boxed />
 		</div>
 
 		{#if metrics}<div>{@render metrics()}</div>{/if}
 	</div>
 
-	<!-- The panel is its own thing: selecting a value or following a link inside
-	     it must not fold the card away underneath. The rule runs edge to edge, so
-	     it reads as the card opening rather than as more of the header. -->
+	<!-- Selecting a value or following a link inside the panel must not fold the
+	     card away underneath. -->
 	{#if expanded}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->

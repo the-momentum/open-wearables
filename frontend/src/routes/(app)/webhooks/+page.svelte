@@ -3,8 +3,8 @@
 	import Webhook from '@lucide/svelte/icons/webhook';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import { ICON } from '$lib/components/ui/icon';
 	import PageHeader from '$lib/components/layout/PageHeader.svelte';
@@ -52,9 +52,9 @@
 		<span>
 			Outgoing webhooks are not enabled on this instance. Set
 			<code>OUTGOING_WEBHOOKS_ENABLED=true</code> in the backend environment, as the
-			<a href={WEBHOOKS_DOCS} target="_blank" rel="noopener noreferrer" class="underline"
-				>webhooks guide</a
-			> describes.
+			<a href={WEBHOOKS_DOCS} target="_blank" rel="noopener noreferrer" class="underline">
+				webhooks guide
+			</a> describes.
 		</span>
 	</Alert>
 {:else if data.subscriptions.length === 0}

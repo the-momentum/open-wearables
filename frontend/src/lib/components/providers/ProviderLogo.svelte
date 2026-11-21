@@ -19,7 +19,7 @@
 	const base = publicApiUrl();
 	const src = $derived(base && provider.icon_url ? `${base}${provider.icon_url}` : '');
 
-	// The design's Xs, Sm and Md tiles; lg is ours, for the pairing page.
+	// xs-md are the design's tiles; lg is for the pairing page.
 	const TILE = {
 		xs: 'size-6 rounded-md p-0.75',
 		sm: 'size-10 rounded-lg p-1.25',

@@ -11,9 +11,7 @@
 	<div class="flex items-center gap-2.5 px-3 py-2">
 		<AccountAvatar {developer} />
 
-		<!-- Which account this is, on every screen: "whose dashboard am I looking
-		     at" matters most for the buttons right under it. The email alone, as
-		     the design has it: it is the one field every account carries. -->
+		<!-- Which account this is, on every screen, by the one field every account carries. -->
 		<p class="min-w-0 truncate {MICRO}" title={developer.email}>
 			<span class="sr-only">Signed in as</span>
 			{developer.email}

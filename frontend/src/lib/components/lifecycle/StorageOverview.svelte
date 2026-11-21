@@ -7,15 +7,15 @@
 	import ShareBar from '$lib/components/charts/ShareBar.svelte';
 	import BetaTag from '$lib/components/ui/BetaTag.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
-	import { ICON } from '$lib/components/ui/icon';
+	import { ICON, ICON_TILE } from '$lib/components/ui/icon';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { aggregateBytes, liveBytes } from '$lib/lifecycle/projection';
 	import type { StorageEstimate } from '$lib/lifecycle/types';
+	import { cn } from '$lib/utils/cn';
 	import { formatBytes, formatCompact } from '$lib/utils/format';
 
 	let { storage }: { storage: StorageEstimate } = $props();
 
-	// What a table is made of: its planner row estimate, its data, its indexes.
 	const details = (rows: number, data: number, index: number) => [
 		`~${formatCompact(rows)} rows`,
 		formatBytes(data),
@@ -75,13 +75,10 @@
 		<dl aria-label="Storage by table" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-3">
 			{#each figures as figure (figure.label)}
 				<div class="flex items-start gap-3">
-					<span
-						aria-hidden="true"
-						class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-foreground"
-					>
+					<span aria-hidden="true" class={cn(ICON_TILE, 'text-foreground')}>
 						<figure.icon size={ICON.sm} />
 					</span>
-					<!-- dt before dd, as a dl wants; the figure is lifted above its name. -->
+					<!-- dt first, as a dl requires; `order-first` shows the figure above it. -->
 					<div class="flex min-w-0 flex-col gap-1">
 						<dt class="text-xs text-secondary-foreground">{figure.label}</dt>
 						<dd class="order-first text-xl font-medium text-foreground tabular-nums sm:text-2xl">

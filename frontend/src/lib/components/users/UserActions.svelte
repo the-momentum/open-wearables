@@ -18,7 +18,7 @@
 		menu = false
 	}: {
 		user: User;
-		/** One "…" behind which the three wait: a phone's row has no room for them side by side. */
+		/** Behind one "…": a phone's row has no room for three buttons. */
 		menu?: boolean;
 	} = $props();
 

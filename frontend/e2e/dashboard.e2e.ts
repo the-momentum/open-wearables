@@ -36,7 +36,7 @@ test('shows nothing rolled up as zero rather than hiding it', async ({ page, req
 	await request.post('http://localhost:8787/__empty-aggregates');
 	await page.goto('/dashboard');
 
-	// The term's own figure: "other" reads 0 beside it too.
+	// Scoped to the term's own row: "other" reads 0 too.
 	const tiles = page.getByRole('region', { name: 'Platform totals' });
 	const rolled = tiles.getByText('day and session rows', { exact: true }).locator('..');
 	await expect(rolled).toHaveText(/^day and session rows\s*0$/);
@@ -71,19 +71,17 @@ test('breaks the event records down by category, exact on hover', async ({ page 
 
 	const tiles = page.getByRole('region', { name: 'Platform totals' });
 	await expect(tiles.getByText('other', { exact: true })).toBeVisible();
-	// Compact on the tile, whole behind it - and grouped, because a bare 11766
-	// is a number nobody reads at a glance.
+	// Compact on the tile, exact and grouped behind it.
 	await tiles.getByRole('button', { name: 'Exact sleep' }).hover();
 	await expect(tiles.getByRole('tooltip').filter({ hasText: '11,766 sleep' })).toBeVisible();
 });
 
-test('keeps the event records compact on a phone, as the design draws it', async ({ page }) => {
+test('keeps the event records compact on a phone', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/dashboard');
 
 	const tiles = page.getByRole('region', { name: 'Platform totals' });
 	await expect(tiles.getByText('11.8K', { exact: true }).filter({ visible: true })).toHaveCount(1);
-	// No info icon and no bubbles: the phone tile has neither.
 	await expect(tiles.getByRole('button', { name: /^Exact / })).toHaveCount(0);
 });
 

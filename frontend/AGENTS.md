@@ -28,7 +28,8 @@ that app, which lives on only in git history.
   server-side shortcut). Both are read via `$env/dynamic/*`, so one
   image fits any backend.
 - **No dependency before the code that needs it.** Say what it buys over the
-  platform. `bits-ui`, `shadcn-svelte` and `svelte-query` are deliberately absent.
+  platform. `bits-ui` is for the date pickers only (typed segments and a calendar
+  the platform lacks); `shadcn-svelte` and `svelte-query` are deliberately absent.
 - **Backend changes only when the task asks for them**, and never migrations
   unless asked. Remote databases (Railway, Hetzner, client prod) are read-only.
 - **The owner commits.** Propose a conventional commit name; do not commit, push,
@@ -127,8 +128,8 @@ heavy aggregate runs only on the tab that shows it.
   elsewhere the system list). Dates use `DateField` / `DateRangeField`: bits-ui
   segments and a drawn calendar under a fine pointer, the native input on touch.
   Their classes live in `ui/calendar.ts`.
-- Numbers have no thousands separator (`formatNumber`). `formatCompact` is for
-  estimates only.
+- Whole numbers go through `formatNumber` (rounded, en-GB grouping). `formatCompact`
+  is for estimates, or a count squeezed onto a tile with the exact one behind it.
 
 ## Tests
 

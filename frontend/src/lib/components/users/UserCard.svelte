@@ -10,7 +10,7 @@
 	let { user }: { user: User } = $props();
 </script>
 
-<!-- A row of the phone's list, which draws the frame and the rules between. -->
+<!-- A row: the list draws the frame and the rules between. -->
 <article class="relative flex flex-col gap-2 px-4 py-3.5">
 	<div class="flex items-start justify-between gap-2">
 		<UserIdentity {user} overlay />

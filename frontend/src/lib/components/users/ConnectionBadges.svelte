@@ -28,9 +28,8 @@
 {:else if ordered.length === 0}
 	<span class="text-xs text-muted-foreground">No connections</span>
 {:else}
-	<!-- The tint is the connection's status, never the provider. Colour alone
-	     cannot say which status, so each pill names it in a tooltip, reachable by
-	     keyboard and by tap. z-10 lifts it over the row-wide overlay link. -->
+	<!-- The tint is the status, never the provider; colour alone cannot name it,
+	     so the tooltip does. z-10 lifts it over the row-wide overlay link. -->
 	<ul class={cn('flex flex-wrap gap-1', stacked && 'sm:flex-col sm:items-start')}>
 		{#each ordered as connection (connection.provider)}
 			{@const provider = humanise(connection.provider)}

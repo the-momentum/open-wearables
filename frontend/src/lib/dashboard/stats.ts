@@ -40,7 +40,7 @@ export type Tile = Figure & {
 	parts: Figure[];
 };
 
-/** Compact, with the whole figure behind it wherever compacting changed what it says. */
+/** Compact, with the whole figure behind it where compacting changed it. */
 function compact(label: string, count: number): Figure {
 	const value = formatCompact(count);
 	const whole = formatNumber(count);
@@ -50,15 +50,13 @@ function compact(label: string, count: number): Figure {
 /**
  * Exact where the count is cheap and exact, compact where it is neither: the
  * data-point totals come from a cache that falls back to a planner estimate,
- * and seven digits of an approximation claim a precision it has not got - so
- * those keep no exact figure behind them either. Event records are a true count,
- * compacted only to fit, and give the whole one on hover.
+ * and seven digits of an approximation claim a precision it has not got.
+ * Event records are a true count, compacted only to fit.
  */
 export function statTiles(info: SystemInfo): Tile[] {
 	const { count, workouts, sleep, menstrual_cycles } = info.event_records;
 	const coverage = coverageOf(info);
-	// `count` sums every category and only three have a field of their own; the
-	// rest (meals, activity, ...) is named so the parts add up to the whole.
+	// Only three categories have a field; the rest is named so the parts add up to `count`.
 	const other = Math.max(count - workouts - sleep - menstrual_cycles, 0);
 
 	return [

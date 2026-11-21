@@ -12,7 +12,7 @@
 	}: {
 		/** How many capabilities each provider covers, richest first. */
 		totals: Record<string, number>;
-		/** The whole matrix, which every bar is a share of. */
+		/** The whole matrix: every bar is a share of it, not of the leader. */
 		capabilities: number;
 		labelFor: (provider: string) => string;
 	} = $props();
@@ -29,8 +29,6 @@
 		</p>
 	</div>
 
-	<!-- Every provider, scaled to the whole matrix rather than to the leader: the
-	     question is how much of it an integration covers. -->
 	<ul class="flex flex-col gap-3 sm:gap-1.5">
 		{#each Object.entries(totals) as [provider, count] (provider)}
 			<li>

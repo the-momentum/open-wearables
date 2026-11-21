@@ -3,10 +3,7 @@ import type { User } from './types';
 /** The neutral tone, for the one avatar that needs no telling apart: your own. */
 export const AVATAR_TONE = 'bg-surface-muted text-secondary-foreground';
 
-/**
- * Identity tints for initials, the design's five. No green: green, and the
- * status tones beside these, mean something.
- */
+/** Identity tints for initials. No green: it, like the status tones, means something. */
 export const AVATAR_TONES = [
 	AVATAR_TONE,
 	'bg-avatar-blue-tint text-avatar-blue',

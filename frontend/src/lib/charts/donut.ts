@@ -82,7 +82,7 @@ const scaled = ([x, y]: XY, by: number): XY => [x * by, y * by];
 /**
  * One slice: an annular sector with rounded corners, drawn around (0, 0), its
  * straight sides held `gap / 2` off the radius so every gap is the same width
- * from the hole to the rim, as the design's white borders are.
+ * from the hole to the rim.
  */
 export function slicePath({ start, end }: Arc, { outer, inner, gap, corner }: Ring): string {
 	const half = gap / 2;

@@ -2,11 +2,7 @@ import { parseDate, type CalendarDate } from '@internationalized/date';
 import { ICON_BUTTON } from './button';
 import { CAPTION, HEADING } from './typography';
 
-/**
- * The design draws the closed date field only, so the calendar takes the select
- * list's surface (app.css) and the design's day as a 36px target. Dates read
- * en-GB, as everywhere else here; the week starts on Monday to match.
- */
+/** Dates read en-GB, as everywhere else here; the week starts on Monday to match. */
 export const CALENDAR_LOCALE = 'en-GB';
 export const WEEK_STARTS_ON = 1;
 
@@ -71,9 +67,8 @@ export const SEGMENT =
 	'rounded-sm px-px tabular-nums focus:bg-surface-muted focus:outline-none data-invalid:text-danger data-[segment=literal]:px-0 data-[segment=literal]:text-muted-foreground';
 
 /**
- * The box a date field draws, around typed segments or native inputs alike;
- * its size, fill and type step are the caller's. The parts inside drop their
- * own outline, so focus rings the whole box, as on the design's other fields.
+ * The box around typed segments or native inputs; size, fill and type step are
+ * the caller's. Focus rings the whole box, not the part inside it.
  */
 export const DATE_BOX =
 	'inline-flex items-center gap-2 border border-border focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring';
@@ -82,6 +77,5 @@ export const DATE_BOX =
 export const NATIVE_DATE =
 	'min-w-0 bg-transparent tabular-nums focus:outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-50';
 
-/** The glyph that opens the calendar: the design's 12px icon after the date. */
 export const CALENDAR_TRIGGER =
 	'grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:bg-surface-muted focus-visible:outline-none';

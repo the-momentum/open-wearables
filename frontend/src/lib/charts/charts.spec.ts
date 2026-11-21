@@ -41,7 +41,6 @@ describe('slicePath', () => {
 		}
 	});
 
-	// The design's gaps are borders of one width, not wedges that widen to the rim.
 	it('leaves the same gap between neighbours at the hole and at the rim', () => {
 		const [first, second] = arcs([2, 1]).map((arc) => vertices(slicePath(arc, DONUT_RING)));
 		// The trailing side runs from vertex 3 (rim) to 4 (hole); the leading one from 7 (hole) to 0 (rim).

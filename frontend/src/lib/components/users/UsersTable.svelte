@@ -27,7 +27,7 @@
 		query.sort === field ? (query.order === 'asc' ? 'ascending' : 'descending') : 'none';
 </script>
 
-<!-- Fixed widths, as the design's: the user column takes what is left. -->
+<!-- Fixed widths; the user column takes what is left. -->
 {#snippet column(field: SortField, label: string, width?: string)}
 	<th scope="col" class={cn(TABLE_HEADER, width)} aria-sort={sortState(field)}>
 		<SortableHeader {field} sort={query.sort} order={query.order} hrefFor={sortHref}>

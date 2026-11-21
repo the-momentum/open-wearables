@@ -44,8 +44,7 @@
 	<span class={MICRO}>Send test</span>
 	<label class="sr-only" for="test-{subscription.id}">Event to send</label>
 	<div class="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
-		<!-- `min-w-0` and a full width: a select sizes itself to its widest option,
-		     and the longest event name would push the card wider than a phone. -->
+		<!-- A select is as wide as its longest option, which would outgrow a phone. -->
 		<div class="relative flex w-full min-w-0 items-center sm:flex-1">
 			<select
 				id="test-{subscription.id}"

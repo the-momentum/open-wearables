@@ -45,16 +45,15 @@
    ---------------------------------------------------------------------------
    The Open Wearables design system's palette, named for what the dashboard
    uses each for; the comment names the Figma variable. Where a Figma value
-   fails AA as we use it, ours differs and says why. The design has a light mode
-   only, so dark keeps the palette it had before: a token the design added takes
-   the old dark value of the role closest to it.
+   fails AA as we use it, ours differs and says why. The design is light only:
+   a dark value reuses the dark palette's colour for the closest role.
    ------------------------------------------------------------------------- */
 
 :root {
 	--ow-radius: 0.625rem;
 
 	--ow-background: light-dark(#ffffff, #000000); /* surface-1 */
-	/* The design lays white panels on a surface-2 page; dark stays one black page. */
+	/* White panels on a surface-2 page; dark is one black page. */
 	--ow-page: light-dark(#f7f8fa, #000000); /* surface-2 */
 	--ow-card: light-dark(#ffffff, #000000); /* surface-1 */
 	--ow-surface: light-dark(#f7f8fa, #1a1a1a); /* surface-2 */
@@ -85,9 +84,8 @@
 	--ow-danger-hover: light-dark(#c9463b, #f07a72);
 	--ow-danger-foreground: light-dark(#ffffff, #000000);
 
-	/* Initials avatars: identity, not meaning. Each is the letters on a 15% tint
-	   of their own colour, darkened from the design's where needed to pass AA on a
-	   card or a hovered row. Dark keeps its one neutral avatar (AVATAR_TONE). */
+	/* Initials avatars: identity, not meaning. Letters on a 15% tint of their own
+	   colour, darkened where needed to pass AA. Dark has one neutral avatar (AVATAR_TONE). */
 	--ow-avatar-blue: light-dark(#2353c4, var(--ow-secondary-foreground));
 	--ow-avatar-teal: light-dark(#017065, var(--ow-secondary-foreground));
 	--ow-avatar-orange: light-dark(#995002, var(--ow-secondary-foreground));
@@ -97,9 +95,8 @@
 	--ow-avatar-orange-tint: light-dark(#99500226, var(--ow-surface-muted));
 	--ow-avatar-pink-tint: light-dark(#a4378626, var(--ow-surface-muted));
 
-	/* Categorical chart hues in the design's order (the connections donut). Dark
-	   keeps the series tones it drew charts in (SERIES_TONES), the sixth wrapping
-	   round to the first as tones() does. */
+	/* Categorical chart hues, in order. Dark reuses SERIES_TONES, the sixth
+	   wrapping round to the first as tones() does. */
 	--ow-chart-blue: light-dark(#5b82e0, var(--ow-primary));
 	--ow-chart-orange: light-dark(#ee9064, var(--ow-foreground));
 	--ow-chart-teal: light-dark(
@@ -237,19 +234,15 @@
 		outline-offset: 2px;
 	}
 
-	/* Every select is the design's Select (SELECT in ui/field.ts), which draws
-	   its own chevron. Here, not as a utility there: a utility would outrank
-	   `base-select` below. */
+	/* Every select draws its own chevron (SELECT in ui/field.ts). Here, not as a
+	   utility: a utility would outrank `base-select` below. */
 	select {
 		appearance: none;
 	}
 
-	/* The design draws the closed field only, so the open list borrows the
-	   field's own line, radius and type. Where `base-select` is supported
-	   (Chromium, desktop and Android) the list is ours, the same on every
-	   platform; elsewhere it stays the system picker, which is also what a
-	   phone's users know. Keyboard, screen readers and form posts are the
-	   native select's either way. */
+	/* The open list borrows the field's line, radius and type where `base-select`
+	   is supported (Chromium); elsewhere it stays the system picker. Keyboard,
+	   screen readers and form posts are the native select's either way. */
 	@supports (appearance: base-select) {
 		select,
 		::picker(select) {
@@ -284,8 +277,8 @@
 			transition: background-color 200ms ease;
 		}
 
-		/* The row under the pointer or the arrow keys is the highlight, as in
-		   the design's list rows; an outline inside a 4px gutter would clip. */
+		/* The row under the pointer or the arrow keys is the highlight: an outline
+		   inside a 4px gutter would clip. */
 		option:hover,
 		option:focus-visible {
 			outline: none;

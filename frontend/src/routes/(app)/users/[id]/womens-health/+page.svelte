@@ -29,7 +29,7 @@
 	let removeOpen = $state(false);
 </script>
 
-<!-- No filters, so no rule separating results from them: the figures open the tab. -->
+<!-- No filter bar above, so no rule either. -->
 <div class="flex flex-col gap-4 pt-6">
 	<CycleSummary userId={page.params.id ?? ''} />
 

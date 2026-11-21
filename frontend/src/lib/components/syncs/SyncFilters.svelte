@@ -49,8 +49,7 @@
 		goto(hrefFor({ [key]: value || null }), { noScroll: true });
 </script>
 
-<!-- One filter per line on a phone, each the full width: a row of three small
-     selects there leaves a ragged edge and a tap target the size of its label. -->
+<!-- Stacked full width on a phone, where three selects in a row are too small to tap. -->
 <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-6">
 	<div class="w-full min-w-0 sm:w-72">
 		<SearchField

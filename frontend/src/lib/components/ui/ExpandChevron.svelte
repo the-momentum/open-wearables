@@ -11,9 +11,8 @@
 	}: {
 		open: boolean;
 		size?: number;
-		/** The design's ExpandButton: a bordered square that lights up while its
-		 *  `group` (the card or row that opens) is hovered. Bare, it is the quiet
-		 *  chevron at the end of a list row. */
+		/** A bordered square that lights up while its `group` is hovered; bare,
+		 *  the quiet chevron at the end of a list row. */
 		boxed?: boolean;
 		class?: string;
 	} = $props();

@@ -8,7 +8,7 @@
 	}: {
 		/** How much of the track is filled, 0 to 1. */
 		fraction: number;
-		/** The design's ChartRow fill unless the row means something of its own. */
+		/** A fill of its own, for a row whose colour means something. */
 		shade?: string;
 		class?: string;
 	} = $props();

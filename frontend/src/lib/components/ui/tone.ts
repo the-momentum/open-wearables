@@ -5,7 +5,7 @@
  */
 export type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | 'muted';
 
-/** The design's StatusBadge: the colour on a 10% tint of itself, AA as small text. */
+/** The colour on a 10% tint of itself, AA as small text. */
 export const TONE: Record<Tone, string> = {
 	primary: 'bg-primary/10 text-primary',
 	success: 'bg-success/10 text-success',

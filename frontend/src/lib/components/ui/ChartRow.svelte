@@ -13,7 +13,7 @@
 		value?: string | number;
 		/** Lifts the label and value while the pointer is on the row. */
 		hoverable?: boolean;
-		/** On a phone the label and value share a line above a full-width bar, the design's mobile ChartRow. */
+		/** On a phone the label and value share a line above a full-width bar. */
 		stack?: boolean;
 		children: Snippet;
 	} = $props();

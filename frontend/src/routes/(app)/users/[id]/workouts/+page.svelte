@@ -10,6 +10,7 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import FilterSelect from '$lib/components/ui/FilterSelect.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
+	import { RESULTS } from '$lib/components/ui/table';
 	import WorkoutCard from '$lib/components/workouts/WorkoutCard.svelte';
 	import WorkoutSummary from '$lib/components/workouts/WorkoutSummary.svelte';
 	import { providerLabel } from '$lib/providers/labels';
@@ -78,12 +79,8 @@
 	</FilterGroup>
 </FilterBar>
 
-<!-- A rule under the controls: the figures answer to them, so they have to
-     read as results rather than as more of the toolbar. -->
-<div class="flex flex-col gap-4 border-t border-border pt-6">
-	<!-- No card, no heading: the filters above say what is in scope, and four
-	     labelled figures do not need a label of their own. It fetches its own
-	     numbers, because summing them reads every record in the period and the
+<div class={RESULTS}>
+	<!-- Fetched on its own: summing reads every record in the period, and the
 	     cards below should not queue behind that. -->
 	<WorkoutSummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 

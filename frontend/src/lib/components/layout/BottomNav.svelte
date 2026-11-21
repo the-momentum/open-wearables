@@ -12,7 +12,7 @@
 
 	const ITEM = `flex h-12.5 w-full flex-col items-center justify-center gap-0.5 font-medium transition-colors ${TINY}`;
 
-	// Lit while its sheet is open too, as the design's Active=More shows.
+	// Lit while its sheet is open too.
 	const moreActive = $derived(
 		sheetOpen || SECONDARY_NAV_ITEMS.some((item) => isNavItemActive(item, page.url.pathname))
 	);

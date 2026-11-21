@@ -23,8 +23,7 @@
 </script>
 
 <!-- Letters where a logo would not fit, and what a logo falls back to when the
-     API has none to serve. The tint tells providers apart in a list, the way
-     avatars tell users apart; it is keyed on the provider, so it never changes. -->
+     API has none to serve. The tint is keyed on the provider, so it never changes. -->
 <span
 	aria-hidden="true"
 	class={cn(

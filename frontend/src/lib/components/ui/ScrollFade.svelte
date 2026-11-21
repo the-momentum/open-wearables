@@ -27,8 +27,7 @@
 		atEnd = scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 1;
 	}
 
-	// Items change width after mount too (the web font arriving, a count filling in), and the
-	// window never hears of it, so watch the strip and each item rather than measuring once.
+	// Items change width after mount (the web font, a count filling in) without a window resize.
 	$effect(() => {
 		if (!scroller) return;
 		const observer = new ResizeObserver(track);

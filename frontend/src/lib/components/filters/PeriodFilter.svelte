@@ -42,7 +42,6 @@
 		}))
 	);
 
-	// The design's period field: a filled box beside the segments, full width on a phone.
 	const box = 'h-9 w-full justify-center rounded-lg bg-surface px-2.5 text-xs sm:w-auto';
 
 	function pick(changes: Record<string, string | null>) {

@@ -53,7 +53,7 @@
 		</Button>
 	</form>
 
-	<!-- Bordered among the buttons; alone on a phone it is the design's bare glyph. -->
+	<!-- Bordered among the buttons; alone on a phone, a bare glyph. -->
 	<ActionMenu
 		bind:open={menuOpen}
 		label="More user actions"

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
 	import { cn } from '$lib/utils/cn';
-	import { ICON } from './icon';
+	import { ICON, ICON_TILE } from './icon';
 	import { HEADING, TITLE } from './typography';
 
 	let {
@@ -26,7 +26,7 @@
 		action?: Snippet;
 		/** The action is a labelled button: on a phone it drops under the heading, full width. */
 		stack?: boolean;
-		/** A section of a tab (the design's `Section / …`): body-size title, the panel's corner. */
+		/** A section of a tab: body-size title, the panel's corner. */
 		section?: boolean;
 		class?: string;
 		bodyClass?: string;
@@ -34,8 +34,7 @@
 	} = $props();
 
 	const headingId = $props.id();
-	// The design's two headers: a section (settings, a user tab, anything with a mark)
-	// names itself at body size; a dashboard card carries the h6.
+	// A section or anything with a mark is titled at body size; a dashboard card at h6.
 	const small = $derived(Boolean(Icon || leading || section));
 </script>
 
@@ -59,10 +58,7 @@
 				{#if leading}
 					{@render leading()}
 				{:else if Icon}
-					<span
-						aria-hidden="true"
-						class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
-					>
+					<span aria-hidden="true" class={cn(ICON_TILE, 'size-8')}>
 						<Icon size={ICON.sm} />
 					</span>
 				{/if}

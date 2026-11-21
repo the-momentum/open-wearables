@@ -42,7 +42,7 @@
 	class={cn(
 		'flex cursor-pointer flex-col gap-3 px-4 py-3 sm:px-5',
 		LIST_ROW,
-		// Open, most of it is the panel, which a click leaves alone.
+		// An open row is mostly its panel, which a click does not toggle.
 		open && 'hover:bg-transparent'
 	)}
 >
@@ -64,9 +64,9 @@
 			<!-- Wraps rather than truncates: on a phone the line is half a sentence wide. -->
 			<span class="flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
 				{#if run.error}
-					<span class="line-clamp-2 text-xs break-words text-danger" title={run.error}
-						>{run.error}</span
-					>
+					<span class="line-clamp-2 text-xs break-words text-danger" title={run.error}>
+						{run.error}
+					</span>
 				{:else if run.message}
 					<span class="line-clamp-2 break-words {MICRO}" title={run.message}>{run.message}</span>
 				{/if}

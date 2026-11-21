@@ -125,8 +125,6 @@ describe('statTiles', () => {
 		expect(points.parts).toEqual([{ label: 'day and session rows', value: '0' }]);
 	});
 
-	// `count` sums every category, meals and activity included, and only three
-	// have a field: the rest is named so the parts add up to the whole.
 	it('names whatever the three known categories do not account for', () => {
 		const [, , , records] = statTiles(
 			info({ event_records: { count: 1200, workouts: 400, sleep: 560, menstrual_cycles: 40 } })
@@ -139,8 +137,6 @@ describe('statTiles', () => {
 		]);
 	});
 
-	// The whole figure sits behind a compact one, and only where compacting
-	// changed it: "220" has nothing more to say.
 	it('keeps the exact count behind a compacted event figure', () => {
 		const [, , points, records] = statTiles(
 			info({

@@ -31,7 +31,7 @@ export const TITLE = 'text-lg font-medium text-foreground';
 /** The headline figure of a stat card: the design's h3. */
 export const STAT = 'text-4xl font-medium text-foreground tabular-nums';
 
-/** The design's tooltip bubble: a hint's, and a chart's reading under the pointer. */
+/** A tooltip bubble: a hint's, and a chart's reading under the pointer. */
 export const TOOLTIP =
 	'rounded-lg bg-inverted px-2.5 py-1.5 text-xs text-inverted-foreground shadow-md';
 

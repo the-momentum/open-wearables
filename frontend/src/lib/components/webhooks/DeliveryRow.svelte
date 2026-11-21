@@ -97,6 +97,5 @@
 		</div>
 	{/if}
 {:else}
-	<!-- In a card's short list a phone moves the timing under the event, as the design does. -->
 	<div class="flex flex-wrap items-center gap-x-2 gap-y-1">{@render summary(true)}</div>
 {/if}

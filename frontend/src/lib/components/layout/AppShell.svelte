@@ -7,9 +7,8 @@
 	let { children }: { children: Snippet } = $props();
 </script>
 
-<!-- dvh, not vh: vh ignores the collapsing mobile address bar. With the sidebar,
-     a page is one card-coloured panel on the grey page; a phone has no room for
-     that frame, so there the page itself is the card. -->
+<!-- dvh, not vh: vh ignores the collapsing mobile address bar. A phone has no
+     room for the panel's frame, so there the page itself is the card. -->
 <div class="min-h-dvh bg-card lg:bg-page">
 	<Sidebar />
 

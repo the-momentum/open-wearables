@@ -24,7 +24,7 @@
 	{/snippet}
 
 	{#snippet when()}
-		<!-- The record card's time row: the date muted, the clock time not. -->
+		<!-- As in TimeRange: the date muted, the clock time not. -->
 		<span class="flex flex-wrap items-center gap-x-2 {MICRO}">
 			<span>{formatLocalDay(meal.timestamp, null)}</span>
 			<span class="text-secondary-foreground tabular-nums">

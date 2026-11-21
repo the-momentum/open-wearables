@@ -22,9 +22,7 @@
 	} = $props();
 </script>
 
-<!-- A grid, so a phone keeps the actions beside the name and lays the small print
-     under both, in line with the name; from sm up the lead and the actions span
-     both lines. A long name truncates rather than pushing the actions off. -->
+<!-- A grid, so a long name truncates rather than pushing the actions off. -->
 <div
 	class={cn(
 		'grid items-center gap-x-3 gap-y-2 py-3 sm:gap-y-0.5',

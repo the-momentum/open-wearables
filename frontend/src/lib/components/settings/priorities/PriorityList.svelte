@@ -103,7 +103,6 @@
 				<GripVertical size={ICON.xs} />
 			</span>
 
-			<!-- The rank is what the list is about, so it is what you see first. -->
 			<RankBadge rank={index + 1} />
 
 			<div class="flex min-w-0 flex-1 items-center gap-2.5">{@render row(item)}</div>

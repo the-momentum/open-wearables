@@ -66,8 +66,7 @@
 		};
 	});
 
-	// In the top layer, so no card's `overflow` clips it - a scrolling list would
-	// otherwise cut off the bubble of its first row. Being out of flow, it is
+	// In the top layer, so no card's `overflow` clips it. Out of flow, it is
 	// placed by hand and follows the trigger while anything scrolls.
 	function place() {
 		if (!button || !bubble || !arrow) return;
@@ -140,8 +139,7 @@
 		{/if}
 	</button>
 
-	<!-- Above the trigger, as the design draws it, with the arrow on the
-	     trigger's centre wherever the bubble ends up. -->
+	<!-- The arrow stays on the trigger's centre wherever the bubble ends up. -->
 	<span
 		bind:this={bubble}
 		id={bubbleId}

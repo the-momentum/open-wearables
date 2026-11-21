@@ -39,8 +39,7 @@
 	<span class="font-mono uppercase">{figure.exact} {figure.label}</span>
 {/snippet}
 
-<!-- The design's frame: a surface band round a card, from the two-column grid up.
-     A phone stacks the tiles inside one shared band instead, which is the page's. -->
+<!-- A surface band round the card from `sm` up; on a phone the page is the band. -->
 <div class="h-full sm:rounded-lg sm:border sm:border-border sm:bg-surface sm:p-1">
 	<div
 		class="flex h-full flex-col gap-3 rounded-lg border border-border-subtle bg-card p-4 sm:gap-4 sm:p-3.5"
@@ -59,8 +58,7 @@
 			<div class="flex shrink-0 flex-col items-end sm:h-14 sm:items-center sm:justify-center">
 				<div class="flex items-center gap-1.5">
 					<span class={STAT}>{value}</span>
-					<!-- The exact figures are the desktop design's alone: the phone tile has
-					     neither the info icon nor the bubbles. -->
+					<!-- Hover-only, so a phone tile goes without. -->
 					{#if exact}
 						<span class="hidden sm:contents">
 							<Hint label="Exact {label.toLowerCase()}">

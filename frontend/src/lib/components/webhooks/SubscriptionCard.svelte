@@ -7,7 +7,7 @@
 	import { togglesCard } from '$lib/components/events/accordion';
 	import Button from '$lib/components/ui/Button.svelte';
 	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
-	import { ICON } from '$lib/components/ui/icon';
+	import { ICON, ICON_TILE } from '$lib/components/ui/icon';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import LinkButton from '$lib/components/ui/LinkButton.svelte';
 	import { HEADING, MICRO } from '$lib/components/ui/typography';
@@ -47,9 +47,7 @@
 </script>
 
 <!-- The heading's button is what the keyboard and assistive tech drive; the
-     handler only widens the pointer target to the whole card, as AccordionCard
-     does. Its own anatomy differs: the actions share the header row, and the
-     open card is outlined rather than split by an edge-to-edge rule. -->
+     handler only widens the pointer target to the whole card. -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <article
@@ -59,7 +57,6 @@
 		open ? 'border-primary/40' : 'border-border'
 	)}
 >
-	<!-- A phone puts the actions on a row of their own, under the URL. -->
 	<div
 		class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
 	>
@@ -71,10 +68,7 @@
 				aria-controls={panelId}
 				class="flex w-full cursor-pointer items-center gap-3 text-left"
 			>
-				<span
-					aria-hidden="true"
-					class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
-				>
+				<span aria-hidden="true" class={ICON_TILE}>
 					<Webhook size={ICON.md} />
 				</span>
 				<span class="flex min-w-0 flex-col gap-0.5">

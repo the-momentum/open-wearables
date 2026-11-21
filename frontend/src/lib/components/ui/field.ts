@@ -12,8 +12,8 @@ const SELECT_BOX =
 	'border border-border bg-background pr-7 pl-2 text-xs text-foreground tabular-nums transition-colors hover:border-surface-strong';
 
 /**
- * A native select with room for a drawn chevron on the right: the design's
- * compact filter above a list (`md`), and the per-page picker beside a pager (`sm`).
+ * A native select with room for a drawn chevron on the right: a filter above a
+ * list (`md`), and the per-page picker beside a pager (`sm`).
  */
 export const SELECT = {
 	md: `${SELECT_BOX} h-9 rounded-lg`,

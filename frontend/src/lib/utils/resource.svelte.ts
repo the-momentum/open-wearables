@@ -8,10 +8,9 @@ import { navigating, page } from '$app/state';
  * The URL is a function so the caller's reactive reads happen inside the effect:
  * pass the string and it is read once, at setup, and never refetched.
  *
- * It refetches when that URL changes, and when the page's data is invalidated -
- * a deletion has to show in the totals beside the list. A navigation that leaves
- * the URL as it was does not: clicking the tab you are on, or stepping to the
- * next page of a list the figures do not depend on, must not blank them.
+ * It refetches when that URL changes or the page's data is invalidated (a
+ * deletion has to show in the totals), not on a navigation that leaves the URL
+ * as it was.
  */
 export function resource<T>(url: () => string, fallback: T | null = null) {
 	let value = $state<T | null>(fallback);
@@ -20,8 +19,8 @@ export function resource<T>(url: () => string, fallback: T | null = null) {
 	// Derived, so a recomputed but identical string does not count as a change.
 	const target = $derived(url());
 	let shown: string | null = null;
-	// Requests are told apart by number rather than by the effect's teardown: a
-	// run that keeps what is on screen must not orphan a request still in flight.
+	// Numbered, not torn down with the effect: a run that keeps what is on screen
+	// must not orphan a request still in flight.
 	let latest = 0;
 	let gone = false;
 

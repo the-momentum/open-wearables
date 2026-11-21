@@ -8,6 +8,7 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import CursorBar from '$lib/components/events/CursorBar.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
+	import { RESULTS } from '$lib/components/ui/table';
 	import { cursorHrefs, filterSearch } from '$lib/lists/cursor';
 	import { providerLabel } from '$lib/providers/labels';
 	import type { PageData } from './$types';
@@ -25,7 +26,7 @@
      the winning source per day itself. Each card names the one it used. -->
 <FilterBar period={data.period} {hrefFor} providers={[]} labelFor={label} selected="" />
 
-<div class="flex flex-col gap-4 border-t border-border pt-6">
+<div class={RESULTS}>
 	<ActivitySummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 
 	{#if days.length === 0}

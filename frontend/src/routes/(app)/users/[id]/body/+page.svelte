@@ -11,7 +11,9 @@
 	import FieldGroups from '$lib/components/ui/FieldGroups.svelte';
 	import Figures from '$lib/components/ui/Figures.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
+	import { RESULTS } from '$lib/components/ui/table';
 	import { providerLabel } from '$lib/providers/labels';
+	import { cn } from '$lib/utils/cn';
 	import { withParams } from '$lib/utils/url';
 	import type { PageData } from './$types';
 
@@ -51,7 +53,7 @@
 		/>
 	</Card>
 {:else}
-	<div class="flex flex-col gap-6 border-t border-border pt-6">
+	<div class={cn(RESULTS, 'gap-6')}>
 		<div class="flex flex-col gap-3">
 			<Figures figures={composition(data.body)} label="Body composition" />
 			<p class="flex items-center gap-1.5 {MICRO}">

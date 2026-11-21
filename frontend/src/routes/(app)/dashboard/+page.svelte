@@ -26,10 +26,8 @@
 		/>
 	</Card>
 {:else}
-	<!-- 12px apart on a phone (the design's), where the shell would put 16. -->
 	<div class="flex flex-col gap-3 sm:gap-4">
-		<!-- A phone stacks the four tiles in one shared band; from two columns up
-		     each tile draws its own. -->
+		<!-- One shared band on a phone; separate tiles from two columns up. -->
 		<section
 			aria-label="Platform totals"
 			class="grid gap-1 rounded-lg border border-border bg-surface p-1 sm:grid-cols-2 sm:gap-4
@@ -41,7 +39,7 @@
 		</section>
 
 		<div class="grid gap-3 sm:gap-4 lg:grid-cols-2">
-			<!-- The design's height, with the ring centred in whatever the bar leaves. -->
+			<!-- The design's height; the ring centres in what the bar leaves. -->
 			<Card
 				title="Connections"
 				description="How much of the user base is sending anything"

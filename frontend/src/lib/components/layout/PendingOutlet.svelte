@@ -17,7 +17,7 @@
 {#if switching}
 	<TabSkeleton />
 {:else}
-	<!-- Stacks a tab's sections as the panel stacks the page's, so no tab needs a wrapper of its own. -->
+	<!-- Stacks a tab's sections, so no tab needs a wrapper of its own. -->
 	<div
 		class="flex flex-col gap-4 transition-opacity duration-150 {refreshing
 			? 'pointer-events-none opacity-60'

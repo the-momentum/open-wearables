@@ -23,10 +23,8 @@
 	{#each items as item (item.value)}
 		{@const active = item.value === selected}
 		{#if item.href}
-			<!-- The chosen segment stays a link but goes nowhere: its href can differ
-			     from the current URL (an implicit default, a dropped cursor), and
-			     following it would reload what is already on screen. A modified click
-			     still opens it in a new tab. -->
+			<!-- A plain click on the chosen segment goes nowhere: its href can differ
+			     from the URL (an implicit default) and would reload what is on screen. -->
 			<a
 				href={item.href}
 				aria-current={active ? 'true' : undefined}

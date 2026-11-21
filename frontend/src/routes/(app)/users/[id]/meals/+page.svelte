@@ -6,6 +6,7 @@
 	import MealSummary from '$lib/components/meals/MealSummary.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import { RESULTS } from '$lib/components/ui/table';
 	import CursorBar from '$lib/components/events/CursorBar.svelte';
 	import DeleteEventDialog from '$lib/components/events/DeleteEventDialog.svelte';
 	import { providerLabel } from '$lib/providers/labels';
@@ -36,7 +37,7 @@
 	selected={data.provider}
 />
 
-<div class="flex flex-col gap-4 border-t border-border pt-6">
+<div class={RESULTS}>
 	<MealSummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 
 	{#if meals.length === 0}

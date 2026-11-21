@@ -10,7 +10,7 @@
 <div class="flex flex-col gap-2">
 	<label for={fieldId} class="text-sm font-medium">{label}</label>
 	<div class="flex items-center gap-3">
-		<!-- The design's grey value box: borderless, so it reads as something to copy, not to edit. -->
+		<!-- Borderless, so it reads as something to copy, not to edit. -->
 		<input
 			id={fieldId}
 			readonly
