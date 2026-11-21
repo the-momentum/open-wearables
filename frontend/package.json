@@ -45,7 +45,9 @@
 		"vitest-browser-svelte": "^3.1.0"
 	},
 	"dependencies": {
+		"@internationalized/date": "^3.12.4",
 		"@lucide/svelte": "^1.73.0",
+		"bits-ui": "^2.21.0",
 		"clsx": "^2.1.1",
 		"tailwind-merge": "^3.7.0"
 	}

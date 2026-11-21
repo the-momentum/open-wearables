@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { signIn } from './support';
+import { signIn, typeDate } from './support';
 
 const sent = async (request: APIRequestContext) =>
 	(await (await request.get('http://localhost:8787/__last-seed')).json()).request;
@@ -79,8 +79,8 @@ test('lets the picked providers set the connection count', async ({ page, reques
 
 test('applies one window to every kind of data', async ({ page, request }) => {
 	await page.getByRole('button', { name: 'Dates' }).click();
-	await page.getByLabel('From', { exact: true }).fill('2026-01-01');
-	await page.getByLabel('To', { exact: true }).fill('2026-03-31');
+	await typeDate(page.getByRole('group', { name: 'From' }), '2026-01-01');
+	await typeDate(page.getByRole('group', { name: 'To' }), '2026-03-31');
 	await page.getByRole('button', { name: 'Generate', exact: true }).click();
 	await expect(page.getByText('Queued one user.')).toBeVisible();
 

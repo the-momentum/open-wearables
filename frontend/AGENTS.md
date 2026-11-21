@@ -123,6 +123,10 @@ heavy aggregate runs only on the tab that shows it.
   class strings.
 - Component `<style>` is scoped. `app.css` holds only tokens and base element
   styles.
+- Pickers: a select's open list is styled in `app.css` (`base-select`, Chromium only;
+  elsewhere the system list). Dates use `DateField` / `DateRangeField`: bits-ui
+  segments and a drawn calendar under a fine pointer, the native input on touch.
+  Their classes live in `ui/calendar.ts`.
 - Numbers have no thousands separator (`formatNumber`). `formatCompact` is for
   estimates only.
 

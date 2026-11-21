@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DateRangeField from '$lib/components/ui/DateRangeField.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
 	import { FIELD } from '$lib/components/ui/field';
 	import { MICRO } from '$lib/components/ui/typography';
@@ -31,11 +32,13 @@
 	<div class="flex flex-wrap items-center gap-2">
 		<Segmented label="Data spans" {items} {selected} onselect={pick} />
 		{#if !('months' in value)}
-			<div class="flex items-center gap-2">
-				<input type="date" aria-label="From" max={value.to} bind:value={value.from} class={DATE} />
-				<span aria-hidden="true" class="text-muted-foreground">–</span>
-				<input type="date" aria-label="To" min={value.from} bind:value={value.to} class={DATE} />
-			</div>
+			<DateRangeField
+				label="Date range"
+				from={value.from}
+				to={value.to}
+				class={DATE}
+				onchange={(range) => (value = range)}
+			/>
 		{/if}
 	</div>
 </div>

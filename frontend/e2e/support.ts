@@ -21,3 +21,25 @@ export function pager(page: Page): Locator {
 
 /** The app caches some answers in its own process, which /__reset on the mock cannot reach. */
 export const resetAppCache = (request: APIRequestContext) => request.post('/__e2e/reset');
+
+/**
+ * Types a `YYYY-MM-DD` day into a date field's segments and commits it, as a
+ * keyboard user would: the desktop field is segments, not a native input. Year
+ * and month go first, so a 31st is never checked against a shorter month.
+ */
+export async function typeDate(field: Locator, iso: string): Promise<void> {
+	const [year, month, day] = iso.split('-');
+	const keyboard = field.page().keyboard;
+	for (const [part, digits] of [
+		['year', year],
+		['month', month],
+		['day', day]
+	]) {
+		await field.getByRole('spinbutton', { name: new RegExp(`^${part}`) }).click();
+		await keyboard.type(digits);
+	}
+	await keyboard.press('Enter');
+}
+
+/** A `YYYY-MM-DD` day as the date field shows it: en-GB, day first. */
+export const shownDate = (iso: string) => iso.split('-').reverse().join('/');

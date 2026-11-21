@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import DateField from '$lib/components/ui/DateField.svelte';
+	import DateRangeField from '$lib/components/ui/DateRangeField.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
 	import {
 		ALL_TIME,
@@ -40,9 +42,8 @@
 		}))
 	);
 
-	// Borderless inputs inside one bordered box, so the pair reads as one field.
-	const field =
-		'bg-transparent text-xs text-foreground tabular-nums focus:outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-50';
+	// The design's period field: a filled box beside the segments, full width on a phone.
+	const box = 'h-9 w-full justify-center rounded-lg bg-surface px-2.5 text-xs sm:w-auto';
 
 	function pick(changes: Record<string, string | null>) {
 		// noScroll: changing a date must not throw the reader back to the header.
@@ -54,40 +55,23 @@
 <div class="flex flex-wrap items-center gap-2">
 	<Segmented label="Period" {items} selected={period.mode} />
 
-	{#if period.mode !== 'all'}
-		<div
-			class="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface px-2.5 focus-within:outline-2 focus-within:outline-offset-2
-				focus-within:outline-ring sm:inline-flex sm:w-auto"
-		>
-			<label class="sr-only" for="period-from">{period.mode === 'day' ? 'Day' : 'From'}</label>
-			<input
-				id="period-from"
-				type="date"
-				value={period.from}
-				max={period.mode === 'day' ? today : (period.to ?? today)}
-				class={field}
-				onchange={(event) =>
-					pick(
-						period.mode === 'day'
-							? { from: event.currentTarget.value, to: event.currentTarget.value }
-							: { from: event.currentTarget.value }
-					)}
-			/>
-
-			{#if period.mode === 'range'}
-				<span class="text-xs text-muted-foreground">–</span>
-				<label class="sr-only" for="period-to">To</label>
-				<input
-					id="period-to"
-					type="date"
-					value={period.to}
-					min={period.from ?? undefined}
-					max={today}
-					class={field}
-					onchange={(event) => pick({ to: event.currentTarget.value })}
-				/>
-			{/if}
-		</div>
+	{#if period.mode === 'day'}
+		<DateField
+			label="Day"
+			value={period.from ?? today}
+			max={today}
+			class={box}
+			onchange={(day) => pick({ from: day, to: day })}
+		/>
+	{:else if period.mode === 'range'}
+		<DateRangeField
+			label="Date range"
+			from={period.from ?? ''}
+			to={period.to ?? today}
+			max={today}
+			class={box}
+			onchange={(range) => pick(range)}
+		/>
 	{/if}
 
 	{#if period.mode === 'range'}
