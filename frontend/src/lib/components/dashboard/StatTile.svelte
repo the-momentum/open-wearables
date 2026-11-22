@@ -55,7 +55,9 @@
 				<span class="truncate text-sm text-foreground">{label}</span>
 			</div>
 
-			<div class="flex shrink-0 flex-col items-end sm:h-14 sm:items-center sm:justify-center">
+			<div
+				class="flex shrink-0 flex-col items-end sm:relative sm:h-14 sm:items-center sm:justify-center"
+			>
 				<div class="flex items-center gap-1.5">
 					<span class={STAT}>{value}</span>
 					<!-- Hover-only, so a phone tile goes without. -->
@@ -70,7 +72,12 @@
 						</span>
 					{/if}
 				</div>
-				{#if note}<span class="text-xs text-foreground">{note}</span>{/if}
+				<!-- Out of flow from sm up, so the figure lines up with the tiles that have no note. -->
+				{#if note}
+					<span class="text-xs text-foreground sm:absolute sm:inset-x-0 sm:top-12 sm:text-center">
+						{note}
+					</span>
+				{/if}
 			</div>
 		</div>
 
