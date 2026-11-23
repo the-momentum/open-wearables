@@ -1822,6 +1822,7 @@ class Garmin247Data(Base247DataTemplate):
         all_sleep_details: list[EventRecordDetailCreate] = []
         all_mct_details: list[MenstrualCycleDetailCreate] = []
         all_health_scores: list[HealthScoreCreate] = []
+        sleep_scores: dict[str | UUID, HealthScoreCreate] = {}
         body_battery_peaks: list[HealthScoreCreate] = []
         epoch_items: list[dict[str, Any]] = []
 
@@ -1866,7 +1867,8 @@ class Garmin247Data(Base247DataTemplate):
                             all_records.append(record)
                             all_sleep_details.append(detail)
                         if health_score:
-                            all_health_scores.append(health_score)
+                            # Several deliveries of one night in a batch: the last one's score stands, like its record
+                            sleep_scores[normalized.get("garmin_summary_id") or health_score.id] = health_score
                         for raw_nap in normalized.get("naps", []):
                             nap_result = self._build_nap_record(
                                 raw_nap, user_id, normalized.get("garmin_summary_id"), normalized.get("validation")
@@ -2059,6 +2061,7 @@ class Garmin247Data(Base247DataTemplate):
 
             count += WriteCounts(len(inserted_set), 0)
 
+        all_health_scores.extend(sleep_scores.values())
         if all_health_scores:
             count += health_score_service.bulk_create(db, all_health_scores)
             db.commit()

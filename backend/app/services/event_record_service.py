@@ -342,6 +342,10 @@ class EventRecordService(
             )
         return False
 
+    def claim_sleep_stored_without_id(self, db_session: DbSession, user_id: UUID, record: EventRecordCreate) -> None:
+        """Give the record's external_id to the overlapping night of its provider stored without one."""
+        self.crud.claim_sleep_stored_without_id(db_session, user_id, record)
+
     def find_adjacent_sleep_record(
         self,
         db_session: DbSession,

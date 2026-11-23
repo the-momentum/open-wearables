@@ -13,10 +13,11 @@ Copies of one night are the sessions of one (user, provider, external_id) starti
 the newest; a shared id further apart is left alone. Rows stored before created_at existed (#853)
 hold the epoch, so their age is unknown: there, the SDK's partial syncs of one night share an id,
 and the copy spanning all the others is kept, or the group is left alone if none does. Health
-scores, session aggregates and details the keeper lacks move onto it from the newest copy that has
-them; the rest cascade with the deleted copies. A provider score kept at a deleted copy's end,
-unlinked to it, goes too unless a stored night ends there. Coverage is refreshed and the deleted
-copies' days are queued for the rollup. Internal sleep scores of those days are not recomputed.
+scores and details the keeper lacks move onto it from the newest copy that has them; the rest,
+session aggregates included, cascade with the deleted copies, since those describe the copy's window.
+A provider score kept at a deleted copy's end, unlinked to it, goes too unless a stored night ends
+there. Coverage is refreshed, and the days of the copies and keepers are queued for the rollup,
+which recomputes the keepers' aggregates. Internal sleep scores of those days are not recomputed.
 
 Idempotent: a re-run finds nothing. Runs once per instance through data_migration_service.
 
@@ -108,21 +109,6 @@ _MOVE_SCORES = text(f"""
     WHERE h.id = c.id
 """)
 
-_MOVE_AGGREGATES = text(f"""
-    UPDATE event_record_aggregate a SET record_id = c.keeper_id
-    FROM (
-        SELECT DISTINCT ON (p.keeper_id, x.series_type_definition_id, x.computed_by) x.id, p.keeper_id
-        FROM {_PAIRS} JOIN event_record_aggregate x ON x.record_id = p.id
-        WHERE NOT EXISTS (
-            SELECT 1 FROM event_record_aggregate k
-            WHERE k.record_id = p.keeper_id AND k.series_type_definition_id = x.series_type_definition_id
-              AND k.computed_by = x.computed_by
-        )
-        ORDER BY p.keeper_id, x.series_type_definition_id, x.computed_by, p.rank
-    ) c
-    WHERE a.id = c.id
-""")
-
 _MOVE_DETAILS = text(f"""
     UPDATE sleep_details d SET record_id = c.keeper_id
     FROM (
@@ -135,6 +121,11 @@ _MOVE_DETAILS = text(f"""
 """)
 
 _DELETE = text("DELETE FROM event_record WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id")
+
+_KEEPERS = text("""
+    SELECT data_source_id, start_datetime, end_datetime, zone_offset
+    FROM event_record WHERE id = ANY(CAST(:keepers AS uuid[]))
+""")
 
 # A provider scores a night at its end without linking the record (Garmin), so a deleted copy's score would stay
 _DROP_COPY_SCORES = text("""
@@ -153,7 +144,7 @@ _DROP_COPY_SCORES = text("""
 
 def _remove(db: Session, rows: Sequence[Row]) -> int:
     params = {"ids": [row.id for row in rows], "keepers": [row.keeper_id for row in rows]}
-    for statement in (_MOVE_SCORES, _MOVE_AGGREGATES, _MOVE_DETAILS):
+    for statement in (_MOVE_SCORES, _MOVE_DETAILS):
         db.execute(statement, params)
     deleted = len(db.execute(_DELETE, params).fetchall())
     db.execute(
@@ -165,11 +156,12 @@ def _remove(db: Session, rows: Sequence[Row]) -> int:
         },
     )
     data_type_coverage_repository.refresh_events(db, {(row.user_id, row.provider, "sleep") for row in rows})
+    # The rollup recomputes the keepers' session aggregates from their own window
     mark_dirty_days(
         db,
         [
             day
-            for row in rows
+            for row in [*rows, *db.execute(_KEEPERS, params)]
             for day in local_days(row.data_source_id, row.start_datetime, row.end_datetime, row.zone_offset)
         ],
     )

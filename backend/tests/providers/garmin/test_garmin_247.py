@@ -718,6 +718,27 @@ class TestGarmin247Data:
         assert count == 3
         assert [row.avg for row in db.query(SeriesAggregate)] == [Decimal("84")]
 
+    def test_process_items_batch_keeps_one_score_for_a_night_sent_twice(
+        self, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
+    ) -> None:
+        """The later delivery shortens the night: only its score stays, not the earlier one past the new end."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        first = {**sample_sleep, "overallSleepScore": {"value": 80}}
+        shortened = {
+            **sample_sleep,
+            "durationInSeconds": 25200,
+            "lightSleepDurationInSeconds": 10800,
+            "overallSleepScore": {"value": 84},
+        }
+
+        garmin_247.process_items_batch(db, user.id, "sleeps", [first, shortened])
+
+        scores = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        assert [(score.value, score.recorded_at) for score in scores] == [
+            (84, datetime(2024, 1, 15, 6, tzinfo=timezone.utc))
+        ]
+
     def test_process_items_batch_hrv_missing_start_time(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data with missing start time."""
         user = UserFactory()

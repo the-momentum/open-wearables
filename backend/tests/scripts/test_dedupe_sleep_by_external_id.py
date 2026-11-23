@@ -4,11 +4,14 @@ import importlib.util
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
+from uuid import uuid4
 
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord, HealthScore, SleepDetails
+from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore, SleepDetails
 from app.schemas.enums import ProviderName
+from app.schemas.enums.series_types import SeriesType, get_series_type_id
 from tests.factories import DataSourceFactory, EventRecordFactory, HealthScoreFactory, SleepDetailsFactory, UserFactory
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "data_migrations" / "dedupe_sleep_by_external_id.py"
@@ -26,7 +29,8 @@ def _load_module() -> ModuleType:
     return module
 
 
-dedupe_sleep = _load_module().dedupe_sleep
+_module = _load_module()
+dedupe_sleep = _module.dedupe_sleep
 
 
 def _sleep(
@@ -71,6 +75,32 @@ class TestDedupeSleepByExternalId:
         assert db.get(EventRecord, old_id) is None
         assert db.get(EventRecord, new.id) is not None
         assert db.get(HealthScore, score.id).event_record_id == new.id
+
+    def test_copy_aggregates_go_with_it_and_the_keepers_days_are_rolled_up(
+        self, db: Session, mocker: MockerFixture
+    ) -> None:
+        ds = _source(ProviderName.WHOOP)
+        old = _sleep(ds, "night-1")
+        new = _sleep(ds, "night-1", start=START + timedelta(hours=5), ingested=12)
+        db.add(
+            EventRecordAggregate(
+                id=uuid4(),
+                record_id=old.id,
+                series_type_definition_id=get_series_type_id(SeriesType.heart_rate),
+                computed_by="open_wearables",
+                avg=55,
+                count=1,
+            )
+        )
+        db.flush()
+        mark_dirty_days = mocker.patch.object(_module, "mark_dirty_days", autospec=True)
+
+        assert dedupe_sleep(db, dry_run=False) == 1
+        db.expire_all()
+
+        assert db.query(EventRecordAggregate).count() == 0
+        [queued] = mark_dirty_days.call_args.args[1:]
+        assert (ds.id, new.end_datetime.date()) in set(queued)
 
     def test_drops_the_unlinked_score_at_a_deleted_copys_end(self, db: Session) -> None:
         ds = _source(ProviderName.GARMIN)

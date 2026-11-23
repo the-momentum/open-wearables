@@ -170,6 +170,37 @@ class TestEventRecordRepository:
 
         assert [score.id for score in db.query(HealthScore).filter(HealthScore.user_id == user.id)] == [unrelated.id]
 
+    def test_bulk_create_leaves_a_delivery_unmapped_when_another_night_holds_its_times(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Like an insert that conflicts: the details of the delivery must not land on the stale night."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def night(external_id: str, shift_hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category="sleep",
+                type="sleep_session",
+                source_name="Garmin",
+                start_datetime=start + timedelta(hours=shift_hours),
+                end_datetime=start + timedelta(hours=shift_hours + 8),
+                external_id=external_id,
+            )
+
+        stale, other = night("x1-sleep", 0), night("x2-sleep", 1)
+        event_repo.bulk_create(db, [stale, other])
+        moved = night("x1-sleep", 1)
+
+        stored = event_repo.bulk_create(db, [moved])
+        db.commit()
+
+        assert moved.id not in stored
+        assert db.get(EventRecord, stale.id).start_datetime == start
+
     def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""
         # Arrange
