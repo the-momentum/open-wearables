@@ -15,10 +15,14 @@ from uuid import uuid4
 
 import pytest
 import redis
+import time_machine
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
+from app.constants.series_types.sdk import SleepPhase
 from app.constants.sleep import SleepStageType
+from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+from app.integrations.redis_client import get_redis_client
 from app.models import DataSource, EventRecord, HealthScore, SleepDetails, User
 from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
@@ -31,8 +35,11 @@ from app.schemas.providers.mobile_sdk import (
     SyncRequest,
 )
 from app.services.sdk.sleep_service import (
+    _apply_transition,
     _calculate_final_metrics,
+    _create_new_sleep_state,
     _drop_leading_awake,
+    active_users_key,
     finish_sleep,
     handle_sleep_data,
     is_ready_to_finish,
@@ -53,6 +60,14 @@ def _sleep_sessions(db: Session, user: User) -> list[EventRecord]:
         .filter(DataSource.user_id == user.id, EventRecord.category == "sleep")
         .all()
     )
+
+
+def _stages(*stages: tuple[str, str, str]) -> list[SleepStateStage]:
+    """Build state stages from (stage, start, end) tuples."""
+    return [
+        SleepStateStage(stage=SleepStageType(stage), start_time=_dt(start), end_time=_dt(end))
+        for stage, start, end in stages
+    ]
 
 
 def _sleep_request(*samples: tuple[str, str, str, str], source: dict[str, str] | None = None) -> SyncRequest:
@@ -1285,119 +1300,75 @@ class TestDropLeadingAwake:
     """Awake only counts once sleep has begun — decided on the whole night, not per upload."""
 
     def test_awake_before_first_sleep_stage_is_dropped(self) -> None:
-        """Awake recorded before the night's first sleep stage is pre-sleep wakefulness."""
-        stages = [
-            SleepStateStage(
-                stage=SleepStageType.LIGHT,
-                start_time=_dt("2026-03-23T03:40:00Z"),
-                end_time=_dt("2026-03-23T05:00:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.AWAKE,
-                start_time=_dt("2026-03-23T03:00:00Z"),
-                end_time=_dt("2026-03-23T03:40:00Z"),
-            ),
-        ]
+        stages = _stages(
+            ("light", "2026-03-23T03:40:00Z", "2026-03-23T05:00:00Z"),
+            ("awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+        )
 
-        kept = _drop_leading_awake(stages)
-
-        assert [s.stage for s in kept] == [SleepStageType.LIGHT]
-
-    def test_awake_after_sleep_began_is_kept(self) -> None:
-        """Awake that follows the first sleep stage is an interruption and must survive."""
-        stages = [
-            SleepStateStage(
-                stage=SleepStageType.LIGHT,
-                start_time=_dt("2026-03-22T23:00:00Z"),
-                end_time=_dt("2026-03-23T01:00:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.AWAKE,
-                start_time=_dt("2026-03-23T03:00:00Z"),
-                end_time=_dt("2026-03-23T03:40:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.REM,
-                start_time=_dt("2026-03-23T03:40:00Z"),
-                end_time=_dt("2026-03-23T05:00:00Z"),
-            ),
-        ]
-
-        kept = _drop_leading_awake(stages)
-
-        assert [s.stage for s in kept] == [SleepStageType.LIGHT, SleepStageType.AWAKE, SleepStageType.REM]
-
-    def test_awake_only_session_is_dropped_entirely(self) -> None:
-        """A night that never reached sleep has no stages left, so it is discarded."""
-        stages = [
-            SleepStateStage(
-                stage=SleepStageType.AWAKE,
-                start_time=_dt("2026-03-23T03:00:00Z"),
-                end_time=_dt("2026-03-23T03:40:00Z"),
-            ),
-        ]
-
-        assert _drop_leading_awake(stages) == []
+        assert [s.stage for s in _drop_leading_awake(stages)] == [SleepStageType.LIGHT]
 
     def test_awake_kept_when_the_stored_night_starts_at_it(self) -> None:
         """Awake the stored record already counted survives a later merge."""
-        stages = [
-            SleepStateStage(
-                stage=SleepStageType.AWAKE,
-                start_time=_dt("2026-03-22T23:00:00Z"),
-                end_time=_dt("2026-03-22T23:30:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.LIGHT,
-                start_time=_dt("2026-03-22T23:30:00Z"),
-                end_time=_dt("2026-03-23T03:00:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.LIGHT,
-                start_time=_dt("2026-03-23T03:00:00Z"),
-                end_time=_dt("2026-03-23T07:00:00Z"),
-            ),
-        ]
+        stages = _stages(
+            ("awake", "2026-03-22T23:00:00Z", "2026-03-22T23:30:00Z"),
+            ("light", "2026-03-22T23:30:00Z", "2026-03-23T03:00:00Z"),
+            ("light", "2026-03-23T03:00:00Z", "2026-03-23T07:00:00Z"),
+        )
 
-        kept = _drop_leading_awake(stages, protect_from=_dt("2026-03-22T23:00:00Z"))
-
-        assert kept == stages
+        assert _drop_leading_awake(stages, protect_from=_dt("2026-03-22T23:00:00Z")) == stages
 
     def test_stages_from_the_first_sleep_stage_keep_their_order(self) -> None:
-        """Awake that starts with in_bed is kept in either order, and later ties keep the upload's order."""
-        stages = [
-            SleepStateStage(
-                stage=SleepStageType.AWAKE,
-                start_time=_dt("2026-03-22T23:00:00Z"),
-                end_time=_dt("2026-03-22T23:30:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.IN_BED,
-                start_time=_dt("2026-03-22T23:00:00Z"),
-                end_time=_dt("2026-03-23T07:00:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.LIGHT,
-                start_time=_dt("2026-03-22T23:30:00Z"),
-                end_time=_dt("2026-03-23T03:00:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.AWAKE,
-                start_time=_dt("2026-03-23T03:00:00Z"),
-                end_time=_dt("2026-03-23T03:40:00Z"),
-            ),
-            SleepStateStage(
-                stage=SleepStageType.LIGHT,
-                start_time=_dt("2026-03-23T03:00:00Z"),
-                end_time=_dt("2026-03-23T05:00:00Z"),
-            ),
-        ]
+        """Awake that starts with in_bed or follows sleep is kept, and ties keep the upload's order."""
+        stages = _stages(
+            ("awake", "2026-03-22T23:00:00Z", "2026-03-22T23:30:00Z"),
+            ("in_bed", "2026-03-22T23:00:00Z", "2026-03-23T07:00:00Z"),
+            ("light", "2026-03-22T23:30:00Z", "2026-03-23T03:00:00Z"),
+            ("awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+            ("light", "2026-03-23T03:00:00Z", "2026-03-23T05:00:00Z"),
+        )
 
         kept = _drop_leading_awake(stages)
 
         assert kept == stages
         metrics, _ = _calculate_final_metrics(kept)
         assert metrics["awake_seconds"] == 70 * 60
+
+
+class TestHasSleepStage:
+    """The state remembers whether the night has begun, so samples don't rescan its stages."""
+
+    @pytest.mark.parametrize(("stage", "expected"), [("light", True), ("in_bed", True), ("awake", False)])
+    def test_state_saved_without_the_flag_derives_it_from_its_stages(self, stage: str, expected: bool) -> None:
+        saved = {
+            "uuid": "s1",
+            "start_time": "2026-03-23T03:00:00Z",
+            "end_time": "2026-03-23T03:40:00Z",
+            "last_start_timestamp": "2026-03-23T03:00:00Z",
+            "last_end_timestamp": "2026-03-23T03:40:00Z",
+            "stages": [{"stage": stage, "start_time": "2026-03-23T03:00:00Z", "end_time": "2026-03-23T03:40:00Z"}],
+        }
+
+        assert SleepState.model_validate(saved).has_sleep_stage is expected
+
+    def test_first_sleep_stage_sets_the_flag(self, db: Session) -> None:
+        user_id = str(uuid4())
+        state = _create_new_sleep_state(_dt("2026-03-23T03:00:00Z"), _dt("2026-03-23T03:40:00Z"), provider="apple")
+
+        state = _apply_transition(
+            db, user_id, state, SleepPhase.AWAKE, _dt("2026-03-23T03:00:00Z"), _dt("2026-03-23T03:40:00Z"), "apple"
+        )
+        assert state.has_sleep_stage is False
+
+        state = _apply_transition(
+            db,
+            user_id,
+            state,
+            SleepPhase.ASLEEP_LIGHT,
+            _dt("2026-03-23T03:40:00Z"),
+            _dt("2026-03-23T05:00:00Z"),
+            "apple",
+        )
+        assert state.has_sleep_stage is True
 
 
 class TestSplitNightStartingWithAwake:
@@ -1413,34 +1384,6 @@ class TestSplitNightStartingWithAwake:
         ("N4", "light", "2026-03-23T03:40:00Z", "2026-03-23T05:00:00Z"),
         ("N5", "rem", "2026-03-23T05:00:00Z", "2026-03-23T07:00:00Z"),
     )
-
-    def test_awake_only_session_is_left_for_the_next_upload(self, mocker: MockerFixture, db: Session) -> None:
-        """An awake-only session writes nothing and stays in Redis for the rest of the night."""
-        mock_delete_state = mocker.patch("app.services.sdk.sleep_service.delete_sleep_state", autospec=True)
-        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
-        state = SleepState(
-            uuid=str(uuid4()),
-            source_name="Apple Watch",
-            provider="apple",
-            start_time=_dt("2026-03-23T03:00:00Z"),
-            end_time=_dt("2026-03-23T03:40:00Z"),
-            last_start_timestamp=_dt("2026-03-23T03:00:00Z"),
-            last_end_timestamp=_dt("2026-03-23T03:40:00Z"),
-            stages=[
-                SleepStateStage(
-                    stage=SleepStageType.AWAKE,
-                    start_time=_dt("2026-03-23T03:00:00Z"),
-                    end_time=_dt("2026-03-23T03:40:00Z"),
-                )
-            ],
-        )
-
-        finish_sleep(db, str(uuid4()), state)
-
-        mock_event_service.create.assert_not_called()
-        mock_event_service.create_detail.assert_not_called()
-        mock_event_service.find_adjacent_sleep_record.assert_not_called()
-        mock_delete_state.assert_not_called()
 
     def test_split_night_stores_one_session_with_its_awakening(self, mocker: MockerFixture, db: Session) -> None:
         """Two historical uploads of one night land as a single session that keeps the awake gap."""
@@ -1541,6 +1484,26 @@ class TestMergedNightBoundaries:
 
         # The awake is still waiting for the upload that brings the rest of the night.
         assert load_sleep_states(str(user.id))
+
+    def test_awake_only_session_is_dropped_once_the_writer_goes_quiet(self, mocker: MockerFixture, db: Session) -> None:
+        """Awake that no upload continued leaves Redis and the active users instead of lingering."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        session_local.return_value.__enter__.return_value = db
+        user = UserFactory()
+
+        handle_sleep_data(db, _sleep_request(*self.NIGHT), str(user.id))
+        handle_sleep_data(
+            db, _sleep_request(("M4", "awake", "2026-03-23T07:00:00Z", "2026-03-23T08:30:00Z")), str(user.id)
+        )
+        with time_machine.travel(datetime.now(timezone.utc) + timedelta(hours=3), tick=False):
+            finalize_stale_sleeps()
+
+        assert load_sleep_states(str(user.id)) == {}
+        assert str(user.id) not in get_redis_client().smembers(active_users_key())
+        assert len(_sleep_sessions(db, user)) == 1
 
     def test_merge_keeps_the_awake_the_stored_night_already_counted(self, mocker: MockerFixture, db: Session) -> None:
         """A split night keeps the awake a single upload would keep."""
