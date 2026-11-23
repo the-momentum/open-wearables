@@ -70,6 +70,20 @@ class TestDedupeSleepByExternalId:
         assert db.get(EventRecord, new.id) is not None
         assert db.get(HealthScore, score.id).event_record_id == new.id
 
+    def test_drops_the_unlinked_score_at_a_deleted_copys_end(self, db: Session) -> None:
+        ds = _source(ProviderName.GARMIN)
+        old = _sleep(ds, "summary-1")
+        new = _sleep(ds, "summary-1", start=START + timedelta(hours=1), ingested=12)
+        stale = HealthScoreFactory(data_source_id=None, user_id=ds.user_id, recorded_at=old.end_datetime)
+        kept = HealthScoreFactory(data_source_id=None, user_id=ds.user_id, recorded_at=new.end_datetime)
+        stale_id = stale.id
+
+        assert dedupe_sleep(db, dry_run=False) == 1
+        db.expire_all()
+
+        assert db.get(HealthScore, stale_id) is None
+        assert db.get(HealthScore, kept.id) is not None
+
     def test_shared_id_of_nights_apart_is_not_a_duplicate(self, db: Session) -> None:
         ds = _source(ProviderName.WHOOP)
         _sleep(ds, "night-1")

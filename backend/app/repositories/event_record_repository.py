@@ -32,9 +32,10 @@ from app.constants.devices_map.device_types import APPLE_SOURCE_APP_PREFIX, is_a
 from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.integrations.rollup_queue import mark_dirty_days
-from app.models import DataSource, EventRecord, EventRecordAggregate, SleepDetails, WorkoutDetails
+from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.repositories.health_score_repository import HealthScoreRepository
 from app.repositories.local_day import utc_midnight
 from app.repositories.repositories import (
     CrudRepository,
@@ -232,6 +233,7 @@ class EventRecordRepository(
         updates = {field: value for field in fields if (value := getattr(creator, field)) is not None}
         if all(getattr(record, field) == value for field, value in updates.items()):
             return record
+        old_end = record.end_datetime
         old_days = local_days(record.data_source_id, record.start_datetime, record.end_datetime, record.zone_offset)
         nested = db_session.begin_nested()
         try:
@@ -250,6 +252,9 @@ class EventRecordRepository(
                 self.model.external_id == record.external_id,
             )
             return holder.one_or_none() or record
+        if record.category == EventCategory.SLEEP and record.end_datetime != old_end:
+            # The provider's sleep score sits at the night's end, so the one at the old end would stay as a second
+            HealthScoreRepository(HealthScore).drop_provider_sleep_score(db_session, record.data_source_id, old_end)
         self._record_coverage(db_session, [(creator, self.data_source_repo.provider_of(creator))])
         mark_dirty_days(
             db_session,

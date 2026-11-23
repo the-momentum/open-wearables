@@ -12,7 +12,8 @@ so naps are not taken for copies. Garmin flags only its naps: the night itself i
 Copies of one night are the sessions of one (user, provider, external_id) starting within a day of
 the newest; a shared id further apart is left alone. Health scores, session aggregates and details
 the keeper lacks move onto it from the newest copy that has them; the rest cascade with the deleted
-copies. Coverage is refreshed and the deleted copies' days are queued for the rollup. Internal sleep
+copies. A provider score kept at a deleted copy's end, unlinked to it, goes too unless a stored night
+ends there. Coverage is refreshed and the deleted copies' days are queued for the rollup. Internal sleep
 scores of those days are not recomputed.
 
 Idempotent: a re-run finds nothing. Runs once per instance through data_migration_service.
@@ -120,12 +121,34 @@ _MOVE_DETAILS = text(f"""
 
 _DELETE = text("DELETE FROM event_record WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id")
 
+# A provider scores a night at its end without linking the record (Garmin), so a deleted copy's score would stay
+_DROP_COPY_SCORES = text("""
+    DELETE FROM health_score h
+    USING unnest(CAST(:users AS uuid[]), CAST(:providers AS text[]), CAST(:ends AS timestamptz[]))
+        AS c(user_id, provider, end_at)
+    WHERE h.category = 'sleep' AND h.event_record_id IS NULL AND h.provider::text <> 'internal'
+      AND h.user_id = c.user_id AND h.provider::text = c.provider AND h.recorded_at = c.end_at
+      AND NOT EXISTS (
+          SELECT 1 FROM event_record e JOIN data_source ds ON ds.id = e.data_source_id
+          WHERE ds.user_id = c.user_id AND ds.provider::text = c.provider
+            AND e.category = 'sleep' AND e.end_datetime = c.end_at
+      )
+""")
+
 
 def _remove(db: Session, rows: Sequence[Row]) -> int:
     params = {"ids": [row.id for row in rows], "keepers": [row.keeper_id for row in rows]}
     for statement in (_MOVE_SCORES, _MOVE_AGGREGATES, _MOVE_DETAILS):
         db.execute(statement, params)
     deleted = len(db.execute(_DELETE, params).fetchall())
+    db.execute(
+        _DROP_COPY_SCORES,
+        {
+            "users": [row.user_id for row in rows],
+            "providers": [str(row.provider) for row in rows],
+            "ends": [row.end_datetime for row in rows],
+        },
+    )
     data_type_coverage_repository.refresh_events(db, {(row.user_id, row.provider, "sleep") for row in rows})
     mark_dirty_days(
         db,

@@ -17,10 +17,10 @@ import pytest
 from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord
+from app.models import EventRecord, HealthScore
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordQueryParams
-from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
+from tests.factories import DataSourceFactory, EventRecordFactory, HealthScoreFactory, UserFactory
 
 
 class TestEventRecordRepository:
@@ -135,6 +135,40 @@ class TestEventRecordRepository:
         assert stored[workout.id] == workout.id
         assert db.get(EventRecord, night.id).start_datetime == start + timedelta(hours=3)
         assert db.query(EventRecord).filter(EventRecord.external_id == "x1-sleep").count() == 2
+
+    def test_bulk_create_drops_the_score_at_a_moved_nights_old_end(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Garmin scores a night at its end, so a re-push that moves the end leaves no second score behind."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def night(hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category="sleep",
+                type="sleep_session",
+                source_name="Garmin",
+                start_datetime=start,
+                end_datetime=start + timedelta(hours=hours),
+                external_id="x1-sleep",
+            )
+
+        first = night(8)
+        event_repo.bulk_create(db, [first])
+        source_id = db.get(EventRecord, first.id).data_source_id
+        HealthScoreFactory(data_source_id=source_id, user_id=user.id, recorded_at=first.end_datetime)
+        unrelated = HealthScoreFactory(
+            data_source_id=source_id, user_id=user.id, recorded_at=first.end_datetime + timedelta(days=1)
+        )
+
+        event_repo.bulk_create(db, [night(7)])
+        db.commit()
+
+        assert [score.id for score in db.query(HealthScore).filter(HealthScore.user_id == user.id)] == [unrelated.id]
 
     def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""
