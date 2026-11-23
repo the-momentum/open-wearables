@@ -6,15 +6,18 @@ moderate and vigorous ones, unweighted.
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS
+from app.services.providers.google_health.oauth import GoogleOAuth
 
 USER_ID = uuid4()
 END = datetime(2026, 9, 3, tzinfo=timezone.utc)
@@ -26,8 +29,8 @@ ACTIVE_MINUTES = next(m for m in DAILY_ROLLUP_METRICS if m.series_type is Series
 @pytest.fixture
 def data_247() -> GoogleHealth247Data:
     return GoogleHealth247Data(
-        oauth=MagicMock(),
-        connection_repo=MagicMock(),
+        oauth=create_autospec(GoogleOAuth, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
         api_base_url="https://health.googleapis.com",
     )
 
@@ -46,8 +49,8 @@ def _point(day: int, levels: dict[str, str] | None) -> dict:
 
 
 def _samples(data_247: GoogleHealth247Data, points: list[dict]) -> list:
-    with patch.object(data_247, "_fetch_rollup_pages", return_value=points):
-        return data_247._daily_rollup_samples(MagicMock(), USER_ID, ACTIVE_MINUTES, START, END)
+    with patch.object(data_247, "_fetch_rollup_pages", autospec=True, return_value=points):
+        return data_247._daily_rollup_samples(MagicMock(spec=Session), USER_ID, ACTIVE_MINUTES, START, END)
 
 
 def test_sums_moderate_and_vigorous_minutes(data_247: GoogleHealth247Data) -> None:
@@ -88,8 +91,8 @@ def test_active_minutes_requests_at_most_14_days_at_a_time(data_247: GoogleHealt
     end = datetime(2026, 9, 30, tzinfo=timezone.utc)
     start = end - timedelta(days=30)
 
-    with patch.object(data_247, "_fetch_rollup_pages", return_value=[]) as fetch:
-        data_247._daily_rollup_samples(MagicMock(), USER_ID, ACTIVE_MINUTES, start, end)
+    with patch.object(data_247, "_fetch_rollup_pages", autospec=True, return_value=[]) as fetch:
+        data_247._daily_rollup_samples(MagicMock(spec=Session), USER_ID, ACTIVE_MINUTES, start, end)
 
     assert fetch.call_count > 1
     for call in fetch.call_args_list:
@@ -109,12 +112,13 @@ def test_a_full_sync_fetches_active_minutes_through_daily_rollup(data_247: Googl
     with (
         patch(
             "app.services.providers.google_health.data_247.make_authenticated_request",
+            autospec=True,
             side_effect=fake_request,
         ),
-        patch.object(data_247.sleep, "load_and_save", return_value=0),
-        patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
-        patch("app.services.providers.google_health.data_247.store_raw_payload"),
+        patch.object(data_247.sleep, "load_and_save", autospec=True, return_value=0),
+        patch.object(data_247.settings_repo, "get_data_granularity", autospec=True, return_value=None),
+        patch("app.services.providers.google_health.data_247.store_raw_payload", autospec=True),
     ):
-        data_247.load_and_save_all(MagicMock(), USER_ID, START, END)
+        data_247.load_and_save_all(MagicMock(spec=Session), USER_ID, START, END)
 
     assert "/v4/users/me/dataTypes/active-minutes/dataPoints:dailyRollUp" in calls

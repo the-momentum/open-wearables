@@ -145,7 +145,7 @@ class TestCondensedSeriesAtIngest:
     def test_the_drop_is_logged_with_its_counts(self, db: Session, user_id: str) -> None:
         load_healthkit_records(db, user_id, _originals(OLD))
 
-        with patch("app.services.sdk.condensed_series.logger") as logger:
+        with patch("app.services.sdk.condensed_series.logger", autospec=True) as logger:
             load_healthkit_records(db, user_id, [healthkit_record(ACTIVE_ENERGY, OLD, 600, "15")])
 
         logger.info.assert_called_once()

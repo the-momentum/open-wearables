@@ -20,7 +20,7 @@ class TestGetSDKAuth:
         user_id = "123e4567-e89b-12d3-a456-426614174000"
         token = create_sdk_user_token("app_123", user_id)
 
-        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+        with patch("app.utils.auth.SessionLocal", autospec=True) as mock_session_local:
             result = get_sdk_auth(token=token, x_open_wearables_api_key=None)
 
         assert result.auth_type == "sdk_token"
@@ -33,7 +33,7 @@ class TestGetSDKAuth:
         """Valid API key should return SDKAuthContext, validated on a session closed before return."""
         api_key = ApiKeyFactory()
 
-        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+        with patch("app.utils.auth.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             result = get_sdk_auth(token=None, x_open_wearables_api_key=api_key.plain_key)
 
@@ -44,7 +44,7 @@ class TestGetSDKAuth:
     @pytest.mark.asyncio
     async def test_no_auth_raises_401(self, db: Session) -> None:
         """Missing auth should raise 401."""
-        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+        with patch("app.utils.auth.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             with pytest.raises(HTTPException) as exc_info:
                 get_sdk_auth(token=None, x_open_wearables_api_key=None)
@@ -54,7 +54,7 @@ class TestGetSDKAuth:
     @pytest.mark.asyncio
     async def test_invalid_api_key_raises_401(self, db: Session) -> None:
         """Invalid API key should raise 401."""
-        with patch("app.utils.auth.SessionLocal") as mock_session_local:
+        with patch("app.utils.auth.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             with pytest.raises(HTTPException) as exc_info:
                 get_sdk_auth(token=None, x_open_wearables_api_key="invalid_key")

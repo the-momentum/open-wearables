@@ -2,10 +2,12 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from inline_snapshot import snapshot
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
@@ -24,31 +26,6 @@ class TestOura247SleepNormalization:
     def data_247(self) -> Oura247Data:
         strategy = OuraStrategy()
         return strategy.data_247
-
-    @pytest.fixture
-    def sample_oura_sleep(self) -> dict:
-        return {
-            "id": "sleep-abc123",
-            "average_breath": 15.5,
-            "average_heart_rate": 55.0,
-            "average_hrv": 45,
-            "awake_time": 1800,
-            "bedtime_end": "2024-01-15T07:00:00+00:00",
-            "bedtime_start": "2024-01-15T23:00:00+00:00",
-            "day": "2024-01-15",
-            "deep_sleep_duration": 5400,
-            "efficiency": 88,
-            "latency": 300,
-            "light_sleep_duration": 14400,
-            "low_battery_alert": False,
-            "lowest_heart_rate": 48,
-            "period": 0,
-            "rem_sleep_duration": 7200,
-            "restless_periods": 5,
-            "time_in_bed": 28800,
-            "total_sleep_duration": 27000,
-            "type": "long_sleep",
-        }
 
     def test_normalize_sleep_basic_fields(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
@@ -211,16 +188,16 @@ class TestOura247SleepNormalization:
         assert result[0]["is_nap"] is False  # long_sleep
         assert result[1]["is_nap"] is True  # sleep
 
-    @patch("app.services.providers.oura.data_247.event_record_service")
     def test_unreported_sleep_stages_are_saved_as_none(
-        self, mock_event: MagicMock, data_247: Oura247Data, sample_oura_sleep: dict
+        self, mocker: MockerFixture, data_247: Oura247Data, sample_oura_sleep: dict
     ) -> None:
+        mock_event = mocker.patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
         sample_oura_sleep.update(
             deep_sleep_duration=None, light_sleep_duration=None, rem_sleep_duration=None, awake_time=None
         )
 
         normalized = data_247.normalize_sleeps([sample_oura_sleep], uuid4())
-        data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
 
         detail = mock_event.create_or_merge_sleep.call_args[0][3]
         assert detail.sleep_deep_minutes is None
@@ -230,14 +207,14 @@ class TestOura247SleepNormalization:
         assert detail.sleep_total_duration_minutes is None
         assert detail.sleep_time_in_bed_minutes == 480
 
-    @patch("app.services.providers.oura.data_247.event_record_service")
     def test_reported_zero_sleep_stages_are_saved_as_zero(
-        self, mock_event: MagicMock, data_247: Oura247Data, sample_oura_sleep: dict
+        self, mocker: MockerFixture, data_247: Oura247Data, sample_oura_sleep: dict
     ) -> None:
+        mock_event = mocker.patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
         sample_oura_sleep.update(deep_sleep_duration=0, rem_sleep_duration=0)
 
         normalized = data_247.normalize_sleeps([sample_oura_sleep], uuid4())
-        data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
 
         detail = mock_event.create_or_merge_sleep.call_args[0][3]
         assert detail.sleep_deep_minutes == 0
@@ -260,17 +237,6 @@ class TestOura247ReadinessNormalization:
     def data_247(self) -> Oura247Data:
         strategy = OuraStrategy()
         return strategy.data_247
-
-    @pytest.fixture
-    def sample_oura_readiness(self) -> dict:
-        return {
-            "id": "readiness-abc123",
-            "day": "2024-01-15",
-            "score": 82,
-            "temperature_deviation": 0.15,
-            "temperature_trend_deviation": 0.05,
-            "timestamp": "2024-01-15T07:00:00+00:00",
-        }
 
     def test_normalize_readiness_score(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
@@ -315,13 +281,45 @@ class TestOura247ActivityNormalization:
         ]
         samples, _ = data_247.normalize_activity_samples(raw, user_id)
 
-        assert len(samples["steps"]) == 1
-        assert samples["steps"][0]["value"] == 8500
-        assert len(samples["energy"]) == 1
-        assert samples["energy"][0]["value"] == 350
-        assert samples["basal_energy"][0]["value"] == 1450
-        assert len(samples["distance"]) == 1
-        assert samples["distance"][0]["value"] == 6500
+        assert samples == snapshot(
+            {
+                "steps": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 8500,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "energy": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 350,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "basal_energy": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 1450,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "distance": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 6500,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "active_time": [],
+                "exercise_time": [],
+                "met": [],
+            }
+        )
 
     def test_normalize_activity_empty(self, data_247: Oura247Data) -> None:
         user_id = uuid4()

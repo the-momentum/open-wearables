@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 from uuid import uuid4
 
 import pytest
@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.enums import SeriesType
-from app.schemas.model_crud.activities import TimeSeriesSampleCreate
+from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.services.providers.strava.coverage import STREAM_KEY_SERIES_TYPE
 from app.services.providers.strava.oauth import StravaOAuth
@@ -40,6 +41,15 @@ _SAMPLE_ACTIVITY = StravaActivityJSON(
     device_name=_DEVICE_MODEL,
 )
 
+_RECORD = EventRecordCreate(
+    id=uuid4(),
+    user_id=uuid4(),
+    source_name="strava",
+    start_datetime=_START_DT,
+    end_datetime=_START_DT + timedelta(seconds=3600),
+    zone_offset=_ZONE_OFFSET,
+)
+
 
 @pytest.fixture
 def strava_workouts() -> StravaWorkouts:
@@ -47,7 +57,7 @@ def strava_workouts() -> StravaWorkouts:
     workout_repo = EventRecordRepository(EventRecord)
     connection_repo = UserConnectionRepository()
     oauth = StravaOAuth(
-        user_repo=MagicMock(),
+        user_repo=create_autospec(UserRepository, instance=True),
         connection_repo=connection_repo,
         provider_name="strava",
         api_base_url="https://www.strava.com",
@@ -71,7 +81,7 @@ class TestBuildWorkoutSamples:
     ) -> None:
         """Happy path: streams with time+heartrate+velocity_smooth → correct samples."""
         user_id = uuid4()
-        with patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=_STRAVA_STREAMS_3S):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
 
         assert len(samples) == 6
@@ -88,7 +98,7 @@ class TestBuildWorkoutSamples:
     ) -> None:
         """recorded_at = start_dt + time[i] seconds for each sample."""
         user_id = uuid4()
-        with patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=_STRAVA_STREAMS_3S):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
 
         hr_samples = sorted(
@@ -105,7 +115,7 @@ class TestBuildWorkoutSamples:
     ) -> None:
         """Correct series_type, value, source, zone_offset on each sample."""
         user_id = uuid4()
-        with patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=_STRAVA_STREAMS_3S):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
 
         hr_samples = sorted(
@@ -137,7 +147,7 @@ class TestBuildWorkoutSamples:
         """Streams dict without 'time' key → empty list."""
         user_id = uuid4()
         streams_no_time = {"heartrate": {"data": [120, 130]}}
-        with patch.object(strava_workouts, "_make_api_request", return_value=streams_no_time):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=streams_no_time):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
 
         assert samples == []
@@ -150,7 +160,7 @@ class TestBuildWorkoutSamples:
         """Empty 'time' data array → empty list."""
         user_id = uuid4()
         streams_empty_time: dict[str, Any] = {"time": {"data": []}, "heartrate": {"data": []}}
-        with patch.object(strava_workouts, "_make_api_request", return_value=streams_empty_time):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=streams_empty_time):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
 
         assert samples == []
@@ -162,7 +172,7 @@ class TestBuildWorkoutSamples:
     ) -> None:
         """Non-dict API response (e.g. list, None) → empty list, no crash."""
         user_id = uuid4()
-        with patch.object(strava_workouts, "_make_api_request", return_value=[]):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=[]):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
         assert samples == []
 
@@ -177,7 +187,7 @@ class TestBuildWorkoutSamples:
             "time": {"data": [0, 1, 2]},
             "heartrate": {"data": [120]},
         }
-        with patch.object(strava_workouts, "_make_api_request", return_value=streams):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=streams):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
 
         assert len(samples) == 1
@@ -195,7 +205,7 @@ class TestBuildWorkoutSamples:
             "distance": {"data": [0.0, 10.0]},
             "heartrate": {"data": [120, 130]},
         }
-        with patch.object(strava_workouts, "_make_api_request", return_value=streams):
+        with patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=streams):
             samples = strava_workouts._build_workout_samples(db, user_id, 98765, _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
 
         assert all(s.series_type != SeriesType.distance for s in samples if hasattr(SeriesType, "distance"))
@@ -215,11 +225,12 @@ class TestFlagGuard:
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=False,
             ),
-            patch.object(strava_workouts, "_make_api_request") as mock_api,
+            patch.object(strava_workouts, "_make_api_request", autospec=True) as mock_api,
         ):
-            count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, MagicMock())
+            count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, _RECORD)
 
         mock_api.assert_not_called()
         assert count == 0
@@ -234,11 +245,12 @@ class TestFlagGuard:
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=False,
             ),
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
-            count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, MagicMock())
+            count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, _RECORD)
 
         mock_ts.bulk_create_samples.assert_not_called()
         assert count == 0
@@ -248,11 +260,11 @@ class TestManualActivity:
     def test_manual_activity_makes_no_request(self, strava_workouts: StravaWorkouts, db: Session) -> None:
         manual = _SAMPLE_ACTIVITY.model_copy(update={"manual": True})
         with (
-            patch("app.services.providers.strava.workouts.settings", ingest_workout_samples=True),
-            patch.object(strava_workouts, "_has_stored_streams") as mock_probe,
-            patch.object(strava_workouts, "_make_api_request") as mock_api,
+            patch("app.services.providers.strava.workouts.settings", autospec=True, ingest_workout_samples=True),
+            patch.object(strava_workouts, "_has_stored_streams", autospec=True) as mock_probe,
+            patch.object(strava_workouts, "_make_api_request", autospec=True) as mock_api,
         ):
-            count = strava_workouts._ingest_workout_streams(db, manual, uuid4(), MagicMock())
+            count = strava_workouts._ingest_workout_streams(db, manual, uuid4(), _RECORD)
 
         mock_probe.assert_not_called()
         mock_api.assert_not_called()
@@ -269,17 +281,16 @@ class TestIngestionWiring:
     ) -> None:
         """Flag ON: bulk_create_samples called with the built samples."""
         user_id = uuid4()
-        record_mock = MagicMock()
-        record_mock.start_datetime = _START_DT
-        record_mock.zone_offset = _ZONE_OFFSET
+        record_mock = _RECORD
 
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=True,
             ),
-            patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=_STRAVA_STREAMS_3S),
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
             mock_ts.has_samples_in_range.return_value = False
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
@@ -298,18 +309,16 @@ class TestIngestionWiring:
     ) -> None:
         """Samples already in the workout window: no API call, no save, 0 returned."""
         user_id = uuid4()
-        record_mock = MagicMock()
-        record_mock.start_datetime = _START_DT
-        record_mock.end_datetime = _START_DT + timedelta(seconds=3600)
-        record_mock.zone_offset = _ZONE_OFFSET
+        record_mock = _RECORD
 
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=True,
             ),
-            patch.object(strava_workouts, "_make_api_request") as mock_api,
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch.object(strava_workouts, "_make_api_request", autospec=True) as mock_api,
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
             mock_ts.has_samples_in_range.return_value = True
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
@@ -333,18 +342,16 @@ class TestIngestionWiring:
         db: Session,
     ) -> None:
         """The probe failing must not cost the workout its samples."""
-        record_mock = MagicMock()
-        record_mock.start_datetime = _START_DT
-        record_mock.end_datetime = _START_DT + timedelta(seconds=3600)
-        record_mock.zone_offset = _ZONE_OFFSET
+        record_mock = _RECORD
 
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=True,
             ),
-            patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=_STRAVA_STREAMS_3S),
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
             mock_ts.has_samples_in_range.side_effect = RuntimeError("probe failed")
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, uuid4(), record_mock)
@@ -359,18 +366,16 @@ class TestIngestionWiring:
     ) -> None:
         """Record without end_datetime: existence probe bypassed, streams fetched as before."""
         user_id = uuid4()
-        record_mock = MagicMock()
-        record_mock.start_datetime = _START_DT
-        record_mock.end_datetime = None
-        record_mock.zone_offset = _ZONE_OFFSET
+        record_mock = _RECORD.model_copy(update={"end_datetime": None})
 
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=True,
             ),
-            patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=_STRAVA_STREAMS_3S),
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
 
@@ -385,17 +390,16 @@ class TestIngestionWiring:
     ) -> None:
         """Persistence raising is swallowed; workout ingestion continues, 0 saved."""
         user_id = uuid4()
-        record_mock = MagicMock()
-        record_mock.start_datetime = _START_DT
-        record_mock.zone_offset = _ZONE_OFFSET
+        record_mock = _RECORD
 
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=True,
             ),
-            patch.object(strava_workouts, "_make_api_request", return_value=_STRAVA_STREAMS_3S),
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=_STRAVA_STREAMS_3S),
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
             mock_ts.has_samples_in_range.return_value = False
             mock_ts.bulk_create_samples.side_effect = RuntimeError("db write failure")
@@ -410,21 +414,21 @@ class TestIngestionWiring:
     ) -> None:
         """Fetch raising an exception is swallowed; workout ingestion continues, 0 saved."""
         user_id = uuid4()
-        record_mock = MagicMock()
-        record_mock.start_datetime = _START_DT
-        record_mock.zone_offset = _ZONE_OFFSET
+        record_mock = _RECORD
 
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=True,
             ),
             patch.object(
                 strava_workouts,
                 "_make_api_request",
+                autospec=True,
                 side_effect=RuntimeError("network failure"),
             ),
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
             mock_ts.has_samples_in_range.return_value = False
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)
@@ -439,18 +443,17 @@ class TestIngestionWiring:
     ) -> None:
         """Empty sample list (no time stream) → bulk_create_samples never called."""
         user_id = uuid4()
-        record_mock = MagicMock()
-        record_mock.start_datetime = _START_DT
-        record_mock.zone_offset = _ZONE_OFFSET
+        record_mock = _RECORD
 
         streams_no_time: dict[str, Any] = {"heartrate": {"data": [120]}}
         with (
             patch(
                 "app.services.providers.strava.workouts.settings",
+                autospec=True,
                 ingest_workout_samples=True,
             ),
-            patch.object(strava_workouts, "_make_api_request", return_value=streams_no_time),
-            patch("app.services.providers.strava.workouts.timeseries_service") as mock_ts,
+            patch.object(strava_workouts, "_make_api_request", autospec=True, return_value=streams_no_time),
+            patch("app.services.providers.strava.workouts.timeseries_service", autospec=True) as mock_ts,
         ):
             mock_ts.has_samples_in_range.return_value = False
             count = strava_workouts._ingest_workout_streams(db, _SAMPLE_ACTIVITY, user_id, record_mock)

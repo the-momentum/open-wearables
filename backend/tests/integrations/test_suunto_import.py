@@ -13,14 +13,21 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+import redis
+import respx
 from jose import jwt
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
+from app.schemas.model_crud.credentials.oauth import ProviderCredentials
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
+
+SUUNTO_TOKEN_URL = "https://cloudapi-oauth.suunto.com/oauth/token"
 
 
 class TestSuuntoImport:
@@ -90,10 +97,9 @@ class TestSuuntoImport:
             ],
         }
 
-    @patch("httpx.post")
     def test_oauth_token_exchange_with_jwt(
         self,
-        mock_post: MagicMock,
+        respx_mock: respx.MockRouter,
         suunto_strategy: SuuntoStrategy,
         db: Session,
     ) -> None:
@@ -109,16 +115,15 @@ class TestSuuntoImport:
         }
         access_token = jwt.encode(test_payload, "secret", algorithm="HS256")
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": access_token,
-            "refresh_token": "test_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        token = respx_mock.post(SUUNTO_TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": access_token,
+                "refresh_token": "test_refresh_token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
         # Mock Redis state
         assert suunto_strategy.oauth is not None
@@ -131,11 +136,13 @@ class TestSuuntoImport:
         import json
 
         # Create a mock redis client
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = json.dumps(state_data).encode("utf-8")
 
         # Patch get_redis_client to return our mock
-        with patch("app.services.providers.templates.base_oauth.get_redis_client", return_value=mock_redis):
+        with patch(
+            "app.services.providers.templates.base_oauth.get_redis_client", autospec=True, return_value=mock_redis
+        ):
             # Act
             assert suunto_strategy.oauth is not None
             oauth_state = suunto_strategy.oauth.handle_callback(db, "test_code", "test_state")
@@ -149,6 +156,8 @@ class TestSuuntoImport:
             assert connection is not None
             assert connection.provider_user_id == "suunto_user_12345"
             assert connection.provider_username == "test_suunto_athlete"
+            assert token.call_count == 1
+            assert httpx.QueryParams(token.calls.last.request.content.decode())["code"] == "test_code"
 
     def test_fetch_workouts_from_api(
         self,
@@ -163,7 +172,9 @@ class TestSuuntoImport:
 
         # Mock the get_workouts_from_api method directly on the instance
         assert suunto_strategy.workouts is not None
-        with patch.object(suunto_strategy.workouts, "get_workouts_from_api", return_value=sample_suunto_api_response):
+        with patch.object(
+            suunto_strategy.workouts, "get_workouts_from_api", autospec=True, return_value=sample_suunto_api_response
+        ):
             # Act
             result = suunto_strategy.workouts.get_workouts_from_api(
                 db,
@@ -178,21 +189,24 @@ class TestSuuntoImport:
             assert result["payload"][0]["activityId"] == 1  # Running
             assert result["payload"][1]["activityId"] == 2  # Cycling
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
     def test_load_data_creates_event_records(
         self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
+        mocker: MockerFixture,
         suunto_strategy: SuuntoStrategy,
         db: Session,
         sample_suunto_api_response: dict[str, Any],
     ) -> None:
         """Should load data and create event records in database."""
+        mock_ensure_data_source = mocker.patch(
+            "app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True
+        )
+        mock_create_detail = mocker.patch(
+            "app.services.event_record_service.event_record_service.create_detail", autospec=True
+        )
+        mock_create = mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
@@ -222,14 +236,13 @@ class TestSuuntoImport:
         assert get_unified_workout_type(74) == WorkoutType.TRIATHLON
         assert get_unified_workout_type(999) == WorkoutType.OTHER  # Unknown activity
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
     def test_get_workout_detail_from_api(
-        self,
-        mock_request: MagicMock,
-        suunto_strategy: SuuntoStrategy,
-        db: Session,
+        self, mocker: MockerFixture, suunto_strategy: SuuntoStrategy, db: Session
     ) -> None:
         """Should fetch detailed workout data from API."""
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
@@ -253,10 +266,9 @@ class TestSuuntoImport:
         assert "samples" in result
         mock_request.assert_called_once()
 
-    @patch("httpx.post")
     def test_token_refresh_flow(
         self,
-        mock_post: MagicMock,
+        respx_mock: respx.MockRouter,
         suunto_strategy: SuuntoStrategy,
         db: Session,
     ) -> None:
@@ -270,16 +282,15 @@ class TestSuuntoImport:
             refresh_token="old_refresh_token",
         )
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "new_access_token",
-            "refresh_token": "new_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        token = respx_mock.post(SUUNTO_TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": "new_access_token",
+                "refresh_token": "new_refresh_token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
         assert suunto_strategy.oauth is not None
 
         # Act
@@ -288,27 +299,30 @@ class TestSuuntoImport:
         # Assert
         assert token_response.access_token == "new_access_token"
         assert token_response.refresh_token == "new_refresh_token"
+        assert token.call_count == 1
+        form = httpx.QueryParams(token.calls.last.request.content.decode())
+        assert form["refresh_token"] == "old_refresh_token"
 
         # Verify connection was updated
         db.refresh(connection)
         assert connection.access_token == "new_access_token"
         assert connection.refresh_token == "new_refresh_token"
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
     def test_subscription_key_included_in_requests(
-        self,
-        mock_request: MagicMock,
-        suunto_strategy: SuuntoStrategy,
-        db: Session,
+        self, mocker: MockerFixture, suunto_strategy: SuuntoStrategy, db: Session
     ) -> None:
         """Should include subscription key in API requests."""
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         # Mock the credentials property to return a mock with subscription_key
-        mock_creds = MagicMock()
-        mock_creds.subscription_key = "test_subscription_key"
+        mock_creds = ProviderCredentials(
+            client_id="", client_secret="", redirect_uri="", default_scope="", subscription_key="test_subscription_key"
+        )
         mock_request.return_value = {"payload": []}
 
         # Patch the credentials property using PropertyMock
@@ -325,14 +339,11 @@ class TestSuuntoImport:
             assert "Ocp-Apim-Subscription-Key" in headers
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
-    @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
-    def test_error_response_handling(
-        self,
-        mock_request: MagicMock,
-        suunto_strategy: SuuntoStrategy,
-        db: Session,
-    ) -> None:
+    def test_error_response_handling(self, mocker: MockerFixture, suunto_strategy: SuuntoStrategy, db: Session) -> None:
         """Should handle API error responses gracefully."""
+        mock_request = mocker.patch(
+            "app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request", autospec=True
+        )
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)

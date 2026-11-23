@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from dirty_equals import IsDatetime, IsStr, IsUUID
 from jose import jwt
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
@@ -28,10 +29,13 @@ class TestGenerateInvitationCode:
         # Assert
         assert response.status_code == 201
         data = response.json()
-        assert len(data["code"]) == 8
-        assert data["user_id"] == str(user.id)
-        assert "expires_at" in data
-        assert "id" in data
+        assert data == {
+            "id": IsUUID,
+            "code": IsStr(min_length=8, max_length=8),
+            "user_id": str(user.id),
+            "expires_at": IsDatetime(iso_string=True),
+            "created_at": IsDatetime(iso_string=True),
+        }
 
     def test_generate_requires_auth(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         # Arrange
@@ -92,12 +96,14 @@ class TestRedeemInvitationCode:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data["user_id"] == str(user.id)
-        assert "access_token" in data
-        assert "refresh_token" in data
-        assert data["token_type"] == "bearer"
-        assert data["expires_in"] == settings.access_token_expire_minutes * 60
-        assert data["refresh_token"].startswith("rt-")
+        assert data == {
+            "user_id": str(user.id),
+            "access_token": IsStr,
+            "refresh_token": IsStr(regex=r"rt-.*"),
+            "token_type": "bearer",
+            "expires_in": settings.access_token_expire_minutes * 60,
+            "password_change": None,
+        }
 
     def test_redeem_returns_sdk_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         # Arrange

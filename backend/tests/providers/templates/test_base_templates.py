@@ -12,7 +12,7 @@ Tests cover:
 from abc import ABC
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
@@ -115,7 +115,7 @@ class TestBaseWorkoutsTemplate:
         # Arrange
         mock_workout_repo = MagicMock(spec=EventRecordRepository)
         mock_connection_repo = MagicMock(spec=UserConnectionRepository)
-        mock_oauth = MagicMock()
+        mock_oauth = create_autospec(BaseOAuthTemplate, instance=True)
 
         template = ConcreteWorkoutsTemplate(
             workout_repo=mock_workout_repo,

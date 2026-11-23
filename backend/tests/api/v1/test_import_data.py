@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from dirty_equals import IsInstance, IsInt, IsStr
 from fastapi.testclient import TestClient
 from httpx import Response
 from kombu.exceptions import OperationalError
@@ -25,7 +26,7 @@ class TestXMLImportEndpoint:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
     ) -> None:
         """Test presigned URL endpoint (may fail if S3 not configured in test env)."""
         # Arrange
@@ -46,13 +47,14 @@ class TestXMLImportEndpoint:
         # Assert - May return 403 or 503 if S3 is not configured in test environment
         assert response.status_code in [200, 201, 403, 503]
         if response.status_code in [200, 201]:
-            data = response.json()
-            assert "upload_url" in data
-            assert "form_fields" in data
-            assert "file_key" in data
-            assert "expires_in" in data
-            assert "max_file_size" in data
-            assert "bucket" in data
+            assert response.json() == {
+                "upload_url": IsStr,
+                "form_fields": IsInstance(dict),
+                "file_key": IsStr,
+                "expires_in": IsInt,
+                "max_file_size": IsInt,
+                "bucket": IsStr,
+            }
 
     def test_generate_presigned_url_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that presigned URL generation requires API key."""
@@ -76,7 +78,7 @@ class TestXMLImportEndpoint:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
     ) -> None:
         """Test presigned URL generation with invalid payload."""
         # Arrange
@@ -101,7 +103,7 @@ class TestXMLImportEndpoint:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
     ) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
@@ -112,7 +114,7 @@ class TestXMLImportEndpoint:
         )
 
         assert response.status_code == 404
-        mock_external_apis["s3"].generate_presigned_post.assert_not_called()
+        mock_s3.generate_presigned_post.assert_not_called()
 
     def test_generate_presigned_url_rejects_non_uuid_user_id(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
@@ -136,7 +138,7 @@ class TestXMLDirectImportEndpoint:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay", autospec=True) as delay:
             delay.return_value.id = "task-id"
             response = client.post(
                 self.URL.format(user_id=user.id),
@@ -151,7 +153,7 @@ class TestXMLDirectImportEndpoint:
     def test_unknown_user_is_not_queued(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay", autospec=True) as delay:
             response = client.post(
                 self.URL.format(user_id=uuid4()),
                 headers=headers,
@@ -164,7 +166,7 @@ class TestXMLDirectImportEndpoint:
     def test_rejects_non_uuid_user_id(self, client: TestClient, db: Session) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
-        with patch(f"{_SERVICE}.process_xml_upload.delay") as delay:
+        with patch(f"{_SERVICE}.process_xml_upload.delay", autospec=True) as delay:
             response = client.post(
                 self.URL.format(user_id="not-a-uuid"),
                 headers=headers,
@@ -220,7 +222,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML)),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             mock_task.delay.return_value.id = "task-1"
             response = _upload_direct(client, str(user.id), _XML)
@@ -234,7 +236,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", len(_XML) - 1),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -247,7 +249,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_FILE_SIZE", len(_XML) - 1),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             response = _upload_direct(client, str(user.id), _XML)
 
@@ -259,7 +261,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload"),
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (3 * _MIB + 1))
 
@@ -276,7 +278,7 @@ class TestDirectXMLUpload:
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 2 * _MIB),
             patch(f"{_SERVICE}.MAX_FILE_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload"),
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True),
         ):
             response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
 
@@ -288,7 +290,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
             patch("starlette.requests.Request.form", new_callable=AsyncMock) as mock_form,
         ):
             response = _upload_direct(client, str(user.id), b"x" * (4 * _MIB))
@@ -319,7 +321,7 @@ class TestDirectXMLUpload:
 
         with (
             patch(f"{_SERVICE}.MAX_DIRECT_UPLOAD_SIZE", 3 * _MIB),
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
         ):
             response = client.post(
                 f"/api/v1/users/{user.id}/import/apple/xml/direct",
@@ -338,8 +340,8 @@ class TestDirectXMLUpload:
         user = UserFactory()
 
         with (
-            patch(f"{_SERVICE}.process_xml_upload") as mock_task,
-            patch(f"{_SERVICE}.logger") as mock_logger,
+            patch(f"{_SERVICE}.process_xml_upload", autospec=True) as mock_task,
+            patch(f"{_SERVICE}.logger", autospec=True) as mock_logger,
         ):
             mock_task.delay.side_effect = OperationalError("Error 32 while writing to socket. Broken pipe.")
             response = _upload_direct(client, str(user.id), _XML)

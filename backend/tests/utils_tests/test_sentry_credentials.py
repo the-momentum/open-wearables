@@ -5,10 +5,11 @@ import traceback
 from collections.abc import Generator
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
+import respx
 import sentry_sdk
 from sentry_sdk._types import AnnotatedValue
 from sentry_sdk.consts import SPANDATA
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 FAKE_API_KEY = "sk-not-a-real-api-key"
 FAKE_SECRET = "not-a-real-secret"
 FAKE_TOKEN = "tok-not-a-real-credential"
+OURA_REVOKE_URL = "https://api.ouraring.com/oauth/revoke"
 
 SCRUBBERS = pytest.mark.parametrize(
     "scrubber",
@@ -127,14 +129,17 @@ def sentry_transport(request: pytest.FixtureRequest) -> Generator[_CapturingTran
     try:
         yield transport
     finally:
+        sentry_sdk.get_client().close()  # stops the SDK's monitor thread, which outlives the test
         sentry_sdk.get_global_scope().set_client(None)
 
 
-def test_shipped_events_carry_no_outgoing_query_credentials(sentry_transport: _CapturingTransport) -> None:
-    client = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
+def test_shipped_events_carry_no_outgoing_query_credentials(
+    sentry_transport: _CapturingTransport, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.post(OURA_REVOKE_URL).respond(200)
 
-    with sentry_sdk.isolation_scope(), sentry_sdk.start_transaction(name="revoke"):
-        client.post("https://api.ouraring.com/oauth/revoke", params={"access_token": FAKE_TOKEN})
+    with httpx.Client() as client, sentry_sdk.isolation_scope(), sentry_sdk.start_transaction(name="revoke"):
+        client.post(OURA_REVOKE_URL, params={"access_token": FAKE_TOKEN})
         sentry_sdk.capture_message("later failure in the same scope")
     sentry_sdk.flush()
 
@@ -172,15 +177,8 @@ def _oura_oauth() -> BaseOAuthTemplate:
     return oauth
 
 
-def _oura_revoke_response(status_code: int, *args: Any, **kwargs: Any) -> httpx.Response:
-    # A real Response bound to the real request, so raise_for_status renders the full URL.
-    request = httpx.Request("POST", args[0], params=kwargs["params"])
-    return httpx.Response(status_code, request=request)
-
-
-@patch("httpx.post")
-def test_oura_revoke_error_does_not_carry_token(mock_post: MagicMock) -> None:
-    mock_post.side_effect = lambda *a, **kw: _oura_revoke_response(400, *a, **kw)
+def test_oura_revoke_error_does_not_carry_token(respx_mock: respx.MockRouter) -> None:
+    respx_mock.post(OURA_REVOKE_URL).respond(400)
 
     with pytest.raises(ProviderError) as exc_info:
         _oura_oauth().deregister_user(FAKE_TOKEN)
@@ -194,14 +192,9 @@ def test_oura_revoke_error_does_not_carry_token(mock_post: MagicMock) -> None:
     assert FAKE_TOKEN not in "".join(traceback.format_exception(exc))
 
 
-def _oura_revoke_connect_error(*args: Any, **kwargs: Any) -> httpx.Response:
-    # Like httpx's own transport frames: a `request` local whose repr shows the full URL.
-    request = httpx.Request("POST", args[0], params=kwargs["params"])
-    raise httpx.ConnectError("[Errno 111] Connection refused", request=request)
+def test_oura_revoke_transport_error_does_not_carry_token(respx_mock: respx.MockRouter) -> None:
+    respx_mock.post(OURA_REVOKE_URL).mock(side_effect=httpx.ConnectError("[Errno 111] Connection refused"))
 
-
-@patch("httpx.post", side_effect=_oura_revoke_connect_error)
-def test_oura_revoke_transport_error_does_not_carry_token(mock_post: MagicMock) -> None:
     with pytest.raises(ProviderError) as exc_info:
         _oura_oauth().deregister_user(FAKE_TOKEN)
 
@@ -213,11 +206,11 @@ def test_oura_revoke_transport_error_does_not_carry_token(mock_post: MagicMock) 
     assert FAKE_TOKEN not in "".join(traceback.format_exception(exc))
 
 
-@patch("httpx.post", side_effect=_oura_revoke_connect_error)
 def test_shipped_oura_transport_error_carries_no_token(
-    mock_post: MagicMock, sentry_transport: _CapturingTransport
+    sentry_transport: _CapturingTransport, respx_mock: respx.MockRouter
 ) -> None:
     # Sensitive mode ships frame locals; the httpx frames holding the request must not be reported.
+    respx_mock.post(OURA_REVOKE_URL).mock(side_effect=httpx.ConnectError("[Errno 111] Connection refused"))
     try:
         _oura_oauth().deregister_user(FAKE_TOKEN)
     except ProviderError as e:
@@ -229,13 +222,12 @@ def test_shipped_oura_transport_error_carries_no_token(
     assert FAKE_TOKEN not in json.dumps(payloads, default=str)
 
 
-@patch("httpx.post")
-def test_oura_revoke_success_does_not_raise(mock_post: MagicMock) -> None:
-    mock_post.side_effect = lambda *a, **kw: _oura_revoke_response(200, *a, **kw)
+def test_oura_revoke_success_does_not_raise(respx_mock: respx.MockRouter) -> None:
+    revoke = respx_mock.post(OURA_REVOKE_URL).respond(200)
 
     _oura_oauth().deregister_user(FAKE_TOKEN)
 
-    assert mock_post.call_args.kwargs["params"] == {"access_token": FAKE_TOKEN}
+    assert revoke.calls.last.request.url.params["access_token"] == FAKE_TOKEN
 
 
 @pytest.mark.parametrize("key", ["code", "verification_token", "hub.verify_token", "token", "access_token"])

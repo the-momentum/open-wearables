@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     developer_refresh_token_expire_days: int = 30
     token_lifetime: int = 3600
+    login_max_failed_attempts: int = 10
+    login_lockout_seconds: int = 900
 
     # VALIDATION SETTINGS
     min_password_length: int = 8

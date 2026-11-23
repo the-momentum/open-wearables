@@ -33,7 +33,7 @@ down:	## Kills running instance
 	$(DOCKER_COMMAND) down
 
 test:	## Run the tests.
-	cd backend && uv run pytest -v --cov=app
+	cd backend && uv run pytest --cov=app --failed-first
 
 migrate:  ## Apply all migrations
 	$(DOCKER_EXEC) $(ALEMBIC_CMD) upgrade head

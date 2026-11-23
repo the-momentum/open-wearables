@@ -11141,6 +11141,22 @@
               }
             }
           },
+          "429": {
+            "description": "Too many failed attempts for this email",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Too Many Requests",
+                  "status": 429,
+                  "detail": "Too many failed login attempts",
+                  "code": "TOO_MANY_REQUESTS"
+                }
+              }
+            }
+          },
           "4XX": {
             "description": "Client error",
             "content": {

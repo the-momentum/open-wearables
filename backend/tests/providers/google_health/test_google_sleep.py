@@ -2,14 +2,16 @@
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import EventCategory
+from app.services.providers.google_health.oauth import GoogleOAuth
 from app.services.providers.google_health.sleep import GoogleHealthApiSleep
 from tests.factories import UserFactory
 
@@ -30,7 +32,11 @@ def _point(**sleep: Any) -> dict[str, Any]:
 
 @pytest.fixture
 def handler() -> GoogleHealthApiSleep:
-    return GoogleHealthApiSleep(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url="https://x")
+    return GoogleHealthApiSleep(
+        oauth=create_autospec(GoogleOAuth, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
+        api_base_url="https://x",
+    )
 
 
 def test_a_session_is_typed_as_sleep_session(handler: GoogleHealthApiSleep) -> None:
@@ -45,10 +51,10 @@ def test_a_session_is_typed_as_sleep_session(handler: GoogleHealthApiSleep) -> N
 def test_a_re_fetched_night_refreshes_its_details_without_a_webhook(db: Session, handler: GoogleHealthApiSleep) -> None:
     user = UserFactory()
 
-    with patch("app.services.event_record_service.on_sleep_created") as sleep_created:
-        with patch.object(handler, "_fetch", return_value=[_point()]):
+    with patch("app.services.event_record_service.on_sleep_created", autospec=True) as sleep_created:
+        with patch.object(handler, "_fetch", autospec=True, return_value=[_point()]):
             handler.load_and_save(db, user.id, *WINDOW)
-        with patch.object(handler, "_fetch", return_value=[_point(stages=STAGES)]):
+        with patch.object(handler, "_fetch", autospec=True, return_value=[_point(stages=STAGES)]):
             handler.load_and_save(db, user.id, *WINDOW)
 
     records = db.query(EventRecord).filter(EventRecord.category == EventCategory.SLEEP).all()

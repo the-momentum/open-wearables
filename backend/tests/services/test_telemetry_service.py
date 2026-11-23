@@ -3,10 +3,11 @@
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
+import respx
 from sqlalchemy.orm import Session
 
 from app.config import Settings, settings
@@ -166,7 +167,7 @@ class TestEndpointUsagePayload:
         }
 
     def test_redis_failure_does_not_block_the_ping(self, db: Session) -> None:
-        with patch("app.services.endpoint_usage.get_redis_client", side_effect=ConnectionError("down")):
+        with patch("app.services.endpoint_usage.get_redis_client", autospec=True, side_effect=ConnectionError("down")):
             payload = telemetry_service.build_payload(db, event="daily")
 
         assert payload["endpoint_usage"] is None
@@ -185,109 +186,98 @@ class TestOptOutSettings:
 
 
 class TestSendPing:
-    def test_disabled_via_settings_sends_nothing(self, db: Session) -> None:
-        with (
-            patch.object(settings, "telemetry_enabled", False),
-            patch("app.services.telemetry_service.httpx.post") as mock_post,
-        ):
+    @pytest.fixture
+    def telemetry_api(self, respx_mock: respx.MockRouter) -> respx.Route:
+        """The telemetry collector, accepting pings."""
+        return respx_mock.post(settings.telemetry_endpoint_url).respond(202)
+
+    def test_disabled_via_settings_sends_nothing(self, db: Session, telemetry_api: respx.Route) -> None:
+        with patch.object(settings, "telemetry_enabled", False):
             result = telemetry_service.send_ping(db, event="daily")
 
         assert result == "disabled"
-        mock_post.assert_not_called()
+        assert not telemetry_api.called
 
-    def test_daily_ping_not_due_within_24_hours(self, db: Session) -> None:
+    def test_daily_ping_not_due_within_24_hours(self, db: Session, telemetry_api: respx.Route) -> None:
         state = telemetry_service.get_or_create_state(db)
         state.last_sent_at = datetime.now(timezone.utc) - timedelta(hours=1)
         db.flush()
 
-        with (
-            patch.object(settings, "telemetry_send_interval_seconds", 86400.0),
-            patch("app.services.telemetry_service.httpx.post") as mock_post,
-        ):
+        with patch.object(settings, "telemetry_send_interval_seconds", 86400.0):
             result = telemetry_service.send_ping(db, event="daily")
 
         assert result == "not_due"
-        mock_post.assert_not_called()
+        assert not telemetry_api.called
 
-    def test_startup_ping_debounced_within_12_hours(self, db: Session) -> None:
+    def test_startup_ping_debounced_within_12_hours(self, db: Session, telemetry_api: respx.Route) -> None:
         state = telemetry_service.get_or_create_state(db)
         state.last_sent_at = datetime.now(timezone.utc) - timedelta(hours=1)
         db.flush()
 
-        with (
-            patch.object(settings, "telemetry_startup_debounce_seconds", 43200.0),
-            patch("app.services.telemetry_service.httpx.post") as mock_post,
-        ):
+        with patch.object(settings, "telemetry_startup_debounce_seconds", 43200.0):
             result = telemetry_service.send_ping(db, event="startup")
 
         assert result == "not_due"
-        mock_post.assert_not_called()
+        assert not telemetry_api.called
 
-    def test_startup_ping_sent_after_debounce_window(self, db: Session) -> None:
+    def test_startup_ping_sent_after_debounce_window(self, db: Session, telemetry_api: respx.Route) -> None:
         state = telemetry_service.get_or_create_state(db)
         state.last_sent_at = datetime.now(timezone.utc) - timedelta(hours=13)
         db.flush()
 
-        with patch("app.services.telemetry_service.httpx.post", return_value=MagicMock()) as mock_post:
-            result = telemetry_service.send_ping(db, event="startup")
+        result = telemetry_service.send_ping(db, event="startup")
 
         assert result == "sent"
-        mock_post.assert_called_once()
+        assert telemetry_api.call_count == 1
 
-    def test_sent_ping_updates_last_sent_at(self, db: Session) -> None:
-        with patch("app.services.telemetry_service.httpx.post", return_value=MagicMock()) as mock_post:
-            result = telemetry_service.send_ping(db, event="daily")
+    def test_sent_ping_updates_last_sent_at(self, db: Session, telemetry_api: respx.Route) -> None:
+        result = telemetry_service.send_ping(db, event="daily")
 
         assert result == "sent"
         state = telemetry_service.get_or_create_state(db)
         assert state.last_sent_at is not None
 
-        _, call_kwargs = mock_post.call_args
-        assert call_kwargs["json"]["event"] == "daily"
-        assert call_kwargs["timeout"] == 5.0
+        request = telemetry_api.calls.last.request
+        assert json.loads(request.content)["event"] == "daily"
+        assert request.extensions["timeout"]["read"] == 5.0
 
-    def test_delivery_error_propagates_and_leaves_state_untouched(self, db: Session) -> None:
-        with (
-            patch(
-                "app.services.telemetry_service.httpx.post",
-                side_effect=httpx.ConnectError("connection refused"),
-            ),
-            pytest.raises(httpx.ConnectError),
-        ):
+    def test_delivery_error_propagates_and_leaves_state_untouched(
+        self, db: Session, telemetry_api: respx.Route
+    ) -> None:
+        telemetry_api.mock(side_effect=httpx.ConnectError("connection refused"))
+
+        with pytest.raises(httpx.ConnectError):
             telemetry_service.send_ping(db, event="daily")
 
         state = telemetry_service.get_or_create_state(db)
         assert state.last_sent_at is None
 
-    def test_call_during_an_in_flight_delivery_is_not_due(self, db: Session) -> None:
+    def test_call_during_an_in_flight_delivery_is_not_due(self, db: Session, telemetry_api: respx.Route) -> None:
         # Simulates a second worker checking while the first ping is still being sent:
         # the claim is committed before the request, so the second caller must back off.
         nested_results: list[str] = []
 
-        def deliver(*args: object, **kwargs: object) -> MagicMock:
+        def deliver(request: httpx.Request) -> httpx.Response:
             nested_results.append(telemetry_service.send_ping(db, event="startup"))
-            return MagicMock()
+            return httpx.Response(202)
 
-        with patch("app.services.telemetry_service.httpx.post", side_effect=deliver) as mock_post:
-            result = telemetry_service.send_ping(db, event="startup")
+        telemetry_api.mock(side_effect=deliver)
+
+        result = telemetry_service.send_ping(db, event="startup")
 
         assert result == "sent"
         assert nested_results == ["not_due"]
-        mock_post.assert_called_once()
+        assert telemetry_api.call_count == 1
 
-    def test_failed_delivery_restores_the_previous_send_time(self, db: Session) -> None:
+    def test_failed_delivery_restores_the_previous_send_time(self, db: Session, telemetry_api: respx.Route) -> None:
         previous = datetime.now(timezone.utc) - timedelta(days=2)
         state = telemetry_service.get_or_create_state(db)
         state.last_sent_at = previous
         db.commit()
 
-        with (
-            patch(
-                "app.services.telemetry_service.httpx.post",
-                side_effect=httpx.ConnectError("connection refused"),
-            ),
-            pytest.raises(httpx.ConnectError),
-        ):
+        telemetry_api.mock(side_effect=httpx.ConnectError("connection refused"))
+
+        with pytest.raises(httpx.ConnectError):
             telemetry_service.send_ping(db, event="daily")
 
         db.expire_all()

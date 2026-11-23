@@ -9,7 +9,7 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec, patch
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from app.schemas.auth import ConnectionStatus
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
 from app.schemas.sync_status import DataTypeKind
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.user_connection_service import user_connection_service
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -437,7 +438,7 @@ class TestEnsureSdkConnection:
         """First upload for a user should create the connection and emit."""
         user = UserFactory()
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             connection = user_connection_service.ensure_sdk_connection(db, user.id, "apple")
 
         assert connection.provider == "apple"
@@ -456,7 +457,7 @@ class TestEnsureSdkConnection:
         user = UserFactory()
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             user_connection_service.ensure_sdk_connection(db, user.id, "apple")
 
         emit.assert_not_called()
@@ -466,7 +467,7 @@ class TestEnsureSdkConnection:
         user = UserFactory()
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.REVOKED)
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             connection = user_connection_service.ensure_sdk_connection(db, user.id, "apple")
 
         assert connection.status == ConnectionStatus.ACTIVE
@@ -478,7 +479,7 @@ class TestEnsureSdkConnection:
         """Retries of the Celery task must not produce a second event."""
         user = UserFactory()
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             first = user_connection_service.ensure_sdk_connection(db, user.id, "apple")
             for _ in range(3):
                 user_connection_service.ensure_sdk_connection(db, user.id, "apple")
@@ -498,7 +499,7 @@ class TestUserConnectionServiceDeregisterFromProvider:
             access_token="stale",
             token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
         )
-        oauth = MagicMock()
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
         oauth.refresh_access_token.return_value.access_token = "fresh"
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
@@ -517,7 +518,7 @@ class TestUserConnectionServiceDeregisterFromProvider:
             access_token="valid",
             token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
-        oauth = MagicMock()
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
@@ -531,7 +532,7 @@ class TestUserConnectionServiceDeregisterFromProvider:
             provider="garmin",
             token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
         )
-        oauth = MagicMock()
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
         oauth.refresh_access_token.side_effect = RuntimeError("refresh rejected")
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
@@ -547,7 +548,7 @@ class TestUserConnectionServiceDeregisterFromProvider:
             refresh_token=None,
             token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
         )
-        oauth = MagicMock()
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 

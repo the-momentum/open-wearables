@@ -6,9 +6,10 @@ Tests the PolarWorkouts class for fetching and processing workout data from Pola
 
 from datetime import datetime
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
 
 import pytest
+from inline_snapshot import snapshot
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.constants.workout_types.polar import get_unified_workout_type
@@ -199,10 +200,14 @@ class TestPolarWorkoutsMetricsBuilding:
         metrics = workouts._build_metrics(exercise)
 
         # Assert
-        assert metrics["heart_rate_avg"] == Decimal("145")
-        assert metrics["heart_rate_max"] == 175
-        assert metrics["energy_burned"] == Decimal("650")
-        assert metrics["distance"] == Decimal("10000")
+        assert metrics == snapshot(
+            {
+                "heart_rate_max": 175,
+                "heart_rate_avg": Decimal("145"),
+                "energy_burned": Decimal("650"),
+                "distance": Decimal("10000"),
+            }
+        )
 
     def test_build_metrics_without_heart_rate_data(self, db: Session) -> None:
         """Test building metrics when heart rate data is missing."""
@@ -284,15 +289,29 @@ class TestPolarWorkoutsNormalization:
         record, detail = workouts._normalize_workout(exercise, user.id)
 
         # Assert
-        assert record.category == "workout"
-        assert record.type == WorkoutType.RUNNING.value
-        assert record.source_name == "Polar Vantage V2"
-        assert record.device_model == "Polar Vantage V2"
-        assert record.duration_seconds == 3600
-        assert record.external_id == "ABC123"
         assert record.user_id == user.id
-        assert detail.heart_rate_avg == Decimal("145")
-        assert detail.heart_rate_max == 175
+        assert detail.record_id == record.id
+        assert {
+            "record": record.model_dump(mode="json", exclude={"id", "user_id"}, exclude_none=True),
+            "detail": detail.model_dump(mode="json", exclude={"record_id"}, exclude_none=True),
+        } == snapshot(
+            {
+                "record": {
+                    "category": "workout",
+                    "type": "running",
+                    "source_name": "Polar Vantage V2",
+                    "device_model": "Polar Vantage V2",
+                    "duration_seconds": 3600,
+                    "start_datetime": "2024-01-15T07:00:00",
+                    "end_datetime": "2024-01-15T08:00:00",
+                    "zone_offset": "+01:00",
+                    "external_id": "ABC123",
+                    "source": "polar",
+                    "device_id": "12345678",
+                },
+                "detail": {"heart_rate_max": 175, "heart_rate_avg": "145", "energy_burned": "650", "distance": "10000"},
+            }
+        )
 
     def test_normalize_workout_workout_type_mapping(self, db: Session) -> None:
         """Test workout type is correctly mapped from Polar sport type."""
@@ -342,9 +361,11 @@ class TestPolarWorkoutsNormalization:
 class TestPolarWorkoutsAPIRequests:
     """Tests for API request methods."""
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_workouts_from_api_default_params(self, mock_request: MagicMock, db: Session) -> None:
+    def test_get_workouts_from_api_default_params(self, mocker: MockerFixture, db: Session) -> None:
         """Test getting workouts with default parameters."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
@@ -385,9 +406,11 @@ class TestPolarWorkoutsAPIRequests:
         assert call_kwargs["params"]["zones"] == "false"
         assert call_kwargs["params"]["route"] == "false"
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_workouts_from_api_with_options(self, mock_request: MagicMock, db: Session) -> None:
+    def test_get_workouts_from_api_with_options(self, mocker: MockerFixture, db: Session) -> None:
         """Test getting workouts with samples, zones, and route enabled."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
@@ -427,9 +450,11 @@ class TestPolarWorkoutsAPIRequests:
         assert call_kwargs["params"]["zones"] == "true"
         assert call_kwargs["params"]["route"] == "true"
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_workout_detail_from_api(self, mock_request: MagicMock, db: Session) -> None:
+    def test_get_workout_detail_from_api(self, mocker: MockerFixture, db: Session) -> None:
         """Test getting detailed workout data for specific exercise."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
@@ -473,18 +498,15 @@ class TestPolarWorkoutsAPIRequests:
 class TestPolarWorkoutsDataLoading:
     """Tests for loading workout data from Polar API."""
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    def test_load_data_success(
-        self,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
-        db: Session,
-        sample_polar_exercise: dict,
-    ) -> None:
+    def test_load_data_success(self, mocker: MockerFixture, db: Session, sample_polar_exercise: dict) -> None:
         """Test successful data loading from Polar API."""
+        mock_create_detail = mocker.patch(
+            "app.services.event_record_service.event_record_service.create_detail", autospec=True
+        )
+        mock_create = mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
@@ -522,9 +544,11 @@ class TestPolarWorkoutsDataLoading:
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
 
-    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_load_data_empty_response(self, mock_request: MagicMock, db: Session) -> None:
+    def test_load_data_empty_response(self, mocker: MockerFixture, db: Session) -> None:
         """Test loading data when API returns empty list."""
+        mock_request = mocker.patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", autospec=True
+        )
         # Arrange
         from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository

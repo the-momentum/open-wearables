@@ -137,8 +137,8 @@ def _raw_sleep(**overrides: Any) -> dict[str, Any]:
 
 def _saved_detail(data_247: Whoop247Data, raw: dict[str, Any]) -> EventRecordDetailCreate:
     normalized, _ = data_247.normalize_sleep(raw, uuid4())
-    with patch("app.services.providers.whoop.data_247.event_record_service") as mock_event:
-        data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+    with patch("app.services.providers.whoop.data_247.event_record_service", autospec=True) as mock_event:
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
     return mock_event.create_or_merge_sleep.call_args[0][3]
 
 

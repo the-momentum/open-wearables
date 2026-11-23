@@ -3,10 +3,11 @@
 import importlib
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -386,10 +387,10 @@ class TestSdkNaps:
     @pytest.mark.parametrize(
         "uploads", [(NIGHT_UPLOAD, NAP_UPLOAD), (NAP_UPLOAD, NIGHT_UPLOAD)], ids=["night_first", "nap_first"]
     )
-    @patch("app.services.sdk.sleep_service.celery_app")
     def test_the_nap_is_flagged_in_either_upload_order(
-        self, mock_celery: MagicMock, db: Session, uploads: tuple[tuple[tuple[str, str, str], ...], ...]
+        self, mocker: MockerFixture, db: Session, uploads: tuple[tuple[tuple[str, str, str], ...], ...]
     ) -> None:
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user = UserFactory()
         for upload in uploads:
             handle_sleep_data(db, _sdk_sleep(*upload), str(user.id))
@@ -397,8 +398,8 @@ class TestSdkNaps:
         db.rollback()  # the flag must be committed, not just flushed
         assert _flags(db, user.id) == {"23:00": False, "13:00": True}
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    def test_the_summary_counts_the_nap_apart(self, mock_celery: MagicMock, db: Session) -> None:
+    def test_the_summary_counts_the_nap_apart(self, mocker: MockerFixture, db: Session) -> None:
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user = UserFactory()
         handle_sleep_data(db, _sdk_sleep(*NIGHT_UPLOAD), str(user.id))
         handle_sleep_data(db, _sdk_sleep(*NAP_UPLOAD), str(user.id))
@@ -416,10 +417,10 @@ class TestSdkNaps:
         assert day.duration_minutes == 480
         assert day.nap_count == 1
 
-    @patch("app.services.sdk.sleep_service.celery_app")
     def test_a_failed_reflag_on_the_first_session_leaves_the_next_one_flagged(
-        self, mock_celery: MagicMock, db: Session
+        self, mocker: MockerFixture, db: Session
     ) -> None:
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user = UserFactory()
         real = nap_service.reclassify_naps
         calls: list[int] = []
@@ -430,22 +431,22 @@ class TestSdkNaps:
                 session.execute(text("SELECT 1/0"))
             return real(session, *args, **kwargs)
 
-        with patch.object(nap_service, "reclassify_naps", side_effect=fail_once):
+        with patch.object(nap_service, "reclassify_naps", autospec=True, side_effect=fail_once):
             handle_sleep_data(db, _sdk_sleep(*NIGHT_UPLOAD, *NAP_UPLOAD), str(user.id))
 
         assert len(calls) == 2
         assert _flags(db, user.id) == {"23:00": False, "13:00": True}
         assert not get_redis_client().exists(key(str(user.id)))
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    def test_a_failed_reflag_keeps_the_session_and_clears_the_state(self, mock_celery: MagicMock, db: Session) -> None:
+    def test_a_failed_reflag_keeps_the_session_and_clears_the_state(self, mocker: MockerFixture, db: Session) -> None:
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user = UserFactory()
         handle_sleep_data(db, _sdk_sleep(*NIGHT_UPLOAD), str(user.id))
 
         def fail(session: Session, *args: Any, **kwargs: Any) -> None:
             session.execute(text("SELECT 1/0"))
 
-        with patch.object(nap_service, "reclassify_naps", side_effect=fail):
+        with patch.object(nap_service, "reclassify_naps", autospec=True, side_effect=fail):
             handle_sleep_data(db, _sdk_sleep(*NAP_UPLOAD), str(user.id))
 
         assert _flags(db, user.id) == {"23:00": False, "13:00": False}

@@ -7,10 +7,11 @@ Tests cover:
 - Pagination and sorting
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+import time_machine
 from sqlalchemy.orm import Session
 
 from app.models import Developer
@@ -292,19 +293,16 @@ class TestDeveloperRepository:
     def test_timestamps_on_update(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test that updated_at changes on update."""
         # Arrange
-        developer = DeveloperFactory(email="dev@example.com")
-        original_created_at = developer.created_at
-        original_updated_at = developer.updated_at
+        with time_machine.travel(datetime.now(timezone.utc), tick=False) as traveller:
+            developer = DeveloperFactory(email="dev@example.com")
+            original_created_at = developer.created_at
+            original_updated_at = developer.updated_at
 
-        # Wait a tiny bit to ensure timestamp difference
-        import time
+            traveller.shift(timedelta(seconds=1))
+            update_data = DeveloperUpdateInternal(email="updated@example.com")
 
-        time.sleep(0.01)
-
-        update_data = DeveloperUpdateInternal(email="updated@example.com")
-
-        # Act
-        result = developer_repo.update(db, developer, update_data)
+            # Act
+            result = developer_repo.update(db, developer, update_data)
 
         # Assert
         assert result.created_at == original_created_at  # Created timestamp unchanged

@@ -531,4 +531,4 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
 
 def get_test_payload(event_type: str) -> dict:
     """Return the example payload for the given event type."""
-    return EXAMPLE_PAYLOADS.get(event_type, {})
+    return EXAMPLE_PAYLOADS.get(event_type, {"type": event_type, "data": {}})

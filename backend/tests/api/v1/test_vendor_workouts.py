@@ -7,7 +7,7 @@ Tests the following endpoints:
 """
 
 from typing import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
+from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.exceptions import (
     AppError,
     ProviderAuthRejectedError,
@@ -33,8 +35,9 @@ class TestVendorWorkoutsEndpoints:
     @pytest.fixture
     def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
         """Mock the ProviderFactory to avoid external API calls."""
-        with patch("app.api.routes.v1.vendor_workouts.factory") as mock_factory:
-            mock_strategy = MagicMock()
+        with patch("app.api.routes.v1.vendor_workouts.factory", autospec=True) as mock_factory:
+            mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
+            mock_strategy.workouts = create_autospec(BaseWorkoutsTemplate, instance=True)
             mock_strategy.workouts.get_workouts_from_api.return_value = [
                 {"id": "123", "type": "running", "duration": 3600},
                 {"id": "456", "type": "cycling", "duration": 1800},
@@ -333,8 +336,8 @@ class TestVendorWorkoutsEndpoints:
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
 
         # Mock factory to return a strategy without workouts
-        with patch("app.api.routes.v1.vendor_workouts.factory") as mock_factory:
-            mock_strategy = MagicMock()
+        with patch("app.api.routes.v1.vendor_workouts.factory", autospec=True) as mock_factory:
+            mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
             mock_strategy.workouts = None  # Apple has no cloud API
             mock_factory.get_provider.return_value = mock_strategy
 

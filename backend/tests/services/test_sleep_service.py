@@ -14,10 +14,12 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+import redis
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
-from app.models import EventRecord, HealthScore
+from app.models import EventRecord, HealthScore, SleepDetails
 from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -397,17 +399,12 @@ class TestCalculateFinalMetrics:
 class TestFinishSleep:
     """Tests for finish_sleep with different stage compositions."""
 
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.delete_sleep_state")
-    def test_finish_sleep_with_sleeping_stages(
-        self,
-        mock_delete_state: MagicMock,
-        mock_event_service: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finish_sleep_with_sleeping_stages(self, mocker: MockerFixture, db: Session) -> None:
         """Finish sleep with old-style 'sleeping' data should set correct totals."""
+        mocker.patch("app.services.sdk.sleep_service.delete_sleep_state", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
         user_id = str(uuid4())
-        mock_record = MagicMock()
+        mock_record = EventRecord()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
         mock_event_service.find_adjacent_sleep_record.return_value = None
@@ -463,17 +460,12 @@ class TestFinishSleep:
         assert len(detail.sleep_stages) == 3
         assert all(s.stage == SleepStageType.SLEEPING for s in detail.sleep_stages)
 
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.delete_sleep_state")
-    def test_finish_sleep_with_detailed_stages(
-        self,
-        mock_delete_state: MagicMock,
-        mock_event_service: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finish_sleep_with_detailed_stages(self, mocker: MockerFixture, db: Session) -> None:
         """Finish sleep with detailed stages should set deep/rem/light correctly."""
+        mocker.patch("app.services.sdk.sleep_service.delete_sleep_state", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
         user_id = str(uuid4())
-        mock_record = MagicMock()
+        mock_record = EventRecord()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
         mock_event_service.find_adjacent_sleep_record.return_value = None
@@ -541,10 +533,10 @@ class TestFinishSleepUnreportedStages:
     @staticmethod
     def _finish(db: Session, stages: list[SleepStateStage]) -> EventRecordDetailCreate:
         with (
-            patch("app.services.sdk.sleep_service.event_record_service") as mock_event_service,
-            patch("app.services.sdk.sleep_service.delete_sleep_state"),
+            patch("app.services.sdk.sleep_service.event_record_service", autospec=True) as mock_event_service,
+            patch("app.services.sdk.sleep_service.delete_sleep_state", autospec=True),
         ):
-            mock_event_service.create.return_value = MagicMock(id=uuid4())
+            mock_event_service.create.return_value = EventRecord(id=uuid4())
             mock_event_service.find_adjacent_sleep_record.return_value = None
             state = SleepState(
                 uuid=str(uuid4()),
@@ -601,16 +593,7 @@ class TestFinishSleepUnreportedStages:
 class TestHandleSleepDataIntegration:
     """Integration tests for handle_sleep_data with real payload structures."""
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_handle_real_payload_sleeping_stages(
-        self,
-        mock_redis_func: MagicMock,
-        mock_event_service: MagicMock,
-        mock_finalize: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_handle_real_payload_sleeping_stages(self, mocker: MockerFixture, db: Session) -> None:
         """Process a synthetic payload with in_bed + sleeping stages.
 
         Modeled after older Apple Watch pattern:
@@ -618,13 +601,16 @@ class TestHandleSleepDataIntegration:
         - 1 in_bed segment (iPhone15,2)
         All within gap threshold → single session.
         """
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mock_finalize = mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user_id = str(uuid4())
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None  # No existing state
         mock_redis_func.return_value = mock_redis
 
-        mock_record = MagicMock()
+        mock_record = EventRecord()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
         mock_event_service.find_adjacent_sleep_record.return_value = None
@@ -657,24 +643,18 @@ class TestHandleSleepDataIntegration:
         assert len(sleeping_stages) >= 1
         assert len(in_bed_stages) == 1
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_handle_detailed_stages_payload(
-        self,
-        mock_redis_func: MagicMock,
-        mock_event_service: MagicMock,
-        mock_finalize: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_handle_detailed_stages_payload(self, mocker: MockerFixture, db: Session) -> None:
         """Process a modern payload with detailed sleep stages."""
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user_id = str(uuid4())
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None
         mock_redis_func.return_value = mock_redis
 
-        mock_record = MagicMock()
+        mock_record = EventRecord()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
         mock_event_service.find_adjacent_sleep_record.return_value = None
@@ -700,16 +680,11 @@ class TestHandleSleepDataIntegration:
         assert SleepStageType.REM in stage_types
         assert SleepStageType.AWAKE in stage_types
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_third_party_writer_gets_its_own_session(
-        self,
-        mock_redis_func: MagicMock,
-        mock_finalize: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_third_party_writer_gets_its_own_session(self, mocker: MockerFixture, db: Session) -> None:
         """Oura writing to HealthKit overlaps the Watch's night but must not join its session (#720)."""
-        mock_redis = MagicMock()
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None
         mock_redis_func.return_value = mock_redis
 
@@ -749,7 +724,7 @@ class TestHandleSleepDataIntegration:
             },
         }
 
-        with patch("app.services.sdk.sleep_service.finish_sleep") as mock_finish:
+        with patch("app.services.sdk.sleep_service.finish_sleep", autospec=True) as mock_finish:
             handle_sleep_data(db, SyncRequest.model_validate(payload), str(uuid4()))
 
         finished = {call[0][2].source_app_id: call[0][2] for call in mock_finish.call_args_list}
@@ -775,7 +750,7 @@ class TestSDKSyncEndpointSleep:
         user_id = str(uuid4())
         token = create_sdk_user_token("test_app", user_id)
 
-        with patch("app.api.routes.v1.sdk_sync.process_sdk_upload") as mock_task:
+        with patch("app.api.routes.v1.sdk_sync.process_sdk_upload", autospec=True) as mock_task:
             mock_task.delay.return_value = None
 
             response = client.post(
@@ -800,7 +775,7 @@ class TestSDKSyncEndpointSleep:
         user_id = str(uuid4())
         token = create_sdk_user_token("test_app", user_id)
 
-        with patch("app.api.routes.v1.sdk_sync.process_sdk_upload") as mock_task:
+        with patch("app.api.routes.v1.sdk_sync.process_sdk_upload", autospec=True) as mock_task:
             mock_task.delay.return_value = None
 
             response = client.post(
@@ -824,24 +799,18 @@ class TestNoIntermediateRedisSaves:
     prevents this race condition.
     """
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_redis_set_called_once_per_batch(
-        self,
-        mock_redis_func: MagicMock,
-        mock_event_service: MagicMock,
-        mock_finalize: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_redis_set_called_once_per_batch(self, mocker: MockerFixture, db: Session) -> None:
         """Redis .set() should be called exactly once after processing all stages."""
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user_id = str(uuid4())
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None
         mock_redis_func.return_value = mock_redis
 
-        mock_record = MagicMock()
+        mock_record = EventRecord()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
         mock_event_service.find_adjacent_sleep_record.return_value = None
@@ -908,8 +877,11 @@ class TestReadyToFinish:
 
     def _upload(self, mock_redis_func: MagicMock, samples: list[tuple[str, str, str, dict]]) -> dict[str, SleepState]:
         """Handle one upload and return the states it saved, by writer field."""
-        with patch("app.services.sdk.sleep_service.finish_sleep"), patch("app.services.sdk.sleep_service.celery_app"):
-            handle_sleep_data(MagicMock(), self._payload(samples), str(uuid4()))
+        with (
+            patch("app.services.sdk.sleep_service.finish_sleep", autospec=True),
+            patch("app.services.sdk.sleep_service.celery_app", autospec=True),
+        ):
+            handle_sleep_data(MagicMock(spec=Session), self._payload(samples), str(uuid4()))
         return {
             c.args[1]: SleepState.model_validate_json(c.args[2])
             for c in mock_redis_func.return_value.hset.call_args_list
@@ -930,8 +902,9 @@ class TestReadyToFinish:
     def test_a_state_without_an_upload_time_waits_for_the_end_gap(self) -> None:
         assert not is_ready_to_finish(self._state(ended_ago=40, received_ago=None), self.NOW)
 
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_an_upload_records_when_it_arrived(self, mock_redis_func: MagicMock) -> None:
+    def test_an_upload_records_when_it_arrived(self, mocker: MockerFixture) -> None:
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_redis_func.return_value = MagicMock(spec=redis.Redis)
         mock_redis_func.return_value.get.return_value = None
         before = datetime.now(timezone.utc)
 
@@ -942,23 +915,23 @@ class TestReadyToFinish:
         assert saved.last_received_at is not None
         assert saved.last_received_at >= before
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.finish_sleep")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_a_fresh_watch_upload_stays_open(
-        self, mock_redis_func: MagicMock, mock_finish_sleep: MagicMock, mock_finalize: MagicMock
-    ) -> None:
+    def test_a_fresh_watch_upload_stays_open(self, mocker: MockerFixture) -> None:
         """The quiet period starts at the upload, so the night is not closed in the same call."""
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_finish_sleep = mocker.patch("app.services.sdk.sleep_service.finish_sleep", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        mock_redis_func.return_value = MagicMock(spec=redis.Redis)
         mock_redis_func.return_value.get.return_value = None
         woke_up = datetime.now(timezone.utc) - timedelta(minutes=10)
         sample = ("light", (woke_up - timedelta(hours=1)).isoformat(), woke_up.isoformat(), self.WATCH)
 
-        handle_sleep_data(MagicMock(), self._payload([sample]), str(uuid4()))
+        handle_sleep_data(MagicMock(spec=Session), self._payload([sample]), str(uuid4()))
 
         mock_finish_sleep.assert_not_called()
 
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_watch_sleep_counts_in_a_session_the_iphone_opened(self, mock_redis_func: MagicMock) -> None:
+    def test_watch_sleep_counts_in_a_session_the_iphone_opened(self, mocker: MockerFixture) -> None:
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_redis_func.return_value = MagicMock(spec=redis.Redis)
         mock_redis_func.return_value.get.return_value = None
 
         saved = self._upload(
@@ -972,8 +945,9 @@ class TestReadyToFinish:
         assert saved.device_type == DeviceType.PHONE
         assert saved.has_apple_watch_sleep
 
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_watch_sleep_marks_only_the_apple_session(self, mock_redis_func: MagicMock) -> None:
+    def test_watch_sleep_marks_only_the_apple_session(self, mocker: MockerFixture) -> None:
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_redis_func.return_value = MagicMock(spec=redis.Redis)
         mock_redis_func.return_value.get.return_value = None
 
         saved = self._upload(
@@ -987,28 +961,28 @@ class TestReadyToFinish:
         assert saved["apple:apple"].has_apple_watch_sleep
         assert not saved["apple:com.ouraring.oura"].has_apple_watch_sleep
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.finish_sleep")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_another_apps_upload_does_not_extend_the_watch_quiet_period(
-        self, mock_redis_func: MagicMock, mock_finish_sleep: MagicMock, mock_celery: MagicMock
-    ) -> None:
+    def test_another_apps_upload_does_not_extend_the_watch_quiet_period(self, mocker: MockerFixture) -> None:
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_finish_sleep = mocker.patch("app.services.sdk.sleep_service.finish_sleep", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         now = datetime.now(timezone.utc)
         watch_state = self._state(ended_ago=40, received_ago=20, now=now)
         woke_up = watch_state.end_time
+        mock_redis_func.return_value = MagicMock(spec=redis.Redis)
         mock_redis_func.return_value.get.return_value = None
         mock_redis_func.return_value.hgetall.return_value = {"apple:apple": watch_state.model_dump_json()}
         sample = ("light", (woke_up - timedelta(hours=1)).isoformat(), woke_up.isoformat(), self.OURA)
 
-        handle_sleep_data(MagicMock(), self._payload([sample]), str(uuid4()))
+        handle_sleep_data(MagicMock(spec=Session), self._payload([sample]), str(uuid4()))
 
         finished = [c.args[2] for c in mock_finish_sleep.call_args_list]
         assert [state.source_app_id for state in finished] == [self.WATCH["appId"]]
         assert finished[0].last_received_at == watch_state.last_received_at
 
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_an_upload_without_usable_sleep_keeps_the_upload_time(self, mock_redis_func: MagicMock) -> None:
+    def test_an_upload_without_usable_sleep_keeps_the_upload_time(self, mocker: MockerFixture) -> None:
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
         state = self._state(ended_ago=40, received_ago=30)
+        mock_redis_func.return_value = MagicMock(spec=redis.Redis)
         mock_redis_func.return_value.get.return_value = None
         mock_redis_func.return_value.hgetall.return_value = {"apple:apple": state.model_dump_json()}
 
@@ -1032,16 +1006,7 @@ class TestHistoricalBulkUploadMerging:
     regardless of how many payloads Apple sends.
     """
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_second_payload_merges_with_adjacent_db_record(
-        self,
-        mock_redis_func: MagicMock,
-        mock_event_service: MagicMock,
-        mock_finalize: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_second_payload_merges_with_adjacent_db_record(self, mocker: MockerFixture, db: Session) -> None:
         """When payload B arrives after payload A has already been finalized to the
         DB, finish_sleep should find the adjacent record, delete it and create a
         new merged record covering both sessions.
@@ -1049,6 +1014,9 @@ class TestHistoricalBulkUploadMerging:
         Payload A: 23:00–01:00 (light + deep)
         Payload B: 01:00–06:00 (rem + light), chains directly onto A
         """
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
 
         user_id = str(uuid4())
 
@@ -1079,21 +1047,22 @@ class TestHistoricalBulkUploadMerging:
         }
 
         # Simulate the adjacent record that payload A already wrote to the DB
-        mock_adjacent = MagicMock()
+        mock_adjacent = EventRecord()
         mock_adjacent.id = uuid4()
         mock_adjacent.start_datetime = _dt("2026-03-22T23:00:00Z")
         mock_adjacent.end_datetime = _dt("2026-03-23T01:00:00Z")
-        mock_adjacent.sleep_detail = MagicMock()
-        mock_adjacent.sleep_detail.sleep_stages = [
-            {"stage": "light", "start_time": "2026-03-22T23:00:00+00:00", "end_time": "2026-03-22T23:45:00+00:00"},
-            {"stage": "deep", "start_time": "2026-03-22T23:45:00+00:00", "end_time": "2026-03-23T01:00:00+00:00"},
-        ]
+        mock_adjacent.sleep_detail = SleepDetails(
+            sleep_stages=[
+                {"stage": "light", "start_time": "2026-03-22T23:00:00+00:00", "end_time": "2026-03-22T23:45:00+00:00"},
+                {"stage": "deep", "start_time": "2026-03-22T23:45:00+00:00", "end_time": "2026-03-23T01:00:00+00:00"},
+            ]
+        )
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None  # No active Redis state for this user
         mock_redis_func.return_value = mock_redis
 
-        mock_record = MagicMock()
+        mock_record = EventRecord()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
         # First call to find_adjacent returns the payload-A record; second call (if any) returns None
@@ -1193,22 +1162,16 @@ class TestProviderSleepScore:
             ],
         )
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_sleep_score_value_is_kept_in_state(
-        self,
-        mock_redis_func: MagicMock,
-        mock_event_service: MagicMock,
-        mock_finalize: MagicMock,
-        db: Session,
-    ) -> None:
-        mock_redis = MagicMock()
+    def test_sleep_score_value_is_kept_in_state(self, mocker: MockerFixture, db: Session) -> None:
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None
         mock_redis_func.return_value = mock_redis
         mock_event_service.find_adjacent_sleep_record.return_value = None
 
-        with patch("app.services.sdk.sleep_service.finish_sleep") as mock_finish:
+        with patch("app.services.sdk.sleep_service.finish_sleep", autospec=True) as mock_finish:
             handle_sleep_data(db, SyncRequest.model_validate(self.SAMSUNG_PAYLOAD), user_id=str(uuid4()))
 
         state = SleepState.model_validate_json(mock_redis.hset.call_args_list[-1][0][2])
@@ -1216,41 +1179,29 @@ class TestProviderSleepScore:
         finished_state: SleepState = mock_finish.call_args[0][2]
         assert finished_state.sleep_score == 82
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.get_redis_client")
-    def test_sleep_score_is_not_attached_to_other_provider_state(
-        self,
-        mock_redis_func: MagicMock,
-        mock_event_service: MagicMock,
-        mock_finalize: MagicMock,
-        db: Session,
-    ) -> None:
-        mock_redis = MagicMock()
+    def test_sleep_score_is_not_attached_to_other_provider_state(self, mocker: MockerFixture, db: Session) -> None:
+        mock_redis_func = mocker.patch("app.services.sdk.sleep_service.get_redis_client", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None
         mock_redis.hgetall.return_value = {"apple:": self._state("apple", None).model_dump_json()}
         mock_redis_func.return_value = mock_redis
         mock_event_service.find_adjacent_sleep_record.return_value = None
 
-        with patch("app.services.sdk.sleep_service.finish_sleep") as mock_finish:
+        with patch("app.services.sdk.sleep_service.finish_sleep", autospec=True) as mock_finish:
             handle_sleep_data(db, SyncRequest.model_validate(self.SAMSUNG_PAYLOAD), user_id=str(uuid4()))
 
         finished = {call[0][2].provider: call[0][2] for call in mock_finish.call_args_list}
         assert finished["apple"].sleep_score is None
         assert finished["samsung"].sleep_score == 82
 
-    @patch("app.services.sdk.sleep_service.health_score_service")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.delete_sleep_state")
-    def test_finish_sleep_saves_provider_sleep_score(
-        self,
-        mock_delete_state: MagicMock,
-        mock_event_service: MagicMock,
-        mock_score_service: MagicMock,
-        db: Session,
-    ) -> None:
+    def test_finish_sleep_saves_provider_sleep_score(self, mocker: MockerFixture, db: Session) -> None:
+        mocker.patch("app.services.sdk.sleep_service.delete_sleep_state", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mock_score_service = mocker.patch("app.services.sdk.sleep_service.health_score_service", autospec=True)
         user_id = str(uuid4())
-        mock_record = MagicMock()
+        mock_record = EventRecord()
         mock_record.id = uuid4()
         mock_record.data_source_id = uuid4()
         mock_event_service.create.return_value = mock_record
@@ -1268,26 +1219,20 @@ class TestProviderSleepScore:
         assert score.recorded_at == _dt("2026-03-22T23:00:00Z")
         assert score.zone_offset == "+01:00"
 
-    @patch("app.services.sdk.sleep_service.health_score_service")
-    @patch("app.services.sdk.sleep_service.event_record_service")
-    @patch("app.services.sdk.sleep_service.delete_sleep_state")
-    def test_finish_sleep_without_score_saves_none(
-        self,
-        mock_delete_state: MagicMock,
-        mock_event_service: MagicMock,
-        mock_score_service: MagicMock,
-        db: Session,
-    ) -> None:
-        mock_event_service.create.return_value = MagicMock(id=uuid4())
+    def test_finish_sleep_without_score_saves_none(self, mocker: MockerFixture, db: Session) -> None:
+        mocker.patch("app.services.sdk.sleep_service.delete_sleep_state", autospec=True)
+        mock_event_service = mocker.patch("app.services.sdk.sleep_service.event_record_service", autospec=True)
+        mock_score_service = mocker.patch("app.services.sdk.sleep_service.health_score_service", autospec=True)
+        mock_event_service.create.return_value = EventRecord(id=uuid4())
         mock_event_service.find_adjacent_sleep_record.return_value = None
 
         finish_sleep(db, str(uuid4()), self._state("apple", None))
 
         mock_score_service.bulk_create.assert_not_called()
 
-    @patch("app.services.sdk.sleep_service.celery_app")
-    def test_samsung_sleep_score_is_persisted(self, mock_finalize: MagicMock, db: Session) -> None:
+    def test_samsung_sleep_score_is_persisted(self, mocker: MockerFixture, db: Session) -> None:
         """End to end against the DB: a historical Samsung night lands as a session with its sleep score."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
         user = UserFactory()
 
         handle_sleep_data(db, SyncRequest.model_validate(self.SAMSUNG_PAYLOAD), str(user.id))

@@ -7,16 +7,20 @@ Tests the following endpoints:
 """
 
 from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
+from celery.result import AsyncResult
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.auth import ConnectionStatus
-from app.services.providers.base_strategy import HistoricalSyncResult
+from app.services.providers.base_strategy import BaseProviderStrategy, HistoricalSyncResult
 from app.services.providers.sync_247_result import Sync247Result
+from app.services.providers.templates.base_247_data import Base247DataTemplate
+from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.exceptions import ProviderNotConnectedError, UnsupportedProviderError
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
@@ -27,8 +31,10 @@ class TestSyncDataEndpoint:
     @pytest.fixture
     def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
         """Mock the ProviderFactory to avoid external API calls."""
-        with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
-            mock_strategy = MagicMock()
+        with patch("app.api.routes.v1.sync_data.factory", autospec=True) as mock_factory:
+            mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
+            mock_strategy.workouts = create_autospec(BaseWorkoutsTemplate, instance=True)
+            mock_strategy.data_247 = create_autospec(Base247DataTemplate, instance=True)
             mock_strategy.workouts.load_data.return_value = True
             mock_strategy.data_247.load_and_save_all.return_value = Sync247Result(provider="garmin")
             mock_factory.get_provider.return_value = mock_strategy
@@ -97,21 +103,16 @@ class TestSyncDataEndpoint:
             },
         }
 
-    @patch("app.api.routes.v1.sync_data.sync_vendor_data")
-    def test_sync_garmin_async_mode(
-        self,
-        mock_celery_task: MagicMock,
-        client: TestClient,
-        db: Session,
-    ) -> None:
+    def test_sync_garmin_async_mode(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
         """Test async sync dispatches to Celery task."""
+        mock_celery_task = mocker.patch("app.api.routes.v1.sync_data.sync_vendor_data", autospec=True)
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         # Configure mock task
-        mock_task = MagicMock()
+        mock_task = create_autospec(AsyncResult, instance=True)
         mock_task.id = "test-task-id-123"
         mock_celery_task.delay.return_value = mock_task
 
@@ -239,7 +240,7 @@ class TestSyncDataEndpoint:
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
 
         # Configure mock to return a strategy without workouts
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.workouts = None
         mock_provider_factory.get_provider.return_value = mock_strategy
 
@@ -261,7 +262,7 @@ class TestSyncHistoricalEndpoint:
     @pytest.fixture
     def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
         """Mock the ProviderFactory used by the sync_data router."""
-        with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
+        with patch("app.api.routes.v1.sync_data.factory", autospec=True) as mock_factory:
             yield mock_factory
 
     def test_historical_sync_delegates_to_strategy(
@@ -271,7 +272,7 @@ class TestSyncHistoricalEndpoint:
         user = UserFactory()
         api_key = ApiKeyFactory()
 
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.start_historical_sync.return_value = HistoricalSyncResult(
             task_id="task-abc",
             method="pull_api",
@@ -302,7 +303,7 @@ class TestSyncHistoricalEndpoint:
         user = UserFactory()
         api_key = ApiKeyFactory()
 
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.start_historical_sync.return_value = HistoricalSyncResult(
             task_id="task-xyz",
             method="pull_api",
@@ -327,7 +328,7 @@ class TestSyncHistoricalEndpoint:
         user = UserFactory()
         api_key = ApiKeyFactory()
 
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.start_historical_sync.side_effect = UnsupportedProviderError("apple", "historical sync")
         mock_provider_factory.get_provider.return_value = mock_strategy
 

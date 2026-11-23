@@ -7,19 +7,22 @@ Following patterns from know-how-tests.md:
 - Factory pattern for test data
 """
 
+import functools
 import ipaddress
 import os
 import socket
-import sys
-from collections.abc import Generator
-from typing import Any
+from collections.abc import Callable, Generator
+from contextlib import ExitStack
+from typing import Any, Concatenate
 from unittest.mock import MagicMock, patch
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
+import bcrypt
 import pytest
 import redis as redis_lib
+from anyio.from_thread import BlockingPortal, start_blocking_portal
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
@@ -27,11 +30,13 @@ from testcontainers.redis import RedisContainer
 from app.config import Settings, settings
 from app.database import BaseDbModel, _get_db_dependency
 from app.integrations.redis_client import get_redis_client
-from app.main import api
+from app.main import api, celery_app
 from app.models import SeriesTypeDefinition
 from app.schemas.enums import SERIES_TYPE_DEFINITIONS
 from app.utils.structured_logging import strict_attributes
 from tests import factories
+from tests.utils import RecordingRouter
+from tests.utils.aws import mock_s3_client
 
 # An unserializable or clashing log attribute fails the test instead of being printed with str().
 strict_attributes(True)
@@ -41,27 +46,77 @@ strict_attributes(True)
 Settings.model_config["env_file"] = None
 
 
-@pytest.fixture(scope="session")
-def _postgres_url() -> Generator[str, None, None]:
-    """
-    Provide a PostgreSQL connection URL for tests.
+# ============================================================================
+# Infrastructure: containers
+# ============================================================================
 
-    - If TEST_DATABASE_URL is set (e.g. in CI), use it directly.
-    - Otherwise, spin up a PostgreSQL container via testcontainers.
+_containers = ExitStack()
+_infrastructure_urls: dict[str, str] = {}
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Start the containers before the first test.
+
+    - TEST_DATABASE_URL / TEST_REDIS_URL (e.g. in CI) are used directly.
+    - Otherwise Postgres and Redis run in containers via testcontainers.
     """
-    explicit_url = os.environ.get("TEST_DATABASE_URL")
-    if explicit_url:
-        yield explicit_url
+    if session.config.option.collectonly:
         return
 
-    with PostgresContainer(
-        image="postgres:18",
-        username="open-wearables",
-        password="open-wearables",
-        dbname="open_wearables_test",
-        driver="psycopg",
-    ) as pg:
-        yield pg.get_connection_url()
+    postgres_url = os.environ.get("TEST_DATABASE_URL")
+    if not postgres_url:
+        pg = _containers.enter_context(
+            PostgresContainer(
+                image="postgres:18",
+                username="open-wearables",
+                password="open-wearables",
+                dbname="open_wearables_test",
+                driver="psycopg",
+            )
+            .with_command("postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off")
+            .with_tmpfs_mount("/var/lib/postgresql", size="size=1g")
+        )
+        postgres_url = pg.get_connection_url()
+
+    redis_url = os.environ.get("TEST_REDIS_URL")
+    if not redis_url:
+        r = _containers.enter_context(RedisContainer(image="redis:7"))
+        redis_url = f"redis://{r.get_container_host_ip()}:{r.get_exposed_port(6379)}/0"
+
+    _infrastructure_urls.update(postgres=postgres_url, redis=redis_url)
+    os.environ["TEST_DATABASE_URL"] = postgres_url
+    os.environ["TEST_REDIS_URL"] = redis_url
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    _containers.close()
+
+
+def _xdist_worker_index() -> int | None:
+    """0 for pytest-xdist worker gw0, 1 for gw1, ...; None when tests run in a single process."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    return int(worker.removeprefix("gw")) if worker else None
+
+
+@pytest.fixture(scope="session")
+def _postgres_url() -> Generator[str, None, None]:
+    """Each xdist worker gets its own database, so workers don't drop each other's tables."""
+    base_url = _infrastructure_urls["postgres"]
+    worker = _xdist_worker_index()
+    if worker is None:
+        yield base_url
+        return
+
+    base = make_url(base_url)
+    db_name = f"{base.database}_gw{worker}"
+    admin = create_engine(base, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))  # left over by a killed run
+        conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+    yield base.set(database=db_name).render_as_string(hide_password=False)
+    with admin.connect() as conn:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))
+    admin.dispose()
 
 
 @pytest.fixture(scope="session")
@@ -107,20 +162,11 @@ def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
     """
     Create a test database session with transaction rollback.
     Each test runs in its own transaction that gets rolled back.
+    Session commits and rollbacks only release or roll back savepoints inside it.
     """
     connection = engine.connect()
     transaction = connection.begin()
-    session = session_factory(bind=connection)
-
-    # Begin a nested transaction (savepoint)
-    nested = connection.begin_nested()
-
-    # If the application code calls commit, restart the savepoint
-    @event.listens_for(session, "after_transaction_end")
-    def restart_savepoint(session: Session, transaction: Any) -> None:
-        nonlocal nested
-        if not nested.is_active:
-            nested = connection.begin_nested()
+    session = session_factory(bind=connection, join_transaction_mode="create_savepoint")
 
     yield session
 
@@ -131,33 +177,44 @@ def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def set_factory_session(db: Session) -> Generator[None, None, None]:
-    """Set database session for all factory-boy factories."""
-    for name, obj in vars(factories).items():
-        if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
-            obj._meta.sqlalchemy_session = db
+def set_factory_session(request: pytest.FixtureRequest) -> Generator[None]:
+    """Let all factories request the same db fixture on first use, including new subclasses."""
+    used = False
+
+    def get_session() -> Session:
+        nonlocal used
+        used = True
+        return request.getfixturevalue("db")
+
+    token = factories.session_provider.set(get_session)
     yield
-    # Clear session after test
-    for name, obj in vars(factories).items():
-        if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
-            obj._meta.sqlalchemy_session = None
+
+    factories.session_provider.reset(token)
+    if used:
+        factories.BaseFactory.reset_session()
 
 
 @pytest.fixture
-def client(db: Session) -> Generator[TestClient, None, None]:
-    """
-    Create a test client with database dependency override.
-    """
+def client(db: Session, _client_portal: BlockingPortal) -> Generator[TestClient, None, None]:
+    """Create a test client with database dependency override."""
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db
 
     api.dependency_overrides[_get_db_dependency] = override_get_db
 
-    with TestClient(api) as test_client:
-        yield test_client
-
+    test_client = TestClient(api)
+    test_client.portal = _client_portal
+    yield test_client
+    test_client.close()  # Avoid `with`, which runs app lifespan on every test.
     api.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="session")
+def _client_portal() -> Generator[BlockingPortal, None, None]:
+    """Reuse the event loop and worker threads instead of starting them for each HTTP request."""
+    with start_blocking_portal() as portal:
+        yield portal
 
 
 # ============================================================================
@@ -166,22 +223,18 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture(scope="session")
-def _redis_url() -> Generator[str, None, None]:
-    """
-    Provide a Redis connection URL for tests.
-
-    - If TEST_REDIS_URL is set (e.g. in CI), use it directly.
-    - Otherwise, spin up a Redis container via testcontainers.
-    """
-    explicit_url = os.environ.get("TEST_REDIS_URL")
-    if explicit_url:
-        yield explicit_url
-        return
-
-    with RedisContainer(image="redis:7") as r:
-        host = r.get_container_host_ip()
-        port = r.get_exposed_port(6379)
-        yield f"redis://{host}:{port}/0"
+def _redis_url() -> str:
+    """Each xdist worker gets its own Redis database number, so flush_redis stays per worker."""
+    parsed = urlparse(_infrastructure_urls["redis"])
+    query = parse_qs(parsed.query)
+    db_param = query.pop("db", None)  # redis-py lets ?db= override the path, so fold it into the path
+    db = int(db_param[0] if db_param else parsed.path.lstrip("/") or 0)
+    worker = _xdist_worker_index()
+    if worker is not None:
+        db += worker
+        if db > 15:  # Redis ships with databases 0-15
+            pytest.exit(f"Redis has no database {db} for xdist worker gw{worker}; run with fewer workers (-n)", 2)
+    return parsed._replace(path=f"/{db}", query=urlencode(query, doseq=True)).geturl()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -196,18 +249,50 @@ def _configure_redis(_redis_url: str) -> Generator[None, None, None]:
     with (
         patch.object(settings, "redis_host", parsed.hostname or "localhost"),
         patch.object(settings, "redis_port", parsed.port or 6379),
+        patch.object(settings, "redis_db", int(parsed.path.lstrip("/") or 0)),
     ):
         yield
 
 
+@pytest.fixture(scope="session")
+def redis_cleanup_client(_redis_url: str) -> Generator[redis_lib.Redis, None, None]:
+    """Reuse a connection for isolation instead of opening two connections per test."""
+    with redis_lib.from_url(_redis_url) as client:
+        yield client
+
+
 @pytest.fixture(autouse=True)
-def flush_redis(_redis_url: str) -> Generator[None, None, None]:
-    """Flush Redis state before each test to ensure isolation."""
-    redis_lib.from_url(_redis_url).flushdb()
+def flush_redis(redis_cleanup_client: redis_lib.Redis) -> Generator[None, None, None]:
+    """Clean the test Redis only if used, including pipelines and WATCH commands."""
+    used = False
+    target = redis_cleanup_client.connection_pool.connection_kwargs
+
+    def guard[T: redis_lib.Redis, R, **P](method: Callable[Concatenate[T, P], R]) -> Callable[Concatenate[T, P], R]:
+        def execute(client: T, /, *args: P.args, **kwargs: P.kwargs) -> R:
+            nonlocal used
+            connection = client.connection_pool.connection_kwargs
+            if not used and all(connection.get(key) == target.get(key) for key in ("host", "port", "db")):
+                used = True
+                redis_cleanup_client.flushdb()
+            return method(client, *args, **kwargs)
+
+        return execute
+
     get_redis_client.cache_clear()
-    yield
-    redis_lib.from_url(_redis_url).flushdb()
-    get_redis_client.cache_clear()
+    with (
+        patch.object(redis_lib.Redis, "execute_command", guard(redis_lib.Redis.execute_command)),
+        patch.object(redis_lib.client.Pipeline, "execute", guard(redis_lib.client.Pipeline.execute)),
+        patch.object(
+            redis_lib.client.Pipeline,
+            "immediate_execute_command",
+            guard(redis_lib.client.Pipeline.immediate_execute_command),
+        ),
+    ):
+        yield
+
+        if used:
+            redis_cleanup_client.flushdb()
+        get_redis_client.cache_clear()
 
 
 # ============================================================================
@@ -262,9 +347,10 @@ def _guarded_connect_ex(self: socket.socket, address: Any) -> int:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _block_network(_postgres_url: str, _redis_url: str) -> Generator[None, None, None]:
+def _block_network(_redis_url: str) -> Generator[None, None, None]:
     """Refuse TCP connections to anything but loopback and the test Postgres/Redis."""
-    for url, default_port in ((_postgres_url, 5432), (_redis_url, 6379)):
+    # Worker databases share the same address; allowing it must not create a database for unit tests.
+    for url, default_port in ((_infrastructure_urls["postgres"], 5432), (_redis_url, 6379)):
         parsed = urlparse(url)
         if not parsed.hostname:
             continue
@@ -283,7 +369,7 @@ def _block_network(_postgres_url: str, _redis_url: str) -> Generator[None, None,
 def _fail_on_network_access(_block_network: None) -> Generator[None, None, None]:
     """Fail a test that tried to reach the network, even if the code under test swallowed the error.
 
-    Mock the HTTP call (e.g. ``@patch("httpx.delete")``) in tests that exercise provider APIs.
+    Register the expected HTTP calls on the ``respx_mock`` router in tests that exercise provider APIs.
     """
     _blocked_connections.clear()
     yield
@@ -300,72 +386,61 @@ def _fail_on_network_access(_block_network: None) -> Generator[None, None, None]
 def mock_svix_lifespan() -> Generator[MagicMock, None, None]:
     """Prevent register_event_types() from making ~170 HTTP calls to Svix on
     every TestClient lifespan startup during tests."""
-    with patch("app.services.outgoing_webhooks.svix.register_event_types") as mock:
+    with patch("app.services.outgoing_webhooks.svix.register_event_types", autospec=True) as mock:
         yield mock
 
 
 @pytest.fixture(autouse=True)
-def mock_webhook_dispatch() -> Generator[MagicMock, None, None]:
-    """Prevent outgoing webhook tasks from attempting real Redis/Celery connections.
-
-    Patches the Celery app used for dispatch so tests that don't care about webhook
-    emission never hang on a missing broker.  Tests that DO verify dispatch
-    behaviour override this via their own @patch decorator (innermost wins).
+def _celery_in_memory_broker() -> None:
+    """Keep task dispatch inside the process.
+    Re-applied per test because ``create_celery()`` resets the broker URL.
     """
-    with patch("app.services.outgoing_webhooks.events.celery_app") as mock:
-        yield mock
+    celery_app.conf.update(broker_url="memory://", result_backend="cache+memory://")
 
 
 @pytest.fixture(autouse=True)
-def mock_dashboard_stats_refresh() -> Generator[MagicMock, None, None]:
-    """Prevent the on-demand dashboard stats refresh task from hitting a real broker.
+def respx_mock() -> Generator[RecordingRouter, None, None]:
+    """Serve every httpx request from respx routes; a request no route matches fails the test.
 
-    ``get_total_data_points`` dispatches this task on a cold/stale cache; without this patch the
-    dispatch would try to connect to a missing broker and hang the test.
+    Register the calls a test expects with full URLs, e.g. ``respx_mock.get(url).respond(200, json={...})``.
+    Overrides respx's own fixture of the same name, so ``@pytest.mark.respx(...)`` (e.g. ``base_url``)
+    has no effect here.
     """
-    with patch("app.services.dashboard_stats_cache.celery_app") as mock:
-        yield mock
+    with RecordingRouter() as router:
+        yield router
+    if router.unmatched:
+        pytest.fail(f"Unmocked HTTP request: {', '.join(f'{r.method} {r.url}' for r in router.unmatched)}")
 
 
-@pytest.fixture(autouse=True)
-def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
-    """Mock Celery tasks to run synchronously."""
-    mock_task = MagicMock()
-    mock_task.delay.return_value = MagicMock()
-    mock_task.apply_async.return_value = MagicMock()
-
-    mock_handler_celery = MagicMock()
-    mock_handler_celery.send_task.return_value.id = "mock-task-id"
-
+@pytest.fixture(scope="session")
+def _garmin_backfill_mocks() -> Generator[tuple[Any, Any], None, None]:
+    """Build signature-checked mocks once; mock_external_apis resets their state per test."""
+    garmin_handler = "app.services.providers.garmin.webhook_handler"
     with (
-        patch("celery.current_app") as mock_celery,
-        # Prevent webhook handler from dispatching the backfill Celery task
-        patch("app.services.providers.garmin.webhook_handler.celery_app", mock_handler_celery),
+        patch(f"{garmin_handler}.mark_type_success", autospec=True) as mark_success,
+        patch(f"{garmin_handler}.get_backfill_status", autospec=True) as backfill_status,
     ):
-        # Configure Celery to use in-memory broker and result backend
-        # We Mock the conf object to return our test settings
-        mock_conf = MagicMock()
-        mock_conf.__getitem__ = lambda s, k: {
-            "task_always_eager": True,
-            "task_eager_propagates": True,
-            "broker_url": "memory://",
-            "result_backend": "cache+memory://",
-        }.get(k)
-
-        # When update is called, we don't want to actually connect to Redis
-        mock_conf.update = MagicMock()
-        mock_celery.conf = mock_conf
-
-        yield mock_task
+        yield mark_success, backfill_status
 
 
 @pytest.fixture(autouse=True)
-def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
-    """Mock external API calls (Garmin, Polar, Suunto, AWS)."""
-    mocks: dict[str, MagicMock] = {}
+def mock_external_apis(_garmin_backfill_mocks: tuple[Any, Any]) -> None:
+    """Stub Garmin backfill state with fresh call history and responses for every test."""
+    mark_success, backfill_status = _garmin_backfill_mocks
+    for mock in _garmin_backfill_mocks:
+        mock.reset_mock()
+        mock.side_effect = None
+    mark_success.return_value = False
+    backfill_status.return_value = {"overall_status": "complete", "current_window": 0, "total_windows": 0}
 
-    # Configure boto3 S3 mock
-    mock_s3 = MagicMock()
+
+@pytest.fixture
+def mock_s3() -> Generator[MagicMock, None, None]:
+    """Replace the S3 clients used by the Apple XML upload flow with one mock.
+
+    Opt in from tests that exercise presigned/multipart uploads or the AWS upload task.
+    """
+    mock_s3 = mock_s3_client()
     mock_s3.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test-key"
     mock_s3.generate_presigned_post.return_value = {
         "url": "https://test-bucket.s3.amazonaws.com",
@@ -389,74 +464,26 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
     mock_s3.complete_multipart_upload.return_value = {"ETag": "test-etag", "Key": "test-user/raw/test.xml"}
     mock_s3.abort_multipart_upload.return_value = {}
 
-    garmin_handler = "app.services.providers.garmin.webhook_handler"
+    apple_xml = "app.services.providers.apple.apple_xml"
 
     with (
-        patch("httpx.AsyncClient") as mock_httpx,
-        patch("boto3.client", return_value=mock_s3) as mock_boto3,
-        patch("requests.Session") as mock_requests,
         patch.object(settings, "aws_bucket_name", "test-bucket"),
-        patch("app.services.providers.apple.apple_xml.aws_service.get_s3_client", return_value=mock_s3),
-        patch("app.services.providers.apple.apple_xml.presigned_url_service.get_s3_client", return_value=mock_s3),
-        patch("app.services.providers.apple.apple_xml.multipart_upload_service.get_s3_client", return_value=mock_s3),
+        patch(f"{apple_xml}.presigned_url_service.get_s3_client", autospec=True, return_value=mock_s3),
+        patch(f"{apple_xml}.presigned_url_service.get_public_s3_client", autospec=True, return_value=mock_s3),
+        patch(f"{apple_xml}.multipart_upload_service.get_s3_client", autospec=True, return_value=mock_s3),
+        patch(f"{apple_xml}.multipart_upload_service.get_public_s3_client", autospec=True, return_value=mock_s3),
         patch(
-            "app.services.providers.apple.apple_xml.presigned_url_service.get_public_s3_client", return_value=mock_s3
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.multipart_upload_service.get_public_s3_client", return_value=mock_s3
-        ),
-        patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", return_value=mock_s3),
-        patch(
-            "app.services.providers.apple.apple_xml.presigned_url_service.presigned_url_service.s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.presigned_url_service.presigned_url_service.public_s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.multipart_upload_service.multipart_upload_service.s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(
-            "app.services.providers.apple.apple_xml.multipart_upload_service.multipart_upload_service.public_s3_client",
-            mock_s3,
-            create=True,
-        ),
-        patch(f"{garmin_handler}.mark_type_success", return_value=False),
-        patch(
-            f"{garmin_handler}.get_backfill_status",
-            return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
+            "app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", autospec=True, return_value=mock_s3
         ),
     ):
-        mocks["httpx"] = mock_httpx
-        mocks["boto3"] = mock_boto3
-        mocks["requests"] = mock_requests
-        mocks["s3"] = mock_s3
-
-        yield mocks
+        yield mock_s3
 
 
-@pytest.fixture(autouse=True)
-def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Speed up tests by using simple password hashing."""
-
-    def simple_hash(password: str) -> str:
-        return f"hashed_{password}"
-
-    def simple_verify(plain: str, hashed: str) -> bool:
-        return hashed == f"hashed_{plain}"
-
-    # Patch in the source module
-    monkeypatch.setattr("app.utils.security.get_password_hash", simple_hash)
-    monkeypatch.setattr("app.utils.security.verify_password", simple_verify)
-    # Also patch in modules that import these functions directly (use sys.modules to avoid name shadowing)
-    if "app.services.developer_service" in sys.modules:
-        monkeypatch.setattr(sys.modules["app.services.developer_service"], "get_password_hash", simple_hash)
-    monkeypatch.setattr("app.api.routes.v1.auth.verify_password", simple_verify)
+@pytest.fixture(scope="session", autouse=True)
+def _fast_bcrypt() -> Generator[None, None, None]:
+    """Hash passwords with real bcrypt at the minimum cost of 4 rounds instead of 12."""
+    with patch.object(bcrypt, "gensalt", functools.partial(bcrypt.gensalt, rounds=4)):
+        yield
 
 
 # ============================================================================

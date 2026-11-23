@@ -1,11 +1,17 @@
 """Tests for Garmin Backfill Service."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
+
+import pytest
+import redis
+from pytest_mock import MockerFixture
+from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.garmin.backfill_task import start_full_backfill
 from app.integrations.celery.tasks.garmin.backfill_trigger import trigger_backfill_for_type
+from app.models import UserConnection
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
     BACKFILL_CHUNK_DAYS,
@@ -22,8 +28,10 @@ from app.services.providers.garmin.backfill_state import (
     get_window_date_range,
     get_window_date_range_for_index,
     init_window_state,
+    mark_type_failed,
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
+from app.services.providers.garmin.oauth import GarminOAuth
 from app.utils.exceptions import provider_error_from_response
 
 
@@ -40,7 +48,7 @@ class TestGarminBackfillConfig:
         assert DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
         assert SUMMARY_DAYS == 0  # No summary coverage gap (REST endpoints removed)
 
-    def test_backfill_endpoints_mapping(self) -> None:
+    def test_backfill_endpoints_mapping(self, subtests: pytest.Subtests) -> None:
         """Test that all backfill endpoints are mapped."""
         expected_endpoints = [
             "sleeps",
@@ -62,8 +70,9 @@ class TestGarminBackfillConfig:
         ]
 
         for endpoint in expected_endpoints:
-            assert endpoint in BACKFILL_ENDPOINTS
-            assert BACKFILL_ENDPOINTS[endpoint].startswith("/wellness-api/rest/backfill/")
+            with subtests.test(endpoint=endpoint):
+                assert endpoint in BACKFILL_ENDPOINTS
+                assert BACKFILL_ENDPOINTS[endpoint].startswith("/wellness-api/rest/backfill/")
 
     def test_default_data_types(self) -> None:
         """Test default data types for backfill."""
@@ -94,10 +103,11 @@ class TestGarminBackfillConfig:
         assert expected == BACKFILL_DATA_TYPES
         assert len(BACKFILL_DATA_TYPES) == 5
 
-    def test_backfill_types_are_subset_of_all_types(self) -> None:
+    def test_backfill_types_are_subset_of_all_types(self, subtests: pytest.Subtests) -> None:
         """Test that all backfill types exist in ALL_DATA_TYPES."""
         for data_type in BACKFILL_DATA_TYPES:
-            assert data_type in ALL_DATA_TYPES
+            with subtests.test(data_type=data_type):
+                assert data_type in ALL_DATA_TYPES
 
     def test_rate_limit_constants(self) -> None:
         """Test rate limit constants."""
@@ -153,20 +163,20 @@ class TestGarminBackfillServiceResults:
     """Tests for backfill service API response handling."""
 
     def _make_service(self) -> GarminBackfillService:
-        oauth = MagicMock()
+        oauth = create_autospec(GarminOAuth, instance=True)
         return GarminBackfillService(
             provider_name="garmin",
             api_base_url="https://apis.garmin.com",
             oauth=oauth,
         )
 
-    @patch.object(GarminBackfillService, "_make_api_request")
-    def test_409_duplicate_goes_to_duplicate_list(self, mock_api: MagicMock) -> None:
+    def test_409_duplicate_goes_to_duplicate_list(self, mocker: MockerFixture) -> None:
         """409 responses should land in 'duplicate', not 'triggered'."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response("garmin", 409, "duplicate backfill")
         service = self._make_service()
-        db = MagicMock()
-        user_id = MagicMock()
+        db = MagicMock(spec=Session)
+        user_id = uuid4()
 
         result = service.trigger_backfill(
             db=db,
@@ -180,13 +190,13 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result.get("failed", {})
 
-    @patch.object(GarminBackfillService, "_make_api_request")
-    def test_202_accepted_goes_to_triggered(self, mock_api: MagicMock) -> None:
+    def test_202_accepted_goes_to_triggered(self, mocker: MockerFixture) -> None:
         """Successful 202 responses should land in 'triggered'."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.return_value = None  # 202 returns empty body
         service = self._make_service()
-        db = MagicMock()
-        user_id = MagicMock()
+        db = MagicMock(spec=Session)
+        user_id = uuid4()
 
         result = service.trigger_backfill(
             db=db,
@@ -199,13 +209,13 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    @patch.object(GarminBackfillService, "_make_api_request")
-    def test_401_goes_to_failed(self, mock_api: MagicMock) -> None:
+    def test_401_goes_to_failed(self, mocker: MockerFixture) -> None:
         """401 responses should land in 'failed'."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response("garmin", 401, "authorization expired")
         service = self._make_service()
-        db = MagicMock()
-        user_id = MagicMock()
+        db = MagicMock(spec=Session)
+        user_id = uuid4()
 
         result = service.trigger_backfill(
             db=db,
@@ -220,13 +230,13 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    @patch.object(GarminBackfillService, "_make_api_request")
-    def test_401_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
+    def test_401_fails_all_types_with_status_code(self, mocker: MockerFixture, subtests: pytest.Subtests) -> None:
         """401 on first type should fail all remaining types with status code preserved."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response("garmin", 401, "authorization expired")
         service = self._make_service()
-        db = MagicMock()
-        user_id = MagicMock()
+        db = MagicMock(spec=Session)
+        user_id = uuid4()
 
         result = service.trigger_backfill(
             db=db,
@@ -237,23 +247,23 @@ class TestGarminBackfillServiceResults:
         )
 
         # Both types should fail with status code preserved
-        assert "sleeps" in result["failed"]
-        assert result["failed_status_codes"]["sleeps"] == 401
-        assert "dailies" in result["failed"]
-        assert result["failed_status_codes"]["dailies"] == 401
+        for data_type in ["sleeps", "dailies"]:
+            with subtests.test(data_type=data_type):
+                assert data_type in result["failed"]
+                assert result["failed_status_codes"][data_type] == 401
         # Neither should be in triggered or duplicate
         assert result["triggered"] == []
         assert result["duplicate"] == []
 
-    @patch.object(GarminBackfillService, "_make_api_request")
-    def test_412_goes_to_failed(self, mock_api: MagicMock) -> None:
+    def test_412_goes_to_failed(self, mocker: MockerFixture) -> None:
         """412 responses should land in 'failed' with status code preserved."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response(
             "garmin", 412, "Access denied for consumer required HISTORICAL_DATA_EXPORT"
         )
         service = self._make_service()
-        db = MagicMock()
-        user_id = MagicMock()
+        db = MagicMock(spec=Session)
+        user_id = uuid4()
 
         result = service.trigger_backfill(
             db=db,
@@ -268,15 +278,15 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result["duplicate"]
 
-    @patch.object(GarminBackfillService, "_make_api_request")
-    def test_412_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
+    def test_412_fails_all_types_with_status_code(self, mocker: MockerFixture, subtests: pytest.Subtests) -> None:
         """412 on first type should fail all remaining types with status code preserved."""
+        mock_api = mocker.patch.object(GarminBackfillService, "_make_api_request", autospec=True)
         mock_api.side_effect = provider_error_from_response(
             "garmin", 412, "Access denied for consumer required HISTORICAL_DATA_EXPORT"
         )
         service = self._make_service()
-        db = MagicMock()
-        user_id = MagicMock()
+        db = MagicMock(spec=Session)
+        user_id = uuid4()
 
         result = service.trigger_backfill(
             db=db,
@@ -287,8 +297,9 @@ class TestGarminBackfillServiceResults:
         )
 
         for data_type in ["sleeps", "dailies", "activities"]:
-            assert data_type in result["failed"]
-            assert result["failed_status_codes"][data_type] == 412
+            with subtests.test(data_type=data_type):
+                assert data_type in result["failed"]
+                assert result["failed_status_codes"][data_type] == 412
         assert result["triggered"] == []
         assert result["duplicate"] == []
 
@@ -316,12 +327,12 @@ class TestBackfillTaskStopChain:
         Provide either side_effect (to raise an exception) or return_value
         (to return a result dict) for GarminBackfillService.trigger_backfill.
         """
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.get.return_value = None
         mock_redis.set.return_value = True
 
         # Shared mock so calls from both trigger and timeout modules are tracked together
-        shared_mark_failed = MagicMock()
+        shared_mark_failed = create_autospec(mark_type_failed)
 
         backfill_patch_kwargs: dict = {}
         if side_effect is not None:
@@ -330,39 +341,41 @@ class TestBackfillTaskStopChain:
             backfill_patch_kwargs["return_value"] = return_value
 
         with (
-            patch(f"{self.TASK_MODULE}.SessionLocal") as mock_session_cls,
-            patch(f"{self.TASK_MODULE}.GarminOAuth"),
-            patch(f"{self.TASK_MODULE}.get_current_window", return_value=0),
+            patch(f"{self.TASK_MODULE}.SessionLocal", autospec=True) as mock_session_cls,
+            patch(f"{self.TASK_MODULE}.GarminOAuth", autospec=True),
+            patch(f"{self.TASK_MODULE}.get_current_window", autospec=True, return_value=0),
             patch(
                 f"{self.TASK_MODULE}.get_window_date_range",
+                autospec=True,
                 return_value=window or (datetime.now(timezone.utc) - timedelta(days=30), datetime.now(timezone.utc)),
             ),
-            patch(f"{self.TASK_MODULE}.get_trace_id", return_value="test-trace"),
-            patch(f"{self.TASK_MODULE}.set_type_trace_id", return_value="test-type-trace"),
-            patch(f"{self.TASK_MODULE}.is_retry_phase", return_value=False),
-            patch(f"{self.TASK_MODULE}.mark_type_triggered"),
+            patch(f"{self.TASK_MODULE}.get_trace_id", autospec=True, return_value="test-trace"),
+            patch(f"{self.TASK_MODULE}.set_type_trace_id", autospec=True, return_value="test-type-trace"),
+            patch(f"{self.TASK_MODULE}.is_retry_phase", autospec=True, return_value=False),
+            patch(f"{self.TASK_MODULE}.mark_type_triggered", autospec=True),
             patch(f"{self.TASK_MODULE}.mark_type_failed", shared_mark_failed),
             patch(f"{self.TIMEOUT_MODULE}.mark_type_failed", shared_mark_failed),
-            patch(f"{self.TIMEOUT_MODULE}.persist_window_results"),
-            patch(f"{self.TIMEOUT_MODULE}.complete_backfill"),
-            patch(f"{self.TIMEOUT_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
-            patch(f"{self.TASK_MODULE}.celery_app") as mock_celery,
-            patch(f"{self.TASK_MODULE}.get_redis_client", return_value=mock_redis),
-            patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
-            patch(f"{self.TASK_MODULE}.record_requested_window") as mock_record_window,
-            patch(f"{self.TASK_MODULE}.check_triggered_timeout"),
+            patch(f"{self.TIMEOUT_MODULE}.persist_window_results", autospec=True),
+            patch(f"{self.TIMEOUT_MODULE}.complete_backfill", autospec=True),
+            patch(f"{self.TIMEOUT_MODULE}.get_pending_types", autospec=True, return_value=["dailies", "activities"]),
+            patch(f"{self.TASK_MODULE}.celery_app", autospec=True) as mock_celery,
+            patch(f"{self.TASK_MODULE}.get_redis_client", autospec=True, return_value=mock_redis),
+            patch(f"{self.TASK_MODULE}.UserConnectionRepository", autospec=True) as mock_conn_repo_cls,
+            patch(f"{self.TASK_MODULE}.record_requested_window", autospec=True) as mock_record_window,
+            patch(f"{self.TASK_MODULE}.check_triggered_timeout", autospec=True),
         ):
             # Setup DB session context manager
-            mock_db = MagicMock()
+            mock_db = MagicMock(spec=Session)
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
 
             # Setup connection repo — return a valid connection
-            mock_conn_repo_cls.return_value.get_by_user_and_provider.return_value = MagicMock()
+            mock_conn_repo_cls.return_value.get_by_user_and_provider.return_value = UserConnection()
 
             with patch.object(
                 GarminBackfillService,
                 "trigger_backfill",
+                autospec=True,
                 **backfill_patch_kwargs,
             ) as mock_trigger:
                 result = trigger_backfill_for_type(self.USER_ID, "sleeps")
@@ -537,16 +550,16 @@ class TestReconnectGapBackfill:
         assert end - start == timedelta(days=BACKFILL_CHUNK_DAYS)
 
     def _start(self, since: datetime, requested_at: datetime | None) -> tuple[dict, MagicMock]:
-        connection = MagicMock(scope=None, provider_user_id=None)
+        connection = UserConnection(scope=None, provider_user_id=None)
         with (
-            patch(f"{self.TASK_MODULE}.SessionLocal"),
-            patch(f"{self.TASK_MODULE}.UserConnectionRepository") as repo_cls,
-            patch(f"{self.TASK_MODULE}.last_backfill_requested_until", return_value=requested_at),
-            patch(f"{self.TASK_MODULE}.acquire_backfill_lock", return_value=True),
-            patch(f"{self.TASK_MODULE}.get_current_window", return_value=0),
-            patch(f"{self.TASK_MODULE}.init_window_state") as init,
-            patch(f"{self.TASK_MODULE}.emit_sync_started"),
-            patch(f"{self.TASK_MODULE}.trigger_backfill_for_type"),
+            patch(f"{self.TASK_MODULE}.SessionLocal", autospec=True),
+            patch(f"{self.TASK_MODULE}.UserConnectionRepository", autospec=True) as repo_cls,
+            patch(f"{self.TASK_MODULE}.last_backfill_requested_until", autospec=True, return_value=requested_at),
+            patch(f"{self.TASK_MODULE}.acquire_backfill_lock", autospec=True, return_value=True),
+            patch(f"{self.TASK_MODULE}.get_current_window", autospec=True, return_value=0),
+            patch(f"{self.TASK_MODULE}.init_window_state", autospec=True) as init,
+            patch(f"{self.TASK_MODULE}.emit_sync_started", autospec=True),
+            patch(f"{self.TASK_MODULE}.trigger_backfill_for_type", autospec=True),
         ):
             repo_cls.return_value.get_by_user_and_provider.return_value = connection
             result = start_full_backfill(str(uuid4()), since.isoformat())

@@ -17,6 +17,16 @@ test('rejects wrong credentials without saying which field was wrong', async ({ 
 	await expect(page).toHaveURL('/login');
 });
 
+test('tells a locked-out email to try again later', async ({ page }) => {
+	await page.goto('/login');
+	await page.getByLabel('Email').fill('locked-out@example.com');
+	await page.getByLabel('Password').fill('any-password');
+	await page.getByRole('button', { name: 'Sign in' }).click();
+
+	await expect(page.getByRole('alert')).toContainText('Too many failed login attempts');
+	await expect(page).toHaveURL('/login');
+});
+
 test('signs in and reaches the dashboard', async ({ page }) => {
 	await signIn(page);
 	await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();

@@ -221,7 +221,9 @@ class TestRedeem:
 
         # Act
         with (
-            patch.object(refresh_token_service, "create_sdk_refresh_token", side_effect=RuntimeError("db down")),
+            patch.object(
+                refresh_token_service, "create_sdk_refresh_token", autospec=True, side_effect=RuntimeError("db down")
+            ),
             pytest.raises(RuntimeError),
         ):
             user_invitation_code_service.redeem(db, generated.code)
