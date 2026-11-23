@@ -1158,6 +1158,37 @@ class TestCreateOrMergeSleep:
         assert night.id == stored.id
         assert night.start_datetime == self._dt(22, day=22)
 
+    def test_a_night_moved_onto_another_nights_window_is_not_stored(self, db: Session) -> None:
+        """Like an insert that conflicts: both nights stay, and the session takes later writes."""
+        data_source = DataSourceFactory(provider=ProviderName.WHOOP, source="whoop")
+
+        def stored(external_id: str, start: datetime, end: datetime) -> EventRecord:
+            return EventRecordFactory(
+                mapping=data_source,
+                category="sleep",
+                type_="sleep_session",
+                external_id=external_id,
+                start_datetime=start,
+                end_datetime=end,
+            )
+
+        night = stored("night-1", self._dt(22, day=20), self._dt(6))
+        other = stored("night-2", self._dt(22, day=22), self._dt(6, day=23))
+        record = self._record(data_source, self._dt(22, day=22), self._dt(6, day=23)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        result = event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, record, self._detail(record.id), self.THRESHOLD
+        )
+        db.commit()
+
+        assert result.id == night.id
+        assert [(sleep.id, sleep.start_datetime) for sleep in self._sleeps(db, data_source)] == [
+            (night.id, self._dt(22, day=20)),
+            (other.id, self._dt(22, day=22)),
+        ]
+
     def test_another_users_night_with_the_same_id_is_not_matched(self, db: Session) -> None:
         other = DataSourceFactory(provider=ProviderName.WHOOP, source="whoop")
         EventRecordFactory(

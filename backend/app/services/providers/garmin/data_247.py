@@ -1822,7 +1822,8 @@ class Garmin247Data(Base247DataTemplate):
         all_sleep_details: list[EventRecordDetailCreate] = []
         all_mct_details: list[MenstrualCycleDetailCreate] = []
         all_health_scores: list[HealthScoreCreate] = []
-        sleep_scores: dict[str | UUID, HealthScoreCreate] = {}
+        sleep_scores: dict[str | UUID, tuple[UUID | None, HealthScoreCreate | None]] = {}
+        stored: dict[UUID, UUID] = {}
         body_battery_peaks: list[HealthScoreCreate] = []
         epoch_items: list[dict[str, Any]] = []
 
@@ -1862,13 +1863,14 @@ class Garmin247Data(Base247DataTemplate):
                     case "sleeps":
                         normalized, health_score = self.normalize_sleep(item, user_id)
                         result = self._build_sleep_record(user_id, normalized)
+                        record_id = None
                         if result:
                             record, detail = result
+                            record_id = record.id
                             all_records.append(record)
                             all_sleep_details.append(detail)
-                        if health_score:
-                            # Several deliveries of one night in a batch: the last one's score stands, like its record
-                            sleep_scores[normalized.get("garmin_summary_id") or health_score.id] = health_score
+                        # Several deliveries of one night in a batch: the last one stands, with its score or without
+                        sleep_scores[normalized.get("garmin_summary_id") or uuid4()] = (record_id, health_score)
                         for raw_nap in normalized.get("naps", []):
                             nap_result = self._build_nap_record(
                                 raw_nap, user_id, normalized.get("garmin_summary_id"), normalized.get("validation")
@@ -2061,7 +2063,12 @@ class Garmin247Data(Base247DataTemplate):
 
             count += WriteCounts(len(inserted_set), 0)
 
-        all_health_scores.extend(sleep_scores.values())
+        # A night's score is not written for a delivery that was not stored
+        all_health_scores.extend(
+            score
+            for record_id, score in sleep_scores.values()
+            if score is not None and (record_id is None or record_id in stored)
+        )
         if all_health_scores:
             count += health_score_service.bulk_create(db, all_health_scores)
             db.commit()

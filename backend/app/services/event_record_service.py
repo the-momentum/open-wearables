@@ -4,6 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import event as sa_event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
 
 from app.config import settings
@@ -505,15 +506,23 @@ class EventRecordService(
             # of accumulating them on top of the existing ones.
             if record.external_id is not None and adjacent.external_id == record.external_id:
                 old_start, old_end, old_zone = adjacent.start_datetime, adjacent.end_datetime, adjacent.zone_offset
-                for field in ("start_datetime", "end_datetime", "zone_offset"):
-                    new_val = getattr(record, field, None)
-                    if new_val is not None:
-                        setattr(adjacent, field, new_val)
-                adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
+                nested = db_session.begin_nested()
+                try:
+                    for field in ("start_datetime", "end_datetime", "zone_offset"):
+                        new_val = getattr(record, field, None)
+                        if new_val is not None:
+                            setattr(adjacent, field, new_val)
+                    adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
+                    db_session.flush()
+                    nested.commit()
+                except IntegrityError:
+                    # Another night holds the delivery's window: like an insert that conflicts, it is not stored
+                    nested.rollback()
+                    db_session.refresh(adjacent)
+                    return adjacent, False, detail
                 if adjacent.end_datetime != old_end:
                     # Its provider score sits at the old end, which a shortened night leaves outside its window.
                     self.health_score_repo.drop_provider_sleep_score(db_session, adjacent.data_source_id, old_end)
-                db_session.flush()
                 self._widen_sleep_coverage(db_session, adjacent)
                 # Its session rows are rolled up over the window it has now, on the days it left and joined.
                 mark_dirty_days(
