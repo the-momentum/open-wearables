@@ -1127,6 +1127,113 @@ class TestCreateOrMergeSleep:
 
         assert not db.query(HealthScore).filter(HealthScore.provider == ProviderName.WHOOP).all()
 
+    def _sleeps(self, db: Session, data_source: DataSource) -> list[EventRecord]:
+        db.expire_all()
+        return (
+            db.query(EventRecord)
+            .filter(EventRecord.data_source_id == data_source.id, EventRecord.category == "sleep")
+            .order_by(EventRecord.start_datetime)
+            .all()
+        )
+
+    def test_a_night_moved_past_the_threshold_refreshes_its_record(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.WHOOP, source="whoop")
+        stored = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            external_id="night-1",
+            start_datetime=self._dt(22, day=20),
+            end_datetime=self._dt(6),
+        )
+        record = self._record(data_source, self._dt(22, day=22), self._dt(6, day=23)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, record, self._detail(record.id), self.THRESHOLD
+        )
+
+        [night] = self._sleeps(db, data_source)
+        assert night.id == stored.id
+        assert night.start_datetime == self._dt(22, day=22)
+
+    def test_a_night_moved_onto_another_nights_window_is_not_stored(self, db: Session) -> None:
+        """Like an insert that conflicts: both nights stay, and the session takes later writes."""
+        data_source = DataSourceFactory(provider=ProviderName.WHOOP, source="whoop")
+
+        def stored(external_id: str, start: datetime, end: datetime) -> EventRecord:
+            return EventRecordFactory(
+                mapping=data_source,
+                category="sleep",
+                type_="sleep_session",
+                external_id=external_id,
+                start_datetime=start,
+                end_datetime=end,
+            )
+
+        night = stored("night-1", self._dt(22, day=20), self._dt(6))
+        other = stored("night-2", self._dt(22, day=22), self._dt(6, day=23))
+        record = self._record(data_source, self._dt(22, day=22), self._dt(6, day=23)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        result = event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, record, self._detail(record.id), self.THRESHOLD
+        )
+        db.commit()
+
+        assert result.id == night.id
+        assert [(sleep.id, sleep.start_datetime) for sleep in self._sleeps(db, data_source)] == [
+            (night.id, self._dt(22, day=20)),
+            (other.id, self._dt(22, day=22)),
+        ]
+
+    def test_another_users_night_with_the_same_id_is_not_matched(self, db: Session) -> None:
+        other = DataSourceFactory(provider=ProviderName.WHOOP, source="whoop")
+        EventRecordFactory(
+            mapping=other,
+            category="sleep",
+            type_="sleep_session",
+            external_id="night-1",
+            start_datetime=self._dt(22, day=20),
+            end_datetime=self._dt(6),
+        )
+        data_source = DataSourceFactory(provider=ProviderName.WHOOP, source="whoop")
+        record = self._record(data_source, self._dt(22, day=22), self._dt(6, day=23)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        event_record_service.create_or_merge_sleep(
+            db, data_source.user_id, record, self._detail(record.id), self.THRESHOLD
+        )
+
+        assert len(self._sleeps(db, other)) == 1
+        assert len(self._sleeps(db, data_source)) == 1
+
+    def test_nights_with_distinct_ids_keep_their_data_across_resyncs(self, db: Session) -> None:
+        data_source = DataSourceFactory(provider=ProviderName.POLAR, source="polar")
+
+        def save(external_id: str, start: datetime, end: datetime, in_bed: int) -> None:
+            record = self._record(data_source, start, end).model_copy(update={"external_id": external_id})
+            event_record_service.create_or_merge_sleep(
+                db,
+                data_source.user_id,
+                record,
+                self._detail(record.id, in_bed=in_bed),
+                self.THRESHOLD,
+                merge_adjacent=False,
+            )
+
+        for in_bed in (240, 250):
+            save("sleep-2026-03-21", self._dt(1), self._dt(5), in_bed)
+            save("sleep-2026-03-22", self._dt(6), self._dt(10), in_bed + 1)
+        save("sleep-2026-03-21", self._dt(1), self._dt(5), 260)
+
+        first, second = self._sleeps(db, data_source)
+        assert (first.external_id, first.sleep_detail.sleep_time_in_bed_minutes) == ("sleep-2026-03-21", 260)
+        assert (second.external_id, second.sleep_detail.sleep_time_in_bed_minutes) == ("sleep-2026-03-22", 251)
+
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""
         user = UserFactory()

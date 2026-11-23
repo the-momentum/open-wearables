@@ -718,6 +718,56 @@ class TestGarmin247Data:
         assert count == 3
         assert [row.avg for row in db.query(SeriesAggregate)] == [Decimal("84")]
 
+    def test_process_items_batch_keeps_one_score_for_a_night_sent_twice(
+        self, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
+    ) -> None:
+        """The later delivery shortens the night: only its score stays, not the earlier one past the new end."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        first = {**sample_sleep, "overallSleepScore": {"value": 80}}
+        shortened = {
+            **sample_sleep,
+            "durationInSeconds": 25200,
+            "lightSleepDurationInSeconds": 10800,
+            "overallSleepScore": {"value": 84},
+        }
+
+        garmin_247.process_items_batch(db, user.id, "sleeps", [first, shortened])
+
+        scores = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        assert [(score.value, score.recorded_at) for score in scores] == [
+            (84, datetime(2024, 1, 15, 6, tzinfo=timezone.utc))
+        ]
+
+    def test_process_items_batch_drops_the_score_of_a_night_resent_without_one(
+        self, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
+    ) -> None:
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        first = {**sample_sleep, "overallSleepScore": {"value": 80}}
+        shortened = {**sample_sleep, "durationInSeconds": 25200}
+
+        garmin_247.process_items_batch(db, user.id, "sleeps", [first, shortened])
+
+        assert db.query(HealthScore).filter(HealthScore.user_id == user.id).count() == 0
+
+    def test_process_items_batch_skips_the_score_of_a_night_not_stored(
+        self, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
+    ) -> None:
+        """A night moved onto another night's window is not stored, so its score must not replace that night's."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        later_start = sample_sleep["startTimeInSeconds"] + 3600
+        other = {**sample_sleep, "summaryId": "sleep_456", "startTimeInSeconds": later_start}
+        garmin_247.process_items_batch(
+            db, user.id, "sleeps", [sample_sleep, {**other, "overallSleepScore": {"value": 70}}]
+        )
+        moved = {**sample_sleep, "startTimeInSeconds": later_start, "overallSleepScore": {"value": 90}}
+
+        garmin_247.process_items_batch(db, user.id, "sleeps", [moved])
+
+        assert [score.value for score in db.query(HealthScore).filter(HealthScore.user_id == user.id)] == [70]
+
     def test_process_items_batch_hrv_missing_start_time(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data with missing start time."""
         user = UserFactory()
@@ -1168,7 +1218,7 @@ class TestGarmin247Data:
         result = garmin_247._build_nap_record(nap, user_id, parent_summary_id="sleep_123")
         assert result is not None
         record, detail = result
-        assert record.external_id == "sleep_123"
+        assert record.external_id == "sleep_123-nap-1690916700"
         assert record.duration_seconds == 600
         assert detail.is_nap is True
         assert detail.sleep_total_duration_minutes == 10  # 600 // 60

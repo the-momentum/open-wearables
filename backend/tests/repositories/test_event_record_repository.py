@@ -17,10 +17,10 @@ import pytest
 from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord
+from app.models import EventRecord, HealthScore
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordQueryParams
-from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
+from tests.factories import DataSourceFactory, EventRecordFactory, HealthScoreFactory, UserFactory
 
 
 class TestEventRecordRepository:
@@ -105,6 +105,101 @@ class TestEventRecordRepository:
         db.refresh(first)
         assert first.end_datetime == start + timedelta(milliseconds=3425900)
         assert db.query(EventRecord).filter(EventRecord.external_id == "6aa10da139e69418a2fa8db1").count() == 1
+
+    def test_bulk_create_matches_sleep_on_external_id(self, db: Session, event_repo: EventRecordRepository) -> None:
+        """A Garmin night re-pushed with moved times refreshes the stored one; a workout id never matches it."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def record(category: str, shift_hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category=category,
+                type="sleep_session" if category == "sleep" else "running",
+                source_name="Garmin",
+                start_datetime=start + timedelta(hours=shift_hours),
+                end_datetime=start + timedelta(hours=shift_hours + 8),
+                external_id="x1-sleep",
+            )
+
+        night = record("sleep", 0)
+        event_repo.bulk_create(db, [night])
+        moved, workout = record("sleep", 3), record("workout", 30)
+        stored = event_repo.bulk_create(db, [moved, workout])
+        db.commit()
+
+        assert stored[moved.id] == night.id
+        assert stored[workout.id] == workout.id
+        assert db.get(EventRecord, night.id).start_datetime == start + timedelta(hours=3)
+        assert db.query(EventRecord).filter(EventRecord.external_id == "x1-sleep").count() == 2
+
+    def test_bulk_create_drops_the_score_at_a_moved_nights_old_end(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Garmin scores a night at its end, so a re-push that moves the end leaves no second score behind."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def night(hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category="sleep",
+                type="sleep_session",
+                source_name="Garmin",
+                start_datetime=start,
+                end_datetime=start + timedelta(hours=hours),
+                external_id="x1-sleep",
+            )
+
+        first = night(8)
+        event_repo.bulk_create(db, [first])
+        source_id = db.get(EventRecord, first.id).data_source_id
+        HealthScoreFactory(data_source_id=source_id, user_id=user.id, recorded_at=first.end_datetime)
+        unrelated = HealthScoreFactory(
+            data_source_id=source_id, user_id=user.id, recorded_at=first.end_datetime + timedelta(days=1)
+        )
+
+        event_repo.bulk_create(db, [night(7)])
+        db.commit()
+
+        assert [score.id for score in db.query(HealthScore).filter(HealthScore.user_id == user.id)] == [unrelated.id]
+
+    def test_bulk_create_leaves_a_delivery_unmapped_when_another_night_holds_its_times(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Like an insert that conflicts: the details of the delivery must not land on the stale night."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def night(external_id: str, shift_hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category="sleep",
+                type="sleep_session",
+                source_name="Garmin",
+                start_datetime=start + timedelta(hours=shift_hours),
+                end_datetime=start + timedelta(hours=shift_hours + 8),
+                external_id=external_id,
+            )
+
+        stale, other = night("x1-sleep", 0), night("x2-sleep", 1)
+        event_repo.bulk_create(db, [stale, other])
+        moved = night("x1-sleep", 1)
+
+        stored = event_repo.bulk_create(db, [moved])
+        db.commit()
+
+        assert moved.id not in stored
+        assert db.get(EventRecord, stale.id).start_datetime == start
 
     def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""

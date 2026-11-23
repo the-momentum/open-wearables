@@ -4,6 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import event as sa_event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
 
 from app.config import settings
@@ -342,6 +343,10 @@ class EventRecordService(
             )
         return False
 
+    def claim_sleep_stored_without_id(self, db_session: DbSession, user_id: UUID, record: EventRecordCreate) -> None:
+        """Give the record's external_id to the overlapping night of its provider stored without one."""
+        self.crud.claim_sleep_stored_without_id(db_session, user_id, record)
+
     def find_adjacent_sleep_record(
         self,
         db_session: DbSession,
@@ -393,8 +398,12 @@ class EventRecordService(
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
         threshold_minutes: int,
+        merge_adjacent: bool = True,
     ) -> EventRecord:
         """Create a sleep record, merging with any adjacent session within threshold_minutes.
+
+        A session already stored under the record's external_id is refreshed in place wherever it sits.
+        Without merge_adjacent, no other session is merged into it.
 
         When an adjacent session already exists in the database within the gap threshold,
         the two records are merged: the time window expands to cover both, stage minutes
@@ -405,7 +414,7 @@ class EventRecordService(
         never loses the original data.
         """
         result, inserted, final_detail = self._create_or_merge_sleep_inner(
-            db_session, user_id, record, detail, threshold_minutes
+            db_session, user_id, record, detail, threshold_minutes, merge_adjacent
         )
         is_nap = final_detail.is_nap
         if self.reclassify_sleep_naps_after_write(db_session, user_id, result) and result.sleep_detail is not None:
@@ -469,16 +478,27 @@ class EventRecordService(
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
         threshold_minutes: int,
+        merge_adjacent: bool = True,
     ) -> tuple[EventRecord, bool, EventRecordDetailCreate]:
-        adjacent = self.find_adjacent_sleep_record(
-            db_session,
-            user_id,
-            record.start_datetime,
-            record.end_datetime,
-            threshold_minutes,
-            source=record.source,
-            provider=record.provider,
-        )
+        adjacent = None
+        if record.external_id is not None:
+            adjacent = self.crud.find_sleep_by_external_id(
+                db_session,
+                user_id,
+                self.data_source_repo.provider_of(record).value,
+                record.external_id,
+                record.start_datetime,
+            )
+        if adjacent is None and merge_adjacent:
+            adjacent = self.crud.find_adjacent_sleep_record(
+                db_session,
+                user_id,
+                record.start_datetime,
+                record.end_datetime,
+                threshold_minutes,
+                source=record.source,
+                provider=record.provider,
+            )
 
         if adjacent is not None:
             # Same external_id → re-ingestion of the same session (e.g. webhook
@@ -486,15 +506,23 @@ class EventRecordService(
             # of accumulating them on top of the existing ones.
             if record.external_id is not None and adjacent.external_id == record.external_id:
                 old_start, old_end, old_zone = adjacent.start_datetime, adjacent.end_datetime, adjacent.zone_offset
-                for field in ("start_datetime", "end_datetime", "zone_offset"):
-                    new_val = getattr(record, field, None)
-                    if new_val is not None:
-                        setattr(adjacent, field, new_val)
-                adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
+                nested = db_session.begin_nested()
+                try:
+                    for field in ("start_datetime", "end_datetime", "zone_offset"):
+                        new_val = getattr(record, field, None)
+                        if new_val is not None:
+                            setattr(adjacent, field, new_val)
+                    adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
+                    db_session.flush()
+                    nested.commit()
+                except IntegrityError:
+                    # Another night holds the delivery's window: like an insert that conflicts, it is not stored
+                    nested.rollback()
+                    db_session.refresh(adjacent)
+                    return adjacent, False, detail
                 if adjacent.end_datetime != old_end:
                     # Its provider score sits at the old end, which a shortened night leaves outside its window.
                     self.health_score_repo.drop_provider_sleep_score(db_session, adjacent.data_source_id, old_end)
-                db_session.flush()
                 self._widen_sleep_coverage(db_session, adjacent)
                 # Its session rows are rolled up over the window it has now, on the days it left and joined.
                 mark_dirty_days(
@@ -520,6 +548,7 @@ class EventRecordService(
                     user_id,
                     {
                         self._local_sleep_date(old_start, old_zone),
+                        self._local_sleep_date(old_end, old_zone),
                         self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset),
                     },
                 )

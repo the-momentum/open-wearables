@@ -423,9 +423,7 @@ class TestPolar247LateSleep:
 
         assert self._fetch(db, data_247, user.id, ["2024-01-12"]) == ["2024-01-12"]
 
-    def test_late_night_merged_into_the_next_one_is_not_fetched_again(
-        self, db: Session, data_247: Polar247Data
-    ) -> None:
+    def test_late_night_next_to_the_next_one_is_not_fetched_again(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
         late = self._night("2024-01-12")
         next_night = {
@@ -435,8 +433,8 @@ class TestPolar247LateSleep:
         }
         with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[late, next_night]):
             data_247._save_sleep(db, user.id, *self.WINDOW)
-        [merged] = TestPolar247SleepSave._sleep_records(db, user.id)
-        assert merged.external_id == "sleep-2024-01-13"
+        stored = TestPolar247SleepSave._sleep_records(db, user.id)
+        assert {record.external_id for record in stored} == {"sleep-2024-01-12", "sleep-2024-01-13"}
 
         assert self._fetch(db, data_247, user.id, ["2024-01-12", "2024-01-20"]) == ["2024-01-20"]
 

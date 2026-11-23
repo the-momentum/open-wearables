@@ -370,7 +370,7 @@ class Garmin247Data(Base247DataTemplate):
             start_datetime=self._from_epoch_seconds(start_ts),
             end_datetime=self._from_epoch_seconds(start_ts + duration),
             zone_offset=offset_to_iso(nap.get("napOffsetInSeconds")),
-            external_id=parent_summary_id,
+            external_id=f"{parent_summary_id}-nap-{start_ts}" if parent_summary_id else None,
             source=self.provider_name,
             user_id=user_id,
         )
@@ -1822,6 +1822,8 @@ class Garmin247Data(Base247DataTemplate):
         all_sleep_details: list[EventRecordDetailCreate] = []
         all_mct_details: list[MenstrualCycleDetailCreate] = []
         all_health_scores: list[HealthScoreCreate] = []
+        sleep_scores: dict[str | UUID, tuple[UUID | None, HealthScoreCreate | None]] = {}
+        stored: dict[UUID, UUID] = {}
         body_battery_peaks: list[HealthScoreCreate] = []
         epoch_items: list[dict[str, Any]] = []
 
@@ -1861,12 +1863,14 @@ class Garmin247Data(Base247DataTemplate):
                     case "sleeps":
                         normalized, health_score = self.normalize_sleep(item, user_id)
                         result = self._build_sleep_record(user_id, normalized)
+                        record_id = None
                         if result:
                             record, detail = result
+                            record_id = record.id
                             all_records.append(record)
                             all_sleep_details.append(detail)
-                        if health_score:
-                            all_health_scores.append(health_score)
+                        # Several deliveries of one night in a batch: the last one stands, with its score or without
+                        sleep_scores[normalized.get("garmin_summary_id") or uuid4()] = (record_id, health_score)
                         for raw_nap in normalized.get("naps", []):
                             nap_result = self._build_nap_record(
                                 raw_nap, user_id, normalized.get("garmin_summary_id"), normalized.get("validation")
@@ -2030,10 +2034,16 @@ class Garmin247Data(Base247DataTemplate):
 
             inserted_set = {record_id for record_id, stored_id in stored.items() if record_id == stored_id}
 
-            # Bulk create sleep details for actually inserted records
-            sleep_details = [d for d in all_sleep_details if d.record_id in inserted_set]
+            # Sleep details also refresh the stored nights matched on external_id
+            sleep_details = [
+                d.model_copy(update={"record_id": stored[d.record_id]})
+                for d in all_sleep_details
+                if d.record_id in stored
+            ]
             if sleep_details:
-                event_record_service.bulk_create_details(db, sleep_details, detail_type=EventCategory.SLEEP)
+                event_record_service.bulk_create_details(
+                    db, sleep_details, detail_type=EventCategory.SLEEP, created=inserted_set
+                )
 
             # Workout details also refresh the stored workouts matched on external_id
             workout_details = [
@@ -2053,6 +2063,12 @@ class Garmin247Data(Base247DataTemplate):
 
             count += WriteCounts(len(inserted_set), 0)
 
+        # A night's score is not written for a delivery that was not stored
+        all_health_scores.extend(
+            score
+            for record_id, score in sleep_scores.values()
+            if score is not None and (record_id is None or record_id in stored)
+        )
         if all_health_scores:
             count += health_score_service.bulk_create(db, all_health_scores)
             db.commit()
