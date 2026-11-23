@@ -14,6 +14,7 @@ from tests.factories import DataSourceFactory, EventRecordFactory, HealthScoreFa
 _SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "data_migrations" / "dedupe_sleep_by_external_id.py"
 START = datetime(2026, 9, 24, 22, tzinfo=timezone.utc)
 INGESTED = datetime(2026, 9, 25, 8, tzinfo=timezone.utc)
+UNDATED = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def _load_module() -> ModuleType:
@@ -37,6 +38,7 @@ def _sleep(
     ingested: int = 0,
     is_nap: bool = False,
     in_bed: int | None = None,
+    undated: bool = False,
 ) -> EventRecord:
     record = EventRecordFactory(
         data_source=ds,
@@ -45,7 +47,7 @@ def _sleep(
         external_id=external_id,
         start_datetime=start,
         end_datetime=start + timedelta(hours=hours),
-        created_at=INGESTED + timedelta(hours=ingested),
+        created_at=UNDATED if undated else INGESTED + timedelta(hours=ingested),
     )
     SleepDetailsFactory(event_record=record, is_nap=is_nap, sleep_time_in_bed_minutes=in_bed)
     return record
@@ -83,6 +85,31 @@ class TestDedupeSleepByExternalId:
 
         assert db.get(HealthScore, stale_id) is None
         assert db.get(HealthScore, kept.id) is not None
+
+    def test_undated_partial_syncs_keep_the_copy_spanning_the_night(self, db: Session) -> None:
+        ds = _source(ProviderName.APPLE)
+        stub = _sleep(ds, "uuid-1", hours=1, undated=True)
+        whole = _sleep(ds, "uuid-1", hours=8, undated=True)
+        partial = _sleep(ds, "uuid-1", hours=3, undated=True)
+        stub_id, partial_id = stub.id, partial.id
+
+        assert dedupe_sleep(db, dry_run=False) == 2
+        db.expire_all()
+
+        assert db.get(EventRecord, whole.id) is not None
+        assert db.get(EventRecord, stub_id) is None
+        assert db.get(EventRecord, partial_id) is None
+
+    def test_undated_copies_none_spanning_the_night_are_left_alone(self, db: Session) -> None:
+        ds = _source(ProviderName.APPLE)
+        first_half = _sleep(ds, "uuid-1", hours=4, undated=True)
+        second_half = _sleep(ds, "uuid-1", start=START + timedelta(hours=4), hours=4, undated=True)
+
+        assert dedupe_sleep(db, dry_run=False) == 0
+        db.expire_all()
+
+        assert db.get(EventRecord, first_half.id) is not None
+        assert db.get(EventRecord, second_half.id) is not None
 
     def test_shared_id_of_nights_apart_is_not_a_duplicate(self, db: Session) -> None:
         ds = _source(ProviderName.WHOOP)

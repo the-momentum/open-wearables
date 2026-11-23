@@ -10,11 +10,13 @@ night itself. Each gets "<id>-nap-<start epoch>", the id ingest now gives it, be
 so naps are not taken for copies. Garmin flags only its naps: the night itself is never one.
 
 Copies of one night are the sessions of one (user, provider, external_id) starting within a day of
-the newest; a shared id further apart is left alone. Health scores, session aggregates and details
-the keeper lacks move onto it from the newest copy that has them; the rest cascade with the deleted
-copies. A provider score kept at a deleted copy's end, unlinked to it, goes too unless a stored night
-ends there. Coverage is refreshed and the deleted copies' days are queued for the rollup. Internal sleep
-scores of those days are not recomputed.
+the newest; a shared id further apart is left alone. Rows stored before created_at existed (#853)
+hold the epoch, so their age is unknown: there, the SDK's partial syncs of one night share an id,
+and the copy spanning all the others is kept, or the group is left alone if none does. Health
+scores, session aggregates and details the keeper lacks move onto it from the newest copy that has
+them; the rest cascade with the deleted copies. A provider score kept at a deleted copy's end,
+unlinked to it, goes too unless a stored night ends there. Coverage is refreshed and the deleted
+copies' days are queued for the rollup. Internal sleep scores of those days are not recomputed.
 
 Idempotent: a re-run finds nothing. Runs once per instance through data_migration_service.
 
@@ -62,17 +64,30 @@ _DUPLICATES = text("""
               HAVING count(*) > 1
           )
     ),
-    ranked AS (
+    spans AS (
         SELECT c.*,
-               first_value(c.id) OVER w AS keeper_id,
-               first_value(c.start_datetime) OVER w AS keeper_start
+               c.start_datetime = min(c.start_datetime) OVER g AND c.end_datetime = max(c.end_datetime) OVER g
+                   AS covers_group,
+               max(c.created_at) OVER g = TIMESTAMPTZ 'epoch' AS undated_group
         FROM candidates c
-        WINDOW w AS (PARTITION BY c.user_id, c.provider, c.external_id ORDER BY c.created_at DESC, c.id DESC)
+        WINDOW g AS (PARTITION BY c.user_id, c.provider, c.external_id)
+    ),
+    ranked AS (
+        SELECT s.*,
+               first_value(s.id) OVER w AS keeper_id,
+               first_value(s.start_datetime) OVER w AS keeper_start,
+               first_value(s.covers_group) OVER w AS keeper_covers_group
+        FROM spans s
+        WINDOW w AS (
+            PARTITION BY s.user_id, s.provider, s.external_id
+            ORDER BY (s.undated_group AND s.covers_group) DESC, s.created_at DESC, s.id DESC
+        )
     )
     SELECT r.id, r.keeper_id, r.data_source_id, r.external_id, r.start_datetime, r.end_datetime, r.zone_offset,
            r.user_id, r.provider
     FROM ranked r
     WHERE r.id <> r.keeper_id AND abs(extract(epoch FROM r.start_datetime - r.keeper_start)) < 86400
+      AND (NOT r.undated_group OR r.keeper_covers_group)
     ORDER BY r.keeper_id, r.created_at DESC, r.id DESC
 """)
 
