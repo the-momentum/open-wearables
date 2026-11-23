@@ -1,61 +1,70 @@
 [project]
 name = "open-wearables"
-version = "0.11.0"
+version = "1.0.0"
 description = ""
 requires-python = ">=3.14"
 dependencies = [
     "cryptography>=50.0.2",
-    "pydantic-settings>=2.16.0",
-    "email-validator>=2.2.0",
-    "psycopg>=3.3.6",
-    "sqlalchemy>=2.1.4",
-    "fastapi>=0.143.5",
-    "fastapi-cli>=0.0.32",
-    "celery>=5.6.3",
+    "pydantic-settings>=2.16.3",
+    "email-validator>=2.4.0",
+    "psycopg>=3.3.9",
+    "sqlalchemy>=2.1.8",
+    "fastapi>=0.163.1",
+    "fastapi-cli>=0.0.34",
+    "celery>=5.7.0",
     "flower>=2.2.0",
     "redis>=8.1.0",
-    "sentry-sdk[fastapi]>=2.72.0",
-    "python-multipart>=0.0.32",
+    "sentry-sdk[fastapi]>=2.75.0",
+    "python-multipart>=0.0.33",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
-    "alembic>=1.20.0",
-    "boto3>=1.43.115",
+    "alembic>=1.20.1",
+    "boto3>=1.44.3",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.49.1",
+    "resend>=2.53.2",
     "pyyaml>=6.0.3",
-    "svix>=2.8.0",
-    "numpy>=2.5.4",
-    "faker>=40.43.0",
+    "svix>=2.10.0",
+    "numpy>=2.5.5",
+    "faker>=40.54.0",
     "fitdecode>=0.11.0",
-    "google-auth>=2.62.0",
-    "packaging>=24",
+    "google-auth>=2.62.2",
+    "packaging>=26.3",
 ]
 
 [project.optional-dependencies]
 # OpenTelemetry log export, used only with OTEL_ENABLED=true. The published image includes it.
 otel = [
-    "fastapi[opentelemetry]>=0.143.1",
-    "opentelemetry-sdk>=1.45.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.45.1",
-    "opentelemetry-instrumentation-logging>=0.66b0",
+    "fastapi[opentelemetry]>=0.163.1",
+    "opentelemetry-sdk>=1.45.2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-instrumentation-logging>=0.66b2",
 ]
 
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.7.0",
-    "ruff>=0.17.1",
-    "ty>=0.0.89",
+    "ruff>=0.17.5",
+    "ty>=0.0.104",
 ]
 dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",
-    "freezegun>=1.5.0",
-    "factory-boy>=3.3.0",
-    "psycopg-binary>=3.3.6",
-    "testcontainers[postgres,redis]>=4.14.2",
+    "factory-boy>=3.3.3",
+    "psycopg-binary>=3.3.9",
+    "testcontainers[postgres,redis]>=4.15.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-randomly>=5.1.0",
+    "time-machine>=3.6.0",
+    "respx>=0.23.1",
+    "pytest-mock>=3.17.0",
+    "dirty-equals>=0.11",
+    "inline-snapshot>=0.37.0",
+    "ruff>=0.17.5",  # inline-snapshot formats fixed snapshots with ruff
+    "polyfactory>=3.5.0",
 ]
 
 [tool.ruff]
@@ -78,6 +87,8 @@ select = [
     "N",     # pep8-naming
     "E",     # pycodestyle errors
     "W",     # pycodestyle warnings
+    "G00",   # flake8-logging-format: no formatting in log messages, see AGENTS.md "Logging"
+    "TID251", # banned-api: app code logs through get_logger, see AGENTS.md "Logging"
 ]
 ignore = [
     "ANN002", # missing-type-args
@@ -87,10 +98,18 @@ ignore = [
     "RET503", # implicit-return
     "COM812", # trailing-comma (conflicts with ruff format)
 ]
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# A stdlib logger under app.* never reaches Sentry: the integration ignores those loggers.
+"logging.getLogger".msg = "use app.utils.structured_logging.get_logger"
+
 [tool.ruff.lint.per-file-ignores]
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
+# Logging setup itself, and third-party loggers configured at startup.
+"app/{main,utils/structured_logging,utils/logging_setup,integrations/otel,integrations/celery/core}.py" = ["TID251"]
+"{tests,scripts,migrations}/**" = ["TID251"]
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
+"tests/providers/factories.py" = ["N815"]  # factory attributes match provider model fields
 
 [tool.ruff.lint.isort]
 known-third-party = ["celery"]
@@ -111,7 +130,16 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
 ]
-addopts = "-v --tb=short"
+addopts = "--tb=short -n auto --maxprocesses=4"
+verbosity_assertions = 2
+strict = true
+timeout = 10
+
+[tool.inline-snapshot]
+# Ordinary test runs only compare snapshots; source edits require explicit CLI flags.
+default-flags = ["short-report"]
+default-flags-tui = ["short-report"]
+format-command = "ruff format --stdin-filename '{filename}'"
 
 [build-system]
 requires = ["uv_build"]

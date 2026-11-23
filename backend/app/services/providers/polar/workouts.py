@@ -16,11 +16,28 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.dates import offset_to_iso
 
 
 class PolarWorkouts(BaseWorkoutsTemplate):
     """Polar implementation of workouts template."""
+
+    def _make_api_request(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        endpoint: str,
+        method: str = "GET",
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        json_data: dict[str, Any] | None = None,
+    ) -> Any:
+        result = super()._make_api_request(db, user_id, endpoint, method, params, headers, json_data)
+        store_raw_payload(
+            source="api_response", provider="polar", payload=result, user_id=str(user_id), trace_id=endpoint
+        )
+        return result
 
     def get_workouts(
         self,

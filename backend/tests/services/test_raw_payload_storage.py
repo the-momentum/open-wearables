@@ -1,11 +1,18 @@
 """Tests for raw payload storage backends."""
 
+import io
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.response import StreamingBody
 
 from app.services import raw_payload_storage
+from tests.utils.aws import mock_s3_client
+
+# botocore builds client methods at runtime, so mocks are specced from a real (never called) client.
+# spec= instead of create_autospec: botocore methods take (*args, **kwargs), so autospec adds no
+# signature checks, yet costs ~28 ms per mock.
 
 
 @pytest.fixture(autouse=True)
@@ -33,8 +40,8 @@ class TestConfigure:
         assert raw_payload_storage._storage_backend == "disabled"
 
     def test_configure_s3_with_bucket(self) -> None:
-        mock_client = MagicMock()
-        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+        mock_client = mock_s3_client()
+        with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_client):
             raw_payload_storage.configure("s3", 1024, s3_bucket="my-bucket", s3_prefix="payloads")
 
         assert raw_payload_storage._storage_backend == "s3"
@@ -44,8 +51,8 @@ class TestConfigure:
 
     def test_configure_transport_creates_a_client_without_archival(self) -> None:
         """Offload needs a usable bucket, not RAW_PAYLOAD_STORAGE=s3."""
-        mock_client = MagicMock()
-        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+        mock_client = mock_s3_client()
+        with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_client):
             raw_payload_storage.configure("disabled", 1024, s3_bucket="my-bucket", transport_enabled=True)
 
         assert raw_payload_storage._storage_backend == "disabled"
@@ -53,7 +60,7 @@ class TestConfigure:
         assert raw_payload_storage._s3_bucket == "my-bucket"
 
     def test_configure_s3_client_creation_fails(self) -> None:
-        with patch.object(raw_payload_storage, "_create_s3_client", return_value=None):
+        with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=None):
             raw_payload_storage.configure("s3", 1024, s3_bucket="my-bucket")
 
         assert raw_payload_storage._storage_backend == "disabled"
@@ -89,10 +96,10 @@ class TestStoreRawPayload:
         assert entry["trace_id"] == "trace-abc"
 
     def test_s3_backend_uploads_payload(self) -> None:
-        mock_client = MagicMock()
+        mock_client = mock_s3_client()
         mock_client.put_object.return_value = {"ETag": "test-etag"}
 
-        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+        with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_client):
             raw_payload_storage.configure("s3", 10 * 1024 * 1024, s3_bucket="test-bucket", s3_prefix="raw")
 
         raw_payload_storage.store_raw_payload(
@@ -118,20 +125,20 @@ class TestStoreRawPayload:
         assert json.loads(body) == {"activity": "running"}
 
     def test_s3_backend_handles_upload_error(self) -> None:
-        mock_client = MagicMock()
+        mock_client = mock_s3_client()
         mock_client.put_object.side_effect = Exception("S3 error")
 
-        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+        with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_client):
             raw_payload_storage.configure("s3", 10 * 1024 * 1024, s3_bucket="test-bucket")
 
         # Should not raise - errors are logged
         raw_payload_storage.store_raw_payload(source="sdk", provider="apple", payload="raw-xml-data")
 
     def test_s3_backend_unknown_user_fallback(self) -> None:
-        mock_client = MagicMock()
+        mock_client = mock_s3_client()
         mock_client.put_object.return_value = {"ETag": "test-etag"}
 
-        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+        with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_client):
             raw_payload_storage.configure("s3", 10 * 1024 * 1024, s3_bucket="test-bucket")
 
         raw_payload_storage.store_raw_payload(source="webhook", provider="garmin", payload={"x": 1})
@@ -140,10 +147,10 @@ class TestStoreRawPayload:
         assert "/_unknown/" in call_kwargs["Key"]
 
     def test_s3_backend_pre_serialized_string(self) -> None:
-        mock_client = MagicMock()
+        mock_client = mock_s3_client()
         mock_client.put_object.return_value = {"ETag": "test-etag"}
 
-        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+        with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_client):
             raw_payload_storage.configure("s3", 10 * 1024 * 1024, s3_bucket="test-bucket")
 
         raw_payload_storage.store_raw_payload(source="sdk", provider="apple", payload='{"pre":"serialized"}')
@@ -160,8 +167,8 @@ def _configure_s3(
     transport_enabled: bool = False,
 ) -> MagicMock:
     """Configure the module with a mocked S3 client and return it."""
-    mock_client = MagicMock()
-    with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+    mock_client = mock_s3_client()
+    with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_client):
         raw_payload_storage.configure(
             backend,
             max_size,
@@ -228,7 +235,7 @@ class TestGetPayloadFromS3:
     def test_takes_bucket_and_key_from_the_reference(self) -> None:
         """The ref wins over local config, so app/worker drift is not a silent 404."""
         mock_client = _configure_s3(bucket="configured-bucket")
-        mock_client.get_object.return_value = {"Body": MagicMock(read=lambda: b'{"a":1}')}
+        mock_client.get_object.return_value = {"Body": StreamingBody(io.BytesIO(b'{"a":1}'), 7)}
 
         content = raw_payload_storage.get_payload_from_s3("s3://other-bucket/raw/apple/sdk/x.json")
 

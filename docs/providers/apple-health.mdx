@@ -105,6 +105,16 @@ HealthKit has no sleep session object, only stage samples, so Open Wearables bui
 
 An Apple Watch night is usually available 15 to 20 minutes after it reaches Open Wearables, which can be hours after waking up.
 
+## Condensed Workout Samples
+
+HealthKit condenses the heart rate, energy and distance samples of Apple Watch workouts that are a few months old into series and deletes the originals. The SDK uploads such a series like any new sample, so Open Wearables drops it when it already holds the originals from the same Apple device; otherwise the workout would count twice. A series whose originals never reached Open Wearables, such as one condensed before the first sync, is kept as a single sample spanning its time window. Series stored before this was in place are repaired once, by a background Celery task queued when Open Wearables starts; series webhooks already sent for them are not retracted.
+
+The repair can't be undone: a series that overwrote an original gets the original's value back, the others are deleted. Back up the database before upgrading if you want to keep those rows. To preview it, pull the new images and run the repair with `--dry-run` before starting the backend:
+
+```bash
+docker compose run --rm app uv run python scripts/data_migrations/repair_condensed_series.py --dry-run
+```
+
 ## Apple Health as a Data Bridge
 
 Even if a provider is **not yet directly supported** by Open Wearables, its data can still be collected by syncing it into Apple Health first.

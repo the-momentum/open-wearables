@@ -4,13 +4,15 @@ from uuid import UUID
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import DbSession
+from app.database import DbSession, SessionLocal
 from app.models import ApiKey, Developer
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.repositories.developer_repository import DeveloperRepository
 from app.schemas.auth import SDKAuthContext
+from app.utils.connect_token import decode_connect_token
 from app.utils.security import hash_api_key
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -104,36 +106,23 @@ DeveloperDep = Annotated[Developer, Depends(get_current_developer)]
 DeveloperOptionalDep = Annotated[Developer | None, Depends(get_current_developer_optional)]
 
 
-async def get_sdk_auth(
-    db: DbSession,
-    token: Annotated[str | None, Depends(oauth2_scheme)] = None,
-    x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
-) -> SDKAuthContext:
-    """Authenticate SDK requests using either SDK user token or API key.
+def _sdk_token_context(token: str | None) -> SDKAuthContext | None:
+    """Context from a Bearer token with scope="sdk", or None to fall through to the API key."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError:
+        return None
+    if payload.get("scope") != "sdk":
+        return None
+    sub = payload.get("sub")
+    return SDKAuthContext(auth_type="sdk_token", user_id=UUID(sub) if sub else None, app_id=payload.get("app_id"))
 
-    Accepts:
-    - SDK token (Bearer token with scope="sdk")
-    - API key (X-Open-Wearables-API-Key header)
 
-    Returns SDKAuthContext with auth_type and relevant identifiers.
-    """
-    # Try SDK user token first
-    if token:
-        try:
-            payload = jwt.decode(
-                token,
-                settings.secret_key,
-                algorithms=[settings.algorithm],
-            )
-            if payload.get("scope") == "sdk":
-                sub = payload.get("sub")
-                return SDKAuthContext(
-                    auth_type="sdk_token",
-                    user_id=UUID(sub) if sub else None,
-                    app_id=payload.get("app_id"),
-                )
-        except JWTError:
-            pass  # Fall through to API key check
+def _get_sdk_auth(db: Session, token: str | None, x_open_wearables_api_key: str | None) -> SDKAuthContext:
+    if context := _sdk_token_context(token):
+        return context
 
     # Fall back to API key (backwards compatibility)
     if x_open_wearables_api_key:
@@ -144,6 +133,27 @@ async def get_sdk_auth(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required: provide SDK token or API key",
     )
+
+
+def get_sdk_auth(
+    token: Annotated[str | None, Depends(oauth2_scheme)] = None,
+    x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
+) -> SDKAuthContext:
+    """Authenticate SDK requests using either SDK user token or API key.
+
+    Accepts:
+    - SDK token (Bearer token with scope="sdk")
+    - API key (X-Open-Wearables-API-Key header)
+
+    Returns SDKAuthContext with auth_type and relevant identifiers. Runs detached: an SDK
+    token needs no database, and the API key is validated on a session opened and closed
+    here, so the request holds no pooled connection afterwards.
+    """
+    if context := _sdk_token_context(token):
+        return context
+
+    with SessionLocal() as db:
+        return _get_sdk_auth(db, None, x_open_wearables_api_key)
 
 
 SDKAuthDep = Annotated[SDKAuthContext, Depends(get_sdk_auth)]
@@ -158,13 +168,34 @@ async def get_combined_auth(
 
     For endpoints both the dashboard and the mobile SDK call.
     ``get_current_developer_optional`` returns None for SDK-scoped tokens, so they fall
-    through to ``get_sdk_auth``. An ``sdk_token`` caller speaks only for its own user, so
+    through to ``_get_sdk_auth``. An ``sdk_token`` caller speaks only for its own user, so
     endpoints branching on ``auth_type`` have to scope it themselves.
     """
     if developer := await get_current_developer_optional(db, token):
         return SDKAuthContext(auth_type="developer", developer_id=str(developer.id))
 
-    return await get_sdk_auth(db, token, x_open_wearables_api_key)
+    return _get_sdk_auth(db, token, x_open_wearables_api_key)
 
 
 CombinedAuthDep = Annotated[SDKAuthContext, Depends(get_combined_auth)]
+
+
+async def get_connect_auth(
+    db: DbSession,
+    token: Annotated[str | None, Depends(oauth2_scheme)] = None,
+    x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
+    x_open_wearables_connect_token: str | None = Header(None, alias="X-Open-Wearables-Connect-Token"),
+) -> SDKAuthContext:
+    """``get_combined_auth`` plus the connect token a shareable pairing link carries.
+
+    ``sdk_token`` and ``connect_token`` callers speak only for their own user.
+    """
+    if x_open_wearables_connect_token:
+        if not (user_id := decode_connect_token(x_open_wearables_connect_token)):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired connect token")
+        return SDKAuthContext(auth_type="connect_token", user_id=user_id)
+
+    return await get_combined_auth(db, token, x_open_wearables_api_key)
+
+
+ConnectAuthDep = Annotated[SDKAuthContext, Depends(get_connect_auth)]

@@ -4,15 +4,22 @@ Tests for Polar OAuth implementation.
 Tests the PolarOAuth class for OAuth 2.0 authentication flow with Polar API.
 """
 
-from unittest.mock import MagicMock, patch
+import json
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
+import redis
+import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.polar.oauth import PolarOAuth
 from tests.factories import UserFactory
+
+USERS_URL = "https://www.polaraccesslink.com/v3/users"
+DEREGISTER_URL = "https://www.polaraccesslink.com/v3/users/12345"
 
 
 class TestPolarOAuthConfiguration:
@@ -110,9 +117,9 @@ class TestPolarOAuthConfiguration:
 class TestPolarOAuthAuthorization:
     """Tests for Polar OAuth authorization URL generation."""
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
-    def test_get_authorization_url(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_get_authorization_url(self, mocker: MockerFixture, db: Session) -> None:
         """Test generating authorization URL for Polar."""
+        mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         # Arrange
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
@@ -123,7 +130,7 @@ class TestPolarOAuthAuthorization:
         connection_repo = UserConnectionRepository()
 
         # Setup mock redis before creating OAuth instance
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -153,9 +160,9 @@ class TestPolarOAuthAuthorization:
         assert call_args[0][1] == 900  # TTL
         assert str(user.id) in call_args[0][2]  # State contains user_id
 
-    @patch("app.integrations.redis_client.get_redis_client")
-    def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
+    def test_authorization_url_includes_scope(self, mocker: MockerFixture, db: Session) -> None:
         """Test authorization URL includes default scope."""
+        mock_redis_client = mocker.patch("app.integrations.redis_client.get_redis_client", autospec=True)
         # Arrange
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
@@ -165,7 +172,7 @@ class TestPolarOAuthAuthorization:
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
 
-        mock_redis = MagicMock()
+        mock_redis = MagicMock(spec=redis.Redis)
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -188,8 +195,7 @@ class TestPolarOAuthAuthorization:
 class TestPolarOAuthUserInfo:
     """Tests for extracting Polar user info from token response."""
 
-    @patch("httpx.post")
-    def test_get_provider_user_info_with_x_user_id(self, mock_post: MagicMock, db: Session) -> None:
+    def test_get_provider_user_info_with_x_user_id(self, respx_mock: respx.MockRouter, db: Session) -> None:
         """Test extracting user info when x_user_id is present."""
         # Arrange
         from app.models import User
@@ -215,10 +221,7 @@ class TestPolarOAuthUserInfo:
             x_user_id=12345,
         )
 
-        # Mock the registration call
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_post.return_value = mock_response
+        register = respx_mock.post(USERS_URL).respond(200)
 
         # Act
         user_info = oauth._get_provider_user_info(token_response, str(user.id))
@@ -226,7 +229,8 @@ class TestPolarOAuthUserInfo:
         # Assert
         assert user_info["user_id"] == "12345"
         assert user_info["username"] is None
-        mock_post.assert_called_once()
+        assert register.call_count == 1
+        assert register.calls.last.request.headers["Authorization"] == "Bearer test_access_token"
 
     def test_get_provider_user_info_without_x_user_id(self, db: Session) -> None:
         """Test extracting user info when x_user_id is None."""
@@ -265,8 +269,7 @@ class TestPolarOAuthUserInfo:
 class TestPolarUserRegistration:
     """Tests for Polar user registration API call."""
 
-    @patch("httpx.post")
-    def test_register_user_success(self, mock_post: MagicMock, db: Session) -> None:
+    def test_register_user_success(self, respx_mock: respx.MockRouter, db: Session) -> None:
         """Test successful user registration with Polar API."""
         # Arrange
         from app.models import User
@@ -284,23 +287,18 @@ class TestPolarUserRegistration:
             api_base_url="https://www.polaraccesslink.com",
         )
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_post.return_value = mock_response
+        register = respx_mock.post(USERS_URL).respond(200)
 
         # Act
         oauth._register_user("test_access_token", str(user.id))
 
         # Assert
-        mock_post.assert_called_once()
-        call_args = mock_post.call_args
-        assert call_args[0][0] == "https://www.polaraccesslink.com/v3/users"
-        assert "Authorization" in call_args[1]["headers"]
-        assert "Bearer test_access_token" in call_args[1]["headers"]["Authorization"]
-        assert call_args[1]["json"]["member-id"] == str(user.id)
+        assert register.call_count == 1
+        request = register.calls.last.request
+        assert request.headers["Authorization"] == "Bearer test_access_token"
+        assert json.loads(request.content)["member-id"] == str(user.id)
 
-    @patch("httpx.post")
-    def test_register_user_handles_failure_gracefully(self, mock_post: MagicMock, db: Session) -> None:
+    def test_register_user_handles_failure_gracefully(self, respx_mock: respx.MockRouter, db: Session) -> None:
         """Test user registration handles API errors without raising exceptions."""
         # Arrange
         from app.models import User
@@ -318,10 +316,11 @@ class TestPolarUserRegistration:
             api_base_url="https://www.polaraccesslink.com",
         )
 
-        mock_post.side_effect = httpx.RequestError("Network error")
+        register = respx_mock.post(USERS_URL).mock(side_effect=httpx.ConnectError("Network error"))
 
         # Act & Assert - should not raise exception
         oauth._register_user("test_access_token", str(user.id))
+        assert register.call_count == 1
         # User might already be registered, so we handle errors gracefully
 
 
@@ -340,32 +339,22 @@ class TestPolarUserDeregistration:
             api_base_url="https://www.polaraccesslink.com",
         )
 
-    @patch("httpx.delete")
-    def test_deregister_user_success(self, mock_httpx_delete: MagicMock) -> None:
+    def test_deregister_user_success(self, respx_mock: respx.MockRouter) -> None:
         """Test calling Polar deregistration endpoint."""
         oauth = self._make_oauth()
-        mock_response = MagicMock()
-        mock_response.status_code = 204
-        mock_response.raise_for_status.return_value = None
-        mock_httpx_delete.return_value = mock_response
+        deregister = respx_mock.delete(DEREGISTER_URL).respond(204)
 
         oauth.deregister_user("test_access_token", provider_user_id="12345")
 
-        mock_httpx_delete.assert_called_once_with(
-            "https://www.polaraccesslink.com/v3/users/12345",
-            headers={"Authorization": "Bearer test_access_token"},
-            timeout=10.0,
-        )
+        assert deregister.call_count == 1
+        request = deregister.calls.last.request
+        assert request.headers["Authorization"] == "Bearer test_access_token"
+        assert request.extensions["timeout"]["read"] == 10.0
 
-    @patch("httpx.delete")
-    def test_deregister_user_raises_on_http_error(self, mock_httpx_delete: MagicMock) -> None:
+    def test_deregister_user_raises_on_http_error(self, respx_mock: respx.MockRouter) -> None:
         """Test that deregister_user raises on HTTP error (caller handles it)."""
         oauth = self._make_oauth()
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)
-        )
-        mock_httpx_delete.return_value = mock_response
+        respx_mock.delete(DEREGISTER_URL).respond(401)
 
         with pytest.raises(httpx.HTTPStatusError):
             oauth.deregister_user("expired_token", provider_user_id="12345")

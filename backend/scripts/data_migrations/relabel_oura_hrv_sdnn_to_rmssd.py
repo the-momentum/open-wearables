@@ -176,10 +176,10 @@ def relabel_oura_hrv(db: Session, *, dry_run: bool) -> dict[str, int]:
             "archive_deleted": archive_deleted,
         }
 
-    series_updated = db.execute(_SERIES_UPDATE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
-    series_deleted = db.execute(_SERIES_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
-    archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
-    archive_deleted = db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
+    series_updated = db.execute(_SERIES_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    series_deleted = db.execute(_SERIES_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    archive_deleted = db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[missing-attribute]
 
     print(f"series_sample:         Relabeled {series_updated}, removed {series_deleted} duplicate(s)")
     print(f"data_point_series_archive: Relabeled {archive_updated}, removed {archive_deleted} duplicate(s)")

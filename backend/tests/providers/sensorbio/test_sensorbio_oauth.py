@@ -1,7 +1,8 @@
-from unittest.mock import MagicMock
+from unittest.mock import create_autospec
 
 import pytest
 
+from app.repositories import UserConnectionRepository, UserRepository
 from app.schemas.enums import ProviderName
 from app.services.providers.sensorbio.oauth import SensorBioOAuth
 from app.services.providers.templates.base_oauth import AuthenticationMethod
@@ -10,8 +11,8 @@ from app.services.providers.templates.base_oauth import AuthenticationMethod
 @pytest.fixture
 def sensorbio_oauth() -> SensorBioOAuth:
     return SensorBioOAuth(
-        user_repo=MagicMock(),
-        connection_repo=MagicMock(),
+        user_repo=create_autospec(UserRepository, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
         provider_name=ProviderName.SENSORBIO.value,
         api_base_url="https://api.sensorbio.com",
     )

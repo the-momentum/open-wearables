@@ -49,6 +49,73 @@ Every 15 minutes, the days whose samples changed are rolled up into one row a da
 
 Turning it off drops what is queued at the next run, and every day that changes after it. Turned back on, rollup covers only the days that change from then on; the days in between keep the rows they had. Keep it on unless every connected provider sends its own day and session values.
 
+### Reconciled days
+
+Self-hosting: `source_selection=reconcile` on `/timeseries` merges a user's steps, distance, active energy and other movement series across their devices per day, each moment counted once from the best-ranked device. Merging costs roughly 3–4 times a rollup of the same days, so it is off by default and bounded when on:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `RECONCILE_ENABLED` | `false` | The rollup stores merged days. Off, reads merge every day themselves. |
+| `RECONCILE_STORED_DAYS` | `30` | Days back from today the rollup stores; older days are stored once a read asks for them. |
+| `RECONCILE_SECONDS_PER_RUN` | `30` | Seconds each rollup run spends merging, after its own 60 and never taken from them; what does not fit waits for the next run. At most 50. |
+| `RECONCILE_ON_THE_FLY_MAX_DAYS` | `31` | Most days one page of a read may merge itself, 1 to 90. Pages are shortened to fit; only a single week or month needing more is refused with `400`. |
+| `RECONCILE_EDGE_TOLERANCE_SECONDS` | `60` | Seconds past each edge of a better-ranked device's sample that still count as covered by it, 0 to 300. See below. |
+
+A stored merged day reads as fast as any day row; merging on the fly takes in the order of a second per month of a user's days. Retention ends merging: once a day's samples are deleted, only a merged day stored before stays.
+
+#### How a day is merged
+
+Devices rank by provider priority, then device type priority, as in **Settings → Priorities**. Each sample covers a window of time: from its `recorded_at`, for its `window_seconds` (one minute when it has none). From each sample's window, the seconds that samples of better-ranked devices also cover are taken out (each second once, however many better devices cover it), and the sample keeps the rest of its value in proportion:
+
+```
+kept = value × (1 − covered seconds ÷ window seconds)
+```
+
+The best-ranked device keeps all of its values; a sample a better device covers completely keeps nothing.
+
+A better-ranked sample covers `RECONCILE_EDGE_TOLERANCE_SECONDS` (60) past each of its edges as well. Two apps often read the same sensor and record the same steps in windows a few seconds apart, such as a phone's minutes starting 19 seconds past the minute next to the Fitbit app's on the minute. Without the tolerance, every partly covered minute would keep a share of steps that are duplicates; on a real account that added 2–7% to a day. The cost is that a lower-ranked device's steps within a minute of a better device's sample are dropped.
+
+Merged series: steps, distance (walking and running, cycling, swimming, downhill snow sports, other, and total), active energy, flights climbed, elevation gain, swimming strokes, push count, active time and exercise time. Every other series reads as `per_period`, the best-ranked device's day: nutrition and hydration (logged events, not spans of time), insulin delivery, falls and other discrete events, basal and total energy (each device's own whole-day estimate), and averaged series such as heart rate. A daily total, or a window of a whole day or more, has no time inside it to split and is left out. A day only one device recorded keeps that device's own value.
+
+**Example.** Steps on one day from a watch, a phone and a ring, ranked in that order. The watch was off between 12:00 and 13:00.
+
+| Device | Window | Steps | Covered by better-ranked devices | Kept |
+|---|---|---|---|---|
+| Watch | 09:00–09:01 | 100 | — (best ranked) | **100** |
+| Watch | 09:01–09:02 | 100 | — | **100** |
+| Phone | 09:00–09:05 | 300 | 3 of 5 minutes (watch until 09:02, plus 60 s) | 300 × 2⁄5 = **120** |
+| Phone | 12:10–12:20 | 800 | none | **800** |
+| Ring | 09:00–09:05 | 250 | all 5 minutes (watch and phone) | **0** |
+| Ring | 12:00–12:05 | 300 | none | **300** |
+| Ring | 12:15–12:20 | 400 | all 5 minutes (phone) | **0** |
+| Ring | 12:20–12:25 | 350 | 1 of 5 minutes (phone until 12:20, plus 60 s) | 350 × 4⁄5 = **280** |
+
+The merged day is **1,700 steps**, counted from the 6 samples not covered completely. For the same day, `source_selection=all` returns each device's own total (watch 200, phone 1,100, ring 1,300; 2,600 added up, counting the morning walk up to three times), and `per_period` returns the watch's 200, missing the hour it was off.
+
+A merged day names no device: its `source` is `null` and its `computed_by` is `open_wearables`, with `stats.sum` the merged value and `stats.count` the samples it was counted from. Weeks and months add their days up as with `per_period`.
+
+The proportional split assumes a sample's value is spread evenly over its window, which no device guarantees. Only samples a better device covers in part are affected, so the error stays small with the minute-long samples watches and Health Connect usually record, and grows with long windows, such as a phone's 30-minute step count.
+
+A day whose best-ranked source holds only its own day value there (Oura, Whoop and other providers that send steps as a daily total) is not merged: it returns that source's value, as `per_period` does.
+
+Changing provider or device type priorities drops the stored merged days from the retention cutoff on, in the background; reads merge them again in the new order. Days before the cutoff keep their merge, since their samples are gone.
+
+A page holds as many periods as fit in `RECONCILE_ON_THE_FLY_MAX_DAYS` merged days, so it may be shorter than `limit`. Only a single period needing more (a month with the setting below 31) is refused, with the numbers to size the next request by:
+
+```json
+{
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "source_selection=reconcile would merge more days on the fly than allowed for one page; lower `limit` or narrow the range.",
+  "code": "RECONCILE_TOO_MANY_DAYS",
+  "days": 45,
+  "max_days": 31,
+  "queued": true
+}
+```
+
+`queued` is `true` when reconcile is on and the rollup is caught up: those days are queued for the rollup to store, after which reading them costs no more than any day row.
+
 ## Deletion
 
 When enabled, samples of local days older than **Delete samples older than N days** are permanently deleted, whole days at a time, at 03:00 UTC. Set the window between 1 and 7300 days; the number can be typed before the switch is turned on.

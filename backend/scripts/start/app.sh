@@ -147,6 +147,76 @@ echo 'Running relayed host model cleanup...'
 uv run python scripts/data_migrations/clear_relayed_host_models.py \
     || echo "Warning: relayed host model cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Sets duration and time in bed of stored Sensor Bio sleep sessions to the start-to-end window.
+# Idempotent, no-op without Sensor Bio data.
+echo 'Running Sensor Bio sleep window backfill...'
+uv run python scripts/data_migrations/backfill_sensorbio_sleep_window.py \
+    || echo "Warning: Sensor Bio sleep window backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Types Google Health sleep rows saved without 'sleep_session', so a re-fetched night updates
+# its details instead of sending sleep.created again. Idempotent, no-op without Google data.
+echo 'Running Google sleep type backfill...'
+uv run python scripts/data_migrations/backfill_google_sleep_type.py \
+    || echo "Warning: Google sleep type backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Raises each Garmin body battery score to the highest sample of its day; scores kept the peak of
+# the day's first stressDetails push. Runs once per instance (data_migration).
+echo 'Running Garmin body battery peak backfill...'
+uv run python scripts/data_migrations/raise_garmin_body_battery_peaks.py \
+    || echo "Warning: Garmin body battery peak backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves Garmin, Polar and Whoop sleep scores from the night's start to its wake-up, so each falls
+# on the day the user wakes up. Runs once per instance (data_migration).
+echo 'Running provider sleep score restamp...'
+uv run python scripts/data_migrations/restamp_provider_sleep_scores.py \
+    || echo "Warning: provider sleep score restamp failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-04-01 once all deployments have migrated.
+# Sets the sleep efficiency of stored Polar nights from their time awake, once the Polar sleep
+# dedupe above has run. Runs once per instance (data_migration).
+echo 'Running Polar sleep efficiency backfill...'
+uv run python scripts/data_migrations/backfill_polar_sleep_efficiency.py \
+    || echo "Warning: Polar sleep efficiency backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Scales Apple Health XML percentages stored as 0-1 fractions to 0-100. Runs once per instance
+# (data_migration).
+echo 'Running Apple Health XML percentage scaling...'
+uv run python scripts/data_migrations/scale_apple_xml_percentages.py \
+    || echo "Warning: Apple Health XML percentage scaling failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Moves the Strava webhook subscription to the callback URL with the token; the old one is rejected.
+# Queues the reconcile task while Strava is in webhook mode. Runs once per instance (data_migration).
+echo 'Queueing Strava webhook re-registration...'
+uv run python scripts/data_migrations/register_strava_token_callback.py \
+    || echo "Warning: Strava webhook re-registration not queued — will retry on next startup."
+
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Queues the flagging of the stored naps of providers that don't report them; it runs in Celery and rebuilds
+# the internal sleep scores of the days that change. Queued until done (data_migration).
+echo 'Queueing sleep nap classification...'
+uv run python scripts/data_migrations/classify_sleep_naps.py \
+    || echo "Warning: sleep nap classification not queued — will retry on next startup."
+
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Queues the repair of the HealthKit condensed series stored over their originals: it runs in Celery,
+# restores the samples a series replaced and deletes the rest. Queued until done (data_migration).
+echo 'Queueing HealthKit condensed series repair...'
+uv run python scripts/data_migrations/repair_condensed_series.py \
+    || echo "Warning: HealthKit condensed series repair not queued — will retry on next startup."
+
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Deletes workouts re-delivered with revised times that were stored twice under one external_id, keeping
+# the newest copy of each overlapping set. Runs once per instance (data_migration).
+echo 'Running workout external_id dedupe...'
+uv run python scripts/data_migrations/dedupe_workouts_by_external_id.py \
+    || echo "Warning: workout external_id dedupe failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

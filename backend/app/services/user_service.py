@@ -1,6 +1,5 @@
 from collections.abc import Sequence
 from datetime import datetime
-from logging import Logger, getLogger
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -27,8 +26,10 @@ from app.services.providers.garmin.backfill_state import force_release_backfill_
 from app.services.services import AppService
 from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
-from app.utils.exceptions import ResourceAlreadyExistsError, ResourceNotFoundError, handle_exceptions
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ConflictError, ResourceNotFoundError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Delay before deleting the webhook payloads of a deleted user, covering emit tasks already
 # queued (emit_webhook_event retries twice, 5 s apart).
@@ -36,11 +37,10 @@ _WEBHOOK_PAYLOAD_DELETION_COUNTDOWN_SECONDS = 60
 
 
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=UserRepository,
             model=User,
-            log=log,
             **kwargs,
         )
 
@@ -48,14 +48,21 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """Get count of users created within a date range."""
         return self.crud.get_count_in_range(db_session, start_date, end_date)
 
-    @handle_exceptions
     def create(self, db_session: DbSession, creator: UserCreate, *, is_seed: bool = False) -> User:
         """Create a user with server-generated id and created_at."""
         if self.crud.get_by_email(db_session, creator.email):
-            raise ResourceAlreadyExistsError("User with this email already exists.")
+            raise ConflictError("User with this email already exists.")
+        self._ensure_external_user_id_free(db_session, creator.external_user_id)
         creation_data = creator.model_dump()
         internal_creator = UserCreateInternal(**creation_data, is_seed=is_seed)
         return super().create(db_session, internal_creator)
+
+    def _ensure_external_user_id_free(
+        self, db_session: DbSession, external_user_id: str | None, current: User | None = None
+    ) -> None:
+        """A specific 409 up front; the unique constraint still backs it up when two requests race."""
+        if (other := self.crud.get_by_external_user_id(db_session, external_user_id)) and other is not current:
+            raise ConflictError("User with this external_user_id already exists.")
 
     def update(
         self,
@@ -69,6 +76,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         if not user:
             return None
 
+        self._ensure_external_user_id_free(db_session, updater.external_user_id, current=user)
         update_data = updater.model_dump(exclude_unset=True)
         internal_updater = UserUpdateInternal(**update_data)
         return self.crud.update(db_session, user, internal_updater)
@@ -88,9 +96,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 if oauth := strategy.oauth:
                     user_connection_service.deregister_from_provider(db_session, user.id, connection.provider, oauth)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Failed to deregister user",
                     user_id=user.id,
                     provider=connection.provider,
@@ -106,9 +112,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                         release_stale_primary(connection.provider, connection.provider_user_id, scope=scope)
             force_release_backfill_lock(user.id)
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to release Redis locks on user deletion",
                 user_id=user.id,
                 error=str(e),
@@ -133,15 +137,12 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 countdown=_WEBHOOK_PAYLOAD_DELETION_COUNTDOWN_SECONDS,
             )
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to schedule webhook payload deletion on user deletion",
                 user_id=user_id,
                 error=str(e),
             )
 
-    @handle_exceptions
     def get_detail(
         self,
         db_session: DbSession,
@@ -163,7 +164,6 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             detail.connections = [UserConnectionSummary.model_validate(c) for c in connections or []]
         return detail
 
-    @handle_exceptions
     def get_users_paginated(
         self,
         db_session: DbSession,
@@ -178,9 +178,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             except ValidationError as exc:
                 if not all("email" in e["loc"] for e in exc.errors()):
                     raise
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Skipping user with invalid email",
                     action="list_users_skip_invalid_email",
                     user_id=str(user.id),
@@ -203,4 +201,4 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         )
 
 
-user_service = UserService(log=getLogger(__name__))
+user_service = UserService()

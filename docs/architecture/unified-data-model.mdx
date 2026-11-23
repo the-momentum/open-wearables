@@ -224,6 +224,18 @@ erDiagram
     }
 ```
 
+### Sleep durations
+
+A sleep session carries three durations, the same for every provider:
+
+| Stored as | Returned by `/events/sleep` as | Meaning |
+|---|---|---|
+| `EventRecord.duration_seconds` | `duration_seconds` | From `start_datetime` to `end_datetime`, awake time included. A night merged from several sessions also covers the gaps between them. |
+| `SleepDetails.sleep_time_in_bed_minutes` | `time_in_bed_seconds` | Time in bed, awake time included: the provider's own figure where it reports one, otherwise the session window. |
+| `SleepDetails.sleep_total_duration_minutes` | `sleep_duration_seconds` | Time asleep, awake time excluded. |
+
+The two detail fields are stored in whole minutes, so the API returns them as multiples of 60 seconds.
+
 ## Technical backbone
 
 The current iteration is fully built using python native methods - utilising SQLalchemy for model declaration, pydantic for data validation and passing within the service. This layer of abstraction offers modularity and extensibility (via Alembic) in line with our stated goals.

@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import DeclarativeBase
 
+from app.utils.exceptions import InvalidInputError
+
 
 class FilterParams(BaseModel):
     """Generic filter parameters for database queries."""
@@ -19,6 +21,7 @@ class FilterParams(BaseModel):
         return v.lower()
 
     def validate_against_model(self, model: type[DeclarativeBase]) -> None:
-        """Validate that sort_by field exists on the model."""
-        if self.sort_by and not hasattr(model, self.sort_by):
-            raise ValueError(f"Field '{self.sort_by}' does not exist on model {model.__name__}")
+        """Validate that the sort_by and filter fields exist on the model."""
+        for field in filter(None, [self.sort_by, *self.filters]):
+            if not hasattr(model, field):
+                raise InvalidInputError(f"Field '{field}' does not exist on model {model.__name__}")
