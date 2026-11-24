@@ -61,7 +61,7 @@ def test_a_batch_from_two_devices_is_stored_under_each_device(db: Session) -> No
     assert all(r.workout_detail.energy_burned == 400 for r in db.query(EventRecord).all())
 
 
-def test_a_resync_writes_and_announces_nothing(db: Session) -> None:
+def test_a_resync_refreshes_details_without_announcing(db: Session) -> None:
     user = UserFactory()
     db.commit()
     points = [_exercise("w0", 0, "Fitbit Air"), _exercise("w1", 1, "Fitbit Air")]
@@ -74,10 +74,11 @@ def test_a_resync_writes_and_announces_nothing(db: Session) -> None:
         assert emit.call_count == 2
         emit.reset_mock()
 
-        assert _load(db, user.id, points) == 0
+        points[0]["exercise"]["metricsSummary"]["caloriesKcal"] = 450
+        assert _load(db, user.id, points) == 2
         emit.assert_not_called()
 
-    assert db.query(EventRecord).count() == 2
+    assert sorted(r.workout_detail.energy_burned for r in db.query(EventRecord).all()) == [400, 450]
 
 
 def test_a_batch_past_the_bind_parameter_limit_is_stored(db: Session) -> None:

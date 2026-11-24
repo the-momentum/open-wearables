@@ -162,7 +162,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
     # -- load ------------------------------------------------------------------
 
     def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> int:
-        """Fetch Exercises in the window and store the new ones. Returns how many were new."""
+        """Fetch Exercises in the window and store them. Returns how many were stored, new or refreshed."""
         start = self._as_datetime(kwargs.get("start_date"))
         end = self._as_datetime(kwargs.get("end_date")) or datetime.now().astimezone()
         if start is None:
@@ -180,9 +180,13 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
                     provider="google_health",
                     external_id=point.get("name"),
                 )
-        inserted = event_record_service.bulk_create_with_details(db, workouts)
-        db.commit()
-        return inserted
+        try:
+            stored = event_record_service.bulk_create_with_details(db, workouts)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        return stored
 
     @staticmethod
     def _as_datetime(value: Any) -> datetime | None:

@@ -885,16 +885,19 @@ class EventRecordService(
         items: list[tuple[EventRecordCreate, EventRecordDetailCreate]],
         detail_type: DetailType = EventCategory.WORKOUT,
     ) -> int:
-        """Insert records and their details in batches. Returns how many records were new.
+        """Insert records and their details in batches. Returns how many records were stored, new or refreshed.
 
-        Records already stored (same data source and window) are skipped along with their
-        details, so a re-sync writes and announces nothing twice. Caller commits.
+        Records matched on external_id refresh their details; only new ones fire webhooks. Caller commits.
         """
         stored = self.bulk_create(db_session, [record for record, _ in items])
         inserted = {record_id for record_id, stored_id in stored.items() if record_id == stored_id}
-        details = [detail for _, detail in items if detail.record_id in inserted]
-        self.bulk_create_details(db_session, details, detail_type=detail_type)
-        return len(inserted)
+        details = [
+            detail.model_copy(update={"record_id": stored[detail.record_id]})
+            for _, detail in items
+            if detail.record_id in stored
+        ]
+        self.bulk_create_details(db_session, details, detail_type=detail_type, created=inserted)
+        return len(set(stored.values()))
 
     def bulk_create_details(
         self,
