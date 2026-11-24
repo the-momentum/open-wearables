@@ -879,6 +879,26 @@ class EventRecordService(
         # bulk_create_details() when the matching details are inserted.
         return self.crud.bulk_create(db_session, records)
 
+    def bulk_create_with_details(
+        self,
+        db_session: DbSession,
+        items: list[tuple[EventRecordCreate, EventRecordDetailCreate]],
+        detail_type: DetailType = EventCategory.WORKOUT,
+    ) -> int:
+        """Insert records and their details in batches. Returns how many records were stored, new or refreshed.
+
+        Records matched on external_id refresh their details; only new ones fire webhooks. Caller commits.
+        """
+        stored = self.bulk_create(db_session, [record for record, _ in items])
+        inserted = {record_id for record_id, stored_id in stored.items() if record_id == stored_id}
+        details = [
+            detail.model_copy(update={"record_id": stored[detail.record_id]})
+            for _, detail in items
+            if detail.record_id in stored
+        ]
+        self.bulk_create_details(db_session, details, detail_type=detail_type, created=inserted)
+        return len(set(stored.values()))
+
     def bulk_create_details(
         self,
         db_session: DbSession,
