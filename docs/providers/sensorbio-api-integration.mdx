@@ -69,7 +69,7 @@ The integration follows the standard OAuth 2.0 authorization code flow:
 2. User grants consent in the Sensor Bio app
 3. Sensor Bio redirects back with an authorization code
 4. Open Wearables exchanges the code for `access_token` + `refresh_token`
-5. Tokens are stored encrypted per-user and refreshed automatically on expiry
+5. Tokens are stored per-user and refreshed automatically on expiry
 
 ## Data sync
 
@@ -85,16 +85,16 @@ Fetched from `/v1/activities` using cursor pagination on `WorkoutStats.timestamp
 
 Fetched from `/v1/sleep` one day at a time (the API requires a single `date` parameter; there is no multi-day range for session-level sleep). Each day may return multiple sessions (overnight + nap). Each record includes:
 
-- Start/end time, total duration
+- Start/end time; the session's duration and time in bed are the start-to-end window, and time asleep is the combined deep, light and REM time, in whole minutes
 - Stage breakdown: deep, light, REM, awake minutes
 - Sleep score (mapped to `efficiency_percent`)
 - Biometrics during sleep: average HR, HRV, SpO2, resting HR
-- Sensor Bio does not label naps; sessions are stored with `is_nap=false`
+- Sensor Bio does not label naps; Open Wearables flags them itself, see `is_nap` in [Data types](/architecture/data-types)
 - Stage timeline: `/v1/sleep/details/day` is called once per day and returns the stage intervals for every sleep of that day; each session keeps the intervals that start inside its own window. A session is stored without the timeline when that call returns nothing.
 
 ### Recovery
 
-Fetched from `/v1/scores` one day at a time (single required `date` parameter). Provides daily recovery/activity/sleep scores and resting biometrics (resting HR, resting HRV, SpO2) stored as timeseries samples plus HealthScore rows.
+Fetched from `/v1/scores` one day at a time (single required `date` parameter). Provides daily recovery/activity/sleep scores and resting biometrics (resting HR, resting HRV, SpO2) stored as day values (`/timeseries?resolution=1day`) plus HealthScore rows.
 
 ### 24/7 Biometric timeseries
 

@@ -16,11 +16,9 @@ import pytest
 from app.config import settings
 from app.integrations import otel
 from app.integrations.celery import core as celery_core
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-
-logger = logging.getLogger("app.test_otel")
 
 
 class TestDisabled:
@@ -28,8 +26,9 @@ class TestDisabled:
         with patch.object(settings, "otel_enabled", False):
             otel.init_otel("open-wearables-test")
 
-        assert not any(otel.is_export_handler(handler) for handler in logging.getLogger().handlers)
-        log_structured(logger, "info", "not exported")
+        for name in ("", "app"):
+            assert not any(otel.is_export_handler(handler) for handler in logging.getLogger(name).handlers)
+        get_logger("app.test_otel_wiring").info("not exported")
 
     def test_sdk_disabled_variable_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
@@ -59,7 +58,7 @@ class TestDependencies:
     def test_missing_extra_fails_at_startup(self) -> None:
         with (
             patch.object(settings, "otel_enabled", True),
-            patch("app.integrations.otel.importlib.util.find_spec", return_value=None),
+            patch("app.integrations.otel.importlib.util.find_spec", autospec=True, return_value=None),
             pytest.raises(RuntimeError, match="'otel' extra"),
         ):
             otel.check_dependencies()
@@ -67,7 +66,7 @@ class TestDependencies:
     def test_missing_extra_is_fine_while_disabled(self) -> None:
         with (
             patch.object(settings, "otel_enabled", False),
-            patch("app.integrations.otel.importlib.util.find_spec", return_value=None),
+            patch("app.integrations.otel.importlib.util.find_spec", autospec=True, return_value=None),
         ):
             otel.check_dependencies()
 
@@ -96,7 +95,7 @@ class TestCeleryWiring:
         ],
     )
     def test_prefork_parent_leaves_export_to_its_children(self, pool_cls: str, starts_in_parent: bool) -> None:
-        with patch.object(celery_core, "init_otel") as init_otel:
+        with patch.object(celery_core, "init_otel", autospec=True) as init_otel:
             celery_core.init_worker_log_export(SimpleNamespace(hostname="io@host", pool_cls=pool_cls))
 
         assert init_otel.called is starts_in_parent
@@ -114,7 +113,7 @@ class TestCeleryWiring:
         assert celery_core._uses_prefork("no-such-pool") is False
 
     def test_child_process_starts_export_under_the_worker_name(self) -> None:
-        with patch.object(celery_core, "init_otel") as init_otel:
+        with patch.object(celery_core, "init_otel", autospec=True) as init_otel:
             celery_core.init_worker_log_export(SimpleNamespace(hostname="cpu@host", pool_cls="prefork"))
             celery_core.init_worker_process_log_export()
 

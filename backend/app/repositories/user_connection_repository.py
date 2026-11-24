@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from logging import getLogger
 from typing import cast
 from uuid import UUID, uuid4
 
@@ -16,8 +15,9 @@ from app.schemas.model_crud.user_management import (
     UserConnectionCreate,
     UserConnectionUpdate,
 )
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCreate, UserConnectionUpdate]):
@@ -167,7 +167,8 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         except MultipleResultsFound:
             logger.warning(
                 "Multiple active connections found for provider_user_id — returning first",
-                extra={"provider": provider, "provider_user_id": provider_user_id},
+                provider=provider,
+                provider_user_id=provider_user_id,
             )
             return self._active_by_provider_external_id(db_session, provider, provider_user_id).first()
 
@@ -197,7 +198,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         except MultipleResultsFound:
             logger.warning(
                 "Multiple active connections found for provider_username — returning first",
-                extra={"provider": provider, "provider_username": provider_username},
+                provider=provider,
             )
             return (
                 db_session.query(self.model)
@@ -234,6 +235,8 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         )
         result: dict[tuple[str, str], list[UUID]] = {}
         for provider, provider_user_id, linked_user_id in rows:
+            if provider_user_id is None:
+                continue
             result.setdefault((provider, provider_user_id), []).append(linked_user_id)
         return result
 
@@ -376,6 +379,10 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.commit()
         db_session.refresh(connection)
         return connection
+
+    def reload_tokens(self, db_session: DbSession, connection: UserConnection) -> None:
+        """Re-read the token columns another worker may have written, keeping unflushed changes to the rest."""
+        db_session.refresh(connection, attribute_names=["access_token", "refresh_token", "token_expires_at"])
 
     def update_last_synced_at(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
         """Update the last synced timestamp."""

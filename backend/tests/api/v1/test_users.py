@@ -12,9 +12,11 @@ Tests cover:
 """
 
 from datetime import datetime, timezone
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from dirty_equals import IsDatetime, IsInt, IsList, IsPartialDict, IsUUID
 from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.orm import Session
@@ -51,12 +53,7 @@ class TestListUsers:
         assert response.status_code == 200
         data = response.json()
         # Response is paginated format with 'items' list
-        assert "items" in data
-        assert isinstance(data["items"], list)
-        assert len(data["items"]) >= 2
-        assert "total" in data
-        assert "page" in data
-        assert "limit" in data
+        assert data == IsPartialDict(items=IsList(length=(2, ...)), total=IsInt, page=IsInt, limit=IsInt)
 
         # Find our test users
         user_ids = [str(user1.id), str(user2.id)]
@@ -138,11 +135,18 @@ class TestGetUser:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == str(user.id)
-        assert data["email"] == "user@example.com"
-        assert data["first_name"] == "John"
-        assert data["last_name"] == "Doe"
-        assert "created_at" in data
+        assert data == {
+            "id": str(user.id),
+            "created_at": IsDatetime(iso_string=True),
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "user@example.com",
+            "external_user_id": None,
+            "last_synced_at": None,
+            "last_synced_provider": None,
+            "has_active_connection": False,
+            "has_womens_health_data": False,
+        }
 
     def test_get_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent user raises ResourceNotFoundError."""
@@ -170,7 +174,7 @@ class TestGetUser:
         response = client.get(f"{api_v1_prefix}/users/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_get_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting user fails without API key."""
@@ -186,6 +190,49 @@ class TestGetUser:
 
 class TestCreateUser:
     """Tests for POST /api/v1/users."""
+
+    def test_create_user_duplicate_external_id_returns_409(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """A taken external_user_id is a conflict, not the existing user returned as created."""
+        # Arrange
+        developer = DeveloperFactory()
+        UserFactory(external_user_id="ext123", first_name="Alice")
+        db.commit()  # factories only flush; a request sees committed rows in production
+
+        # Act
+        response = client.post(
+            f"{api_v1_prefix}/users",
+            json={"external_user_id": "ext123", "first_name": "Bob"},
+            headers=developer_auth_headers(developer.id),
+        )
+
+        # Assert
+        assert response.status_code == 409
+        assert response.json()["detail"] == "User with this external_user_id already exists."
+
+    def test_create_user_racing_for_an_external_id_returns_409(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """A request that passed the up-front check before the other one committed still gets a 409."""
+        # Arrange
+        developer = DeveloperFactory()
+        UserFactory(external_user_id="ext123")
+        db.commit()
+
+        # Act - the other request commits between this one's check and its insert
+        with patch(
+            "app.services.user_service.user_service.crud.get_by_external_user_id", autospec=True, return_value=None
+        ):
+            response = client.post(
+                f"{api_v1_prefix}/users",
+                json={"external_user_id": "ext123"},
+                headers=developer_auth_headers(developer.id),
+            )
+
+        # Assert
+        assert response.status_code == 409
+        assert response.json()["detail"] == "User already exists."
 
     def test_create_user_full_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with all fields."""
@@ -206,12 +253,18 @@ class TestCreateUser:
         # Assert
         assert response.status_code == 201
         data = response.json()
-        assert data["email"] == "newuser@example.com"
-        assert data["first_name"] == "Alice"
-        assert data["last_name"] == "Johnson"
-        assert data["external_user_id"] == "ext123"
-        assert "id" in data
-        assert "created_at" in data
+        assert data == {
+            "id": IsUUID,
+            "created_at": IsDatetime(iso_string=True),
+            "first_name": "Alice",
+            "last_name": "Johnson",
+            "email": "newuser@example.com",
+            "external_user_id": "ext123",
+            "last_synced_at": None,
+            "last_synced_provider": None,
+            "has_active_connection": False,
+            "connections": None,
+        }
 
         # Verify in database
         from app.services import user_service
@@ -233,9 +286,18 @@ class TestCreateUser:
 
         # Assert
         assert response.status_code == 201
-        data = response.json()
-        assert "id" in data
-        assert "created_at" in data
+        assert response.json() == {
+            "id": IsUUID,
+            "created_at": IsDatetime(iso_string=True),
+            "first_name": None,
+            "last_name": None,
+            "email": None,
+            "external_user_id": None,
+            "last_synced_at": None,
+            "last_synced_provider": None,
+            "has_active_connection": False,
+            "connections": None,
+        }
 
     def test_create_user_only_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with only email."""
@@ -267,7 +329,7 @@ class TestCreateUser:
         response = client.post(f"{api_v1_prefix}/users", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_create_user_name_too_long(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with name exceeding max length."""
@@ -284,7 +346,7 @@ class TestCreateUser:
         response = client.post(f"{api_v1_prefix}/users", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_create_user_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test creating user fails without API key."""
@@ -364,6 +426,44 @@ class TestUpdateUser:
         db.refresh(user)
         assert user.external_user_id == "new_id"
 
+    def test_update_user_to_a_taken_external_id_returns_409(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Taking another user's external_user_id is a conflict."""
+        # Arrange
+        developer = DeveloperFactory()
+        UserFactory(external_user_id="taken")
+        user = UserFactory()
+        db.commit()  # factories only flush; a request sees committed rows in production
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/users/{user.id}",
+            json={"external_user_id": "taken"},
+            headers=developer_auth_headers(developer.id),
+        )
+
+        # Assert
+        assert response.status_code == 409
+        assert response.json()["detail"] == "User with this external_user_id already exists."
+
+    def test_update_user_keeping_own_unique_values(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Re-sending the user's own email and external_user_id is not a conflict."""
+        # Arrange
+        developer = DeveloperFactory()
+        user = UserFactory(email="me@example.com", external_user_id="me")
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/users/{user.id}",
+            json={"email": "me@example.com", "external_user_id": "me", "first_name": "New"},
+            headers=developer_auth_headers(developer.id),
+        )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["first_name"] == "New"
+
     def test_update_user_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user with empty payload."""
         # Arrange
@@ -408,7 +508,7 @@ class TestUpdateUser:
         response = client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_update_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user fails without authentication."""
@@ -489,7 +589,7 @@ class TestDeleteUser:
         response = client.delete(f"{api_v1_prefix}/users/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_delete_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user fails without authentication."""
@@ -591,7 +691,7 @@ class TestListUsersConnections:
         response = client.get(f"{api_v1_prefix}/users?include=connection", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
 
 class TestListUsersFilters:

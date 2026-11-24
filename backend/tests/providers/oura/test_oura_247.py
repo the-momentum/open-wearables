@@ -1,12 +1,18 @@
 """Tests for Oura247Data normalization."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from inline_snapshot import snapshot
+from pytest_mock import MockerFixture
+from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
-from app.schemas.enums import SeriesType
+from app.models import EventRecord, EventRecordAggregate, SeriesAggregate
+from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.providers.oura.imports import OuraMetJSON
 from app.services.providers.oura.coverage import ACTIVITY_SERIES
 from app.services.providers.oura.data_247 import Oura247Data
@@ -20,31 +26,6 @@ class TestOura247SleepNormalization:
     def data_247(self) -> Oura247Data:
         strategy = OuraStrategy()
         return strategy.data_247
-
-    @pytest.fixture
-    def sample_oura_sleep(self) -> dict:
-        return {
-            "id": "sleep-abc123",
-            "average_breath": 15.5,
-            "average_heart_rate": 55.0,
-            "average_hrv": 45,
-            "awake_time": 1800,
-            "bedtime_end": "2024-01-15T07:00:00+00:00",
-            "bedtime_start": "2024-01-15T23:00:00+00:00",
-            "day": "2024-01-15",
-            "deep_sleep_duration": 5400,
-            "efficiency": 88,
-            "latency": 300,
-            "light_sleep_duration": 14400,
-            "low_battery_alert": False,
-            "lowest_heart_rate": 48,
-            "period": 0,
-            "rem_sleep_duration": 7200,
-            "restless_periods": 5,
-            "time_in_bed": 28800,
-            "total_sleep_duration": 27000,
-            "type": "long_sleep",
-        }
 
     def test_normalize_sleep_basic_fields(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
@@ -207,6 +188,40 @@ class TestOura247SleepNormalization:
         assert result[0]["is_nap"] is False  # long_sleep
         assert result[1]["is_nap"] is True  # sleep
 
+    def test_unreported_sleep_stages_are_saved_as_none(
+        self, mocker: MockerFixture, data_247: Oura247Data, sample_oura_sleep: dict
+    ) -> None:
+        mock_event = mocker.patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
+        sample_oura_sleep.update(
+            deep_sleep_duration=None, light_sleep_duration=None, rem_sleep_duration=None, awake_time=None
+        )
+
+        normalized = data_247.normalize_sleeps([sample_oura_sleep], uuid4())
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_total_duration_minutes is None
+        assert detail.sleep_time_in_bed_minutes == 480
+
+    def test_reported_zero_sleep_stages_are_saved_as_zero(
+        self, mocker: MockerFixture, data_247: Oura247Data, sample_oura_sleep: dict
+    ) -> None:
+        mock_event = mocker.patch("app.services.providers.oura.data_247.event_record_service", autospec=True)
+        sample_oura_sleep.update(deep_sleep_duration=0, rem_sleep_duration=0)
+
+        normalized = data_247.normalize_sleeps([sample_oura_sleep], uuid4())
+        data_247.save_sleep_data(MagicMock(spec=Session), uuid4(), normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes == 0
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_light_minutes == 240
+        assert detail.sleep_total_duration_minutes == 240
+
     def test_normalize_sleep_heart_rate(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
         result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
@@ -222,17 +237,6 @@ class TestOura247ReadinessNormalization:
     def data_247(self) -> Oura247Data:
         strategy = OuraStrategy()
         return strategy.data_247
-
-    @pytest.fixture
-    def sample_oura_readiness(self) -> dict:
-        return {
-            "id": "readiness-abc123",
-            "day": "2024-01-15",
-            "score": 82,
-            "temperature_deviation": 0.15,
-            "temperature_trend_deviation": 0.05,
-            "timestamp": "2024-01-15T07:00:00+00:00",
-        }
 
     def test_normalize_readiness_score(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
@@ -277,13 +281,45 @@ class TestOura247ActivityNormalization:
         ]
         samples, _ = data_247.normalize_activity_samples(raw, user_id)
 
-        assert len(samples["steps"]) == 1
-        assert samples["steps"][0]["value"] == 8500
-        assert len(samples["energy"]) == 1
-        assert samples["energy"][0]["value"] == 350
-        assert samples["basal_energy"][0]["value"] == 1450
-        assert len(samples["distance"]) == 1
-        assert samples["distance"][0]["value"] == 6500
+        assert samples == snapshot(
+            {
+                "steps": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 8500,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "energy": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 350,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "basal_energy": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 1450,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "distance": [
+                    {
+                        "recorded_at": datetime(2024, 1, 15, hour=23, minute=59, second=59, tzinfo=timezone.utc),
+                        "value": 6500,
+                        "zone_offset": "+00:00",
+                        "day": "2024-01-15",
+                    }
+                ],
+                "active_time": [],
+                "exercise_time": [],
+                "met": [],
+            }
+        )
 
     def test_normalize_activity_empty(self, data_247: Oura247Data) -> None:
         user_id = uuid4()
@@ -312,6 +348,7 @@ class TestOura247ActivityNormalization:
 
         assert len(samples["met"]) == 3
         assert [s["value"] for s in samples["met"]] == [1.0, 1.2, 1.5]
+        assert {s["window_seconds"] for s in samples["met"]} == {60}
 
     def test_normalize_activity_samples_met_absent(self, data_247: Oura247Data) -> None:
         user_id = uuid4()
@@ -456,8 +493,7 @@ class TestOura247MetSeriesExpansion:
         assert samples[0]["zone_offset"] == "+02:00"
 
     def test_met_maps_to_physical_effort(self) -> None:
-        # average_met means one scalar per workout everywhere else (Apple/Google/Samsung);
-        # Oura's series is continuous per-minute data, so it must not share that series type.
+        # Oura's per-minute MET is physical_effort; a workout's average MET is that series' session value.
         assert ACTIVITY_SERIES["met"] == SeriesType.physical_effort
 
     def test_expand_met_series_drops_unmeasured_tail_using_class_5_min_length(self, data_247: Oura247Data) -> None:
@@ -495,3 +531,60 @@ class TestOura247MetSeriesExpansion:
         met = OuraMetJSON(interval=60, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
 
         assert data_247._expand_met_series(met, None) == []
+
+
+def test_save_activity_data_mirrors_day_totals_but_not_met(db: Session) -> None:
+    from tests.factories import UserFactory
+
+    data_247 = OuraStrategy().data_247
+    assert isinstance(data_247, Oura247Data)
+    user = UserFactory()
+    raw = [
+        {
+            "id": "activity-1",
+            "day": "2024-01-15",
+            "timestamp": "2024-01-15T04:00:00-08:00",
+            "steps": 9000,
+            "met": {"interval": 60, "items": [1.0, 1.2], "timestamp": "2024-01-15T04:00:00-08:00"},
+            "class_5_min": "2",
+        }
+    ]
+
+    data_247.save_activity_data(db, user.id, data_247.normalize_activity_samples(raw, user.id))
+
+    # Oura's day starts at 4 AM, but the day value belongs to the whole local date.
+    assert [(a.series_type_definition_id, a.period_start, a.zone_offset, a.sum) for a in db.query(SeriesAggregate)] == [
+        (get_series_type_id(SeriesType.steps), datetime(2024, 1, 15, 8, tzinfo=timezone.utc), "-08:00", Decimal("9000"))
+    ]
+
+
+def test_nightly_scalars_point_at_the_stored_sleep(db: Session) -> None:
+    from tests.factories import UserFactory
+
+    data_247 = OuraStrategy().data_247
+    assert isinstance(data_247, Oura247Data)
+    user = UserFactory()
+    raw = [
+        {
+            "id": "oura-sleep-1",
+            "day": "2024-01-15",
+            "type": "long_sleep",
+            "bedtime_start": "2024-01-14T23:10:00+01:00",
+            "bedtime_end": "2024-01-15T07:05:00+01:00",
+            "time_in_bed": 28500,
+            "deep_sleep_duration": 5400,
+            "light_sleep_duration": 14400,
+            "rem_sleep_duration": 6000,
+            "awake_time": 2700,
+            "average_breath": 14.5,
+            "lowest_heart_rate": 48,
+        }
+    ]
+
+    data_247.save_sleep_data(db, user.id, data_247.normalize_sleeps(raw, user.id))
+
+    sleep = db.query(EventRecord).filter(EventRecord.category == "sleep").one()
+    rows = {row.series_type_definition_id: row for row in db.query(EventRecordAggregate)}
+    assert {row.record_id for row in rows.values()} == {sleep.id}
+    assert rows[get_series_type_id(SeriesType.respiratory_rate)].avg == Decimal("14.5")
+    assert rows[get_series_type_id(SeriesType.resting_heart_rate)].avg == Decimal("48")

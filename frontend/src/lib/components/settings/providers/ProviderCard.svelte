@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ProviderLogo from '$lib/components/providers/ProviderLogo.svelte';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Switch from '$lib/components/ui/Switch.svelte';
 	import { TINY } from '$lib/components/ui/typography';
@@ -18,6 +19,8 @@
 	} = $props();
 
 	const changed = $derived(enabled !== provider.is_enabled);
+	// Only worth a warning while users can see it on the pairing page.
+	const missingCredentials = $derived(enabled && provider.credentials_configured === false);
 </script>
 
 <li class="flex flex-col gap-3 rounded-lg border border-border p-4">
@@ -42,6 +45,13 @@
 
 		<Switch checked={enabled} label="Enable {provider.name}" onchange={ontoggle} />
 	</div>
+
+	{#if missingCredentials}
+		<Alert tone="warning">
+			OAuth client ID or secret is not set, so users can't connect {provider.name}. Set them in the
+			backend environment or disable the provider.
+		</Alert>
+	{/if}
 
 	<!-- Full width under the header: beside the logo, a third of a desktop row
 	     is too narrow for both pills. -->

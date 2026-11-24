@@ -2,7 +2,7 @@
 """Remove recovery_score timeseries data from the database.
 
 Recovery score is now stored in the health_score table for all providers
-(Whoop, Oura, Suunto). This script deletes the legacy data_point_series
+(Whoop, Oura, Suunto). This script deletes the legacy series_sample
 rows and the series_type_definition row (id=6, code='recovery_score').
 
 Usage (inside Docker):
@@ -34,7 +34,7 @@ def main(dry_run: bool) -> None:
             return
 
         row_count = db.execute(
-            text(f"SELECT COUNT(*) FROM data_point_series WHERE series_type_definition_id IN ({_GUARD})"),
+            text(f"SELECT COUNT(*) FROM series_sample WHERE series_type_definition_id IN ({_GUARD})"),
             {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE},
         ).scalar()
         archive_count = db.execute(
@@ -42,7 +42,7 @@ def main(dry_run: bool) -> None:
             {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE},
         ).scalar()
 
-        print(f"data_point_series rows to delete:         {row_count}")
+        print(f"series_sample rows to delete:         {row_count}")
         print(f"data_point_series_archive rows to delete: {archive_count}")
 
         if dry_run:
@@ -50,7 +50,7 @@ def main(dry_run: bool) -> None:
             return
 
         db.execute(
-            text(f"DELETE FROM data_point_series WHERE series_type_definition_id IN ({_GUARD})"),
+            text(f"DELETE FROM series_sample WHERE series_type_definition_id IN ({_GUARD})"),
             {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE},
         )
         db.execute(

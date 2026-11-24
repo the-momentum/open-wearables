@@ -1,10 +1,10 @@
 from collections import defaultdict
 from datetime import date, datetime
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
+from app.repositories.series_aggregate_repository import provider_day_counts, provider_day_timeline
 from app.schemas.enums import EventCategory, ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.dashboard import (
     ProviderDataCount,
@@ -31,13 +31,11 @@ class SystemInfoService:
 
     def __init__(
         self,
-        log: Logger,
         user_service: UserService,
         user_connection_service: UserConnectionService,
         timeseries_service: TimeSeriesService,
         event_record_service: EventRecordService,
     ):
-        self.logger = log
         self.user_service = user_service
         self.user_connection_service = user_connection_service
         self.timeseries_service = timeseries_service
@@ -65,6 +63,7 @@ class SystemInfoService:
             data_points=DataPointsInfo(
                 count=get_total_data_points(db_session),
                 archived=self.timeseries_service.get_approximate_archived_count(db_session),
+                aggregated=self.timeseries_service.get_approximate_aggregate_count(db_session),
             ),
             event_records=event_records,
             connections_coverage=self.user_connection_service.get_connections_coverage(db_session),
@@ -83,7 +82,8 @@ class SystemInfoService:
         window (data points by ``recorded_at``, events by ``start_datetime``). Omitting both
         returns all-time counts. The per-provider breakdown is derived from the scoped rows.
 
-        Data point counts cover the live and the archive table; event records have no archive.
+        Data point counts cover the live table, the archive and the providers' day values, which
+        were samples before the aggregate tables; event records have no archive.
         """
         series_rows = [
             *self.timeseries_service.crud.get_user_counts_by_provider_and_type(
@@ -92,6 +92,7 @@ class SystemInfoService:
             *self.archive_repo.get_user_counts_by_provider_and_type_from_archive(
                 db_session, user_id, start_datetime, end_datetime
             ),
+            *provider_day_counts(db_session, user_id, start_datetime, end_datetime),
         ]
 
         # Query event counts grouped by provider + category + type
@@ -179,6 +180,7 @@ class SystemInfoService:
                 *self.archive_repo.get_user_timeline_counts_from_archive(
                     db_session, user_id, bucket, group_by, start_datetime, end_datetime, provider
                 ),
+                *provider_day_timeline(db_session, user_id, bucket, group_by, start_datetime, end_datetime, provider),
             ]
             metric = TimelineMetric.DATA_POINTS
 
@@ -195,7 +197,6 @@ class SystemInfoService:
 
 
 system_info_service = SystemInfoService(
-    log=getLogger(__name__),
     user_service=user_service,
     user_connection_service=user_connection_service,
     timeseries_service=timeseries_service,

@@ -7,16 +7,26 @@ never exceeded.
 
 PING (callbackURL-based) mode is not supported — those notifications are
 ignored and the endpoint still returns 200 so Garmin stops retrying.
+
+Authenticity
+------------
+  Garmin does not sign its notifications. The callback URL carries a token
+  derived from ``SECRET_KEY`` (``app.utils.webhook_callback.callback_token``),
+  which is the only credential. The operator prints the URL with
+  ``scripts/garmin_webhook_url.py`` and sets it in the Garmin portal for every
+  data type. The ``garmin-client-id`` header is public, so it only filters out
+  requests meant for another Garmin app. Until operators have switched, URLs
+  without the token are still accepted while
+  ``GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN`` is on.
 """
 
 import contextlib
 import json
-import logging
 from typing import Any
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
@@ -38,9 +48,11 @@ from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import InvalidInputError, WebhookVerificationError
+from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import CALLBACK_TOKEN_PARAM, provider_webhook_url, redact_callback_url
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 WELLNESS_TYPES: list[str] = [
     "dailies",
@@ -62,14 +74,44 @@ WELLNESS_TYPES: list[str] = [
 ]
 
 
-class GarminWebhookHandler(BaseWebhookHandler):
-    """Webhook handler for Garmin Health API push/ping events.
+#: Prints the full callback URL, token included. Run it in the backend directory or container.
+WEBHOOK_URL_COMMAND = "uv run python scripts/garmin_webhook_url.py"
 
-    Garmin does not sign request bodies with HMAC; it identifies itself via the
-    ``garmin-client-id`` request header.  ``verify_signature`` checks that this
-    header matches the configured ``settings.garmin_client_id`` (constant-time),
-    failing closed when the value is not configured.
+#: Setup guide, covering the webhook URL in the Garmin portal.
+DOCS_URL = "https://openwearables.io/docs/providers/garmin-api-integration"
+
+
+def webhook_url_hint() -> str:
+    """The callback URL to set in the Garmin portal, with a placeholder for the token, and how to print it."""
+    return f"{provider_webhook_url('garmin')}/<callback token> (print it with `{WEBHOOK_URL_COMMAND}` on the server)"
+
+
+def report_rejected_webhook_url(request: Request) -> bool:
+    """Log an error when a rejected request carries our ``garmin-client-id``, most likely Garmin on an old URL.
+
+    Returns:
+        Whether the error was logged.
     """
+    expected = settings.garmin_client_id
+    if not expected or request.headers.get("garmin-client-id") != expected:
+        return False
+    logger.error(
+        "Rejected a Garmin webhook with our client ID but without the current callback token; "
+        "a data type in the Garmin portal may still have an old URL (see docs)",
+        provider="garmin",
+        action="garmin_webhook_url_rejected",
+        webhook_url=webhook_url_hint(),
+        docs=DOCS_URL,
+        path=redact_callback_url(request.url.path),
+        client_host=request.client.host if request.client else None,
+    )
+    return True
+
+
+class GarminWebhookHandler(BaseWebhookHandler):
+    """Webhook handler for Garmin Health API push/ping events (authentication: see the module docstring)."""
+
+    requires_callback_token = True
 
     def __init__(self, garmin_workouts: GarminWorkouts, garmin_247: Garmin247Data, oauth: GarminOAuth) -> None:
         super().__init__("garmin")
@@ -93,12 +135,21 @@ class GarminWebhookHandler(BaseWebhookHandler):
     # BaseWebhookHandler interface
     # ------------------------------------------------------------------
 
+    def authenticate_callback(self, request: Request) -> None:
+        """Check the token as the base class does (tokenless URLs pass while accepted), flag Garmin turned away."""
+        if settings.garmin_accept_webhooks_without_token and CALLBACK_TOKEN_PARAM not in request.path_params:
+            return
+        try:
+            super().authenticate_callback(request)
+        except WebhookVerificationError:
+            report_rejected_webhook_url(request)
+            raise
+
     def verify_signature(self, request: Request, body: bytes) -> bool:
+        """Check the ``garmin-client-id`` header, a noise filter only (see the module docstring)."""
         expected = settings.garmin_client_id
         if not expected:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "GARMIN_CLIENT_ID not configured; rejecting webhook",
                 provider="garmin",
                 action="webhook_signature_missing_secret",
@@ -107,9 +158,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
 
         provided = request.headers.get("garmin-client-id", "")
         if not provided:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Missing garmin-client-id header",
                 provider="garmin",
                 action="webhook_signature_invalid",
@@ -117,22 +166,30 @@ class GarminWebhookHandler(BaseWebhookHandler):
             return False
 
         if not self._verify_token(expected, provided):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "garmin-client-id header does not match configured value",
                 provider="garmin",
                 action="webhook_signature_invalid",
             )
             return False
 
+        if CALLBACK_TOKEN_PARAM not in request.path_params:
+            logger.warning(
+                "Accepted a Garmin webhook on a URL without the callback token; set the token URL in the Garmin "
+                "portal for every data type (see docs)",
+                provider="garmin",
+                action="garmin_webhook_without_token_accepted",
+                webhook_url=webhook_url_hint(),
+                docs=DOCS_URL,
+                path=request.url.path,
+            )
         return True
 
     def parse_payload(self, body: bytes) -> dict[str, Any]:
         try:
             return json.loads(body)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Accept the webhook and enqueue async processing.
@@ -153,9 +210,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 if isinstance(item, dict) and item.get("userId")
             }
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Received Garmin webhook",
             provider="garmin",
             trace_id=request_trace_id,
@@ -170,9 +225,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
         task = celery_app.send_task(
             CeleryTask.PROCESS_WEBHOOK_PUSH, args=["garmin", payload, request_trace_id], queue=CeleryQueue.GARMIN_SYNC
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Enqueued Garmin webhook processing task",
             provider="garmin",
             trace_id=request_trace_id,
@@ -275,9 +328,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 continue
 
             items = payload[data_type]
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Processing wellness notifications",
                 provider="garmin",
                 trace_id=request_trace_id,
@@ -309,9 +360,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                     db, self.connection_repo, payload["userPermissionsChange"], request_trace_id
                 )
             except Exception as e:
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Failed to process permission changes",
                     provider="garmin",
                     trace_id=request_trace_id,
@@ -325,9 +374,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                     db, self.connection_repo, self.oauth, payload["deregistrations"], request_trace_id
                 )
             except Exception as e:
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Failed to process deregistrations",
                     provider="garmin",
                     trace_id=request_trace_id,
@@ -341,9 +388,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
             backfill_status = get_backfill_status(user_id_str)
             if backfill_status["overall_status"] in ("in_progress", "retry_in_progress"):
                 trace_id = get_trace_id(user_id_str) or request_trace_id
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Triggering next backfill",
                     provider="garmin",
                     trace_id=trace_id,

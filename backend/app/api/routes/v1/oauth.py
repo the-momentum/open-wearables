@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -20,17 +21,27 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+from app.utils.auth import ConnectAuthDep
+from app.utils.exceptions import AppError, UnsupportedProviderError, unknown_provider
+from app.utils.redirect_allowlist import is_allowed_redirect, with_result
 
 router = APIRouter()
 factory = ProviderFactory()
 
 
 def resolve_provider(slug: str) -> ProviderName:
-    # 400 rather than 404 keeps the response the enum-typed parameter used to give.
     try:
         return ProviderName(from_url_slug(slug))
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown provider: '{slug}'")
+        raise unknown_provider(slug, ("path", "provider"), (p.value for p in ProviderName)) from None
+
+
+def _error_redirect(return_to: str | None, provider: ProviderName, message: str) -> RedirectResponse:
+    """Back to the flow's redirect_uri with the error, or to the JSON error page when it had none."""
+    if return_to:
+        url = with_result(return_to, provider=provider.value, status="error", message=message)
+        return RedirectResponse(url=url, status_code=303)
+    return RedirectResponse(url=f"/api/v1/oauth/error?{urlencode({'message': message})}", status_code=303)
 
 
 def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
@@ -38,10 +49,7 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
     strategy = factory.get_provider(provider.value)
 
     if not strategy.oauth:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Provider '{provider.value}' does not support OAuth",
-        )
+        raise UnsupportedProviderError(provider.value, "OAuth")
     return strategy
 
 
@@ -53,15 +61,39 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
 )
 def authorize_provider(
     provider: str,
+    db: DbSession,
+    auth: ConnectAuthDep,
     user_id: Annotated[UUID, Query(description="User ID to connect")],
-    redirect_uri: Annotated[str | None, Query(description="Optional redirect URI after authorization")] = None,
+    redirect_uri: Annotated[
+        str | None,
+        Query(description="Where to send the browser after the provider sign-in; must be on the allowlist"),
+    ] = None,
 ):
     """
     Initiate OAuth flow for a provider.
 
     Returns authorization URL where user should be redirected to log in.
+
+    Requires an API key, a developer token, or a token scoped to `user_id`: an SDK user token
+    or a connect token (`X-Open-Wearables-Connect-Token`, from `POST /users/{user_id}/connect-token`).
+    `redirect_uri` must match `OAUTH_REDIRECT_ALLOWLIST` (default `openwearables://oauth/callback`),
+    the dashboard origin (`FRONTEND_URL`) or `CORS_ORIGINS`. After the sign-in the browser is sent
+    there with `provider`, `status` (`success` or `error`) and, on error, `message` in the query,
+    replacing any parameters of the same name.
     """
-    strategy = get_oauth_strategy(resolve_provider(provider))
+    if auth.auth_type in ("sdk_token", "connect_token") and auth.user_id != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Token does not match user_id")
+
+    provider_name = resolve_provider(provider)
+    strategy = get_oauth_strategy(provider_name)
+    setting = provider_settings_service.get_settings_map(db).get(provider_name.value)
+    if setting is not None and not setting.is_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Provider '{provider_name.value}' is not enabled")
+    if redirect_uri is not None and not is_allowed_redirect(redirect_uri):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "redirect_uri is not allowed; add it to OAUTH_REDIRECT_ALLOWLIST",
+        )
 
     assert strategy.oauth
     auth_url, state = strategy.oauth.get_authorization_url(user_id, redirect_uri)
@@ -86,29 +118,32 @@ def oauth_callback(
     """
     OAuth callback endpoint.
 
-    Provider redirects here after user authorizes. Exchanges code for tokens.
+    Provider redirects here after user authorizes. Exchanges code for tokens. When the
+    flow was started with a redirect_uri, the browser goes back there on success and on
+    failure, so an app's sign-in sheet never ends on a JSON page.
     """
-    if error:
-        return RedirectResponse(
-            url=f"/api/v1/oauth/error?message={error}:+{error_description or 'Unknown+error'}",
-            status_code=303,
-        )
-
-    if not code or not state:
-        return RedirectResponse(
-            url="/api/v1/oauth/error?message=Missing+OAuth+parameters",
-            status_code=303,
-        )
-
     provider_name = resolve_provider(provider)
     strategy = get_oauth_strategy(provider_name)
-
     assert strategy.oauth
-    oauth_state = strategy.oauth.handle_callback(db, code, state)
+    started = strategy.oauth.peek_state(state) if state else None
+    return_to = started.redirect_uri if started else None
+
+    if error:
+        if state:
+            strategy.oauth.discard_state(state)
+        return _error_redirect(return_to, provider_name, f"{error}: {error_description or 'Unknown error'}")
+
+    if not code or not state:
+        return _error_redirect(return_to, provider_name, "Missing OAuth parameters")
+
+    try:
+        oauth_state = strategy.oauth.handle_callback(db, code, state)
+    except AppError as exc:
+        return _error_redirect(return_to, provider_name, exc.detail)
 
     # Stamp last_synced_at=now so the first periodic sync uses the connection
     # timestamp as its live-sync cursor and won't attempt to pull all history.
-    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
+    previous_synced_at = user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
 
     # Grace-period flag: automatically kick off a historical sync so integrators
     # who haven't yet adopted the explicit /sync/historical call still get backfill.
@@ -116,21 +151,27 @@ def oauth_callback(
     if settings.historical_sync_on_connect:
         caps = strategy.capabilities
         if caps.webhook_callback:
-            start_garmin_full_backfill.delay(str(oauth_state.user_id))
+            gap_start = user_connection_service.reconnect_gap_start(
+                db, oauth_state.user_id, provider_name.value, previous_synced_at
+            )
+            start_garmin_full_backfill.delay(str(oauth_state.user_id), gap_start.isoformat() if gap_start else None)
         elif caps.rest_pull:
             now = datetime.now(timezone.utc)
-            start_date = (now - timedelta(days=90)).isoformat()
+            start_date = user_connection_service.historical_start_on_connect(
+                db, oauth_state.user_id, provider_name.value, previous_synced_at, days=90
+            )
             sync_vendor_data.delay(
                 user_id=str(oauth_state.user_id),
-                start_date=start_date,
+                start_date=start_date.isoformat(),
                 end_date=now.isoformat(),
                 providers=[provider_name.value],
                 is_historical=True,
             )
 
-    # If a specific redirect_uri was requested (e.g. by frontend), redirect there
+    # If a specific redirect_uri was requested (e.g. by frontend or an app), redirect there
     if oauth_state.redirect_uri:
-        return RedirectResponse(url=oauth_state.redirect_uri, status_code=303)
+        url = with_result(oauth_state.redirect_uri, provider=provider_name.value, status="success")
+        return RedirectResponse(url=url, status_code=303)
 
     # Otherwise, redirect to internal success page
     return RedirectResponse(
@@ -192,10 +233,7 @@ def update_provider_setting(
     _developer: DeveloperDep,
 ):
     """Update is_enabled and/or live_sync_mode for a single provider."""
-    try:
-        return provider_settings_service.update_provider_setting(db, provider, update)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return provider_settings_service.update_provider_setting(db, provider, update)
 
 
 @router.put("/providers", response_model=list[ProviderSettingRead], tags=["Internal: Providers"])

@@ -12,7 +12,7 @@ from types import ModuleType
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, SeriesTypeDefinition
+from app.models import SeriesSample, SeriesTypeDefinition
 from app.schemas.enums.provider import ProviderName
 from app.schemas.enums.series_types import SeriesType, get_series_type_id
 from tests.factories import DataPointSeriesFactory, DataSourceFactory
@@ -52,7 +52,7 @@ def _make_point(db: Session, *, provider: ProviderName, type_id: int, recorded_a
 
 
 def _rows(db: Session) -> list[tuple[int, Decimal]]:
-    return sorted(db.execute(text("SELECT series_type_definition_id, value FROM data_point_series")).tuples().all())
+    return sorted(db.execute(text("SELECT series_type_definition_id, value FROM series_sample")).tuples().all())
 
 
 def test_relabels_whoop_energy_and_drops_zero_rows(db: Session) -> None:
@@ -92,7 +92,7 @@ def test_dry_run_changes_nothing_and_rerun_is_noop(db: Session) -> None:
 
     preview = relabel_whoop_active_energy(db, dry_run=True)
     assert preview["series_updated"] == 1
-    assert db.query(DataPointSeries).one().series_type_definition_id == ACTIVE_ENERGY_ID
+    assert db.query(SeriesSample).one().series_type_definition_id == ACTIVE_ENERGY_ID
 
     relabel_whoop_active_energy(db, dry_run=False)
     assert not any(relabel_whoop_active_energy(db, dry_run=False).values())

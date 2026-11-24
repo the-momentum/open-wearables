@@ -2,6 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.algorithms.config_algorithms import sleep_config
 from app.schemas.utils import SourceMetadata
 
 
@@ -75,7 +76,14 @@ class SleepSessionSummary(BaseModel):
     start_time: datetime
     end_time: datetime
     zone_offset: str | None = Field(None, description="UTC offset of the session, e.g. '+02:00'")
-    duration_minutes: int | None = Field(None, description="Session duration", example=420)
+    duration_minutes: int | None = Field(
+        None,
+        description=(
+            "Main sleep: time asleep, awake time excluded; a session with no stored time asleep counts with "
+            "its start-to-end time. Nap: start-to-end time, awake time included"
+        ),
+        example=420,
+    )
     is_nap: bool = Field(False, description="True if this session is a nap rather than main sleep")
 
 
@@ -85,16 +93,33 @@ class SleepSummary(BaseModel):
     start_time: datetime | None = Field(None, description="Start of the longest main-sleep session")
     end_time: datetime | None = Field(None, description="End of the longest main-sleep session")
     zone_offset: str | None = Field(None, description="UTC offset of the longest main-sleep session, e.g. '+02:00'")
-    duration_minutes: int | None = Field(None, description="Total sleep duration excluding naps", example=450)
+    duration_minutes: int | None = Field(
+        None,
+        description=(
+            "Time asleep in the day's main sleep, naps excluded; a session with no stored time asleep "
+            "counts with its start-to-end time"
+        ),
+        example=450,
+    )
     total_duration_minutes: int | None = Field(
-        None, description="Total of all sleep + nap durations for the day", example=480
+        None, description="duration_minutes plus nap_duration_minutes", example=480
     )
     time_in_bed_minutes: int | None = Field(None, description="Total time in bed excluding naps", example=480)
     efficiency_percent: float | None = Field(None, ge=0, le=100, example=89.5)
     stages: SleepStagesSummary | None = None
-    interruptions_count: int | None = None
+    interruptions_count: int | None = Field(
+        None,
+        description=(
+            f"Awakenings longer than {sleep_config.significant_wake_threshold_mins:g} minutes within the main sleep"
+            " (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or the"
+            " timeline of one of its main sleep sessions has no sleep stage (sleeping, light, deep or rem)"
+        ),
+        example=2,
+    )
     nap_count: int | None = Field(None, description="Number of naps taken", example=1)
-    nap_duration_minutes: int | None = Field(None, description="Total nap duration", example=30)
+    nap_duration_minutes: int | None = Field(
+        None, description="Start-to-end time of the day's naps, awake time included", example=30
+    )
     sessions: list[SleepSessionSummary] | None = Field(
         None, description="Per-session breakdown of all sleep and nap sessions for the day"
     )
@@ -197,17 +222,11 @@ class RecoverySummary(BaseModel):
     sleep_efficiency_percent: float | None = None
     resting_heart_rate_bpm: int | None = None
     avg_hrv_sdnn_ms: float | None = Field(
-        None,
-        description=(
-            "Average HRV (SDNN). Currently always null: every record this endpoint returns "
-            "today comes from WHOOP - a recovery-score record is required for a row to be "
-            "returned, and only WHOOP produces one - and WHOOP reports HRV as RMSSD, which is "
-            "exposed in avg_hrv_rmssd_ms. Once recovery metrics are computed from stored "
-            "timeseries (and returned for all providers, not just WHOOP), this will carry SDNN "
-            "for providers that report it (e.g. Apple Health)."
-        ),
+        None, description="Average HRV (SDNN), for providers that report it (e.g. Apple Health)"
     )
-    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (RMSSD)")
+    avg_hrv_rmssd_ms: float | None = Field(
+        None, description="Average HRV (RMSSD), for providers that report it (e.g. WHOOP, Garmin, Oura)"
+    )
     avg_spo2_percent: float | None = None
     recovery_score: int | None = Field(
         None,

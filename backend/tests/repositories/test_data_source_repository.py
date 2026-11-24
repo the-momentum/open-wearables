@@ -276,6 +276,62 @@ class TestDataSourceRepository:
         assert produced.device_model == "Oura Ring Gen3"
         assert produced.device_type == DeviceType.RING
 
+    def test_host_model_is_cleared_when_the_writer_reports_no_model(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.APPLE,
+            "source": "Oura",
+            "source_app_id": "com.ouraring.oura",
+        }
+
+        relayed = repo.ensure_data_source(db, **ids, device_model="iPhone16,1", reported_type=DeviceType.PHONE)
+        assert relayed.device_type == DeviceType.RING
+        unknown = repo.ensure_data_source(db, **ids)
+        old_client = repo.ensure_data_source(db, **ids, device_model="iPhone16,1", reported_type=DeviceType.PHONE)
+
+        assert relayed.id == unknown.id == old_client.id
+        assert unknown.device_model is None
+        assert unknown.device_type == DeviceType.RING
+
+    def test_legacy_relayed_row_is_stamped_by_a_record_without_the_host_model(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        legacy = repo.ensure_data_source(
+            db, user_id=user.id, provider=ProviderName.APPLE, device_model="iPhone16,1", source="Oura"
+        )
+        iphone = repo.ensure_data_source(
+            db, user_id=user.id, provider=ProviderName.APPLE, device_model="iPhone16,1", source="Bart's iPhone"
+        )
+
+        stamped = repo.ensure_data_source(
+            db, user_id=user.id, provider=ProviderName.APPLE, source="Oura", source_app_id="com.ouraring.oura"
+        )
+
+        assert stamped.id == legacy.id != iphone.id
+        assert stamped.source_app_id == "com.ouraring.oura"
+        assert stamped.device_model is None
+        assert stamped.device_type == DeviceType.RING
+        assert iphone.device_model == "iPhone16,1"
+
+    def test_apple_prefixed_models_outside_healthkit_stay_separate(self, db: Session) -> None:
+        """Health Connect reports the producing device, so two "Watch ..." models of one app are two devices."""
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.HEALTH_CONNECT,
+            "source": "Huawei Health",
+            "source_app_id": "com.huawei.health",
+        }
+
+        gt3 = repo.ensure_data_source(db, **ids, device_model="Watch GT 3")
+        gt4 = repo.ensure_data_source(db, **ids, device_model="Watch GT 4")
+
+        assert gt3.id != gt4.id
+        assert (gt3.device_model, gt4.device_model) == ("Watch GT 3", "Watch GT 4")
+
     def test_apple_own_source_keeps_product_type(self, db: Session) -> None:
         user = UserFactory()
         repo = DataSourceRepository(DataSource)

@@ -11,13 +11,16 @@ Tests cover:
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
+from app.utils.exceptions import InvalidInputError, UnsupportedProviderError
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -37,7 +40,7 @@ class TestProviderSettingsServiceGetAllProviders:
         expected_names = {p.value for p in ProviderName if p.value not in ("unknown", "internal")}
         assert provider_names == expected_names
 
-    def test_get_all_providers_includes_display_name(self, db: Session) -> None:
+    def test_get_all_providers_includes_display_name(self, db: Session, subtests: pytest.Subtests) -> None:
         """Should include display name for each provider."""
         # Arrange
         service = ProviderSettingsService()
@@ -47,10 +50,11 @@ class TestProviderSettingsServiceGetAllProviders:
 
         # Assert
         for provider in providers:
-            assert provider.name is not None
-            assert len(provider.name) > 0
+            with subtests.test(provider=provider.provider):
+                assert provider.name is not None
+                assert len(provider.name) > 0
 
-    def test_get_all_providers_includes_has_cloud_api(self, db: Session) -> None:
+    def test_get_all_providers_includes_has_cloud_api(self, db: Session, subtests: pytest.Subtests) -> None:
         """Should include has_cloud_api flag for each provider."""
         # Arrange
         service = ProviderSettingsService()
@@ -60,9 +64,10 @@ class TestProviderSettingsServiceGetAllProviders:
 
         # Assert
         for provider in providers:
-            assert isinstance(provider.has_cloud_api, bool)
+            with subtests.test(provider=provider.provider):
+                assert isinstance(provider.has_cloud_api, bool)
 
-    def test_get_all_providers_includes_icon_url(self, db: Session) -> None:
+    def test_get_all_providers_includes_icon_url(self, db: Session, subtests: pytest.Subtests) -> None:
         """Should include icon_url for each provider."""
         # Arrange
         service = ProviderSettingsService()
@@ -72,10 +77,11 @@ class TestProviderSettingsServiceGetAllProviders:
 
         # Assert
         for provider in providers:
-            # icon_url can be None or a string
-            assert provider.icon_url is None or isinstance(provider.icon_url, str)
+            with subtests.test(provider=provider.provider):
+                # icon_url can be None or a string
+                assert provider.icon_url is None or isinstance(provider.icon_url, str)
 
-    def test_get_all_providers_default_enabled_true(self, db: Session) -> None:
+    def test_get_all_providers_default_enabled_true(self, db: Session, subtests: pytest.Subtests) -> None:
         """Should default to enabled=True when no database setting exists."""
         # Arrange
         service = ProviderSettingsService()
@@ -86,9 +92,10 @@ class TestProviderSettingsServiceGetAllProviders:
         # Assert
         # All providers should be enabled by default
         for provider in providers:
-            assert provider.is_enabled is True
+            with subtests.test(provider=provider.provider):
+                assert provider.is_enabled is True
 
-    def test_get_all_providers_merges_database_settings(self, db: Session) -> None:
+    def test_get_all_providers_merges_database_settings(self, db: Session, subtests: pytest.Subtests) -> None:
         """Should merge database settings with provider strategies."""
         # Arrange
         service = ProviderSettingsService()
@@ -107,7 +114,60 @@ class TestProviderSettingsServiceGetAllProviders:
         # Other providers should still be enabled
         other_providers = [p for p in providers if p.provider != "apple"]
         for provider in other_providers:
-            assert provider.is_enabled is True
+            with subtests.test(provider=provider.provider):
+                assert provider.is_enabled is True
+
+    def test_get_all_providers_credentials_configured_when_set(self, db: Session) -> None:
+        """Should report credentials as configured when client ID and secret are set."""
+        service = ProviderSettingsService()
+
+        with (
+            patch.object(settings, "oura_client_id", "client-id"),
+            patch.object(settings, "oura_client_secret", SecretStr("client-secret")),
+        ):
+            providers = service.get_all_providers(db)
+
+        oura = next(p for p in providers if p.provider == "oura")
+        assert oura.credentials_configured is True
+
+    @pytest.mark.parametrize(
+        ("client_id", "client_secret"),
+        [(None, None), ("client-id", None), (None, SecretStr("client-secret"))],
+    )
+    def test_get_all_providers_credentials_missing(
+        self, db: Session, client_id: str | None, client_secret: SecretStr | None
+    ) -> None:
+        """Should report credentials as missing when client ID or secret is unset."""
+        service = ProviderSettingsService()
+
+        with (
+            patch.object(settings, "oura_client_id", client_id),
+            patch.object(settings, "oura_client_secret", client_secret),
+        ):
+            providers = service.get_all_providers(db)
+
+        oura = next(p for p in providers if p.provider == "oura")
+        assert oura.credentials_configured is False
+
+    def test_get_all_providers_sdk_providers_need_no_credentials(self, db: Session, subtests: pytest.Subtests) -> None:
+        """Should treat SDK-only providers as configured."""
+        service = ProviderSettingsService()
+
+        providers = service.get_all_providers(db)
+
+        for provider in providers:
+            if not provider.has_cloud_api:
+                with subtests.test(provider=provider.provider):
+                    assert provider.credentials_configured is True
+
+    def test_update_provider_setting_includes_credentials_configured(self, db: Session) -> None:
+        """Should return credentials_configured from the update endpoint too."""
+        service = ProviderSettingsService()
+
+        with patch.object(settings, "oura_client_id", None):
+            result = service.update_provider_setting(db, "oura", ProviderSettingUpdate(is_enabled=True))
+
+        assert result.credentials_configured is False
 
 
 class TestProviderSettingsServiceUpdateProviderStatus:
@@ -161,13 +221,13 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         assert isinstance(result.has_cloud_api, bool)
 
     def test_update_provider_setting_invalid_provider_raises_error(self, db: Session) -> None:
-        """Should raise ValueError for invalid provider name."""
+        """Should raise InvalidInputError for invalid provider name."""
         # Arrange
         service = ProviderSettingsService()
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.update_provider_setting(db, "invalid_provider", update)
 
     def test_update_provider_setting_case_sensitive(self, db: Session) -> None:
@@ -177,7 +237,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert - uppercase should fail
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.update_provider_setting(db, "APPLE", update)
 
 
@@ -213,7 +273,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         }
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.bulk_update_providers(db, updates)
 
         # Verify no updates were applied (transaction rolled back)
@@ -235,7 +295,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         # Subtract 2 for 'unknown' and 'internal' which have no strategy implementation
         assert len(results) == len(list(ProviderName)) - 2
 
-    def test_bulk_update_providers_single_update(self, db: Session) -> None:
+    def test_bulk_update_providers_single_update(self, db: Session, subtests: pytest.Subtests) -> None:
         """Should handle single provider update."""
         # Arrange
         service = ProviderSettingsService()
@@ -251,7 +311,8 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         # Other providers should remain at default (enabled)
         others = [p for p in results if p.provider != "suunto"]
         for provider in others:
-            assert provider.is_enabled is True
+            with subtests.test(provider=provider.provider):
+                assert provider.is_enabled is True
 
     def test_bulk_update_providers_returns_all_providers(self, db: Session) -> None:
         """Should return all providers after bulk update."""
@@ -283,7 +344,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         }
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.bulk_update_providers(db, updates)
 
         # Verify apple is still disabled (update didn't go through)
@@ -295,7 +356,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
 class TestProviderSettingsServiceProviderFactory:
     """Test provider factory integration."""
 
-    def test_get_all_providers_uses_factory_metadata(self, db: Session) -> None:
+    def test_get_all_providers_uses_factory_metadata(self, db: Session, subtests: pytest.Subtests) -> None:
         """Should use provider factory for display names and metadata."""
         # Arrange
         service = ProviderSettingsService()
@@ -306,9 +367,10 @@ class TestProviderSettingsServiceProviderFactory:
         # Assert
         # Verify each provider has metadata from factory
         for provider in providers:
-            assert provider.provider in [p.value for p in ProviderName]
-            assert provider.name is not None  # From factory
-            assert isinstance(provider.has_cloud_api, bool)  # From factory
+            with subtests.test(provider=provider.provider):
+                assert provider.provider in [p.value for p in ProviderName]
+                assert provider.name is not None  # From factory
+                assert isinstance(provider.has_cloud_api, bool)  # From factory
 
     def test_update_provider_validates_against_factory(self, db: Session) -> None:
         """Should validate provider exists in factory."""
@@ -317,7 +379,7 @@ class TestProviderSettingsServiceProviderFactory:
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(InvalidInputError, match="Unknown provider"):
             service.update_provider_setting(db, "nonexistent", update)
 
 
@@ -341,13 +403,13 @@ class TestProviderSettingsServiceLiveSyncMode:
         assert suunto.live_sync_mode == LiveSyncMode.WEBHOOK
 
     def test_update_live_sync_mode_non_configurable_provider_raises(self, db: Session) -> None:
-        """Should raise ValueError when trying to set live_sync_mode on a non-configurable provider."""
+        """Should raise UnsupportedProviderError when trying to set live_sync_mode on a non-configurable provider."""
         # Garmin: webhook_stream=True, webhook_callback=True, rest_pull=False → live_sync_configurable=False
         service = ProviderSettingsService()
 
         update = ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
 
-        with pytest.raises(ValueError, match="does not support live sync mode configuration"):
+        with pytest.raises(UnsupportedProviderError, match="does not support live sync mode configuration"):
             service.update_provider_setting(db, "garmin", update)
 
     def test_update_live_sync_mode_explicit_null_raises(self, db: Session) -> None:
@@ -369,7 +431,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Should hand the new mode to the provider's strategy in both directions."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "oura", ProviderSettingUpdate(live_sync_mode=mode))
 
         send_task.assert_called_once_with(
@@ -380,7 +442,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Per-user providers take the same path; their fan-out handles the revoke."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "withings", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.PULL))
 
         send_task.assert_called_once_with(
@@ -391,7 +453,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Should stay quiet for providers whose subscriptions are not managed by API."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "suunto", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK))
 
         send_task.assert_not_called()
@@ -400,7 +462,7 @@ class TestProviderSettingsServiceWebhookDispatch:
         """Should leave subscriptions alone when live_sync_mode is unchanged."""
         service = ProviderSettingsService()
 
-        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+        with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
             service.update_provider_setting(db, "oura", ProviderSettingUpdate(is_enabled=False))
 
         send_task.assert_not_called()

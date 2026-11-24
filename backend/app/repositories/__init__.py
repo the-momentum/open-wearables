@@ -1,3 +1,4 @@
+from .aggregate_repository import AggregateRepository
 from .api_key_repository import ApiKeyRepository
 from .archival_repository import ArchivalSettingRepository, DataPointSeriesArchiveRepository
 from .data_point_series_repository import DataPointSeriesRepository
@@ -32,4 +33,5 @@ __all__ = [
     "PersonalRecordRepository",
     "CrudRepository",
     "HealthScoreRepository",
+    "AggregateRepository",
 ]

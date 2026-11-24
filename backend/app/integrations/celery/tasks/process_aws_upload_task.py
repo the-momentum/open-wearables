@@ -1,13 +1,11 @@
 import hashlib
 import json
-from logging import getLogger
 from pathlib import Path
 from typing import Any, BinaryIO
 from uuid import UUID
 
 from botocore.exceptions import ClientError
 from celery import Task, shared_task
-from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.constants.celery_tasks import CeleryTask
@@ -19,7 +17,7 @@ from app.services import event_record_service
 from app.services.providers.apple.apple_xml.aws_service import get_s3_client
 from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
 from app.services.providers.apple.apple_xml.xml_service import XMLService
-from app.services.sdk.sleep_service import handle_sleep_data
+from app.services.sdk.sleep_service import save_sleep
 from app.services.sync_status_service import (
     emit_sync_completed,
     emit_sync_failed,
@@ -29,10 +27,17 @@ from app.services.sync_status_service import (
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.context import sync_run_context
-from app.utils.exceptions import ResourceNotFoundError
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.exceptions import (
+    INTEGRITY_ERRORS,
+    AppError,
+    ConfigurationError,
+    NotFoundError,
+    ResourceNotFoundError,
+    public_error_text,
+)
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 IMPORT_STATE_TTL_SECONDS = 7 * 24 * 60 * 60
 
@@ -49,8 +54,8 @@ def _upload_completion_key(bucket_name: str, object_key: str, user_id: str) -> s
 def _upload_completion_persisted(bucket_name: str, object_key: str, user_id: str) -> bool:
     try:
         return bool(get_redis_client().get(_upload_completion_key(bucket_name, object_key, user_id)))
-    except Exception:
-        logger.warning("Unable to read Apple XML multipart completion marker", exc_info=True)
+    except Exception as e:
+        logger.warning("Unable to read Apple XML multipart completion marker", exc_info=e)
         return False
 
 
@@ -67,8 +72,8 @@ def _store_upload_completion(bucket_name: str, object_key: str, user_id: str) ->
             "1",
             ex=IMPORT_STATE_TTL_SECONDS,
         )
-    except Exception:
-        logger.warning("Unable to persist Apple XML multipart completion marker", exc_info=True)
+    except Exception as e:
+        logger.warning("Unable to persist Apple XML multipart completion marker", exc_info=e)
 
 
 def _claim_import(
@@ -108,8 +113,8 @@ def _claim_import(
             if claimed:
                 return "claimed", None
         return "processing", None
-    except Exception:
-        logger.warning("Unable to persist Apple XML import claim; continuing with database idempotency", exc_info=True)
+    except Exception as e:
+        logger.warning("Unable to persist Apple XML import claim; continuing with database idempotency", exc_info=e)
         return "claimed", None
 
 
@@ -125,8 +130,8 @@ def _store_completed_import(
             json.dumps({"state": "completed", "result": result}),
             ex=IMPORT_STATE_TTL_SECONDS,
         )
-    except Exception:
-        logger.warning("Unable to persist completed Apple XML import marker", exc_info=True)
+    except Exception as e:
+        logger.warning("Unable to persist completed Apple XML import marker", exc_info=e)
 
 
 def _release_import_claim(bucket_name: str, object_key: str, user_id: str, run_id: str) -> None:
@@ -137,8 +142,8 @@ def _release_import_claim(bucket_name: str, object_key: str, user_id: str, run_i
         raw_state = client.get(state_key)
         if raw_state and json.loads(raw_state).get("run_id") == run_id:
             client.delete(state_key)
-    except Exception:
-        logger.warning("Unable to release failed Apple XML import claim", exc_info=True)
+    except Exception as e:
+        logger.warning("Unable to release failed Apple XML import claim", exc_info=e)
 
 
 def _as_uuid(user_id: str) -> UUID | None:
@@ -146,6 +151,18 @@ def _as_uuid(user_id: str) -> UUID | None:
         return UUID(user_id)
     except (TypeError, ValueError):
         return None
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """A client error or a constraint violation fails the same way on every attempt."""
+    if isinstance(exc, INTEGRITY_ERRORS):
+        return False
+    if isinstance(exc, ConfigurationError):
+        # A missing or forbidden bucket stays so until the deployment is fixed.
+        return False
+    if isinstance(exc, AppError):
+        return exc.status_code >= 500
+    return True
 
 
 def _run_import_task(
@@ -208,8 +225,9 @@ def _run_import_task(
             )
         return result
     except Exception as exc:
-        retryable = not isinstance(exc, HTTPException) or exc.status_code >= 500
-        can_retry = retryable and not task.request.called_directly and task.request.retries < (task.max_retries or 0)
+        can_retry = (
+            _is_retryable(exc) and not task.request.called_directly and task.request.retries < (task.max_retries or 0)
+        )
         if can_retry:
             raise task.retry(exc=exc, countdown=min(10 * (2**task.request.retries), 300)) from exc
 
@@ -221,7 +239,7 @@ def _run_import_task(
                 run.source,
                 scope=run.scope,
                 run_id=run.run_id,
-                error=str(exc),
+                error=public_error_text(exc),
                 message="Apple Health XML import failed",
                 metadata=metadata,
             )
@@ -233,11 +251,12 @@ def _process_aws_upload(bucket_name: str, object_key: str, user_id: str) -> dict
     s3_client = get_s3_client()
     if not s3_client:
         err = RuntimeError("S3 client not configured — cannot process AWS upload")
-        log_and_capture_error(
-            err,
-            logger,
+        logger.error(
             "S3 client unavailable in process_aws_upload task",
-            extra={"bucket_name": bucket_name, "object_key": object_key, "user_id": user_id},
+            exc_info=err,
+            bucket_name=bucket_name,
+            object_key=object_key,
+            user_id=user_id,
         )
         raise err
 
@@ -246,12 +265,7 @@ def _process_aws_upload(bucket_name: str, object_key: str, user_id: str) -> dict
         try:
             _ = user_service.get(db, user_id, raise_404=True)
         except ResourceNotFoundError as e:
-            log_and_capture_error(
-                e,
-                logger,
-                "Skipping import for non-existent user",
-                extra={"user_id": user_id},
-            )
+            logger.error("Skipping import for non-existent user", exc_info=e, user_id=user_id)
             return {
                 "status": "skipped",
                 "reason": str(e),
@@ -320,8 +334,8 @@ def _ensure_upload_completed(
             parts=parts,
             bucket_name=bucket_name,
         )
-    except HTTPException as exc:
-        if exc.status_code == status.HTTP_404_NOT_FOUND and _object_exists(bucket_name, object_key):
+    except NotFoundError:
+        if _object_exists(bucket_name, object_key):
             return
         raise
 
@@ -374,7 +388,7 @@ def _import_xml_data(db: Session, xml_source: str | Path | BinaryIO, user_id: st
         user_id: User ID to associate with the data
     """
     normalized_source = Path(xml_source) if isinstance(xml_source, str) else xml_source
-    xml_service = XMLService(normalized_source, getLogger(__name__))
+    xml_service = XMLService(normalized_source)
 
     for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
         for record, detail in workouts:
@@ -385,4 +399,4 @@ def _import_xml_data(db: Session, xml_source: str | Path | BinaryIO, user_id: st
             timeseries_service.bulk_create_samples(db, time_series_records)
             db.commit()
         if sync_request and sync_request.data.sleep:
-            handle_sleep_data(db, sync_request, user_id)
+            save_sleep(db, sync_request, user_id)

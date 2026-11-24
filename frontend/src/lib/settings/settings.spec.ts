@@ -21,6 +21,7 @@ const setting = (over: Partial<ProviderSetting>): ProviderSetting => ({
 	name: 'Oura',
 	has_cloud_api: true,
 	is_enabled: true,
+	credentials_configured: true,
 	icon_url: '/static/oura.svg',
 	live_sync_mode: 'pull',
 	live_sync_configurable: true,

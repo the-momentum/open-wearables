@@ -6,12 +6,12 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.models import (
-    DataPointSeries,
     DataSource,
     EventRecord,
     MealDetails,
     PersonalRecord,
     ProviderPriority,
+    SeriesSample,
     SeriesTypeDefinition,
     User,
     UserConnection,
@@ -187,10 +187,10 @@ class TestSeedDataServiceGenerate:
         assert provider_set == {"garmin", "polar"}
 
 
-def _samples_by_series(db: Session, series_type: SeriesType) -> list[DataPointSeries]:
+def _samples_by_series(db: Session, series_type: SeriesType) -> list[SeriesSample]:
     return (
-        db.query(DataPointSeries)
-        .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+        db.query(SeriesSample)
+        .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
         .filter(SeriesTypeDefinition.code == series_type.value)
         .all()
     )
@@ -498,7 +498,7 @@ class TestMealGeneration:
                 "hydration",
             }
         assert summary["time_series_samples"] == 0
-        assert db.query(DataPointSeries).count() == 0
+        assert db.query(SeriesSample).count() == 0
 
     def test_meals_are_skipped_for_providers_that_do_not_deliver_them(self, db: Session) -> None:
         request = SeedDataRequest(

@@ -3,40 +3,63 @@ Factory-boy factories for creating test data.
 
 Usage:
     from tests.factories import UserFactory, DeveloperFactory
-    user = UserFactory()  # Session set automatically via conftest fixture
+    user = UserFactory()  # Database initialized automatically on first use
     developer = DeveloperFactory(email="custom@example.com")
 """
 
-from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from contextvars import ContextVar
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
 import factory
 from factory import LazyAttribute, LazyFunction, Sequence
+from sqlalchemy.orm import Session
 
+from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.models import (
     ApiKey,
     Application,
-    DataPointSeries,
     DataSource,
     Developer,
     EventRecord,
+    EventRecordDetail,
     HealthScore,
     MealDetails,
     PersonalRecord,
     ProviderSetting,
+    SeriesAggregate,
+    SeriesSample,
     SeriesTypeDefinition,
     SleepDetails,
     User,
     UserConnection,
     WorkoutDetails,
 )
+from app.repositories.aggregate_repository import AggregateRepository
+from app.repositories.event_record_detail_repository import EventRecordDetailRepository
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.auth import ConnectionStatus
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import (
+    ComputedBy,
+    EventCategory,
+    HealthScoreCategory,
+    PeriodKind,
+    ProviderName,
+    SeriesType,
+    get_series_type_id,
+)
+from app.schemas.model_crud.activities import CalendarPeriod, EventRecordDetailCreate
 from app.utils.security import get_password_hash, hash_api_key
+
+session_provider: ContextVar[Callable[[], Session]] = ContextVar("factory_session_provider")
+
+
+def get_factory_session() -> Session:
+    """Resolve the current test's database only when a factory needs to persist data."""
+    return session_provider.get()()
 
 
 class BaseFactory(factory.alchemy.SQLAlchemyModelFactory):
@@ -44,8 +67,15 @@ class BaseFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     class Meta:
         abstract = True
-        sqlalchemy_session = None  # Set per-test via conftest fixture
+        sqlalchemy_session_factory = get_factory_session
         sqlalchemy_session_persistence = "flush"  # Don't commit, let test handle rollback
+
+    @classmethod
+    def reset_session(cls) -> None:
+        """Forget cached sessions on this factory and its subclasses; db handles closing them."""
+        cls._meta.sqlalchemy_session = None
+        for subclass in cls.__subclasses__():
+            subclass.reset_session()
 
 
 class SeriesTypeDefinitionFactory(BaseFactory):
@@ -62,186 +92,86 @@ class SeriesTypeDefinitionFactory(BaseFactory):
     unit = "test_unit"
 
     @classmethod
+    def _seeded(cls, id: int, code: str, unit: str) -> SeriesTypeDefinition:
+        """Return the series type seeded at session scope, creating it if seeding was skipped."""
+        existing = get_factory_session().get(SeriesTypeDefinition, id)
+        return existing or cls(id=id, code=code, unit=unit)
+
+    @classmethod
     def get_or_create_heart_rate(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded heart_rate series type (ID=1)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 1).first()
-            if existing:
-                return existing
-        # Fallback: create new one (shouldn't happen with proper seeding)
-        return cls(id=1, code="heart_rate", unit="bpm")
+        return cls._seeded(1, "heart_rate", "bpm")
 
     @classmethod
     def get_or_create_steps(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded steps series type (ID=80)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 80).first()
-            if existing:
-                return existing
-        # Fallback: create new one (shouldn't happen with proper seeding)
-        return cls(id=80, code="steps", unit="count")
+        return cls._seeded(80, "steps", "count")
 
     @classmethod
     def get_or_create_energy(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded energy (active calories) series type (ID=81)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 81).first()
-            if existing:
-                return existing
-        return cls(id=81, code="energy", unit="kcal")
+        return cls._seeded(81, "energy", "kcal")
 
     @classmethod
     def get_or_create_basal_energy(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded basal_energy series type (ID=82)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 82).first()
-            if existing:
-                return existing
-        return cls(id=82, code="basal_energy", unit="kcal")
+        return cls._seeded(82, "basal_energy", "kcal")
 
     @classmethod
     def get_or_create_total_energy(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded total_energy series type (ID=89)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 89).first()
-            if existing:
-                return existing
-        return cls(id=89, code="total_energy", unit="kcal")
+        return cls._seeded(89, "total_energy", "kcal")
+
+    @classmethod
+    def get_or_create_distance(cls) -> SeriesTypeDefinition:
+        return cls._seeded(185, "distance", "meters")
 
     @classmethod
     def get_or_create_distance_walking_running(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded distance_walking_running series type (ID=100)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 100).first()
-            if existing:
-                return existing
-        return cls(id=100, code="distance_walking_running", unit="meters")
+        return cls._seeded(100, "distance_walking_running", "meters")
 
     @classmethod
     def get_or_create_flights_climbed(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded flights_climbed series type (ID=86)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 86).first()
-            if existing:
-                return existing
-        return cls(id=86, code="flights_climbed", unit="count")
+        return cls._seeded(86, "flights_climbed", "count")
 
     @classmethod
     def get_or_create_active_time(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded active_time series type (ID=88)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 88).first()
-            if existing:
-                return existing
-        return cls(id=88, code="active_time", unit="minutes")
+        return cls._seeded(88, "active_time", "minutes")
 
     @classmethod
     def get_or_create_weight(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded weight series type (ID=41)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 41).first()
-            if existing:
-                return existing
-        return cls(id=41, code="weight", unit="kg")
+        return cls._seeded(41, "weight", "kg")
 
     @classmethod
     def get_or_create_height(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded height series type (ID=40)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 40).first()
-            if existing:
-                return existing
-        return cls(id=40, code="height", unit="cm")
+        return cls._seeded(40, "height", "cm")
 
     @classmethod
     def get_or_create_body_fat_percentage(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded body_fat_percentage series type (ID=42)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 42).first()
-            if existing:
-                return existing
-        return cls(id=42, code="body_fat_percentage", unit="percent")
+        return cls._seeded(42, "body_fat_percentage", "percent")
 
     @classmethod
     def get_or_create_lean_body_mass(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded lean_body_mass series type (ID=44)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 44).first()
-            if existing:
-                return existing
-        return cls(id=44, code="lean_body_mass", unit="kg")
+        return cls._seeded(44, "lean_body_mass", "kg")
 
     @classmethod
     def get_or_create_resting_heart_rate(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded resting_heart_rate series type (ID=2)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 2).first()
-            if existing:
-                return existing
-        return cls(id=2, code="resting_heart_rate", unit="bpm")
+        return cls._seeded(2, "resting_heart_rate", "bpm")
 
     @classmethod
     def get_or_create_heart_rate_variability_sdnn(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded heart_rate_variability_sdnn series type (ID=3)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 3).first()
-            if existing:
-                return existing
-        return cls(id=3, code="heart_rate_variability_sdnn", unit="ms")
+        return cls._seeded(3, "heart_rate_variability_sdnn", "ms")
 
     @classmethod
     def get_or_create_heart_rate_variability_rmssd(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded heart_rate_variability_rmssd series type (ID=7)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 7).first()
-            if existing:
-                return existing
-        return cls(id=7, code="heart_rate_variability_rmssd", unit="ms")
+        return cls._seeded(7, "heart_rate_variability_rmssd", "ms")
 
     @classmethod
     def get_or_create_blood_pressure_systolic(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded blood_pressure_systolic series type (ID=22)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 22).first()
-            if existing:
-                return existing
-        return cls(id=22, code="blood_pressure_systolic", unit="mmHg")
+        return cls._seeded(22, "blood_pressure_systolic", "mmHg")
 
     @classmethod
     def get_or_create_blood_pressure_diastolic(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded blood_pressure_diastolic series type (ID=23)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 23).first()
-            if existing:
-                return existing
-        return cls(id=23, code="blood_pressure_diastolic", unit="mmHg")
+        return cls._seeded(23, "blood_pressure_diastolic", "mmHg")
 
     @classmethod
     def get_or_create_body_temperature(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded body_temperature series type (ID=45)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 45).first()
-            if existing:
-                return existing
-        return cls(id=45, code="body_temperature", unit="celsius")
+        return cls._seeded(45, "body_temperature", "celsius")
 
 
 class UserFactory(BaseFactory):
@@ -282,9 +212,7 @@ class DeveloperFactory(BaseFactory):
     created_at = LazyFunction(lambda: datetime.now(timezone.utc))
     updated_at = LazyFunction(lambda: datetime.now(timezone.utc))
     email = factory.Faker("email")
-    hashed_password = LazyAttribute(
-        lambda o: f"hashed_{o.password}" if hasattr(o, "password") else "hashed_test_password",
-    )
+    hashed_password = LazyAttribute(lambda o: get_password_hash(o.password))
 
     class Params:
         password = "test_password"
@@ -467,17 +395,17 @@ class EventRecordFactory(BaseFactory):
 
 
 class DataPointSeriesFactory(BaseFactory):
-    """Factory for DataPointSeries model."""
+    """Factory for SeriesSample model."""
 
     class Meta:
-        model = DataPointSeries
+        model = SeriesSample
 
     id = LazyFunction(uuid4)
     value = LazyFunction(lambda: Decimal("72.0"))
     recorded_at = LazyFunction(lambda: datetime.now(timezone.utc))
 
     @classmethod
-    def _create(cls, model_class: type[DataPointSeries], *args: Any, **kwargs: Any) -> DataPointSeries:
+    def _create(cls, model_class: type[SeriesSample], *args: Any, **kwargs: Any) -> SeriesSample:
         """Override create to handle relationships."""
         # Support both "mapping" (legacy) and "data_source" parameter names
         data_source = kwargs.pop("data_source", None) or kwargs.pop("mapping", None)
@@ -564,7 +492,14 @@ class WorkoutDetailsFactory(BaseFactory):
         if "heart_rate_avg" in kwargs and not isinstance(kwargs["heart_rate_avg"], Decimal):
             kwargs["heart_rate_avg"] = Decimal(str(kwargs["heart_rate_avg"]))
 
-        return super()._create(model_class, *args, **kwargs)
+        detail = super()._create(model_class, *args, **kwargs)
+        # As the detail save path does: the statistics also land in event_record_aggregate.
+        creator = EventRecordDetailCreate(
+            record_id=detail.record_id, **{column: getattr(detail, column) for column in WORKOUT_DETAIL_STATS}
+        )
+        session = get_factory_session()
+        EventRecordDetailRepository(EventRecordDetail)._mirror_workout_stats(session, [creator], EventCategory.WORKOUT)
+        return detail
 
 
 class SleepDetailsFactory(BaseFactory):
@@ -630,3 +565,32 @@ __all__ = [
     "SleepDetailsFactory",
     "MealDetailsFactory",
 ]
+
+
+def roll_up_everything(db: Session) -> None:
+    """What the rollup job does once it has run: day and session aggregates out of every source's samples."""
+    repo = SeriesRollupRepository()
+    for source in db.query(DataSource):
+        repo.roll_up(db, source.id, repo.days_before(db, source.id, date(9000, 1, 1)))
+    db.flush()
+
+
+def provider_day(db: Session, source: DataSource, series_type: SeriesType, day: date, **stats: Decimal | int) -> None:
+    """A day value as a provider sends it: one series_aggregate row computed by the provider."""
+    period = CalendarPeriod.of_date(day)
+    AggregateRepository(SeriesAggregate).upsert(
+        db,
+        [
+            {
+                "data_source_id": source.id,
+                "series_type_definition_id": get_series_type_id(series_type),
+                "period_kind": PeriodKind.DAY,
+                "period_start": period.start,
+                "period_end": period.end,
+                "zone_offset": period.zone_offset,
+                "computed_by": ComputedBy.PROVIDER,
+                "count": 1,
+                **stats,
+            }
+        ],
+    )

@@ -1,13 +1,13 @@
 """Request/task context propagation via Python ContextVar.
 
 Set trace_id_var once at the entry point (Celery task, API request handler) and
-every log_structured call in the same execution context inherits it automatically.
+every app log line in the same execution context inherits it automatically.
 
 sync_run_var works the same way for the run being ingested, so the shared write paths
 can stamp outgoing data events with it without every provider threading it through.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -25,7 +25,7 @@ def current_sync_payload() -> dict[str, str] | None:
 
 
 @contextmanager
-def sync_run_context(run: SyncRunContext) -> Iterator[SyncRunContext]:
+def sync_run_context(run: SyncRunContext) -> Generator[SyncRunContext]:
     """Mark everything ingested in this block as belonging to one sync run.
 
     Resets on exit, so a worker reusing the thread for the next task does not inherit it.

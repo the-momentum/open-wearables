@@ -24,7 +24,7 @@ function filterParams(
 	}: Pick<Required<SleepQuery>, 'provider' | 'topSourceOnly' | 'kind'>
 ) {
 	if (provider) params.set('provider', provider);
-	if (topSourceOnly) params.set('filter_by_priority', 'true');
+	if (topSourceOnly) params.set('source_selection', 'per_session');
 	const nap = isNapParam(kind);
 	if (nap) params.set('is_nap', nap);
 	return params;

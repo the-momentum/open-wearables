@@ -4,20 +4,21 @@ Verifies persistence (Redis history & runs), terminal-event Svix
 dispatch, and the SSE replay/streaming generator.
 """
 
-from __future__ import annotations
-
 import json
 import threading
 import time
 from collections.abc import Generator
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+import time_machine
 
 import app.services.sync_status_service as sync_status_service
+from app.constants.celery_tasks import CeleryTask
 from app.integrations.redis_client import get_redis_client
-from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus, SyncStatusEvent
+from app.schemas.sync_status import SyncScope, SyncSource, SyncStage, SyncStatus, SyncStatusEvent
 
 
 @pytest.fixture
@@ -56,7 +57,6 @@ class TestEmitAndPersist:
         first = _build_event(user_id)
         second = _build_event(user_id)
         sync_status_service.emit(first)
-        time.sleep(0.005)
         sync_status_service.emit(second)
 
         recent = sync_status_service.get_recent_events(user_id, limit=10)
@@ -96,9 +96,9 @@ class TestTerminalSvixDispatch:
     @pytest.fixture
     def mock_outgoing(self) -> Generator[dict[str, object], None, None]:
         with (
-            patch("app.services.outgoing_webhooks.events.on_sync_started") as started,
-            patch("app.services.outgoing_webhooks.events.on_sync_completed") as completed,
-            patch("app.services.outgoing_webhooks.events.on_sync_failed") as failed,
+            patch("app.services.outgoing_webhooks.events.on_sync_started", autospec=True) as started,
+            patch("app.services.outgoing_webhooks.events.on_sync_completed", autospec=True) as completed,
+            patch("app.services.outgoing_webhooks.events.on_sync_failed", autospec=True) as failed,
         ):
             yield {"started": started, "completed": completed, "failed": failed}
 
@@ -117,6 +117,21 @@ class TestTerminalSvixDispatch:
     ) -> None:
         sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.PULL, run_id="run_b")
         mock_outgoing["completed"].assert_called_once()
+
+    @pytest.mark.parametrize(("scope", "rolls_up"), [(SyncScope.HISTORICAL, True), (SyncScope.LIVE, False)])
+    def test_a_finished_history_sync_rolls_up_right_away(
+        self,
+        user_id: str,
+        mock_outgoing: dict[str, object],
+        scope: SyncScope,
+        rolls_up: bool,
+    ) -> None:
+        with patch("celery.current_app", autospec=True) as celery_app:
+            sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.PULL, run_id="run_h", scope=scope)
+
+        assert celery_app.send_task.called is rolls_up
+        if rolls_up:
+            celery_app.send_task.assert_called_once_with(CeleryTask.ROLL_UP_QUEUED_DAYS, retry=False)
 
     def test_failed_dispatches_outgoing_failed(
         self,
@@ -180,7 +195,7 @@ class TestStreamUserEvents:
 
 class TestEmitResilientToRedisFailure:
     def test_emit_swallows_redis_errors(self, user_id: str) -> None:
-        with patch.object(sync_status_service, "get_redis_client") as mock:
+        with patch.object(sync_status_service, "get_redis_client", autospec=True) as mock:
             mock.side_effect = RuntimeError("redis down")
             # Should not raise
             sync_status_service.emit(_build_event(user_id))
@@ -242,10 +257,13 @@ class TestAllRunSummaries:
     """The admin view reads one global index instead of scanning Redis for users."""
 
     def test_runs_of_all_users_are_merged_newest_first(self) -> None:
-        events = [_build_event(str(uuid4())) for _ in range(3)]
+        events = []
+        with time_machine.travel(datetime.now(timezone.utc), tick=False) as traveller:
+            for _ in range(3):
+                events.append(_build_event(str(uuid4())))
+                traveller.shift(timedelta(seconds=1))
         for event in events:
             sync_status_service.emit(event)
-            time.sleep(0.005)
 
         summaries = sync_status_service.get_all_run_summaries(limit=2)
 
@@ -254,7 +272,7 @@ class TestAllRunSummaries:
     def test_does_not_scan_the_keyspace(self, user_id: str) -> None:
         sync_status_service.emit(_build_event(user_id))
 
-        with patch.object(type(get_redis_client()), "scan", side_effect=AssertionError("SCAN used")):
+        with patch.object(type(get_redis_client()), "scan", autospec=True, side_effect=AssertionError("SCAN used")):
             assert len(sync_status_service.get_all_run_summaries()) == 1
 
     def test_filters_walk_past_the_first_chunk(self, user_id: str) -> None:
@@ -291,7 +309,7 @@ class TestAllRunSummaries:
         run_id = sync_status_service.new_run_id()
         sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.WEBHOOK, run_id=run_id)
 
-        with patch.object(type(get_redis_client()), "lrange", side_effect=AssertionError("LRANGE used")):
+        with patch.object(type(get_redis_client()), "lrange", autospec=True, side_effect=AssertionError("LRANGE used")):
             [summary] = sync_status_service.get_all_run_summaries()
 
         assert summary.started_at is None

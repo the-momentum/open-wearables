@@ -2,13 +2,13 @@ from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
 from .data_migration import DataMigration
-from .data_point_series import DataPointSeries
 from .data_point_series_archive import DataPointSeriesArchive
 from .data_source import DataSource
 from .data_type_coverage import DataTypeCoverage
 from .developer import Developer
 from .device_type_priority import DeviceTypePriority
 from .event_record import EventRecord
+from .event_record_aggregate import EventRecordAggregate
 from .event_record_detail import DetailType, EventRecordDetail
 from .health_score import HealthScore
 from .invitation import Invitation
@@ -18,6 +18,9 @@ from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
+from .series_aggregate import SeriesAggregate
+from .series_sample import SeriesSample
+from .series_sample_backup import SeriesSampleBackup
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .sync_run import SyncRun
@@ -52,14 +55,17 @@ __all__ = [
     "UserConnection",
     "UserInvitationCode",
     "EventRecord",
+    "EventRecordAggregate",
     "EventRecordDetail",
     "MealDetails",
     "MenstrualCycleDetails",
     "SleepDetails",
     "WorkoutDetails",
     "PersonalRecord",
-    "DataPointSeries",
+    "SeriesSample",
+    "SeriesSampleBackup",
     "DataTypeCoverage",
+    "SeriesAggregate",
     "SeriesTypeDefinition",
     "SyncRun",
     "SyncRunDataType",

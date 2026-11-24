@@ -11,6 +11,10 @@ _SDK_HEADERS = {
     "x-open-wearables-sdk-platform": "sdk_platform",
     "x-request-id": "request_id",
     "x-open-wearables-outbox-item": "outbox_item_id",
+    # Whether the app was in the foreground or background when the batch was built,
+    # and what started the sync (HealthKit observer, BGTask, app launch, ...).
+    "x-open-wearables-app-state": "app_state",
+    "x-open-wearables-sync-trigger": "sync_trigger",
     "user-agent": "user_agent",
 }
 
