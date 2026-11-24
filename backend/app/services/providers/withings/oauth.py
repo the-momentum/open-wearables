@@ -1,12 +1,9 @@
 """Handle Withings OAuth token RPC envelopes and provider user identity."""
 
-import logging
 from uuid import UUID
 
 import httpx
 from celery import current_app as celery_app
-from fastapi import HTTPException
-from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
@@ -21,11 +18,12 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings.handlers.errors import WithingsTokenError
+from app.services.providers.withings.handlers.errors import withings_token_error
 from app.services.providers.withings.webhook_service import WithingsWebhookService
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ProviderAuthRejectedError, ProviderError, ReauthRequiredError
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WithingsOAuth(BaseOAuthTemplate):
@@ -75,10 +73,11 @@ class WithingsOAuth(BaseOAuthTemplate):
         }
         try:
             token_response = self._request_token(payload, task="refresh_access_token")
-        except WithingsTokenError as exc:
-            if exc.invalid_grant and revoke_on_failure:
-                self._revoke_connection(db, user_id, reason="refresh_failed")
-            raise
+        except ProviderAuthRejectedError as e:
+            if not revoke_on_failure:
+                raise
+            self.revoke_connection(db, user_id, reason="refresh_failed")
+            raise ReauthRequiredError(self.provider_name, user_id, "Refresh token rejected") from e
 
         connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.provider_name)
         if connection:
@@ -90,9 +89,7 @@ class WithingsOAuth(BaseOAuthTemplate):
                 token_response.refresh_token or refresh_token,
                 token_response.expires_in,
             )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Withings token refreshed",
             provider=self.provider_name,
             task="refresh_access_token",
@@ -112,43 +109,36 @@ class WithingsOAuth(BaseOAuthTemplate):
             response.raise_for_status()
             envelope = response.json()
         except httpx.HTTPStatusError as e:
-            log_structured(
-                logger,
-                "error",
-                f"Withings token HTTP error: {e.response.text}",
+            logger.error(
+                "Token HTTP error",
                 provider=self.provider_name,
                 task=task,
                 status_code=e.response.status_code,
+                response_body=e.response.text,
             )
-            raise WithingsTokenError(
+            raise withings_token_error(
                 task=task,
                 http_status=e.response.status_code,
-                detail=f"Withings token request failed: {e.response.text}",
+                upstream_body=e.response.text,
             ) from e
-        except Exception as e:
-            log_structured(
-                logger,
-                "error",
-                f"Withings token request failed: {e}",
+        except (httpx.RequestError, ValueError) as e:
+            logger.error(
+                "Token request failed",
                 provider=self.provider_name,
                 task=task,
+                error=str(e),
             )
-            raise HTTPException(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Withings token request failed: {e}",
-            ) from e
+            raise ProviderError(self.provider_name, "Withings token request failed") from e
 
         status = envelope.get("status")
         if status != 0:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Withings token envelope status non-zero",
                 provider=self.provider_name,
                 task=task,
                 withings_status=status,
             )
-            raise WithingsTokenError(task=task, withings_status=status)
+            raise withings_token_error(task=task, withings_status=status)
 
         return OAuthTokenResponse.model_validate(envelope.get("body", {}))
 
@@ -184,9 +174,7 @@ class WithingsOAuth(BaseOAuthTemplate):
             )
         except Exception as e:
             # The account is linked either way; a broker failure must not fail the callback.
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Withings notify subscription scheduling failed",
                 provider=self.provider_name,
                 user_id=str(user_id),

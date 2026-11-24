@@ -1,5 +1,3 @@
-from logging import getLogger
-
 import httpx
 
 from app.config import settings
@@ -13,9 +11,10 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import ProviderError
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class OuraOAuth(BaseOAuthTemplate):
@@ -57,18 +56,14 @@ class OuraOAuth(BaseOAuthTemplate):
             provider_user_id = str(provider_user_id) if provider_user_id is not None else None
             return {"user_id": provider_user_id, "username": None}
         except httpx.HTTPStatusError as e:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Oura API error fetching user info",
                 action="oura_get_user_info_error",
                 status_code=e.response.status_code,
             )
             return {"user_id": None, "username": None}
         except (httpx.TimeoutException, httpx.NetworkError) as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Oura API connection error fetching user info",
                 action="oura_connection_error",
                 error=str(e),
@@ -77,9 +72,17 @@ class OuraOAuth(BaseOAuthTemplate):
 
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Revoke Oura OAuth access for this user."""
-        response = httpx.post(
-            f"{self.api_base_url}/oauth/revoke",
-            params={"access_token": access_token},
-            timeout=30.0,
-        )
-        response.raise_for_status()
+        try:
+            response = httpx.post(
+                f"{self.api_base_url}/oauth/revoke",
+                params={"access_token": access_token},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # Oura takes the token as a query param, which httpx renders into str(e).
+            # "from None" keeps the original error (and its URL) out of the reported chain.
+            raise ProviderError(self.provider_name, upstream_status=e.response.status_code) from None
+        except httpx.HTTPError:
+            # Transport errors carry the request (and its URL) in httpx frame locals.
+            raise ProviderError(self.provider_name) from None

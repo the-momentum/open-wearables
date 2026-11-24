@@ -1,6 +1,5 @@
 """SeedDataService - orchestrates seed data generation across all entity types."""
 
-import logging
 import os
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -8,8 +7,9 @@ from datetime import date, datetime, timedelta, timezone
 from faker import Faker
 from sqlalchemy.orm import Session
 
-from app.models import PersonalRecord, ProviderPriority, UserConnection
+from app.models import DataSource, PersonalRecord, ProviderPriority, UserConnection
 from app.repositories import CrudRepository, ProviderPriorityRepository
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.enums import EventCategory, ProviderName, SeriesType, WorkoutType
 from app.schemas.model_crud.user_management import UserConnectionUpdate, UserCreate
 from app.schemas.utils.seed_data import SeedDataRequest
@@ -18,6 +18,7 @@ from app.services.health_score_service import health_score_service
 from app.services.providers.factory import ProviderFactory
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
+from app.utils.structured_logging import get_logger
 
 from .constants import DAILY_ACTIVITY_SERIES, PAIRED_SERIES_SPECS, PROVIDER_CONFIGS, SERIES_TYPE_SPECS, Cadence
 from .event_generators import (
@@ -32,7 +33,7 @@ from .health_score_generators import _generate_health_scores
 from .support_generators import _generate_time_series_samples, _generate_user_connections
 from .time_series_generators import ProviderDescriptor, _generate_continuous_time_series
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _random_descriptor(prov: ProviderName, fake: Faker) -> ProviderDescriptor:
@@ -101,6 +102,11 @@ def _resolve_time_series_window(
         start = last_synced_at - timedelta(days=date_range_months * 30)
         end = last_synced_at
     return start, end
+
+
+rollup_repo = SeriesRollupRepository()
+# Past any day a seed writes.
+_ALL_DAYS = date(9000, 1, 1)
 
 
 class SeedDataService:
@@ -278,15 +284,19 @@ class SeedDataService:
                         summary["health_scores"] += len(scores)
 
             db.commit()
+            # Summaries read the day aggregates; a seeded user should not wait for the next rollup run.
+            for source in db.query(DataSource).filter(DataSource.user_id == user.id):
+                rollup_repo.roll_up(db, source.id, rollup_repo.days_before(db, source.id, _ALL_DAYS))
+            db.commit()
             logger.info(
-                "Seed user %d/%d created (workouts=%d, sleeps=%d, meals=%d, ts=%d, health_scores=%d)",
-                user_num,
-                request.num_users,
-                summary["workouts"],
-                summary["sleeps"],
-                summary["meals"],
-                summary["time_series_samples"],
-                summary["health_scores"],
+                "Seed user created",
+                user_num=user_num,
+                num_users=request.num_users,
+                workouts=summary["workouts"],
+                sleeps=summary["sleeps"],
+                meals=summary["meals"],
+                time_series_samples=summary["time_series_samples"],
+                health_scores=summary["health_scores"],
             )
 
         summary["seed_used"] = seed

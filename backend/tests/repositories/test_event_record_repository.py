@@ -10,15 +10,17 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord
+from app.models import EventRecord, HealthScore
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordQueryParams
-from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
+from tests.factories import DataSourceFactory, EventRecordFactory, HealthScoreFactory, UserFactory
 
 
 class TestEventRecordRepository:
@@ -65,6 +67,139 @@ class TestEventRecordRepository:
         db_event = event_repo.get(db, event_data.id)
         assert db_event is not None
         assert db_event.data_source_id == mapping.id
+
+    def test_create_matches_workout_on_external_id(self, db: Session, event_repo: EventRecordRepository) -> None:
+        """A workout re-delivered with a slightly different end and a new device is matched by external_id (#1607)."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 6, 42, 14, 550000, tzinfo=timezone.utc)
+
+        def workout(end_ms: int, device_model: str | None) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="suunto",
+                provider="suunto",
+                device_model=device_model,
+                category="workout",
+                type="running",
+                source_name="Suunto",
+                duration_seconds=3426,
+                start_datetime=start,
+                end_datetime=start + timedelta(milliseconds=end_ms),
+                external_id="6aa10da139e69418a2fa8db1",
+            )
+
+        first = event_repo.create(db, workout(3426173, None))
+        second = event_repo.create(db, workout(3426080, "Suunto Race 2"))
+
+        assert second.id == first.id
+        assert second.end_datetime == start + timedelta(milliseconds=3426080)
+        assert db.query(EventRecord).filter(EventRecord.external_id == "6aa10da139e69418a2fa8db1").count() == 1
+
+        # Bulk: two more deliveries in one batch resolve to the same row, the last one's times winning
+        earlier, latest = workout(3426000, None), workout(3425900, None)
+        stored = event_repo.bulk_create(db, [earlier, latest])
+        db.commit()
+
+        assert stored == {earlier.id: first.id, latest.id: first.id}
+        db.refresh(first)
+        assert first.end_datetime == start + timedelta(milliseconds=3425900)
+        assert db.query(EventRecord).filter(EventRecord.external_id == "6aa10da139e69418a2fa8db1").count() == 1
+
+    def test_bulk_create_matches_sleep_on_external_id(self, db: Session, event_repo: EventRecordRepository) -> None:
+        """A Garmin night re-pushed with moved times refreshes the stored one; a workout id never matches it."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def record(category: str, shift_hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category=category,
+                type="sleep_session" if category == "sleep" else "running",
+                source_name="Garmin",
+                start_datetime=start + timedelta(hours=shift_hours),
+                end_datetime=start + timedelta(hours=shift_hours + 8),
+                external_id="x1-sleep",
+            )
+
+        night = record("sleep", 0)
+        event_repo.bulk_create(db, [night])
+        moved, workout = record("sleep", 3), record("workout", 30)
+        stored = event_repo.bulk_create(db, [moved, workout])
+        db.commit()
+
+        assert stored[moved.id] == night.id
+        assert stored[workout.id] == workout.id
+        assert db.get(EventRecord, night.id).start_datetime == start + timedelta(hours=3)
+        assert db.query(EventRecord).filter(EventRecord.external_id == "x1-sleep").count() == 2
+
+    def test_bulk_create_drops_the_score_at_a_moved_nights_old_end(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Garmin scores a night at its end, so a re-push that moves the end leaves no second score behind."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def night(hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category="sleep",
+                type="sleep_session",
+                source_name="Garmin",
+                start_datetime=start,
+                end_datetime=start + timedelta(hours=hours),
+                external_id="x1-sleep",
+            )
+
+        first = night(8)
+        event_repo.bulk_create(db, [first])
+        source_id = db.get(EventRecord, first.id).data_source_id
+        HealthScoreFactory(data_source_id=source_id, user_id=user.id, recorded_at=first.end_datetime)
+        unrelated = HealthScoreFactory(
+            data_source_id=source_id, user_id=user.id, recorded_at=first.end_datetime + timedelta(days=1)
+        )
+
+        event_repo.bulk_create(db, [night(7)])
+        db.commit()
+
+        assert [score.id for score in db.query(HealthScore).filter(HealthScore.user_id == user.id)] == [unrelated.id]
+
+    def test_bulk_create_leaves_a_delivery_unmapped_when_another_night_holds_its_times(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Like an insert that conflicts: the details of the delivery must not land on the stale night."""
+        user = UserFactory()
+        start = datetime(2026, 9, 9, 22, tzinfo=timezone.utc)
+
+        def night(external_id: str, shift_hours: int) -> EventRecordCreate:
+            return EventRecordCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                provider="garmin",
+                category="sleep",
+                type="sleep_session",
+                source_name="Garmin",
+                start_datetime=start + timedelta(hours=shift_hours),
+                end_datetime=start + timedelta(hours=shift_hours + 8),
+                external_id=external_id,
+            )
+
+        stale, other = night("x1-sleep", 0), night("x2-sleep", 1)
+        event_repo.bulk_create(db, [stale, other])
+        moved = night("x1-sleep", 1)
+
+        stored = event_repo.bulk_create(db, [moved])
+        db.commit()
+
+        assert moved.id not in stored
+        assert db.get(EventRecord, stale.id).start_datetime == start
 
     def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""
@@ -508,3 +643,74 @@ class TestEventRecordRepository:
         assert event.type is not None
         assert "running" in event.type
         assert mapping_result.device_model == "watch1"
+
+
+class TestFindAdjacentSleepRecord:
+    """A night only merges with the same writer app's record, so Oura via HealthKit never joins the Watch's (#720)."""
+
+    NIGHT_START = datetime(2026, 3, 24, 22, tzinfo=timezone.utc)
+
+    def _night(self, user: Any, source_app_id: str, hours_later: int = 0) -> EventRecord:
+        start = self.NIGHT_START + timedelta(hours=hours_later)
+        return EventRecordFactory(
+            data_source=DataSourceFactory(
+                user=user, provider="apple", source="unknown", device_model=None, source_app_id=source_app_id
+            ),
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=start,
+            end_datetime=start + timedelta(hours=8),
+        )
+
+    def _adjacent(self, db: Session, user: Any, source_app_id: str | None) -> EventRecord | None:
+        return EventRecordRepository(EventRecord).find_adjacent_sleep_record(
+            db,
+            user.id,
+            self.NIGHT_START + timedelta(hours=8),
+            self.NIGHT_START + timedelta(hours=9),
+            120,
+            provider="apple",
+            source_app_id=source_app_id,
+        )
+
+    def test_locks_only_the_sleep_record(self, db: Session) -> None:
+        """The data source stays unlocked: the rollup takes it (by FK) before the record, so locking both deadlocks."""
+        user = UserFactory()
+        self._night(user, "com.apple.health.11111111")
+        statements: list[str] = []
+
+        def capture(*args: Any) -> None:
+            statements.append(args[2])
+
+        sa_event.listen(db.get_bind(), "before_cursor_execute", capture)
+        try:
+            self._adjacent(db, user, "com.apple.health.11111111")
+        finally:
+            sa_event.remove(db.get_bind(), "before_cursor_execute", capture)
+
+        locking = [s for s in statements if "FOR UPDATE" in s]
+        assert len(locking) == 1
+        assert locking[0].rstrip().endswith("FOR UPDATE OF event_record")
+
+    def test_matches_only_the_same_writer_app(self, db: Session) -> None:
+        user = UserFactory()
+        watch = self._night(user, "com.apple.health.11111111")
+        oura = self._night(user, "com.ouraring.oura", hours_later=1)
+
+        assert self._adjacent(db, user, "com.ouraring.oura") == oura
+        assert self._adjacent(db, user, "com.apple.health.11111111") == watch
+
+    def test_apple_own_sources_count_as_one_writer(self, db: Session) -> None:
+        """The iPhone's in-bed sample belongs to the Watch's night."""
+        user = UserFactory()
+        watch = self._night(user, "com.apple.health.11111111")
+        self._night(user, "com.ouraring.oura", hours_later=1)
+
+        assert self._adjacent(db, user, "com.apple.health.22222222") == watch
+
+    def test_without_a_writer_app_any_record_matches(self, db: Session) -> None:
+        user = UserFactory()
+        self._night(user, "com.apple.health.11111111")
+        oura = self._night(user, "com.ouraring.oura", hours_later=1)
+
+        assert self._adjacent(db, user, None) == oura

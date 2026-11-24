@@ -1,6 +1,5 @@
 """Backfill completion and the overall status summary across windows and types."""
 
-import logging
 from typing import Any
 from uuid import UUID
 
@@ -12,10 +11,9 @@ from app.services.providers.garmin.backfill_state.window_state import (
     get_current_window,
     get_total_windows,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
-
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Completion
@@ -28,9 +26,7 @@ def complete_backfill(user_id: str | UUID) -> None:
     get_redis_client().setex(_get_key(user_id_str, "overall_complete"), 24 * 60 * 60, "1")
     release_backfill_lock(user_id_str)
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Completed full backfill",
         provider="garmin",
         trace_id=get_trace_id(user_id_str),

@@ -17,7 +17,7 @@ test('shows where the storage goes, in the units the API uses', async ({ page })
 	await expect(storage.getByText('458.0 MB', { exact: true })).toBeVisible();
 	await expect(storage.getByText('475.0 MB', { exact: true })).toBeVisible();
 	// 56 KB of a 475 MB database is small, not absent.
-	await expect(storage.getByText(/Archive\s*56\.0 KB · <1%/)).toBeVisible();
+	await expect(storage.getByText(/Aggregates\s*56\.0 KB · <1%/)).toBeVisible();
 	// A planner statistic, and the page says so rather than printing it as a count.
 	await expect(storage.getByText(/~1\.9K rows/)).toBeVisible();
 });
@@ -32,6 +32,8 @@ test('draws the draft, not what is saved, so a change can be seen before it is m
 
 	await page.getByRole('switch', { name: 'Delete old data' }).click();
 	// Nothing saved yet - the class and the curve already follow the switch.
+	await expect(projection.getByText('O(n) · efficient')).toBeVisible();
+	await page.getByRole('switch', { name: 'Roll up samples' }).click();
 	await expect(projection.getByText('O(1) · bounded')).toBeVisible();
 	await expect(page.getByText('Lifecycle policy changed')).toBeVisible();
 });
@@ -39,49 +41,62 @@ test('draws the draft, not what is saved, so a change can be seen before it is m
 test('saves a policy and reads it back', async ({ page }) => {
 	await page.goto('/settings/data-lifecycle');
 
-	await page.getByRole('switch', { name: 'Archive old samples' }).click();
-	await page.getByLabel('Archive data older than').fill('30');
+	await page.getByRole('switch', { name: 'Delete old data' }).click();
+	await page.getByLabel('Delete samples older than').fill('30');
 	await page.getByRole('button', { name: 'Save changes' }).click();
 
 	await expect(page.getByText('Lifecycle policy changed')).toHaveCount(0);
 	await page.reload();
-	await expect(page.getByLabel('Archive data older than')).toHaveValue('30');
+	await expect(page.getByLabel('Delete samples older than')).toHaveValue('30');
 	await expect(page.getByText('O(n) · efficient')).toBeVisible();
+});
+
+test('takes the deletion window before deletion is switched on', async ({ page }) => {
+	await page.goto('/settings/data-lifecycle');
+
+	await page.getByLabel('Delete samples older than').fill('30');
+	// Off, a number alone changes nothing to save.
+	await expect(page.getByText('Lifecycle policy changed')).toHaveCount(0);
+
+	await page.getByRole('switch', { name: 'Delete old data' }).click();
+	await page.getByRole('button', { name: 'Save changes' }).click();
+	await expect(page.getByText('Lifecycle policy changed')).toHaveCount(0);
+	await page.reload();
+	await expect(page.getByLabel('Delete samples older than')).toHaveValue('30');
 });
 
 test('refuses a number the API would reject, and says why', async ({ page }) => {
 	await page.goto('/settings/data-lifecycle');
 
-	await page.getByRole('switch', { name: 'Archive old samples' }).click();
-	await page.getByLabel('Archive data older than').fill('0');
-
-	await expect(page.getByText(/1 to 3650/)).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled();
-});
-
-test('warns when deletion comes before archival', async ({ page }) => {
-	await page.goto('/settings/data-lifecycle');
-
-	await page.getByRole('switch', { name: 'Archive old samples' }).click();
-	await page.getByLabel('Archive data older than').fill('90');
 	await page.getByRole('switch', { name: 'Delete old data' }).click();
-	await page.getByLabel('Delete data older than').fill('30');
+	await page.getByLabel('Delete samples older than').fill('0');
 
-	await expect(page.getByText(/archival never happens/)).toBeVisible();
+	await expect(page.getByText(/1 to 7300/)).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled();
 });
 
 test('will not run a policy that has not been saved', async ({ page }) => {
 	await page.goto('/settings/data-lifecycle');
 
 	const run = page.getByRole('button', { name: 'Run now' });
-	await expect(run).toBeDisabled();
-	await expect(page.getByText('Nothing to run')).toBeVisible();
+	await expect(run).toBeEnabled();
 
 	// The old dashboard saved on the way and then ran - with deletion on, that
 	// deleted by a rule nobody had confirmed.
 	await page.getByRole('switch', { name: 'Delete old data' }).click();
 	await expect(run).toBeDisabled();
 	await expect(page.getByText(/Save your changes first/)).toBeVisible();
+});
+
+test('has nothing to run with rollup and deletion both off', async ({ page }) => {
+	await page.goto('/settings/data-lifecycle');
+
+	await page.getByRole('switch', { name: 'Roll up samples' }).click();
+	await page.getByRole('button', { name: 'Save changes' }).click();
+	await expect(page.getByText('Lifecycle policy changed')).toHaveCount(0);
+
+	await expect(page.getByRole('button', { name: 'Run now' })).toBeDisabled();
+	await expect(page.getByText('Nothing to run')).toBeVisible();
 });
 
 test('runs the saved policy after confirming, and warns when it deletes', async ({ page }) => {
@@ -114,7 +129,7 @@ test('scans the series table once however often the tab is opened', async ({ pag
 test('does not scan again to show what a save just returned', async ({ page, request }) => {
 	await page.goto('/settings/data-lifecycle');
 
-	await page.getByRole('switch', { name: 'Archive old samples' }).click();
+	await page.getByRole('switch', { name: 'Delete old data' }).click();
 	await page.getByRole('button', { name: 'Save changes' }).click();
 	await expect(page.getByText('Lifecycle policy changed')).toHaveCount(0);
 

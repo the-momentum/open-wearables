@@ -1,6 +1,5 @@
 import os
 import tempfile
-from logging import getLogger
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -21,7 +20,7 @@ from app.schemas.sync_status import (
 )
 from app.services import event_record_service
 from app.services.providers.apple.apple_xml.xml_service import XMLService
-from app.services.sdk.sleep_service import handle_sleep_data
+from app.services.sdk.sleep_service import save_sleep
 from app.services.sync_status_service import (
     emit_sync_completed,
     emit_sync_failed,
@@ -32,10 +31,10 @@ from app.services.sync_status_service import (
 )
 from app.services.timeseries_service import timeseries_service
 from app.utils.context import sync_run_context
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import public_error_text
+from app.utils.structured_logging import get_logger
 
-log = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _xml_outcomes(stats: XMLParseStats) -> list[DataTypeOutcome]:
@@ -107,10 +106,10 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
         SessionLocal() as db,
     ):
         try:
-            temp_dir = tempfile.gettempdir()
-            temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
-
-            with open(temp_xml_file, "wb") as f:
+            # A unique name per task: concurrent uploads share the filename (every iPhone
+            # exports "export.xml"), and a shared path would mix their contents.
+            fd, temp_xml_file = tempfile.mkstemp(prefix="temp_import_", suffix=".xml")
+            with os.fdopen(fd, "wb") as f:
                 f.write(file_contents)
 
             stats = _import_xml_data(db, temp_xml_file, user_id)
@@ -154,24 +153,17 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                     run.source,
                     scope=run.scope,
                     run_id=run.run_id,
-                    error=str(e),
+                    error=public_error_text(e),
                     message=f"Apple Health XML import failed: {filename}",
                     metadata={"filename": filename},
                 )
-            log_structured(
-                log,
-                "error",
-                "Failed to import XML file %s for user %s",
+            logger.error(
+                "Failed to import XML file",
+                exc_info=e,
                 provider="apple_xml",
                 task="process_xml_upload",
                 filename=filename,
                 user_id=user_id,
-            )
-            log_and_capture_error(
-                e,
-                log,
-                "Failed to import XML file %s for user %s",
-                extra={"filename": filename, "user_id": user_id},
             )
             raise e
 
@@ -192,7 +184,7 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
     Returns:
         XMLParseStats with parsing statistics
     """
-    xml_service = XMLService(Path(xml_path), log)
+    xml_service = XMLService(Path(xml_path))
 
     for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
         for record, detail in workouts:
@@ -201,20 +193,13 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
                 detail_for_record = detail.model_copy(update={"record_id": created_record.id})
                 event_record_service.create_detail(db, detail_for_record)
             except Exception as e:
-                log_structured(
-                    log,
-                    "warning",
-                    "Failed to save workout record %s: %s - skipping",
+                logger.error(
+                    "Failed to save workout record - skipping",
+                    exc_info=e,
                     provider="apple_xml",
                     task="process_xml_upload",
                     record_type=record.type if hasattr(record, "type") else "unknown",
-                    error=str(e),
-                )
-                log_and_capture_error(
-                    e,
-                    log,
-                    "Failed to save workout record %s: %s - skipping",
-                    extra={"record_type": record.type if hasattr(record, "type") else "unknown", "user_id": user_id},
+                    user_id=user_id,
                 )
                 xml_service.stats.workouts.skip(f"db_error:{type(e).__name__}")
 
@@ -223,6 +208,6 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
             db.commit()
 
         if sync_request and sync_request.data.sleep:
-            handle_sleep_data(db, sync_request, user_id)
+            save_sleep(db, sync_request, user_id)
 
     return xml_service.stats

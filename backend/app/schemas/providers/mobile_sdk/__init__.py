@@ -6,6 +6,7 @@ from .sdk_log_events import (
     SDKLogRequest,
 )
 from .sleep_state import (
+    SLEEP_START_STAGES,
     SLEEP_START_STATES,
     SleepState,
     SleepStateStage,
@@ -18,6 +19,7 @@ from .sync_request import (
     SyncRequestData,
     WorkoutStatistic,
 )
+from .sync_state import CoveredRange, SDKDataTypeSyncState, SDKSyncState
 
 __all__ = [
     # SDKLogEvents
@@ -30,6 +32,7 @@ __all__ = [
     "SleepState",
     "SleepStateStage",
     "SLEEP_START_STATES",
+    "SLEEP_START_STAGES",
     # SyncRequest
     "SyncRequest",
     "SyncRequestData",
@@ -37,4 +40,8 @@ __all__ = [
     "WorkoutStatistic",
     "SourceInfo",
     "OSVersion",
+    # SyncState
+    "CoveredRange",
+    "SDKDataTypeSyncState",
+    "SDKSyncState",
 ]

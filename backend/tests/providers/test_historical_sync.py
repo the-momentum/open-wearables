@@ -9,15 +9,18 @@ Tests cover:
 """
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec
 from uuid import uuid4
 
 import pytest
+from celery.result import AsyncResult
+from pytest_mock import MockerFixture
 
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import HistoricalSyncResult
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.oura.strategy import OuraStrategy
+from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.whoop.strategy import WhoopStrategy
 from app.utils.exceptions import UnsupportedProviderError
 
@@ -55,10 +58,10 @@ class TestHistoricalSyncResult:
 class TestPullBasedHistoricalSync:
     """Tests for the default start_historical_sync (pull-based providers)."""
 
-    @patch("app.services.providers.base_strategy.celery_app")
-    def test_oura_dispatches_pull_sync(self, mock_celery: MagicMock) -> None:
+    def test_oura_dispatches_pull_sync(self, mocker: MockerFixture) -> None:
         """Pull-based provider should dispatch sync_vendor_data with is_historical=True."""
-        mock_celery.send_task.return_value = MagicMock(id="task-oura-123")
+        mock_celery = mocker.patch("app.services.providers.base_strategy.celery_app", autospec=True)
+        mock_celery.send_task.return_value = create_autospec(AsyncResult, instance=True, id="task-oura-123")
         user_id = uuid4()
 
         result = OuraStrategy().start_historical_sync(user_id, days=90)
@@ -75,10 +78,10 @@ class TestPullBasedHistoricalSync:
         assert call_kwargs["providers"] == ["oura"]
         assert call_kwargs["is_historical"] is True
 
-    @patch("app.services.providers.base_strategy.celery_app")
-    def test_whoop_dispatches_pull_sync(self, mock_celery: MagicMock) -> None:
+    def test_whoop_dispatches_pull_sync(self, mocker: MockerFixture) -> None:
         """Another pull-based provider should also use the default implementation."""
-        mock_celery.send_task.return_value = MagicMock(id="task-whoop-456")
+        mock_celery = mocker.patch("app.services.providers.base_strategy.celery_app", autospec=True)
+        mock_celery.send_task.return_value = create_autospec(AsyncResult, instance=True, id="task-whoop-456")
         user_id = uuid4()
 
         result = WhoopStrategy().start_historical_sync(user_id, days=30)
@@ -89,10 +92,10 @@ class TestPullBasedHistoricalSync:
         call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
         assert call_kwargs["providers"] == ["whoop"]
 
-    @patch("app.services.providers.base_strategy.celery_app")
-    def test_respects_days_parameter(self, mock_celery: MagicMock) -> None:
+    def test_respects_days_parameter(self, mocker: MockerFixture) -> None:
         """The date range should span the requested number of days."""
-        mock_celery.send_task.return_value = MagicMock(id="task-123")
+        mock_celery = mocker.patch("app.services.providers.base_strategy.celery_app", autospec=True)
+        mock_celery.send_task.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
         user_id = uuid4()
 
         result = OuraStrategy().start_historical_sync(user_id, days=7)
@@ -102,14 +105,25 @@ class TestPullBasedHistoricalSync:
         end = datetime.fromisoformat(result.end_date)
         assert (end - start).days == 7
 
+    def test_caps_days_at_max_historical_days(self, mocker: MockerFixture) -> None:
+        mock_celery = mocker.patch("app.services.providers.base_strategy.celery_app", autospec=True)
+        mock_celery.send_task.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
+
+        result = PolarStrategy().start_historical_sync(uuid4(), days=730)
+
+        assert result.days == 365
+        start = datetime.fromisoformat(result.start_date)
+        end = datetime.fromisoformat(result.end_date)
+        assert (end - start).days == 365
+
 
 class TestGarminHistoricalSync:
     """Tests for Garmin's overridden start_historical_sync."""
 
-    @patch("app.services.providers.garmin.strategy.start_garmin_full_backfill")
-    def test_dispatches_backfill_task(self, mock_backfill: MagicMock) -> None:
+    def test_dispatches_backfill_task(self, mocker: MockerFixture) -> None:
         """Garmin should dispatch start_garmin_full_backfill, not sync_vendor_data."""
-        mock_backfill.delay.return_value = MagicMock(id="task-garmin-789")
+        mock_backfill = mocker.patch("app.services.providers.garmin.strategy.start_garmin_full_backfill", autospec=True)
+        mock_backfill.delay.return_value = create_autospec(AsyncResult, instance=True, id="task-garmin-789")
         user_id = uuid4()
 
         result = GarminStrategy().start_historical_sync(user_id, days=90)
@@ -117,20 +131,21 @@ class TestGarminHistoricalSync:
         assert isinstance(result, HistoricalSyncResult)
         assert result.task_id == "task-garmin-789"
         assert result.method == "webhook_backfill"
-        assert result.days is None  # Garmin ignores days param
-        assert result.start_date is None
-        assert result.end_date is None
+        assert result.days == 30
+        start = datetime.fromisoformat(result.start_date)
+        end = datetime.fromisoformat(result.end_date)
+        assert (end - start).days == 30
         mock_backfill.delay.assert_called_once_with(str(user_id))
 
-    @patch("app.services.providers.garmin.strategy.start_garmin_full_backfill")
-    def test_ignores_days_parameter(self, mock_backfill: MagicMock) -> None:
+    def test_ignores_days_parameter(self, mocker: MockerFixture) -> None:
         """Garmin always uses its own 30-day limit regardless of days param."""
-        mock_backfill.delay.return_value = MagicMock(id="task-123")
+        mock_backfill = mocker.patch("app.services.providers.garmin.strategy.start_garmin_full_backfill", autospec=True)
+        mock_backfill.delay.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
         user_id = uuid4()
 
         result = GarminStrategy().start_historical_sync(user_id, days=365)
 
-        assert result.days is None
+        assert result.days == 30
         mock_backfill.delay.assert_called_once_with(str(user_id))
 
 

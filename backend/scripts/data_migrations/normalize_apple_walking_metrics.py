@@ -40,7 +40,7 @@ MIGRATIONS = [
 def _count_query(value_filter: str) -> TextClause:
     return text(f"""
         SELECT COUNT(*)
-        FROM data_point_series dps
+        FROM series_sample dps
         JOIN series_type_definition std ON std.id = dps.series_type_definition_id
         JOIN data_source ds ON ds.id = dps.data_source_id
         WHERE std.code = :code
@@ -52,7 +52,7 @@ def _count_query(value_filter: str) -> TextClause:
 def _sample_query(value_filter: str) -> TextClause:
     return text(f"""
         SELECT dps.id, dps.value, dps.value * 100 AS corrected, ds.provider, dps.recorded_at
-        FROM data_point_series dps
+        FROM series_sample dps
         JOIN series_type_definition std ON std.id = dps.series_type_definition_id
         JOIN data_source ds ON ds.id = dps.data_source_id
         WHERE std.code = :code
@@ -65,7 +65,7 @@ def _sample_query(value_filter: str) -> TextClause:
 
 def _update_query(value_filter: str) -> TextClause:
     return text(f"""
-        UPDATE data_point_series dps
+        UPDATE series_sample dps
         SET value = dps.value * 100
         FROM series_type_definition std, data_source ds
         WHERE std.id = dps.series_type_definition_id

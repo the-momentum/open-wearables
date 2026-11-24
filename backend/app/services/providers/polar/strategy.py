@@ -44,7 +44,11 @@ class PolarStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
-            rest_pull=True, webhook_ping=True, webhook_registration_api=True, webhook_inbound_secret=True
+            rest_pull=True,
+            webhook_ping=True,
+            webhook_registration_api=True,
+            webhook_inbound_secret=True,
+            max_historical_days=365,
         )
 
     @property

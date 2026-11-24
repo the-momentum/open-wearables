@@ -5,14 +5,18 @@ Tests complete OAuth authorization flows for Garmin, Polar, and Suunto providers
 """
 
 from typing import Any
-from unittest.mock import MagicMock, patch
 
+import respx
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
 from tests.factories import DeveloperFactory, UserConnectionFactory, UserFactory
 from tests.utils import api_key_headers, developer_auth_headers
+
+POLAR_TOKEN_URL = "https://polarremote.com/v2/oauth2/token"
+POLAR_REGISTER_URL = "https://www.polaraccesslink.com/v3/users"
 
 
 class TestGarminOAuth:
@@ -39,10 +43,8 @@ class TestGarminOAuth:
         # Assert - Should redirect or return auth URL
         assert response.status_code in [200, 302, 307, 422]
 
-    @patch("httpx.AsyncClient")
     def test_garmin_callback_success(
         self,
-        mock_httpx: MagicMock,
         client: TestClient,
         db: Session,
     ) -> None:
@@ -52,23 +54,7 @@ class TestGarminOAuth:
         developer = DeveloperFactory()
         headers = developer_auth_headers(developer.id)
 
-        # Mock token exchange response
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "test_access_token",
-            "refresh_token": "test_refresh_token",
-            "expires_in": 3600,
-            "user_id": "garmin_user_123",
-        }
-        mock_response.status_code = 200
-
-        mock_client_instance = MagicMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client_instance.__aenter__ = MagicMock(return_value=mock_client_instance)
-        mock_client_instance.__aexit__ = MagicMock(return_value=None)
-        mock_httpx.return_value = mock_client_instance
-
-        # Act
+        # Act - OAuth 1 style params carry no code/state, so the callback never reaches Garmin
         response = client.get(
             "/api/v1/oauth/garmin/callback",
             params={
@@ -134,16 +120,11 @@ class TestPolarOAuth:
         # Assert
         assert response.status_code in [200, 302, 307, 422]
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
-    @patch("httpx.post")
     def test_polar_callback_success(
-        self,
-        mock_httpx_post: MagicMock,
-        mock_sync_task: MagicMock,
-        client: TestClient,
-        db: Session,
+        self, mocker: MockerFixture, respx_mock: respx.MockRouter, client: TestClient, db: Session
     ) -> None:
         """Test Polar OAuth callback handles tokens."""
+        mocker.patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
         # Arrange
 
         from app.integrations.redis_client import get_redis_client
@@ -178,17 +159,16 @@ class TestPolarOAuth:
         assert polar_strategy.oauth
         auth_url, state = polar_strategy.oauth.get_authorization_url(user.id)
 
-        # Mock token exchange
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "polar_access_token",
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "x_user_id": 12345,
-        }
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_httpx_post.return_value = mock_response
+        token = respx_mock.post(POLAR_TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": "polar_access_token",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+                "x_user_id": 12345,
+            },
+        )
+        register = respx_mock.post(POLAR_REGISTER_URL).respond(200)
 
         # Act
         response = client.get(
@@ -202,6 +182,9 @@ class TestPolarOAuth:
 
         # Assert
         assert response.status_code in [200, 302, 303, 307, 400, 422]
+        assert token.call_count == 1
+        assert register.call_count == 1
+        assert register.calls.last.request.headers["Authorization"] == "Bearer polar_access_token"
 
 
 class TestSuuntoOAuth:

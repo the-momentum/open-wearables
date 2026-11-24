@@ -21,7 +21,7 @@ _BODY = {
 
 @pytest.fixture
 def mock_task() -> Generator[MagicMock, None, None]:
-    with patch("app.api.routes.v1.sdk_sync.process_sdk_upload") as mock:
+    with patch("app.api.routes.v1.sdk_sync.process_sdk_upload", autospec=True) as mock:
         mock.delay.return_value = None
         yield mock
 
@@ -39,8 +39,8 @@ class TestOffloadDisabled:
     def test_body_is_enqueued_inline(self, client: TestClient, api_v1_prefix: str, mock_task: MagicMock) -> None:
         with (
             patch.object(settings, "sdk_payload_s3_offload", False),
-            patch("app.api.routes.v1.sdk_sync.store_raw_payload") as mock_archive,
-            patch("app.api.routes.v1.sdk_sync.put_payload_to_s3") as mock_put,
+            patch("app.api.routes.v1.sdk_sync.store_raw_payload", autospec=True) as mock_archive,
+            patch("app.api.routes.v1.sdk_sync.put_payload_to_s3", autospec=True) as mock_put,
         ):
             response = _sync(client, api_v1_prefix)
 
@@ -57,8 +57,8 @@ class TestOffloadEnabled:
     def test_only_a_reference_is_enqueued(self, client: TestClient, api_v1_prefix: str, mock_task: MagicMock) -> None:
         with (
             patch.object(settings, "sdk_payload_s3_offload", True),
-            patch("app.api.routes.v1.sdk_sync.store_raw_payload") as mock_archive,
-            patch("app.api.routes.v1.sdk_sync.put_payload_to_s3", return_value=_REF),
+            patch("app.api.routes.v1.sdk_sync.store_raw_payload", autospec=True) as mock_archive,
+            patch("app.api.routes.v1.sdk_sync.put_payload_to_s3", autospec=True, return_value=_REF),
         ):
             response = _sync(client, api_v1_prefix)
 
@@ -76,7 +76,7 @@ class TestOffloadEnabled:
         """Falling back to an inline body is what fills the broker, so fail loudly instead."""
         with (
             patch.object(settings, "sdk_payload_s3_offload", True),
-            patch("app.api.routes.v1.sdk_sync.put_payload_to_s3", return_value=None),
+            patch("app.api.routes.v1.sdk_sync.put_payload_to_s3", autospec=True, return_value=None),
         ):
             response = _sync(client, api_v1_prefix)
 

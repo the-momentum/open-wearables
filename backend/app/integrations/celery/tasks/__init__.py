@@ -8,8 +8,10 @@ from app.services.providers.garmin.backfill_state import (
     get_pending_types as get_garmin_pending_types,
 )
 
-from .archival_task import run_daily_archival
+from .aggregate_backfill_task import run_aggregate_backfill
+from .archival_task import roll_up_queued_days, run_daily_archival
 from .backfill_data_type_coverage_task import backfill_data_type_coverage
+from .classify_sleep_naps_task import classify_sleep_naps
 from .close_stale_sync_runs_task import close_stale_sync_runs
 from .delete_user_webhook_payloads_task import delete_user_webhook_payloads
 from .emit_webhook_event_task import emit_webhook_event
@@ -36,8 +38,10 @@ from .process_xml_upload_task import process_xml_upload
 from .provider_webhooks_task import reconcile_provider_webhooks
 from .refresh_dashboard_stats_task import refresh_dashboard_total_data_points
 from .renew_oura_webhooks_task import renew_oura_webhooks
+from .repair_condensed_series_task import repair_condensed_series
 from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
+from .strava_stream_retry_task import retry_strava_stream_ingest
 from .sync_vendor_data_task import sync_vendor_data
 from .telemetry_task import send_telemetry_ping
 from .webhook_push_task import process_webhook_push
@@ -53,6 +57,8 @@ __all__ = [
     "trigger_garmin_backfill_for_type",
     "trigger_garmin_next_pending_type",
     # Archival
+    "roll_up_queued_days",
+    "run_aggregate_backfill",
     "run_daily_archival",
     # One-off data migrations
     "backfill_data_type_coverage",
@@ -64,6 +70,8 @@ __all__ = [
     "fill_missing_resilience_scores",
     # Other tasks
     "dispatch_extension_events",
+    "classify_sleep_naps",
+    "repair_condensed_series",
     "close_stale_sync_runs",
     "finalize_stale_sleeps",
     "process_sdk_upload",
@@ -72,6 +80,7 @@ __all__ = [
     "sync_vendor_data",
     "sync_all_users",
     "refresh_dashboard_total_data_points",
+    "retry_strava_stream_ingest",
     "generate_seed_data",
     "send_invitation_email_task",
     "process_webhook_push",

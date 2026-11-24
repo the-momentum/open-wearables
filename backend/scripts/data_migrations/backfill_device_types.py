@@ -54,7 +54,7 @@ def backfill_device_types(db: Session, *, dry_run: bool) -> Counter[str]:
             and (ds.device_model or "").startswith("iPad")
         ):
             new_type = DeviceType.TABLET.value
-        if is_host_model(ds.source_app_id, ds.device_model):
+        if is_host_model(provider, ds.source_app_id, ds.device_model):
             new_type = resolved.value if resolved != DeviceType.UNKNOWN else None
         if new_type == ds.device_type:
             continue

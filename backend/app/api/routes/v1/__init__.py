@@ -24,7 +24,6 @@ from .sdk_logs import router as sdk_logs_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
 from .seed_data import router as seed_data_router
-from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
 from .sync_data import router as sync_data_router
 from .sync_status import router as sync_status_router
@@ -73,7 +72,6 @@ v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
 # --- System: provider webhooks ---
 v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["System: Oura Webhooks"])
-v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["System: Strava Webhooks"])
 v1_router.include_router(
     providers_webhooks_router, prefix="/providers/{provider}/webhooks", tags=["System: Provider Webhooks"]
 )

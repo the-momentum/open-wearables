@@ -12,10 +12,11 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
+import respx
 from jose import jwt
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,8 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.suunto.oauth import SuuntoOAuth
+
+TOKEN_URL = "https://cloudapi-oauth.suunto.com/oauth/token"
 
 
 class TestSuuntoOAuth:
@@ -142,20 +145,18 @@ class TestSuuntoOAuth:
         assert user_info["user_id"] is None
         assert user_info["username"] is None
 
-    @patch("httpx.post")
-    def test_exchange_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:
+    def test_exchange_token_success(self, respx_mock: respx.MockRouter, suunto_oauth: SuuntoOAuth, db: Session) -> None:
         """Should exchange authorization code for tokens."""
         # Arrange
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "test_access_token",
-            "refresh_token": "test_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        token = respx_mock.post(TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": "test_access_token",
+                "refresh_token": "test_refresh_token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
         # Act
         token_response = suunto_oauth._exchange_token("test_code", None)
@@ -164,10 +165,16 @@ class TestSuuntoOAuth:
         assert token_response.access_token == "test_access_token"
         assert token_response.refresh_token == "test_refresh_token"
         assert token_response.expires_in == 3600
-        mock_post.assert_called_once()
+        assert token.call_count == 1
+        request = token.calls.last.request
+        assert request.headers["Authorization"].startswith("Basic ")
+        form = httpx.QueryParams(request.content.decode())
+        assert form["grant_type"] == "authorization_code"
+        assert form["code"] == "test_code"
 
-    @patch("httpx.post")
-    def test_refresh_access_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:
+    def test_refresh_access_token_success(
+        self, respx_mock: respx.MockRouter, suunto_oauth: SuuntoOAuth, db: Session
+    ) -> None:
         """Should refresh access token using refresh token."""
         # Arrange
         from tests.factories import UserConnectionFactory, UserFactory
@@ -179,16 +186,15 @@ class TestSuuntoOAuth:
             refresh_token="old_refresh_token",
         )
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "new_access_token",
-            "refresh_token": "new_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        token = respx_mock.post(TOKEN_URL).respond(
+            200,
+            json={
+                "access_token": "new_access_token",
+                "refresh_token": "new_refresh_token",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
         # Act
         token_response = suunto_oauth.refresh_access_token(db, user.id, "old_refresh_token")
@@ -196,7 +202,10 @@ class TestSuuntoOAuth:
         # Assert
         assert token_response.access_token == "new_access_token"
         assert token_response.refresh_token == "new_refresh_token"
-        mock_post.assert_called_once()
+        assert token.call_count == 1
+        form = httpx.QueryParams(token.calls.last.request.content.decode())
+        assert form["grant_type"] == "refresh_token"
+        assert form["refresh_token"] == "old_refresh_token"
 
     def test_uses_basic_auth_method(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should use Basic Auth for token exchange."""

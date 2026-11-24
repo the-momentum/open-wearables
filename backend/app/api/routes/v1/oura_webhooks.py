@@ -1,6 +1,5 @@
 """Oura Ring webhook endpoints for receiving data notifications."""
 
-from logging import getLogger
 from typing import Annotated
 
 import httpx
@@ -12,9 +11,9 @@ from app.schemas.responses.incoming_webhooks import WebhookSubscriptionsResponse
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.oura.webhook_service import oura_webhook_service
 from app.utils.auth import get_current_developer
+from app.utils.exceptions import ProviderError
 
 router = APIRouter()
-logger = getLogger(__name__)
 
 _strategy = ProviderFactory().get_provider("oura")
 if _strategy.webhooks is None:
@@ -83,7 +82,8 @@ async def list_webhook_subscriptions(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Failed to list subscriptions: {str(e)}")
+        status = e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None
+        raise ProviderError("oura", "Failed to list Oura webhook subscriptions", upstream_status=status) from e
 
 
 @router.post("/subscriptions/renew")
@@ -97,4 +97,5 @@ async def renew_webhook_subscriptions(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Failed to renew subscriptions: {str(e)}")
+        status = e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None
+        raise ProviderError("oura", "Failed to renew Oura webhook subscriptions", upstream_status=status) from e

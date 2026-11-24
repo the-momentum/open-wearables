@@ -8,6 +8,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from psycopg.errors import ForeignKeyViolation
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -19,9 +20,10 @@ from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.sync_status_service import emit_sync_completed, new_run_id
 from app.utils.context import sync_run_context
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import integrity_violation, is_unique_violation
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def process_activity_notification(
@@ -54,9 +56,7 @@ def process_activity_notification(
 
     connections = connection_repo.get_all_by_provider_user_id(db, "garmin", garmin_user_id)
     if not connections:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "No connection found for Garmin user",
             provider="garmin",
             trace_id=request_trace_id,
@@ -72,9 +72,7 @@ def process_activity_notification(
     try:
         activity = GarminActivityJSON(**notification)
     except ValidationError as e:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Failed to parse activity data",
             provider="garmin",
             trace_id=request_trace_id,
@@ -93,9 +91,8 @@ def process_activity_notification(
         is_primary = i == 0
         sync_source = SyncSource.WEBHOOK if is_primary else SyncSource.LINKED_ACCOUNT
 
-        log_structured(
-            logger,
-            "info" if is_primary else "debug",
+        logger.log(
+            logging.INFO if is_primary else logging.DEBUG,
             "New Garmin activity received",
             provider="garmin",
             trace_id=trace_id,
@@ -114,11 +111,23 @@ def process_activity_notification(
                     activities=[activity],
                     user_id=internal_user_id,
                 )
-        except IntegrityError:
+        except IntegrityError as exc:
+            # Each profile's activity commits on its own, so this drops only the failed insert.
             db.rollback()
-            log_structured(
-                logger,
-                "info",
+            if isinstance(integrity_violation(exc), ForeignKeyViolation):
+                # The user was deleted after the connections were loaded: the other profiles still get theirs.
+                logger.warning(
+                    "Activity skipped: user deleted meanwhile",
+                    provider="garmin",
+                    trace_id=trace_id,
+                    activity_id=activity_id,
+                    user_id=str(internal_user_id),
+                )
+                results.append({**base_result, "internal_user_id": str(internal_user_id), "status": "skipped"})
+                continue
+            if not is_unique_violation(exc):
+                raise
+            logger.info(
                 "Activity already exists, skipping",
                 provider="garmin",
                 trace_id=trace_id,
@@ -128,9 +137,8 @@ def process_activity_notification(
             results.append({**base_result, "internal_user_id": str(internal_user_id), "status": "duplicate"})
             continue
 
-        log_structured(
-            logger,
-            "info" if is_primary else "debug",
+        logger.log(
+            logging.INFO if is_primary else logging.DEBUG,
             "Saved activity",
             provider="garmin",
             trace_id=trace_id,

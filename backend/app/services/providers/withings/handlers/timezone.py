@@ -7,17 +7,17 @@ offset is not, and goes through ``app.utils.dates.offset_to_iso``.
 
 from datetime import date as date_type
 from datetime import datetime, timezone
-from logging import Logger
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.utils.dates import offset_to_iso
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _load_zone(
     timezone_name: str | None,
-    logger: Logger,
     *,
     action: str,
     **context: Any,
@@ -27,9 +27,7 @@ def _load_zone(
     try:
         return ZoneInfo(timezone_name)
     except (ZoneInfoNotFoundError, ValueError):
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Invalid Withings timezone; falling back to UTC semantics",
             provider="withings",
             action=action,
@@ -48,13 +46,12 @@ def _offset_of(moment: datetime) -> str | None:
 def zone_offset_at(
     timezone_name: str | None,
     utc_instant: datetime,
-    logger: Logger,
     *,
     action: str,
     **context: Any,
 ) -> str | None:
     """Return the zone's canonical offset at an aware UTC instant."""
-    zone = _load_zone(timezone_name, logger, action=action, **context)
+    zone = _load_zone(timezone_name, action=action, **context)
     if zone is None:
         return None
     return _offset_of(utc_instant.astimezone(zone))
@@ -63,14 +60,13 @@ def zone_offset_at(
 def local_day_start(
     local_date: date_type,
     timezone_name: str | None,
-    logger: Logger,
     *,
     action: str,
     **context: Any,
 ) -> tuple[datetime, str | None]:
     """Resolve a local calendar day to its UTC instant and offset."""
     midnight = datetime(local_date.year, local_date.month, local_date.day)
-    zone = _load_zone(timezone_name, logger, action=action, **context)
+    zone = _load_zone(timezone_name, action=action, **context)
     if zone is None:
         return midnight.replace(tzinfo=timezone.utc), None
     local_midnight = midnight.replace(tzinfo=zone)
