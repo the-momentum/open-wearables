@@ -1132,6 +1132,9 @@ class Polar247Data(Base247DataTemplate):
             case PolarWebhookEventType.SLEEP_WISE_CIRCADIAN_BEDTIME:
                 return {"circadian_bedtime": self._save_scores(db, self.normalize_circadian_bedtime([raw], user_id))}
 
+            case PolarWebhookEventType.PHYSICAL_INFORMATION:
+                return {"physical_info": self._save_timeseries(db, self.normalize_physical_info(raw, user_id))}
+
             case _:
                 logger.warning(
                     "Targeted webhook fetch not implemented for event type",
