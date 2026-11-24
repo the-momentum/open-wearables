@@ -22,6 +22,8 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         SeriesType.skin_temperature,  # /v3/users/biosensing/skintemperature + biosensing/bodytemperature (SKIN)
         SeriesType.skin_temperature_deviation,  # /v3/users/biosensing/skintemperature (deviation_from_baseline)
         SeriesType.body_temperature,  # /v3/users/biosensing/bodytemperature (CORE)
+        SeriesType.weight,  # /v3/users/physical-info
+        SeriesType.vo2_max,  # /v3/users/physical-info
     }
 )
 

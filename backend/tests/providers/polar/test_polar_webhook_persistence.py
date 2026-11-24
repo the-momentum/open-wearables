@@ -58,6 +58,21 @@ def test_continuous_hr_webhook_saves_the_single_day_response(db: Session) -> Non
     assert len(_polar_samples(db, user.id)) == 2
 
 
+def test_physical_information_webhook_saves_weight_and_vo2max(db: Session) -> None:
+    user = UserFactory()
+    data_247 = PolarStrategy().data_247
+    assert isinstance(data_247, Polar247Data)
+    physical_info = {"weight": 70.5, "vo2_max": 50, "modified": "2026-09-10T08:00:00Z"}
+
+    with patch.object(Polar247Data, "_make_api_request", autospec=True, return_value=physical_info):
+        saved = data_247.fetch_and_save_from_webhook(
+            db, UUID(str(user.id)), PolarWebhookEventType.PHYSICAL_INFORMATION, "/v3/users/physical-info"
+        )
+
+    assert saved == {"physical_info": 2}
+    assert len(_polar_samples(db, user.id)) == 2
+
+
 def _webhook_payload() -> dict[str, Any]:
     return {
         "event": "CONTINUOUS_HEART_RATE",
