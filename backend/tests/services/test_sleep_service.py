@@ -15,11 +15,15 @@ from uuid import uuid4
 
 import pytest
 import redis
+import time_machine
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
+from app.constants.series_types.sdk import SleepPhase
 from app.constants.sleep import SleepStageType
-from app.models import EventRecord, HealthScore, SleepDetails
+from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+from app.integrations.redis_client import get_redis_client
+from app.models import DataSource, EventRecord, HealthScore, SleepDetails, User
 from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -31,16 +35,59 @@ from app.schemas.providers.mobile_sdk import (
     SyncRequest,
 )
 from app.services.sdk.sleep_service import (
+    _apply_transition,
     _calculate_final_metrics,
+    _create_new_sleep_state,
+    _drop_leading_awake,
+    active_users_key,
     finish_sleep,
     handle_sleep_data,
     is_ready_to_finish,
+    load_sleep_states,
 )
 from tests.factories import UserFactory
 
 
 def _dt(iso: str) -> datetime:
     return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+
+
+def _sleep_sessions(db: Session, user: User) -> list[EventRecord]:
+    """Return the sleep sessions stored for a user."""
+    return (
+        db.query(EventRecord)
+        .join(DataSource, EventRecord.data_source_id == DataSource.id)
+        .filter(DataSource.user_id == user.id, EventRecord.category == "sleep")
+        .all()
+    )
+
+
+def _stages(*stages: tuple[str, str, str]) -> list[SleepStateStage]:
+    """Build state stages from (stage, start, end) tuples."""
+    return [
+        SleepStateStage(stage=SleepStageType(stage), start_time=_dt(start), end_time=_dt(end))
+        for stage, start, end in stages
+    ]
+
+
+def _sleep_request(*samples: tuple[str, str, str, str], source: dict[str, str] | None = None) -> SyncRequest:
+    """Build an SDK sleep upload from (id, stage, start, end) tuples."""
+    source = source or {"name": "Apple Watch", "device_type": "watch", "device_model": "Watch7,1"}
+    return SyncRequest.model_validate(
+        {
+            "provider": "apple",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2026-03-23T09:00:00Z",
+            "data": {
+                "records": [],
+                "workouts": [],
+                "sleep": [
+                    {"id": sample_id, "stage": stage, "startDate": start, "endDate": end, "source": source}
+                    for sample_id, stage, start, end in samples
+                ],
+            },
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1247,3 +1294,282 @@ class TestProviderSleepScore:
         session = db.get(EventRecord, score.event_record_id)
         assert session is not None
         assert session.category == "sleep"
+
+
+class TestDropLeadingAwake:
+    """Awake only counts once sleep has begun — decided on the whole night, not per upload."""
+
+    def test_awake_before_first_sleep_stage_is_dropped(self) -> None:
+        stages = _stages(
+            ("light", "2026-03-23T03:40:00Z", "2026-03-23T05:00:00Z"),
+            ("awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+        )
+
+        assert [s.stage for s in _drop_leading_awake(stages)] == [SleepStageType.LIGHT]
+
+    def test_awake_kept_when_the_stored_night_starts_at_it(self) -> None:
+        """Awake the stored record already counted survives a later merge."""
+        stages = _stages(
+            ("awake", "2026-03-22T23:00:00Z", "2026-03-22T23:30:00Z"),
+            ("light", "2026-03-22T23:30:00Z", "2026-03-23T03:00:00Z"),
+            ("light", "2026-03-23T03:00:00Z", "2026-03-23T07:00:00Z"),
+        )
+
+        assert _drop_leading_awake(stages, protect_from=_dt("2026-03-22T23:00:00Z")) == stages
+
+    def test_stages_from_the_first_sleep_stage_keep_their_order(self) -> None:
+        """Awake that starts with in_bed or follows sleep is kept, and ties keep the upload's order."""
+        stages = _stages(
+            ("awake", "2026-03-22T23:00:00Z", "2026-03-22T23:30:00Z"),
+            ("in_bed", "2026-03-22T23:00:00Z", "2026-03-23T07:00:00Z"),
+            ("light", "2026-03-22T23:30:00Z", "2026-03-23T03:00:00Z"),
+            ("awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),
+            ("light", "2026-03-23T03:00:00Z", "2026-03-23T05:00:00Z"),
+        )
+
+        kept = _drop_leading_awake(stages)
+
+        assert kept == stages
+        metrics, _ = _calculate_final_metrics(kept)
+        assert metrics["awake_seconds"] == 70 * 60
+
+
+class TestHasSleepStage:
+    """The state remembers whether the night has begun, so samples don't rescan its stages."""
+
+    @pytest.mark.parametrize(("stage", "expected"), [("light", True), ("in_bed", True), ("awake", False)])
+    def test_state_saved_without_the_flag_derives_it_from_its_stages(self, stage: str, expected: bool) -> None:
+        saved = {
+            "uuid": "s1",
+            "start_time": "2026-03-23T03:00:00Z",
+            "end_time": "2026-03-23T03:40:00Z",
+            "last_start_timestamp": "2026-03-23T03:00:00Z",
+            "last_end_timestamp": "2026-03-23T03:40:00Z",
+            "stages": [{"stage": stage, "start_time": "2026-03-23T03:00:00Z", "end_time": "2026-03-23T03:40:00Z"}],
+        }
+
+        assert SleepState.model_validate(saved).has_sleep_stage is expected
+
+    def test_first_sleep_stage_sets_the_flag(self, db: Session) -> None:
+        user_id = str(uuid4())
+        state = _create_new_sleep_state(_dt("2026-03-23T03:00:00Z"), _dt("2026-03-23T03:40:00Z"), provider="apple")
+
+        state = _apply_transition(
+            db, user_id, state, SleepPhase.AWAKE, _dt("2026-03-23T03:00:00Z"), _dt("2026-03-23T03:40:00Z"), "apple"
+        )
+        assert state.has_sleep_stage is False
+
+        state = _apply_transition(
+            db,
+            user_id,
+            state,
+            SleepPhase.ASLEEP_LIGHT,
+            _dt("2026-03-23T03:40:00Z"),
+            _dt("2026-03-23T05:00:00Z"),
+            "apple",
+        )
+        assert state.has_sleep_stage is True
+
+
+class TestSplitNightStartingWithAwake:
+    """A night split across uploads keeps the awakening that opens the later upload."""
+
+    NIGHT_START = (
+        ("N1", "light", "2026-03-22T23:00:00Z", "2026-03-23T02:00:00Z"),
+        ("N2", "deep", "2026-03-23T02:00:00Z", "2026-03-23T03:00:00Z"),
+    )
+    # The second upload of the night starts at 03:00 with 40 minutes of awake.
+    AWAKENING = (("N3", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:40:00Z"),)
+    NIGHT_END = (
+        ("N4", "light", "2026-03-23T03:40:00Z", "2026-03-23T05:00:00Z"),
+        ("N5", "rem", "2026-03-23T05:00:00Z", "2026-03-23T07:00:00Z"),
+    )
+
+    def test_split_night_stores_one_session_with_its_awakening(self, mocker: MockerFixture, db: Session) -> None:
+        """Two historical uploads of one night land as a single session that keeps the awake gap."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        user = UserFactory()
+
+        handle_sleep_data(db, _sleep_request(*self.NIGHT_START), str(user.id))
+        handle_sleep_data(db, _sleep_request(*self.AWAKENING, *self.NIGHT_END), str(user.id))
+
+        sessions = _sleep_sessions(db, user)
+        assert len(sessions) == 1
+        session = sessions[0]
+        assert session.start_datetime == _dt("2026-03-22T23:00:00Z")
+        assert session.end_datetime == _dt("2026-03-23T07:00:00Z")
+        assert session.sleep_detail is not None
+        assert session.sleep_detail.sleep_awake_minutes == 40
+        # light 3h + deep 1h (first upload) + light 1h20 + rem 2h (second upload)
+        assert session.sleep_detail.sleep_total_duration_minutes == 440
+
+    def test_awake_only_upload_from_another_device_keeps_the_stored_source(
+        self, mocker: MockerFixture, db: Session
+    ) -> None:
+        """An awake-only upload relayed by the iPhone must not refile the Watch night under the iPhone."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        user = UserFactory()
+        iphone = {"name": "iPhone", "device_type": "phone", "device_model": "iPhone15,2"}
+
+        handle_sleep_data(db, _sleep_request(*self.NIGHT_START), str(user.id))
+        handle_sleep_data(db, _sleep_request(*self.AWAKENING, source=iphone), str(user.id))
+
+        sources = db.query(DataSource).filter(DataSource.user_id == user.id).all()
+        assert len(sources) == 1
+        watch_source = sources[0]
+        assert watch_source.device_model == "Watch7,1"
+        assert watch_source.device_type == "watch"
+        assert watch_source.original_source_name == "Apple Watch"
+
+        merged = _sleep_sessions(db, user)
+        assert len(merged) == 1
+        assert merged[0].data_source_id == watch_source.id
+        assert merged[0].source_name == "Apple Watch"
+
+        handle_sleep_data(db, _sleep_request(*self.NIGHT_END), str(user.id))
+
+        sessions = _sleep_sessions(db, user)
+        assert len(sessions) == 1
+        session = sessions[0]
+        assert session.source_name == "Apple Watch"
+        assert session.start_datetime == _dt("2026-03-22T23:00:00Z")
+        assert session.end_datetime == _dt("2026-03-23T07:00:00Z")
+        assert session.sleep_detail is not None
+        assert session.sleep_detail.sleep_awake_minutes == 40
+        assert session.sleep_detail.sleep_total_duration_minutes == 440
+
+
+class TestMergedNightBoundaries:
+    """Merging must not widen the night or trim awake the stored record already counted."""
+
+    NIGHT = (("M1", "light", "2026-03-22T23:00:00Z", "2026-03-23T07:00:00Z"),)
+
+    def test_leading_awake_does_not_bridge_a_nap_into_the_night(self, mocker: MockerFixture, db: Session) -> None:
+        """A nap that opens with awake stays a session of its own."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        user = UserFactory()
+
+        handle_sleep_data(db, _sleep_request(*self.NIGHT), str(user.id))
+        handle_sleep_data(
+            db, _sleep_request(("M2", "awake", "2026-03-23T08:30:00Z", "2026-03-23T08:35:00Z")), str(user.id)
+        )
+        handle_sleep_data(
+            db, _sleep_request(("M3", "light", "2026-03-23T10:00:00Z", "2026-03-23T10:40:00Z")), str(user.id)
+        )
+
+        sessions = sorted(_sleep_sessions(db, user), key=lambda record: record.start_datetime)
+        assert len(sessions) == 2
+        assert sessions[0].start_datetime == _dt("2026-03-22T23:00:00Z")
+        assert sessions[0].end_datetime == _dt("2026-03-23T07:00:00Z")
+        assert sessions[0].sleep_detail is not None
+        assert sessions[0].sleep_detail.sleep_awake_minutes == 0
+        assert sessions[1].start_datetime == _dt("2026-03-23T10:00:00Z")
+        assert sessions[1].end_datetime == _dt("2026-03-23T10:40:00Z")
+
+    def test_awake_only_upload_does_not_extend_the_stored_night(self, mocker: MockerFixture, db: Session) -> None:
+        """Trailing awake stays pending instead of growing the stored night."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        user = UserFactory()
+
+        handle_sleep_data(db, _sleep_request(*self.NIGHT), str(user.id))
+        handle_sleep_data(
+            db, _sleep_request(("M4", "awake", "2026-03-23T07:00:00Z", "2026-03-23T08:30:00Z")), str(user.id)
+        )
+
+        sessions = _sleep_sessions(db, user)
+        assert len(sessions) == 1
+        assert sessions[0].end_datetime == _dt("2026-03-23T07:00:00Z")
+        assert sessions[0].sleep_detail is not None
+        assert sessions[0].sleep_detail.sleep_awake_minutes == 0
+
+        # The awake is still waiting for the upload that brings the rest of the night.
+        assert load_sleep_states(str(user.id))
+
+    def test_awake_only_session_is_dropped_once_the_writer_goes_quiet(self, mocker: MockerFixture, db: Session) -> None:
+        """Awake that no upload continued leaves Redis and the active users instead of lingering."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        session_local = mocker.patch(
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal", autospec=True
+        )
+        session_local.return_value.__enter__.return_value = db
+        user = UserFactory()
+
+        handle_sleep_data(db, _sleep_request(*self.NIGHT), str(user.id))
+        handle_sleep_data(
+            db, _sleep_request(("M4", "awake", "2026-03-23T07:00:00Z", "2026-03-23T08:30:00Z")), str(user.id)
+        )
+        with time_machine.travel(datetime.now(timezone.utc) + timedelta(hours=3), tick=False):
+            finalize_stale_sleeps()
+
+        assert load_sleep_states(str(user.id)) == {}
+        assert str(user.id) not in get_redis_client().smembers(active_users_key())
+        assert len(_sleep_sessions(db, user)) == 1
+
+    def test_merge_keeps_the_awake_the_stored_night_already_counted(self, mocker: MockerFixture, db: Session) -> None:
+        """A split night keeps the awake a single upload would keep."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        user = UserFactory()
+        oura = {"name": "Oura", "device_type": "ring", "device_model": "Oura4"}
+        in_bed_then_awake = (
+            ("M5", "in_bed", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+            ("M6", "awake", "2026-03-22T23:00:00Z", "2026-03-22T23:30:00Z"),
+            ("M7", "light", "2026-03-22T23:30:00Z", "2026-03-23T03:00:00Z"),
+        )
+        rest_of_night = (("M8", "light", "2026-03-23T03:00:00Z", "2026-03-23T07:00:00Z"),)
+
+        handle_sleep_data(db, _sleep_request(*in_bed_then_awake, source=oura), str(user.id))
+        handle_sleep_data(db, _sleep_request(*rest_of_night, source=oura), str(user.id))
+
+        sessions = _sleep_sessions(db, user)
+        assert len(sessions) == 1
+        assert sessions[0].start_datetime == _dt("2026-03-22T23:00:00Z")
+        assert sessions[0].end_datetime == _dt("2026-03-23T07:00:00Z")
+        assert sessions[0].sleep_detail is not None
+        assert sessions[0].sleep_detail.sleep_awake_minutes == 30
+        assert sessions[0].sleep_detail.sleep_total_duration_minutes == 450
+
+    def test_in_bed_before_sleep_does_not_bridge_an_earlier_session(self, mocker: MockerFixture, db: Session) -> None:
+        """The lookup starts where the night's stages do, not where a wider in_bed does."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        user = UserFactory()
+
+        handle_sleep_data(
+            db, _sleep_request(("M9", "light", "2026-03-22T19:00:00Z", "2026-03-22T19:30:00Z")), str(user.id)
+        )
+        handle_sleep_data(
+            db,
+            _sleep_request(
+                ("M10", "in_bed", "2026-03-22T21:00:00Z", "2026-03-23T07:00:00Z"),
+                ("M11", "light", "2026-03-22T23:00:00Z", "2026-03-23T07:00:00Z"),
+            ),
+            str(user.id),
+        )
+
+        sessions = sorted(_sleep_sessions(db, user), key=lambda record: record.start_datetime)
+        assert [(s.start_datetime, s.end_datetime) for s in sessions] == [
+            (_dt("2026-03-22T19:00:00Z"), _dt("2026-03-22T19:30:00Z")),
+            (_dt("2026-03-22T23:00:00Z"), _dt("2026-03-23T07:00:00Z")),
+        ]
+
+    def test_stored_stage_wins_a_tie_with_a_new_one(self, mocker: MockerFixture, db: Session) -> None:
+        """A merge resolves stages starting at the same time in favour of the stored night."""
+        mocker.patch("app.services.sdk.sleep_service.celery_app", autospec=True)
+        user = UserFactory()
+
+        handle_sleep_data(
+            db,
+            _sleep_request(
+                ("M12", "light", "2026-03-22T23:00:00Z", "2026-03-23T03:00:00Z"),
+                ("M13", "awake", "2026-03-23T03:00:00Z", "2026-03-23T03:30:00Z"),
+            ),
+            str(user.id),
+        )
+        handle_sleep_data(
+            db, _sleep_request(("M14", "deep", "2026-03-23T03:00:00Z", "2026-03-23T05:00:00Z")), str(user.id)
+        )
+
+        sessions = _sleep_sessions(db, user)
+        assert len(sessions) == 1
+        assert sessions[0].sleep_detail is not None
+        assert sessions[0].sleep_detail.sleep_awake_minutes == 30
+        assert sessions[0].sleep_detail.sleep_deep_minutes == 90
