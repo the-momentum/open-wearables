@@ -199,6 +199,13 @@ _COVERAGE_CAPTURE = [
             last_written_at TIMESTAMPTZ NOT NULL
         )
     """),
+    text("DROP TABLE IF EXISTS _bmr_relabel_touched"),
+    text("""
+        CREATE TEMP TABLE _bmr_relabel_touched (
+            user_id UUID NOT NULL,
+            provider VARCHAR(64) NOT NULL
+        )
+    """),
 ]
 
 # Two statements, both race-safe. The insert-widen uses the same speculative-insertion
@@ -211,16 +218,21 @@ _COVERAGE_CAPTURE = [
 # recompute below, so the widening merge here does not need to be precise.
 _COVERAGE_MOVE = [
     _q("""
-        INSERT INTO data_type_coverage
-            (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
-        SELECT user_id, provider, 'basal_metabolic_rate', kind, coverage_start, coverage_end, last_written_at
-        FROM data_type_coverage
-        WHERE provider IN :providers AND kind = 'series' AND data_type = 'basal_energy'
-        ORDER BY user_id, provider
-        ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
-            coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
-            coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
-            last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
+        WITH moved AS (
+            INSERT INTO data_type_coverage
+                (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
+            SELECT user_id, provider, 'basal_metabolic_rate', kind, coverage_start, coverage_end, last_written_at
+            FROM data_type_coverage
+            WHERE provider IN :providers AND kind = 'series' AND data_type = 'basal_energy'
+            ORDER BY user_id, provider
+            ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
+                coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
+                coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
+                last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
+            RETURNING user_id, provider
+        )
+        INSERT INTO _bmr_relabel_touched (user_id, provider)
+        SELECT user_id, provider FROM moved
     """),
     _q("""
         WITH moved AS (
@@ -268,7 +280,10 @@ _COVERAGE_REPAIR = _q("""
 # The re-keyed basal_metabolic_rate span is the old basal_energy envelope, which the write
 # path may have widened for a straggler that is not in the BMR series. Recompute it from the
 # rows actually held — live and archived, the same sources DataTypeCoverageRepository's own
-# backfill derives spans from — so both keys exactly envelope their rows.
+# backfill derives spans from — so both keys exactly envelope their rows. Scoped to keys the
+# insert-widen touched: those are row-locked by that write for the rest of the transaction,
+# so no concurrent writer can interleave, and keys created fresh by writers on the new
+# release already carry accurate spans the migration has no business rewriting.
 _BMR_SPAN_RECOMPUTE = _q("""
     UPDATE data_type_coverage c SET
         coverage_start = spans.coverage_start,
@@ -290,6 +305,10 @@ _BMR_SPAN_RECOMPUTE = _q("""
     ) spans
     WHERE c.user_id = spans.user_id AND c.provider = spans.provider
       AND c.kind = 'series' AND c.data_type = 'basal_metabolic_rate'
+      AND EXISTS (
+        SELECT 1 FROM _bmr_relabel_touched t
+        WHERE t.user_id = c.user_id AND t.provider = c.provider
+      )
 """)
 
 
