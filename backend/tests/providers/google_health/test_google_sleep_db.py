@@ -108,7 +108,7 @@ def test_a_session_under_a_new_name_refreshes_the_stored_night(db: Session) -> N
     with patch("app.services.event_record_service.on_sleep_created") as announce:
         _sync(db, user.id, [_session("new", BEDTIME)])
 
-    assert _stored(db) == [("old", 420)]
+    assert _stored(db) == [("new", 420)]
     announce.assert_not_called()
 
 
