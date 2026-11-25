@@ -258,6 +258,29 @@ def test_coverage_rekeys_without_a_conflict(db: Session) -> None:
     assert rows == ["basal_metabolic_rate"]
 
 
+def test_rolling_deploy_write_converges_on_the_next_run(db: Session) -> None:
+    """A pod on the previous release keeps writing basal_energy until the rollout ends. Its row
+    and the coverage the write path recreates are both moved once a later run sees them."""
+    source = DataSourceFactory(provider=ProviderName.HEALTH_CONNECT)
+    relabel_android_basal_energy(db, dry_run=False)
+
+    late = DataPointSeriesFactory(
+        data_source=source,
+        series_type=_series_type(db, BASAL_ENERGY_ID),
+        recorded_at=T,
+        value=Decimal("1500"),
+    )
+    db.flush()
+    _insert_coverage(db, source=source, data_type="basal_energy", start="2026-01-01", end="2026-01-01")
+
+    relabel_android_basal_energy(db, dry_run=False)
+
+    assert db.execute(text("SELECT series_type_definition_id FROM series_sample")).scalars().all() == [BMR_ID]
+    rows = db.execute(text("SELECT data_type FROM data_type_coverage")).scalars().all()
+    assert rows == ["basal_metabolic_rate"]
+    assert late.id is not None
+
+
 def test_dry_run_makes_no_changes(db: Session) -> None:
     _make_point(db, provider=ProviderName.HEALTH_CONNECT, type_id=BASAL_ENERGY_ID, recorded_at=T, value="1520")
 

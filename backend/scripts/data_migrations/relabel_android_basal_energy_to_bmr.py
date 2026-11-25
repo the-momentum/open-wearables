@@ -175,8 +175,22 @@ _COVERAGE_LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended('data_type_
 # basal_metabolic_rate span with the basal_energy one, drop the merged old rows, then rename
 # whatever old rows have no counterpart. Scoped to the Android providers, so Apple's genuine
 # basal_energy coverage is left alone.
+#
+# The HAS_REMAINING_ROWS guard keeps a key put when basal_energy rows survive the relabel:
+# during a rolling deploy a pod on the previous release can commit one after the row UPDATE
+# in this same transaction, and its coverage must then stay keyed basal_energy. The next
+# startup run relabels the row and re-keys the coverage once nothing remains.
+_HAS_REMAINING_ROWS = """
+        AND NOT EXISTS (
+            SELECT 1 FROM series_sample s
+            JOIN data_source ds ON ds.id = s.data_source_id AND ds.provider = o.provider
+            WHERE ds.user_id = o.user_id
+              AND s.series_type_definition_id = :basal
+        )
+"""
 _COVERAGE_MOVE = [
-    _q("""
+    _q(
+        """
         UPDATE data_type_coverage n SET
             coverage_start = LEAST(n.coverage_start, o.coverage_start),
             coverage_end = GREATEST(n.coverage_end, o.coverage_end),
@@ -185,8 +199,11 @@ _COVERAGE_MOVE = [
         WHERE o.user_id = n.user_id AND o.provider = n.provider AND o.kind = n.kind
           AND o.provider IN :providers AND o.kind = 'series'
           AND o.data_type = 'basal_energy' AND n.data_type = 'basal_metabolic_rate'
-    """),
-    _q("""
+    """
+        + _HAS_REMAINING_ROWS
+    ),
+    _q(
+        """
         DELETE FROM data_type_coverage o
         WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
           AND EXISTS (
@@ -194,11 +211,16 @@ _COVERAGE_MOVE = [
             WHERE n.user_id = o.user_id AND n.provider = o.provider AND n.kind = o.kind
               AND n.data_type = 'basal_metabolic_rate'
           )
-    """),
-    _q("""
-        UPDATE data_type_coverage SET data_type = 'basal_metabolic_rate'
-        WHERE provider IN :providers AND kind = 'series' AND data_type = 'basal_energy'
-    """),
+    """
+        + _HAS_REMAINING_ROWS
+    ),
+    _q(
+        """
+        UPDATE data_type_coverage o SET data_type = 'basal_metabolic_rate'
+        WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
+    """
+        + _HAS_REMAINING_ROWS
+    ),
 ]
 
 _COVERAGE_COUNT = _q("""
