@@ -26,7 +26,7 @@ dependencies = [
     "resend>=2.53.2",
     "pyyaml>=6.0.3",
     "svix>=2.10.0",
-    "numpy>=2.5.4",
+    "numpy>=2.5.5",
     "faker>=40.54.0",
     "fitdecode>=0.11.0",
     "google-auth>=2.62.2",
@@ -52,10 +52,19 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",
-    "freezegun>=1.5.5",
     "factory-boy>=3.3.3",
     "psycopg-binary>=3.3.9",
     "testcontainers[postgres,redis]>=4.15.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "pytest-randomly>=5.1.0",
+    "time-machine>=3.6.0",
+    "respx>=0.23.1",
+    "pytest-mock>=3.17.0",
+    "dirty-equals>=0.11",
+    "inline-snapshot>=0.37.0",
+    "ruff>=0.17.5",  # inline-snapshot formats fixed snapshots with ruff
+    "polyfactory>=3.5.0",
 ]
 
 [tool.ruff]
@@ -100,6 +109,7 @@ ignore = [
 "{tests,scripts,migrations}/**" = ["TID251"]
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
+"tests/providers/factories.py" = ["N815"]  # factory attributes match provider model fields
 
 [tool.ruff.lint.isort]
 known-third-party = ["celery"]
@@ -120,7 +130,16 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
 ]
-addopts = "-v --tb=short"
+addopts = "--tb=short -n auto --maxprocesses=4"
+verbosity_assertions = 2
+strict = true
+timeout = 10
+
+[tool.inline-snapshot]
+# Ordinary test runs only compare snapshots; source edits require explicit CLI flags.
+default-flags = ["short-report"]
+default-flags-tui = ["short-report"]
+format-command = "ruff format --stdin-filename '{filename}'"
 
 [build-system]
 requires = ["uv_build"]

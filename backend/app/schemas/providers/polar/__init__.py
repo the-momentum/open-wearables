@@ -17,6 +17,7 @@ from .exercise_import import (
     TrainingLoadProJSON,
 )
 from .nightly_recharge import NightlyRechargeJSON, NightlyRechargeResponseJSON
+from .physical_info import PhysicalInfoJSON
 from .sleep import SleepJSON, SleepResponseJSON
 from .webhook import PolarWebhookEvent, PolarWebhookEventType
 
@@ -44,6 +45,8 @@ __all__ = [
     # Nightly recharge
     "NightlyRechargeJSON",
     "NightlyRechargeResponseJSON",
+    # Physical info
+    "PhysicalInfoJSON",
     # Sleep
     "SleepJSON",
     "SleepResponseJSON",

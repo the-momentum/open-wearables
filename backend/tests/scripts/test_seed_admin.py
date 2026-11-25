@@ -33,11 +33,7 @@ ADMIN_EMAIL = "admin@example.org"
 
 
 def _seed(db: Session, password: str, environment: EnvironmentType) -> None:
-    # The script imports verify_password directly, so it misses the fast-hashing fixture's patch.
-    with (
-        patch.object(seed_module, "SessionLocal", lambda: nullcontext(db)),
-        patch.object(seed_module, "verify_password", security.verify_password),
-    ):
+    with patch.object(seed_module, "SessionLocal", lambda: nullcontext(db)):
         seed_module.seed_admin(ADMIN_EMAIL, password, environment=environment)
 
 

@@ -3,10 +3,11 @@
 import json
 import time
 from collections.abc import Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -31,7 +32,7 @@ CREATE_EVENT = {
 
 @pytest.fixture
 def celery() -> Generator[MagicMock, None, None]:
-    with patch(f"{HANDLER}.celery_app") as mock, patch(f"{HANDLER}.store_raw_payload"):
+    with patch(f"{HANDLER}.celery_app", autospec=True) as mock, patch(f"{HANDLER}.store_raw_payload", autospec=True):
         mock.send_task.return_value.id = "task-1"
         yield mock
 
@@ -112,31 +113,38 @@ class TestRouting:
     def test_registration_defaults_to_this_deployments_callback_url(
         self, client: TestClient, auth_headers: dict[str, str]
     ) -> None:
-        registered = AsyncMock(return_value=[{"status": "created"}])
         with (
             patch.object(settings, "api_base_url", "https://api.example.com"),
-            patch("app.services.providers.oura.webhook_service.OuraWebhookService.register_subscriptions", registered),
+            patch(
+                "app.services.providers.oura.webhook_service.OuraWebhookService.register_subscriptions",
+                autospec=True,
+                return_value=[{"status": "created"}],
+            ) as registered,
         ):
             response = client.post("/api/v1/providers/oura/webhooks/subscriptions", headers=auth_headers)
 
         assert response.status_code == 200
-        registered.assert_awaited_once_with("https://api.example.com/api/v1/providers/oura/webhooks")
+        registered.assert_awaited_once_with(ANY, "https://api.example.com/api/v1/providers/oura/webhooks")
 
     def test_subscriptions_path_still_reaches_the_management_api(
         self, client: TestClient, auth_headers: dict[str, str]
     ) -> None:
-        listed = AsyncMock(return_value=[])
-        with patch("app.services.providers.strava.webhook_service.StravaWebhookService.list_subscriptions", listed):
+        with patch(
+            "app.services.providers.strava.webhook_service.StravaWebhookService.list_subscriptions",
+            autospec=True,
+            return_value=[],
+        ) as listed:
             response = client.get(f"{BASE}/subscriptions", headers=auth_headers)
 
         assert response.status_code == 200
         assert response.json() == {"subscriptions": []}
         listed.assert_awaited_once()
 
-    def test_subscription_list_hides_the_token(self, client: TestClient, auth_headers: dict[str, str]) -> None:
-        strava_response = httpx.Response(
+    def test_subscription_list_hides_the_token(
+        self, client: TestClient, auth_headers: dict[str, str], respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.get("https://www.strava.com/api/v3/push_subscriptions").respond(
             200,
-            request=httpx.Request("GET", "https://www.strava.com/api/v3/push_subscriptions"),
             json=[
                 {
                     "id": 382914,
@@ -150,9 +158,7 @@ class TestRouting:
         with (
             patch.object(settings, "strava_client_id", "293960"),
             patch.object(settings, "strava_client_secret", SecretStr("client-secret")),
-            patch("httpx.AsyncClient") as client_class,
         ):
-            client_class.return_value.__aenter__.return_value.get = AsyncMock(return_value=strava_response)
             response = client.get(f"{BASE}/subscriptions", headers=auth_headers)
 
         assert response.status_code == 200

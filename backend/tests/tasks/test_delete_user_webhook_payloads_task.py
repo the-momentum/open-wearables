@@ -1,16 +1,19 @@
 """Tests for deleting the outgoing webhook payloads of a deleted user from Svix."""
 
 from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
 from celery.exceptions import Retry
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
-from svix.api import BulkExpungeContentsOut, BulkExpungeStatus
+from svix.api import BulkExpungeContentsOut, BulkExpungeStatus, ListResponseMessageOut, Message, MessageOut, Svix
 from svix.api.errors.http_error import HttpError
 
 from app.integrations.celery.tasks.delete_user_webhook_payloads_task import delete_user_webhook_payloads
+from app.models import Developer
 from app.services import user_service
 from app.services.outgoing_webhooks import svix as svix_service
 from tests.factories import UserFactory
@@ -20,13 +23,15 @@ def _http_error(status_code: int) -> HttpError:
     return HttpError.init_exception({"code": "err", "detail": "err"}, status_code)
 
 
-def _page(ids: list[str], *, done: bool, iterator: str | None = None) -> MagicMock:
-    return MagicMock(data=[MagicMock(id=msg_id) for msg_id in ids], done=done, iterator=iterator)
+def _page(ids: list[str], *, done: bool, iterator: str | None = None) -> ListResponseMessageOut:
+    messages = [MessageOut(event_type="test", payload={}, id=msg_id, timestamp=datetime.now(UTC)) for msg_id in ids]
+    return ListResponseMessageOut(data=messages, done=done, iterator=iterator)
 
 
 @pytest.fixture
 def mock_client() -> Generator[MagicMock, None, None]:
-    mock = MagicMock()
+    mock = create_autospec(Svix, instance=True)
+    mock.message = create_autospec(Message, instance=True)
     with patch("app.services.outgoing_webhooks.svix._client", mock):
         yield mock
 
@@ -100,10 +105,14 @@ class TestDeleteUserMessagePayloads:
 
 
 class TestDeleteUserWebhookPayloadsTask:
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")
-    def test_deletes_in_every_developer_app(self, mock_dev_service: MagicMock, mock_svix: MagicMock) -> None:
-        dev1, dev2 = MagicMock(id=uuid4()), MagicMock(id=uuid4())
+    def test_deletes_in_every_developer_app(self, mocker: MockerFixture) -> None:
+        mock_dev_service = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service", autospec=True
+        )
+        mock_svix = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service", autospec=True
+        )
+        dev1, dev2 = Developer(id=uuid4()), Developer(id=uuid4())
         mock_dev_service.crud.get_all.return_value = [dev1, dev2]
         mock_svix.delete_user_message_payloads.return_value = 3
         user_id = uuid4()
@@ -116,28 +125,36 @@ class TestDeleteUserWebhookPayloadsTask:
             (str(dev2.id), user_id),
         ]
 
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")
-    def test_skips_apps_missing_in_svix(self, mock_dev_service: MagicMock, mock_svix: MagicMock) -> None:
-        mock_dev_service.crud.get_all.return_value = [MagicMock(id=uuid4()), MagicMock(id=uuid4())]
+    def test_skips_apps_missing_in_svix(self, mocker: MockerFixture) -> None:
+        mock_dev_service = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service", autospec=True
+        )
+        mock_svix = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service", autospec=True
+        )
+        mock_dev_service.crud.get_all.return_value = [Developer(id=uuid4()), Developer(id=uuid4())]
         mock_svix.delete_user_message_payloads.side_effect = [_http_error(404), 2]
 
         result = delete_user_webhook_payloads(str(uuid4()))
 
         assert result == {"user_id": result["user_id"], "deleted": 2, "errors": []}
 
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.logger")
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")
-    def test_retries_when_an_app_fails(
-        self, mock_dev_service: MagicMock, mock_svix: MagicMock, mock_capture: MagicMock
-    ) -> None:
+    def test_retries_when_an_app_fails(self, mocker: MockerFixture) -> None:
+        mock_dev_service = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service", autospec=True
+        )
+        mock_svix = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service", autospec=True
+        )
+        mock_capture = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.logger", autospec=True
+        )
         app_id = uuid4()
-        mock_dev_service.crud.get_all.return_value = [MagicMock(id=app_id)]
+        mock_dev_service.crud.get_all.return_value = [Developer(id=app_id)]
         mock_svix.delete_user_message_payloads.side_effect = _http_error(500)
 
         with (
-            patch.object(delete_user_webhook_payloads, "retry", side_effect=Retry()) as mock_retry,
+            patch.object(delete_user_webhook_payloads, "retry", autospec=True, side_effect=Retry()) as mock_retry,
             pytest.raises(Retry),
         ):
             delete_user_webhook_payloads(str(uuid4()))
@@ -146,21 +163,27 @@ class TestDeleteUserWebhookPayloadsTask:
         assert mock_capture.error.call_args.kwargs["exc_info"] is not None
         assert mock_capture.error.call_args.kwargs["app_id"] == str(app_id)
 
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")
-    def test_retries_when_loading_developers_fails(self, mock_dev_service: MagicMock, mock_svix: MagicMock) -> None:
+    def test_retries_when_loading_developers_fails(self, mocker: MockerFixture) -> None:
+        mock_dev_service = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service", autospec=True
+        )
+        mock_svix = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service", autospec=True
+        )
         mock_dev_service.crud.get_all.side_effect = ConnectionError("db down")
 
         with (
-            patch.object(delete_user_webhook_payloads, "retry", side_effect=Retry()) as mock_retry,
+            patch.object(delete_user_webhook_payloads, "retry", autospec=True, side_effect=Retry()) as mock_retry,
             pytest.raises(Retry),
         ):
             delete_user_webhook_payloads(str(uuid4()))
         mock_retry.assert_called_once()
         mock_svix.delete_user_message_payloads.assert_not_called()
 
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
-    def test_noop_when_svix_disabled(self, mock_svix: MagicMock) -> None:
+    def test_noop_when_svix_disabled(self, mocker: MockerFixture) -> None:
+        mock_svix = mocker.patch(
+            "app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service", autospec=True
+        )
         mock_svix.is_enabled.return_value = False
 
         result = delete_user_webhook_payloads(str(uuid4()))
@@ -170,34 +193,34 @@ class TestDeleteUserWebhookPayloadsTask:
 
 
 class TestUserDeleteSchedulesPayloadDeletion:
-    @patch("app.services.user_service.delete_user_webhook_payloads")
-    def test_schedules_payload_deletion_after_user_delete(self, mock_task: MagicMock, db: Session) -> None:
+    def test_schedules_payload_deletion_after_user_delete(self, mocker: MockerFixture, db: Session) -> None:
+        mock_task = mocker.patch("app.services.user_service.delete_user_webhook_payloads", autospec=True)
         user = UserFactory()
         user_id = user.id
 
-        with patch("app.services.user_service.svix_service.is_enabled", return_value=True):
+        with patch("app.services.user_service.svix_service.is_enabled", autospec=True, return_value=True):
             user_service.delete(db, user_id)
 
         assert user_service.get(db, user_id) is None
         mock_task.apply_async.assert_called_once()
         assert mock_task.apply_async.call_args.kwargs["args"] == [str(user_id)]
 
-    @patch("app.services.user_service.delete_user_webhook_payloads")
-    def test_delete_succeeds_when_scheduling_fails(self, mock_task: MagicMock, db: Session) -> None:
+    def test_delete_succeeds_when_scheduling_fails(self, mocker: MockerFixture, db: Session) -> None:
+        mock_task = mocker.patch("app.services.user_service.delete_user_webhook_payloads", autospec=True)
         mock_task.apply_async.side_effect = ConnectionError("broker down")
         user = UserFactory()
         user_id = user.id
 
-        with patch("app.services.user_service.svix_service.is_enabled", return_value=True):
+        with patch("app.services.user_service.svix_service.is_enabled", autospec=True, return_value=True):
             user_service.delete(db, user_id)
 
         assert user_service.get(db, user_id) is None
 
-    @patch("app.services.user_service.delete_user_webhook_payloads")
-    def test_skips_when_svix_disabled(self, mock_task: MagicMock, db: Session) -> None:
+    def test_skips_when_svix_disabled(self, mocker: MockerFixture, db: Session) -> None:
+        mock_task = mocker.patch("app.services.user_service.delete_user_webhook_payloads", autospec=True)
         user = UserFactory()
 
-        with patch("app.services.user_service.svix_service.is_enabled", return_value=False):
+        with patch("app.services.user_service.svix_service.is_enabled", autospec=True, return_value=False):
             user_service.delete(db, user.id)
 
         mock_task.apply_async.assert_not_called()

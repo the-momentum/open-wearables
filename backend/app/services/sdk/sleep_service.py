@@ -27,6 +27,7 @@ from app.schemas.model_crud.activities import (
     SleepStage,
 )
 from app.schemas.providers.mobile_sdk import (
+    SLEEP_START_STAGES,
     SLEEP_START_STATES,
     SleepState,
     SleepStateStage,
@@ -57,6 +58,26 @@ _STAGE_TO_METRIC: dict[str, str] = {
 
 
 SLEEP_SCORE_VALUE_TYPE = "sleepScore"
+
+
+def _drop_leading_awake(
+    stages: list[SleepStateStage],
+    protect_from: datetime | None = None,
+) -> list[SleepStateStage]:
+    """Drop `awake` stages recorded before the night's first sleep stage.
+
+    Awake only counts once sleep has begun, so this runs on the merged night, not on each
+    upload: an upload that starts mid-night keeps its awakening. ``protect_from`` keeps
+    stages at or after that moment, so awake a stored record already counted stays.
+    """
+    ordered = sorted(stages, key=lambda stage: stage.start_time)
+    for index, stage in enumerate(ordered):
+        if stage.stage in SLEEP_START_STAGES:
+            # Cut by time, so awake that starts with the first sleep stage is kept in either order
+            return [kept for kept in ordered if kept.start_time >= stage.start_time]
+        if protect_from is not None and stage.start_time >= protect_from:
+            return ordered[index:]
+    return []
 
 
 def _extract_sleep_score(values: list[dict[str, Any]] | None) -> float | None:
@@ -149,6 +170,14 @@ def is_ready_to_finish(state: SleepState, now: datetime) -> bool:
         and state.last_received_at is not None
         and now - as_utc(state.last_received_at) >= timedelta(minutes=settings.sleep_upload_quiet_minutes)
     )
+
+
+def _writer_quiet(state: SleepState) -> bool:
+    """True when the session's writer has sent nothing for the end gap."""
+    if state.last_received_at is None:
+        return True
+    quiet_for = datetime.now(timezone.utc) - as_utc(state.last_received_at)
+    return quiet_for >= timedelta(minutes=settings.sleep_end_gap_minutes)
 
 
 def _create_new_sleep_state(
@@ -271,6 +300,9 @@ def _apply_transition(
         case _:
             stage_label = SleepStageType.UNKNOWN
 
+    if stage_label in SLEEP_START_STAGES:
+        state.has_sleep_stage = True
+
     if end_time > state.end_time:
         state.end_time = end_time
     elif start_time < state.start_time:
@@ -320,7 +352,7 @@ def handle_sleep_data(
         - Acquire a per-user Redis lock to prevent concurrent state corruption
         - Deduplicate incoming data based on start/end/stage/source
         - Sessions are kept per provider and writer app, so overlapping writers never share one
-        - If no active session exists: Create new session in Redis (only for valid start states)
+        - If no active session exists: Create new session in Redis (valid start states or `awake`)
         - If active session exists: Check gap between new sample and the session window
           * Gap > 2 hours: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
@@ -369,7 +401,7 @@ def handle_sleep_data(
             field = session_field(provider, source_app_id)
             current_state = states.get(field)
             if not current_state:
-                if sleep_phase not in SLEEP_START_STATES:
+                if sleep_phase not in SLEEP_START_STATES and sleep_phase is not SleepPhase.AWAKE:
                     continue
 
                 current_state = _create_new_sleep_state(
@@ -385,6 +417,16 @@ def handle_sleep_data(
                     source_app_id,
                     device_manufacturer,
                 )
+            elif sleep_phase in SLEEP_START_STATES and not current_state.has_sleep_stage:
+                # The first sleep sample decides the source, not the awake that opened the session.
+                current_state.source_name = original_source_name or "unknown"
+                current_state.device_model = device_model
+                current_state.device_type = device_type
+                current_state.device_id = device_id
+                current_state.source_app_id = source_app_id
+                current_state.device_manufacturer = device_manufacturer
+                if sjson.zoneOffset:
+                    current_state.zone_offset = sjson.zoneOffset
 
             current_state = _apply_transition(
                 db_session,
@@ -568,10 +610,49 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     each merge step extends the accumulated DB record until the whole night is
     represented as a single session.
     """
+    if not state.has_sleep_stage:
+        # Awake alone waits for the writer's next upload; once the writer goes quiet it is dropped.
+        if _writer_quiet(state):
+            delete_sleep_state(user_id, state)
+        return
+
+    # The lookup spans the upload's own stages without its leading awake, so that awake
+    # cannot bridge the night to an unrelated session (a nap, for example).
+    _, own_stages = _calculate_final_metrics(_drop_leading_awake(state.stages))
+    lookup_start = own_stages[0].start_time if own_stages else state.start_time
+    lookup_end = own_stages[-1].end_time if own_stages else state.end_time
+
+    # --- Merge with an adjacent existing session if one exists ---
+    source_for_lookup = state.source_name if state.source_name != "unknown" else None
+    adjacent = event_record_service.find_adjacent_sleep_record(
+        db_session,
+        UUID(user_id),
+        lookup_start,
+        lookup_end,
+        settings.sleep_end_gap_minutes,
+        source=source_for_lookup,
+        provider=state.provider,
+        source_app_id=state.source_app_id,
+    )
+
+    # Deserialise the stored stages back to SleepStateStage so we can feed them into
+    # _calculate_final_metrics together with the new stages. They go first, so a stored
+    # stage keeps winning a tie with a new one.
+    stages: list[SleepStateStage] = []
+    if adjacent is not None and adjacent.sleep_detail and adjacent.sleep_detail.sleep_stages:
+        for s in adjacent.sleep_detail.sleep_stages:
+            with contextlib.suppress(Exception):
+                stages.append(SleepStateStage.model_validate(s))
+    stages += state.stages
+
+    # Stored stages have no in_bed, so don't re-trim the awake the record already counted.
+    stages = _drop_leading_awake(
+        stages,
+        protect_from=adjacent.start_datetime if adjacent is not None else None,
+    )
 
     # Recalculate metrics from stages to handle overlaps/duplicates
-    # state.stages is a list[SleepStateStage]
-    metrics, cleaned_stages = _calculate_final_metrics(state.stages)
+    metrics, cleaned_stages = _calculate_final_metrics(stages)
 
     if cleaned_stages:
         start_time = cleaned_stages[0].start_time
@@ -580,37 +661,10 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         end_time = state.end_time
         start_time = state.start_time
 
-    # --- Merge with an adjacent existing session if one exists ---
-    source_for_lookup = state.source_name if state.source_name != "unknown" else None
-    adjacent = event_record_service.find_adjacent_sleep_record(
-        db_session,
-        UUID(user_id),
-        start_time,
-        end_time,
-        settings.sleep_end_gap_minutes,
-        source=source_for_lookup,
-        provider=state.provider,
-        source_app_id=state.source_app_id,
-    )
-
     if adjacent is not None:
-        # Deserialise the stored stages back to SleepStateStage so we can feed
-        # them into _calculate_final_metrics together with the new stages.
-        existing_state_stages: list[SleepStateStage] = []
-        if adjacent.sleep_detail and adjacent.sleep_detail.sleep_stages:
-            for s in adjacent.sleep_detail.sleep_stages:
-                with contextlib.suppress(Exception):
-                    existing_state_stages.append(SleepStateStage.model_validate(s))
-
-        # Recalculate from the union of both stage lists.
-        metrics, cleaned_stages = _calculate_final_metrics(existing_state_stages + state.stages)
-
         # Expand the session window to cover both records.
         start_time = min(adjacent.start_datetime, start_time)
         end_time = max(adjacent.end_datetime, end_time)
-        if cleaned_stages:
-            start_time = min(start_time, cleaned_stages[0].start_time)
-            end_time = max(end_time, cleaned_stages[-1].end_time)
 
         # Remove the old record before creating the merged one (cascade deletes detail).
         event_record_service.delete(db_session, adjacent.id)

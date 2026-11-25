@@ -46,8 +46,9 @@ INTERNAL_ERROR = _problem(500, "Internal server error", "INTERNAL_ERROR")
 def lenient_client(db: Session) -> Generator[TestClient, None, None]:
     """A client that returns the 500 response instead of raising the server exception."""
     api.dependency_overrides[_get_db_dependency] = lambda: db
-    with TestClient(api, raise_server_exceptions=False) as test_client:
-        yield test_client
+    test_client = TestClient(api, raise_server_exceptions=False)
+    yield test_client
+    test_client.close()  # Avoid `with`, which runs app lifespan on every test.
     api.dependency_overrides.clear()
 
 
@@ -56,7 +57,7 @@ class TestDomainErrors:
         developer = DeveloperFactory()
         user = UserFactory()
 
-        with patch("app.api.routes.v1.users.user_service.delete", side_effect=ConflictError("Busy.")):
+        with patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=ConflictError("Busy.")):
             response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
 
         assert response.status_code == 409
@@ -76,7 +77,9 @@ class TestDomainErrors:
         developer = DeveloperFactory()
         user = UserFactory()
 
-        with patch("app.api.routes.v1.users.user_service.delete", side_effect=AppError("internal state")):
+        with patch(
+            "app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=AppError("internal state")
+        ):
             response = lenient_client.delete(
                 f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id)
             )
@@ -116,7 +119,7 @@ class TestDomainErrors:
         developer = DeveloperFactory()
         user = UserFactory()
 
-        with patch("app.api.routes.v1.users.user_service.delete", side_effect=error):
+        with patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=error):
             response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
 
         assert response.status_code == status
@@ -128,6 +131,7 @@ class TestDomainErrors:
 
         with patch(
             "app.api.routes.v1.users.user_service.delete",
+            autospec=True,
             side_effect=WebhookVerificationError("Invalid webhook signature"),
         ):
             response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
@@ -173,7 +177,7 @@ class TestInvalidInput:
     ) -> None:
         developer = DeveloperFactory()
 
-        with patch("app.middlewares.logger.log") as log:
+        with patch("app.middlewares.logger.log", autospec=True) as log:
             response = client.post(
                 f"{api_v1_prefix}/users",
                 json={"email": "jane.doe-at-example"},
@@ -252,8 +256,8 @@ class TestIntegrityErrors:
             db.flush()
 
         with (
-            patch("app.api.routes.v1.users.user_service.delete", side_effect=write_a_duplicate),
-            patch("app.middlewares.logger.log") as log,
+            patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=write_a_duplicate),
+            patch("app.middlewares.logger.log", autospec=True) as log,
         ):
             response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
 
@@ -277,8 +281,8 @@ class TestIntegrityErrors:
             db.flush()
 
         with (
-            patch("app.api.routes.v1.users.user_service.delete", side_effect=write_a_duplicate),
-            patch("app.main.logger") as logger,
+            patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=write_a_duplicate),
+            patch("app.main.logger", autospec=True) as logger,
         ):
             client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
 
@@ -290,7 +294,7 @@ class TestIntegrityErrors:
         developer = DeveloperFactory()
         user = UserFactory()
 
-        with patch("app.api.routes.v1.users.user_service.delete", side_effect=ForeignKeyViolation("fk")):
+        with patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=ForeignKeyViolation("fk")):
             response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
 
         assert response.status_code == 400
@@ -301,7 +305,7 @@ class TestIntegrityErrors:
         user = UserFactory()
         error = IntegrityError("stmt", {}, NotNullViolation("null value in column"))
 
-        with patch("app.api.routes.v1.users.user_service.delete", side_effect=error):
+        with patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=error):
             response = lenient_client.delete(
                 f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id)
             )
@@ -315,7 +319,7 @@ class TestUnhandledErrors:
         developer = DeveloperFactory()
         user = UserFactory()
 
-        with patch("app.api.routes.v1.users.user_service.delete", side_effect=AttributeError("oops")):
+        with patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=AttributeError("oops")):
             response = lenient_client.delete(
                 f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id)
             )
@@ -329,7 +333,7 @@ class TestUnhandledErrors:
         user = UserFactory()
 
         with (
-            patch("app.api.routes.v1.users.user_service.delete", side_effect=AttributeError("oops")),
+            patch("app.api.routes.v1.users.user_service.delete", autospec=True, side_effect=AttributeError("oops")),
             pytest.raises(AttributeError, match="oops"),
         ):
             client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))

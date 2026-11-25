@@ -14,15 +14,25 @@ Tests cover:
 from unittest.mock import patch
 
 import pytest
+from dirty_equals import IsDatetime, IsStr
 from fastapi.testclient import TestClient
+from httpx import Response
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.config import DEFAULT_ADMIN_PASSWORD, settings
+from app.integrations.redis_client import get_redis_client
 from app.schemas.model_crud.user_management import DeveloperUpdate
 from app.services import developer_service
+from app.utils import login_throttle
 from app.utils.config_utils import EnvironmentType
+from app.utils.security import verify_password
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
+
+
+def _login(client: TestClient, api_v1_prefix: str, email: str, password: str) -> Response:
+    return client.post(f"{api_v1_prefix}/auth/login", data={"username": email, "password": password})
 
 
 class TestLogin:
@@ -42,11 +52,62 @@ class TestLogin:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
-        assert data["expires_in"] == settings.access_token_expire_minutes * 60
-        assert isinstance(data["access_token"], str)
-        assert len(data["access_token"]) > 0
+        assert data == {
+            "access_token": IsStr(min_length=1),
+            "refresh_token": IsStr(regex=r"rt-.*"),
+            "token_type": "bearer",
+            "expires_in": settings.access_token_expire_minutes * 60,
+            "password_change": None,
+        }
+
+    def test_login_locked_after_failed_attempts(
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
+        DeveloperFactory(email="test@example.com", password="test1234")
+
+        statuses = [_login(client, api_v1_prefix, "Test@Example.com ", "wrong").status_code for _ in range(3)]
+        locked = _login(client, api_v1_prefix, "test@example.com", "test1234")
+
+        assert statuses == [401, 401, 401]
+        assert locked.status_code == 429
+        assert 0 < int(locked.headers["Retry-After"]) <= settings.login_lockout_seconds
+
+    def test_login_locks_unknown_emails_too(
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
+        statuses = [_login(client, api_v1_prefix, "nobody@example.com", "x").status_code for _ in range(4)]
+
+        assert statuses == [401, 401, 401, 429]
+
+    def test_login_success_resets_failed_attempts(
+        self, mocker: MockerFixture, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
+        DeveloperFactory(email="test@example.com", password="test1234")
+        for _ in range(2):
+            _login(client, api_v1_prefix, "test@example.com", "wrong")
+
+        assert _login(client, api_v1_prefix, "test@example.com", "test1234").status_code == 200
+        statuses = [_login(client, api_v1_prefix, "test@example.com", "wrong").status_code for _ in range(3)]
+
+        assert statuses == [401, 401, 401]
+
+    def test_login_attempts_in_flight_count_against_the_limit(self, mocker: MockerFixture) -> None:
+        """Parallel requests are counted on arrival, so a burst can't outrun the limit."""
+        mocker.patch.object(settings, "login_max_failed_attempts", 3)
+        waits = [login_throttle.count_attempt("test@example.com") for _ in range(4)]
+
+        assert waits[:3] == [0, 0, 0]
+        assert 0 < waits[3] <= settings.login_lockout_seconds
+
+    def test_login_counter_without_expiry_gets_one(self) -> None:
+        get_redis_client().set("login_attempts:test@example.com", 1)
+
+        login_throttle.count_attempt("test@example.com")
+
+        assert 0 < get_redis_client().ttl("login_attempts:test@example.com") <= settings.login_lockout_seconds
 
     def test_login_invalid_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test login fails with incorrect password."""
@@ -283,10 +344,14 @@ class TestGetCurrentDeveloper:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == str(developer.id)
-        assert data["email"] == "test@example.com"
-        assert "created_at" in data
-        assert "updated_at" in data
+        assert data == {
+            "id": str(developer.id),
+            "first_name": None,
+            "last_name": None,
+            "email": "test@example.com",
+            "created_at": IsDatetime(iso_string=True),
+            "updated_at": IsDatetime(iso_string=True),
+        }
 
     def test_get_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting current developer fails without authentication."""
@@ -348,8 +413,7 @@ class TestUpdateCurrentDeveloper:
 
         # Verify in database
         db.refresh(developer)
-        # Password is updated with the hashed_ prefix pattern from the fixture
-        assert developer.hashed_password == "hashed_new_password123"
+        assert verify_password("new_password123", developer.hashed_password)
 
     def test_update_current_developer_both_fields(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating both email and password."""
@@ -369,8 +433,7 @@ class TestUpdateCurrentDeveloper:
         # Verify in database
         db.refresh(developer)
         assert developer.email == "new@example.com"
-        # Password is updated with the hashed_ prefix pattern from the fixture
-        assert developer.hashed_password == "hashed_new_password123"
+        assert verify_password("new_password123", developer.hashed_password)
 
     def test_update_current_developer_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating with empty payload."""

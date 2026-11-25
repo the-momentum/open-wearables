@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import create_autospec
 from uuid import uuid4
 
 import pytest
 
+from app.repositories.event_record_repository import EventRecordRepository
+from app.repositories.user_connection_repository import UserConnectionRepository
+from app.services.providers.fitbit.oauth import FitbitOAuth
 from app.services.providers.fitbit.workouts import FitbitWorkouts
 
 RAW_ACTIVITY = {
@@ -23,9 +26,9 @@ RAW_ACTIVITY = {
 
 @pytest.fixture
 def fitbit_workouts() -> FitbitWorkouts:
-    workout_repo = MagicMock()
-    connection_repo = MagicMock()
-    oauth = MagicMock()
+    workout_repo = create_autospec(EventRecordRepository, instance=True)
+    connection_repo = create_autospec(UserConnectionRepository, instance=True)
+    oauth = create_autospec(FitbitOAuth, instance=True)
     return FitbitWorkouts(
         workout_repo=workout_repo,
         connection_repo=connection_repo,

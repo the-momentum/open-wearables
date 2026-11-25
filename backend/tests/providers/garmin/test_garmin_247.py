@@ -3,17 +3,19 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import UUID, uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, HealthScore, SeriesAggregate, SeriesSample, SleepDetails
+from app.models import DataSource, HealthScore, SeriesAggregate, SeriesSample, SleepDetails, UserConnection
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.enums.series_types import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import CalendarPeriod
@@ -38,7 +40,7 @@ class TestGarmin247Data:
         """Create Garmin247Data instance for testing."""
         connection_repo = UserConnectionRepository()
         oauth = GarminOAuth(
-            user_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
             connection_repo=connection_repo,
             provider_name="garmin",
             api_base_url="https://apis.garmin.com",
@@ -178,7 +180,7 @@ class TestGarmin247Data:
         start = datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)  # 12 hours
 
-        with patch.object(garmin_247, "_make_api_request", return_value=[{"id": "1"}]) as mock_request:
+        with patch.object(garmin_247, "_make_api_request", autospec=True, return_value=[{"id": "1"}]) as mock_request:
             result = garmin_247._fetch_in_chunks(db, user.id, "/test", start, end)
 
             # Should make only 1 request for 12-hour range
@@ -193,7 +195,7 @@ class TestGarmin247Data:
         start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 3, 0, 0, 0, tzinfo=timezone.utc)  # 2 days
 
-        with patch.object(garmin_247, "_make_api_request", return_value=[{"id": "1"}]) as mock_request:
+        with patch.object(garmin_247, "_make_api_request", autospec=True, return_value=[{"id": "1"}]) as mock_request:
             result = garmin_247._fetch_in_chunks(db, user.id, "/test", start, end)
 
             # Should make 2 requests for 48-hour range (24h chunks)
@@ -211,6 +213,7 @@ class TestGarmin247Data:
         with patch.object(
             garmin_247,
             "_make_api_request",
+            autospec=True,
             side_effect=[Exception("API Error"), [{"id": "2"}]],
         ) as mock_request:
             result = garmin_247._fetch_in_chunks(db, user.id, "/test", start, end)
@@ -576,11 +579,11 @@ class TestGarmin247Data:
 
         assert [sample["value"] for sample in normalized["steps"]] == [420]
 
-    @patch("app.services.providers.garmin.data_247.logger")
     def test_normalize_epochs_reports_skipped_epochs_once(
-        self, mock_logger: MagicMock, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, mixed_slot_epochs: list[dict[str, Any]]
     ) -> None:
         """Malformed epochs are reported once per call, with how many were skipped."""
+        mock_logger = mocker.patch("app.services.providers.garmin.data_247.logger", autospec=True)
         broken = [
             {**mixed_slot_epochs[0], "summaryId": f"bad-{i}", "startTimeOffsetInSeconds": "n/a"} for i in range(3)
         ]
@@ -667,6 +670,27 @@ class TestGarmin247Data:
     # HRV Data Tests
     # -------------------------------------------------------------------------
 
+    @pytest.mark.parametrize(
+        ("callback_url", "downloaded"),
+        [
+            ("https://apis.garmin.com/wellness-api/rest/activityFile?id=1&token=t", True),
+            ("https://attacker.example/collect", False),
+            ("https://apis.garmin.com.attacker.example/x", False),
+            ("http://apis.garmin.com/wellness-api/rest/activityFile?id=1", False),
+        ],
+    )
+    def test_fit_file_downloaded_only_from_garmin(
+        self, garmin_247: Garmin247Data, db: Session, callback_url: str, downloaded: bool
+    ) -> None:
+        item = {"userId": "garmin_user_123", "activityId": 1, "fileType": "FIT", "callbackURL": callback_url}
+
+        with patch(
+            "app.services.providers.garmin.data_247.download_binary_content", autospec=True, side_effect=RuntimeError
+        ) as download:
+            garmin_247.process_items_batch(db, UserFactory().id, "activityFiles", [item])
+
+        assert download.called is downloaded
+
     def test_process_items_batch_hrv(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data."""
         user = UserFactory()
@@ -693,6 +717,56 @@ class TestGarmin247Data:
         # 3 hrvValues samples; lastNightAvg is the night's day value, kept in series_aggregate.
         assert count == 3
         assert [row.avg for row in db.query(SeriesAggregate)] == [Decimal("84")]
+
+    def test_process_items_batch_keeps_one_score_for_a_night_sent_twice(
+        self, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
+    ) -> None:
+        """The later delivery shortens the night: only its score stays, not the earlier one past the new end."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        first = {**sample_sleep, "overallSleepScore": {"value": 80}}
+        shortened = {
+            **sample_sleep,
+            "durationInSeconds": 25200,
+            "lightSleepDurationInSeconds": 10800,
+            "overallSleepScore": {"value": 84},
+        }
+
+        garmin_247.process_items_batch(db, user.id, "sleeps", [first, shortened])
+
+        scores = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        assert [(score.value, score.recorded_at) for score in scores] == [
+            (84, datetime(2024, 1, 15, 6, tzinfo=timezone.utc))
+        ]
+
+    def test_process_items_batch_drops_the_score_of_a_night_resent_without_one(
+        self, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
+    ) -> None:
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        first = {**sample_sleep, "overallSleepScore": {"value": 80}}
+        shortened = {**sample_sleep, "durationInSeconds": 25200}
+
+        garmin_247.process_items_batch(db, user.id, "sleeps", [first, shortened])
+
+        assert db.query(HealthScore).filter(HealthScore.user_id == user.id).count() == 0
+
+    def test_process_items_batch_skips_the_score_of_a_night_not_stored(
+        self, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
+    ) -> None:
+        """A night moved onto another night's window is not stored, so its score must not replace that night's."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin")
+        later_start = sample_sleep["startTimeInSeconds"] + 3600
+        other = {**sample_sleep, "summaryId": "sleep_456", "startTimeInSeconds": later_start}
+        garmin_247.process_items_batch(
+            db, user.id, "sleeps", [sample_sleep, {**other, "overallSleepScore": {"value": 70}}]
+        )
+        moved = {**sample_sleep, "startTimeInSeconds": later_start, "overallSleepScore": {"value": 90}}
+
+        garmin_247.process_items_batch(db, user.id, "sleeps", [moved])
+
+        assert [score.value for score in db.query(HealthScore).filter(HealthScore.user_id == user.id)] == [70]
 
     def test_process_items_batch_hrv_missing_start_time(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data with missing start time."""
@@ -846,23 +920,21 @@ class TestGarmin247Data:
         samples = garmin_247._build_body_comp_samples(user_id, {"weightInGrams": 75000})
         assert samples == []
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
     def test_process_items_batch_body_comp(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_body_comp: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_body_comp: dict[str, Any]
     ) -> None:
         """Test body composition is persisted through the batch entrypoint."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
-        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
+        mock_bulk_create.side_effect = lambda _repo, db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "bodyComps", [sample_body_comp])
 
         # Should create 6 data points: weight, body_fat, BMI, skeletal muscle mass, bone mass, body water
         mock_bulk_create.assert_called_once()
-        assert len(mock_bulk_create.call_args[0][1]) == 6
+        assert len(mock_bulk_create.call_args[0][2]) == 6
         assert count == 6
 
     def test_process_items_batch_body_comp_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
@@ -1039,18 +1111,16 @@ class TestGarmin247Data:
     # Batch Processing Tests
     # -------------------------------------------------------------------------
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
     def test_process_items_batch_dailies(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_daily: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_daily: dict[str, Any]
     ) -> None:
         """Test batch processing multiple daily items in a single bulk_create."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
         daily2 = {**sample_daily, "summaryId": "daily_456", "calendarDate": "2024-01-16"}
-        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
+        mock_bulk_create.side_effect = lambda _repo, db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "dailies", [sample_daily, daily2])
 
@@ -1076,37 +1146,33 @@ class TestGarmin247Data:
             [(get_series_type_id(SeriesType.steps), 420.0), (get_series_type_id(SeriesType.active_energy), 18.0)]
         )
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
-    def test_process_items_batch_stress(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-    ) -> None:
+    def test_process_items_batch_stress(self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session) -> None:
         """Test batch processing multiple stress items."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
         items = [
             {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 25, "300": 30}},
             {"startTimeInSeconds": 1705363200, "timeOffsetStressLevelValues": {"0": 40}},
         ]
-        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
+        mock_bulk_create.side_effect = lambda _repo, db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
 
         mock_bulk_create.assert_called_once()
         assert count == 3  # 2 + 1
 
-    @patch("app.services.event_record_service.event_record_service.bulk_create")
-    @patch("app.services.event_record_service.event_record_service.bulk_create_details")
     def test_process_items_batch_sleeps(
-        self,
-        mock_bulk_details: MagicMock,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_sleep: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
     ) -> None:
         """Test batch processing sleep items uses bulk_create for records."""
+        mock_bulk_details = mocker.patch(
+            "app.services.event_record_service.event_record_service.bulk_create_details", autospec=True
+        )
+        mock_bulk_create = mocker.patch(
+            "app.services.event_record_service.event_record_service.bulk_create", autospec=True
+        )
         user = UserFactory()
         sleep2 = {**sample_sleep, "summaryId": "sleep_456"}
 
@@ -1152,7 +1218,7 @@ class TestGarmin247Data:
         result = garmin_247._build_nap_record(nap, user_id, parent_summary_id="sleep_123")
         assert result is not None
         record, detail = result
-        assert record.external_id == "sleep_123"
+        assert record.external_id == "sleep_123-nap-1690916700"
         assert record.duration_seconds == 600
         assert detail.is_nap is True
         assert detail.sleep_total_duration_minutes == 10  # 600 // 60
@@ -1164,17 +1230,14 @@ class TestGarmin247Data:
         assert garmin_247._build_nap_record({"napDurationInSeconds": 600}, user_id) is None
         assert garmin_247._build_nap_record({"napStartTimeInSeconds": 1690916700}, user_id) is None
 
-    @patch("app.services.event_record_service.event_record_service.bulk_create")
-    @patch("app.services.event_record_service.event_record_service.bulk_create_details")
     def test_process_items_batch_sleeps_with_naps(
-        self,
-        mock_bulk_details: MagicMock,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_sleep: dict[str, Any],
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session, sample_sleep: dict[str, Any]
     ) -> None:
         """Naps embedded in a sleep summary are saved as separate is_nap=True records."""
+        mocker.patch("app.services.event_record_service.event_record_service.bulk_create_details", autospec=True)
+        mock_bulk_create = mocker.patch(
+            "app.services.event_record_service.event_record_service.bulk_create", autospec=True
+        )
         user = UserFactory()
         sleep_with_nap = {
             **sample_sleep,
@@ -1234,20 +1297,19 @@ class TestGarmin247Data:
         count = garmin_247.process_items_batch(db, user.id, "dailies", [])
         assert count == 0
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
     def test_process_items_batch_skips_bad_items(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
+        self, mocker: MockerFixture, garmin_247: Garmin247Data, db: Session
     ) -> None:
         """Test batch processing skips invalid items and continues."""
+        mock_bulk_create = mocker.patch(
+            "app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create", autospec=True
+        )
         user = UserFactory()
         items = [
             {"startTimeInSeconds": 0},  # Missing timestamp -> skipped
             {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 50}},  # Valid
         ]
-        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
+        mock_bulk_create.side_effect = lambda _repo, db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
 
@@ -1257,16 +1319,16 @@ class TestGarmin247Data:
 
 class TestWellnessPushRun:
     def test_push_is_written_under_the_run_it_reports(self) -> None:
-        connection = MagicMock(user_id=uuid4())
-        connection_repo = MagicMock()
+        connection = UserConnection(user_id=uuid4())
+        connection_repo = create_autospec(UserConnectionRepository, instance=True)
         connection_repo.get_all_by_provider_user_id.return_value = [connection]
         written_under = []
-        garmin_247 = MagicMock()
+        garmin_247 = create_autospec(Garmin247Data, instance=True)
         garmin_247.process_items_batch.side_effect = lambda *_args: written_under.append(sync_run_var.get()) or 1
 
-        with patch("app.services.providers.garmin.handlers.wellness.emit_sync_completed") as completed:
+        with patch("app.services.providers.garmin.handlers.wellness.emit_sync_completed", autospec=True) as completed:
             process_wellness_items(
-                MagicMock(), connection_repo, garmin_247, "dailies", [{"userId": "g1"}], [], set(), "trace"
+                MagicMock(spec=Session), connection_repo, garmin_247, "dailies", [{"userId": "g1"}], [], set(), "trace"
             )
 
         assert written_under[0].run_id == completed.call_args.kwargs["run_id"]

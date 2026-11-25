@@ -4,6 +4,7 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from dirty_equals import IsPartialDict
 from starlette.testclient import TestClient
 
 from app.config import settings
@@ -21,10 +22,10 @@ _BODY = {
 @pytest.fixture
 def mock_log() -> Generator[MagicMock, None, None]:
     with (
-        patch("app.api.routes.v1.sdk_sync.process_sdk_upload"),
-        patch("app.api.routes.v1.sdk_sync.store_raw_payload"),
+        patch("app.api.routes.v1.sdk_sync.process_sdk_upload", autospec=True),
+        patch("app.api.routes.v1.sdk_sync.store_raw_payload", autospec=True),
         patch.object(settings, "sdk_payload_s3_offload", False),
-        patch("app.api.routes.v1.sdk_sync.logger") as mock,
+        patch("app.api.routes.v1.sdk_sync.logger", autospec=True) as mock,
     ):
         yield mock
 
@@ -51,10 +52,12 @@ class TestSDKSyncAttribution:
 
         assert response.status_code == 202
         attributes = _batch_received(mock_log)
-        assert attributes["sdk_version"] == "0.15.0"
-        assert attributes["sdk_platform"] == "ios"
-        assert attributes["request_id"] == "req-1"
-        assert attributes["user_agent"] == "OpenWearablesHealthSDK/0.15.0 (iOS 18.1.0; iPhone15,2)"
+        assert attributes == IsPartialDict(
+            sdk_version="0.15.0",
+            sdk_platform="ios",
+            request_id="req-1",
+            user_agent="OpenWearablesHealthSDK/0.15.0 (iOS 18.1.0; iPhone15,2)",
+        )
 
     def test_sync_context_headers_are_logged(self, client: TestClient, api_v1_prefix: str, mock_log: MagicMock) -> None:
         client.post(

@@ -1,5 +1,6 @@
 """Tests for SDK token exchange endpoint."""
 
+from dirty_equals import IsInt, IsStr
 from jose import jwt
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
@@ -14,7 +15,7 @@ class TestCreateUserToken:
     def test_create_token_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Valid app credentials should return JWT token with refresh token."""
         developer = DeveloperFactory()
-        # Create application with known secret (factory uses "hashed_test_app_secret" as hash)
+        # Create application with known secret
         application = ApplicationFactory(developer=developer, app_secret="test_app_secret")
         user = UserFactory()  # Create real user for FK constraint
 
@@ -25,11 +26,13 @@ class TestCreateUserToken:
 
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
-        assert data["token_type"] == "bearer"
-        assert data["expires_in"] == settings.access_token_expire_minutes * 60
-        assert data["refresh_token"].startswith("rt-")
+        assert data == {
+            "access_token": IsStr,
+            "refresh_token": IsStr(regex=r"rt-.*"),
+            "token_type": "bearer",
+            "expires_in": settings.access_token_expire_minutes * 60,
+            "password_change": None,
+        }
 
     def test_create_token_invalid_app_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Non-existent app_id should return 401."""
@@ -67,10 +70,12 @@ class TestCreateUserToken:
         token = response.json()["access_token"]
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm], options={"verify_exp": False})
 
-        assert payload["sub"] == str(user.id)
-        assert payload["scope"] == "sdk"
-        assert payload["app_id"] == application.app_id
-        assert "exp" in payload
+        assert payload == {
+            "sub": str(user.id),
+            "scope": "sdk",
+            "app_id": application.app_id,
+            "exp": IsInt,
+        }
 
     def test_create_token_missing_app_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Missing app_id is a 400: both fields are optional, the route needs the pair."""

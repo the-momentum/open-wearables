@@ -217,6 +217,13 @@ echo 'Running workout external_id dedupe...'
 uv run python scripts/data_migrations/dedupe_workouts_by_external_id.py \
     || echo "Warning: workout external_id dedupe failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Gives Garmin naps their own external_id, then deletes sleeps stored twice under one external_id after a
+# re-delivery moved them, keeping the newest. Runs once per instance (data_migration).
+echo 'Running sleep external_id dedupe...'
+uv run python scripts/data_migrations/dedupe_sleep_by_external_id.py \
+    || echo "Warning: sleep external_id dedupe failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

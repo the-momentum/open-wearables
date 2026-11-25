@@ -109,6 +109,7 @@ class TestCallbackRedirects:
 
         with patch(
             "app.services.providers.templates.base_oauth.BaseOAuthTemplate._exchange_token",
+            autospec=True,
             side_effect=InvalidInputError("Token exchange failed"),
         ):
             response = client.get(
@@ -126,9 +127,10 @@ class TestCallbackRedirects:
         with (
             patch(
                 "app.services.providers.templates.base_oauth.BaseOAuthTemplate.handle_callback",
+                autospec=True,
                 return_value=done,
             ),
-            patch("app.api.routes.v1.oauth.start_garmin_full_backfill.delay"),
+            patch("app.api.routes.v1.oauth.start_garmin_full_backfill.delay", autospec=True),
         ):
             response = client.get(
                 "/api/v1/oauth/garmin/callback", params={"state": "s", "code": "c"}, follow_redirects=False

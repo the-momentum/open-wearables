@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -305,8 +306,10 @@ class TestHistoryRollupSwitch:
         assert aggregate_backfill_service.run(db, budget_seconds=60)
         assert aggregate_backfill_service.history_rollup_status(db).state == "off"
 
-    @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")
-    def test_switching_it_on_queues_the_backfill(self, delay: MagicMock, db: Session) -> None:
+    def test_switching_it_on_queues_the_backfill(self, mocker: MockerFixture, db: Session) -> None:
+        delay = mocker.patch(
+            "app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay", autospec=True
+        )
         settings = archival_service.update_settings(
             db, ArchivalSettingUpdate(rollup_enabled=True, history_rollup_enabled=True)
         )
@@ -314,8 +317,10 @@ class TestHistoryRollupSwitch:
         delay.assert_called_once()
         assert settings.history_rollup.state == "running"
 
-    @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")
-    def test_switching_it_on_once_done_queues_nothing(self, delay: MagicMock, db: Session) -> None:
+    def test_switching_it_on_once_done_queues_nothing(self, mocker: MockerFixture, db: Session) -> None:
+        delay = mocker.patch(
+            "app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay", autospec=True
+        )
         _switch_history_rollup(db, True)
         assert aggregate_backfill_service.run(db, budget_seconds=60)
 
@@ -336,8 +341,10 @@ class TestHistoryRollupSwitch:
         with pytest.raises(InvalidInputError):
             archival_service.update_settings(db, ArchivalSettingUpdate(history_rollup_enabled=True))
 
-    @patch("app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay")
-    def test_a_field_left_out_keeps_its_saved_value(self, delay: MagicMock, db: Session) -> None:
+    def test_a_field_left_out_keeps_its_saved_value(self, mocker: MockerFixture, db: Session) -> None:
+        mocker.patch(
+            "app.integrations.celery.tasks.aggregate_backfill_task.run_aggregate_backfill.delay", autospec=True
+        )
         archival_service.update_settings(
             db, ArchivalSettingUpdate(rollup_enabled=True, history_rollup_enabled=True, delete_after_days=90)
         )
@@ -360,10 +367,12 @@ class TestBackfillTask:
     def test_a_run_waits_for_the_data_source_merge(self, db: Session) -> None:
         """The merge moves samples between sources, behind a cursor that may have passed them."""
         _legacy_workout(db, ProviderName.GARMIN, heart_rate_avg=Decimal("140"))
-        session = MagicMock()
+        session = MagicMock(spec=Session)
         session.__enter__.return_value = db
 
-        with patch("app.integrations.celery.tasks.aggregate_backfill_task.SessionLocal", return_value=session):
+        with patch(
+            "app.integrations.celery.tasks.aggregate_backfill_task.SessionLocal", autospec=True, return_value=session
+        ):
             assert run_aggregate_backfill() == {"skipped": "waiting_for_data_source_merge"}
 
             DataMigrationRepository().mark_completed(db, "merge_duplicate_data_sources")

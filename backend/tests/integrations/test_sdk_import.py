@@ -7,10 +7,12 @@ Tests the full import flow for Apple HealthKit data via SDK.
 import json
 from decimal import Decimal
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import UUID, uuid4
 
 import pytest
+import redis
+from celery import Celery
 from sqlalchemy.orm import Session
 
 from app.constants.celery_tasks import CeleryTask
@@ -34,7 +36,7 @@ SDK_ENVELOPE: dict[str, str] = {
 @pytest.fixture(autouse=True)
 def mock_sleep_redis() -> Any:
     """Mock Redis client and Celery task in sleep_service to prevent connection errors."""
-    mock_redis = MagicMock()
+    mock_redis = MagicMock(spec=redis.Redis)
     mock_redis.get.return_value = None
     mock_redis.set.return_value = True
     mock_redis.expire.return_value = True
@@ -42,8 +44,8 @@ def mock_sleep_redis() -> Any:
     mock_redis.srem.return_value = 1
 
     with (
-        patch("app.services.sdk.sleep_service.get_redis_client") as mock_get_redis,
-        patch("app.services.sdk.sleep_service.celery_app"),
+        patch("app.services.sdk.sleep_service.get_redis_client", autospec=True) as mock_get_redis,
+        patch("app.services.sdk.sleep_service.celery_app", autospec=True),
     ):
         mock_get_redis.return_value = mock_redis
         yield mock_redis
@@ -185,7 +187,8 @@ class TestAppleSDKImport:
         """Another batch of the user holds the sleep lock: the rest is saved now, the sleep goes to a task."""
         mock_sleep_redis.lock.return_value.acquire.return_value = False
 
-        with patch("app.services.sdk.sleep_service.celery_app") as celery:
+        # The autouse fixture has already autospecced celery_app, so a nested autospec would fail.
+        with patch("app.services.sdk.sleep_service.celery_app", new=create_autospec(Celery, instance=True)) as celery:
             result = import_service.load_data(db, sample_sdk_payload, str(UserFactory().id))
 
         assert (result["workouts_saved"], result["sleep_saved"], result["dropped"]) == (1, 0, [])
@@ -1631,8 +1634,8 @@ class TestSDKImportMealCorrelation:
         )
 
         with (
-            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
-            patch("app.services.event_record_service.on_meal_created") as on_meal_created,
+            patch("app.services.event_record_service.svix_service.is_enabled", autospec=True, return_value=True),
+            patch("app.services.event_record_service.on_meal_created", autospec=True) as on_meal_created,
         ):
             import_service.load_data(db, payload, str(user.id))
             import_service.load_data(db, payload, str(user.id))
@@ -2097,7 +2100,7 @@ class TestSDKWorkoutRouteAndSamples:
             {"timestamp": "2026-02-24T06:02:00Z", "type": "heartRate", "value": 121.0, "unit": "bpm"},
         ]
 
-        with patch("app.services.sdk.import_service.logger") as logger:
+        with patch("app.services.sdk.import_service.logger", autospec=True) as logger:
             result = import_service.load_data(db, payload, str(user.id))
 
         assert result["workouts_saved"] == 1

@@ -1,22 +1,28 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
+from sqlalchemy.orm import Session
+
 from app.services.providers.google_health import webhook_handler
+from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.webhook_handler import GoogleWebhookHandler
+from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 from app.utils.exceptions import ReauthRequiredError
 
 
 def test_a_dead_grant_in_a_batch_is_reported_and_the_rest_goes_on() -> None:
     """The grant is already revoked, so it is an expected state rather than an error for Sentry."""
-    handler = GoogleWebhookHandler(MagicMock(), MagicMock())
+    handler = GoogleWebhookHandler(
+        create_autospec(GoogleHealth247Data, instance=True), create_autospec(GoogleHealthApiWorkouts, instance=True)
+    )
     user_id = uuid4()
     outcomes = [ReauthRequiredError("google_health", user_id, "reconnection required"), {"records_saved": 2}]
 
     with (
-        patch.object(GoogleWebhookHandler, "_process_one", side_effect=outcomes),
-        patch.object(webhook_handler, "logger") as log,
+        patch.object(GoogleWebhookHandler, "_process_one", autospec=True, side_effect=outcomes),
+        patch.object(webhook_handler, "logger", autospec=True) as log,
     ):
-        result = handler.process_payload(MagicMock(), [{}, {}], "trace")
+        result = handler.process_payload(MagicMock(spec=Session), [{}, {}], "trace")
 
     log.error.assert_not_called()
     assert result["records_saved"] == 2

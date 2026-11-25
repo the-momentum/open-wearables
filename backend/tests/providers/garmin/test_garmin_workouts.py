@@ -3,17 +3,19 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from inline_snapshot import snapshot
 from psycopg.errors import ForeignKeyViolation, NotNullViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord
+from app.models import EventRecord, UserConnection
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.enums import EntrySource, SeriesType, WorkoutType
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
@@ -21,6 +23,7 @@ from app.services.providers.garmin.handlers.activities import process_activity_n
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
+from tests.providers.factories import GarminActivityFactory
 
 
 class TestGarminWorkouts:
@@ -32,7 +35,7 @@ class TestGarminWorkouts:
         workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
         oauth = GarminOAuth(
-            user_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
             connection_repo=connection_repo,
             provider_name="garmin",
             api_base_url="https://apis.garmin.com",
@@ -48,20 +51,16 @@ class TestGarminWorkouts:
     @pytest.fixture
     def sample_activity(self) -> dict[str, Any]:
         """Sample Garmin activity data."""
-        return {
-            "userId": "garmin_user_123",
-            "activityId": "12345678901",
-            "summaryId": "summary_123",
-            "activityType": "RUNNING",
-            "startTimeInSeconds": 1705309200,  # 2024-01-15 09:00:00 UTC
-            "durationInSeconds": 3600,
-            "deviceName": "Garmin Forerunner 945",
-            "distanceInMeters": 10000,
-            "steps": 8500,
-            "activeKilocalories": 650,
-            "averageHeartRateInBeatsPerMinute": 145,
-            "maxHeartRateInBeatsPerMinute": 175,
-        }
+        return GarminActivityFactory.build_payload(
+            activityId="12345678901",
+            summaryId="summary_123",
+            deviceName="Garmin Forerunner 945",
+            distanceInMeters=10000,
+            steps=8500,
+            activeKilocalories=650,
+            averageHeartRateInBeatsPerMinute=145,
+            maxHeartRateInBeatsPerMinute=175,
+        )
 
     def test_get_workouts_builds_correct_params(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test get_workouts builds correct API parameters."""
@@ -72,7 +71,7 @@ class TestGarminWorkouts:
         start_date = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end_date = datetime(2024, 1, 31, tzinfo=timezone.utc)
 
-        with patch.object(garmin_workouts, "_make_api_request", return_value=[]) as mock_request:
+        with patch.object(garmin_workouts, "_make_api_request", autospec=True, return_value=[]) as mock_request:
             # Act
             garmin_workouts.get_workouts(db, user.id, start_date, end_date)
 
@@ -94,7 +93,7 @@ class TestGarminWorkouts:
         start_ts = int(datetime(2025, 10, 25, tzinfo=timezone.utc).timestamp())
         end_ts = int(datetime(2025, 10, 28, tzinfo=timezone.utc).timestamp())  # spans the 2025-10-26 fall-back
 
-        with patch.object(garmin_workouts, "_make_api_request", return_value=[]) as mock_request:
+        with patch.object(garmin_workouts, "_make_api_request", autospec=True, return_value=[]) as mock_request:
             # Act
             garmin_workouts.get_workouts_from_api(
                 db, user.id, summary_start_time=str(start_ts), summary_end_time=str(end_ts)
@@ -168,13 +167,18 @@ class TestGarminWorkouts:
         activity = GarminActivityJSON(**sample_activity)
         metrics = garmin_workouts._build_metrics(activity)
 
-        assert metrics["heart_rate_avg"] == Decimal("145")
-        assert metrics["heart_rate_max"] == 175
-        assert metrics["heart_rate_min"] is None
-        assert metrics["steps_count"] == 8500
-        assert metrics["energy_burned"] == Decimal("650")
-        assert metrics["energy_series"] == SeriesType.total_energy
-        assert metrics["distance"] == Decimal("10000")
+        assert metrics == snapshot(
+            {
+                "heart_rate_min": None,
+                "heart_rate_max": 175,
+                "heart_rate_avg": Decimal("145"),
+                "steps_count": 8500,
+                "energy_burned": Decimal("650"),
+                "energy_series": SeriesType.total_energy,
+                "distance": Decimal("10000"),
+                "average_cadence": None,
+            }
+        )
 
     def test_build_metrics_with_missing_values(self, garmin_workouts: GarminWorkouts) -> None:
         """Test building metrics with missing values."""
@@ -240,17 +244,37 @@ class TestGarminWorkouts:
 
         assert isinstance(record, EventRecordCreate)
         assert isinstance(detail, EventRecordDetailCreate)
-        assert record.category == "workout"
-        assert record.type == WorkoutType.RUNNING.value
-        assert record.source_name == "Garmin Forerunner 945"
-        assert record.device_model == "Garmin Forerunner 945"
-        assert record.duration_seconds == 3600
-        assert record.start_datetime == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
-        assert record.end_datetime == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
-        assert record.external_id == "12345678901"
         assert record.user_id == user_id
+        assert detail.record_id == record.id
+        assert {
+            "record": record.model_dump(mode="json", exclude={"id", "user_id"}, exclude_none=True),
+            "detail": detail.model_dump(mode="json", exclude={"record_id"}, exclude_none=True),
+        } == snapshot(
+            {
+                "record": {
+                    "category": "workout",
+                    "type": "running",
+                    "source_name": "Garmin Forerunner 945",
+                    "device_model": "Garmin Forerunner 945",
+                    "duration_seconds": 3600,
+                    "start_datetime": "2024-01-15T09:00:00Z",
+                    "end_datetime": "2024-01-15T10:00:00Z",
+                    "external_id": "12345678901",
+                    "source": "garmin",
+                },
+                "detail": {
+                    "heart_rate_max": 175,
+                    "heart_rate_avg": "145",
+                    "steps_count": 8500,
+                    "energy_burned": "650",
+                    "distance": "10000",
+                },
+            }
+        )
 
-    def test_normalize_workout_with_different_types(self, garmin_workouts: GarminWorkouts) -> None:
+    def test_normalize_workout_with_different_types(
+        self, garmin_workouts: GarminWorkouts, subtests: pytest.Subtests
+    ) -> None:
         """Test normalizing different workout types."""
         user_id = uuid4()
 
@@ -263,24 +287,27 @@ class TestGarminWorkouts:
         ]
 
         for garmin_type, expected_type in test_cases:
-            activity = GarminActivityJSON(
-                userId="user_123",
-                activityId=f"act_{garmin_type}",
-                summaryId="sum_123",
-                activityType=garmin_type,
-                startTimeInSeconds=1705309200,
-                durationInSeconds=3600,
-                deviceName="Garmin Device",
-                distanceInMeters=10000,
-                steps=1000,
-                activeKilocalories=500,
-                averageHeartRateInBeatsPerMinute=140,
-                maxHeartRateInBeatsPerMinute=170,
-            )
-            record, detail = garmin_workouts._normalize_workout(activity, user_id)
-            assert record.type == expected_type.value
+            with subtests.test(garmin_type=garmin_type):
+                activity = GarminActivityJSON(
+                    userId="user_123",
+                    activityId=f"act_{garmin_type}",
+                    summaryId="sum_123",
+                    activityType=garmin_type,
+                    startTimeInSeconds=1705309200,
+                    durationInSeconds=3600,
+                    deviceName="Garmin Device",
+                    distanceInMeters=10000,
+                    steps=1000,
+                    activeKilocalories=500,
+                    averageHeartRateInBeatsPerMinute=140,
+                    maxHeartRateInBeatsPerMinute=170,
+                )
+                record, detail = garmin_workouts._normalize_workout(activity, user_id)
+                assert record.type == expected_type.value
 
-    def test_build_bundles(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
+    def test_build_bundles(
+        self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any], subtests: pytest.Subtests
+    ) -> None:
         """Test building bundles from multiple activities."""
         user_id = uuid4()
         activity1 = GarminActivityJSON(**sample_activity)
@@ -303,9 +330,10 @@ class TestGarminWorkouts:
         bundles = list(garmin_workouts._build_bundles(activities, user_id))
 
         assert len(bundles) == 2
-        for record, detail in bundles:
-            assert isinstance(record, EventRecordCreate)
-            assert isinstance(detail, EventRecordDetailCreate)
+        for index, (record, detail) in enumerate(bundles):
+            with subtests.test(bundle_index=index):
+                assert isinstance(record, EventRecordCreate)
+                assert isinstance(detail, EventRecordDetailCreate)
 
     def test_load_data_is_noop(
         self,
@@ -326,7 +354,9 @@ class TestGarminWorkouts:
 
         activity_detail = {"activityId": "123", "detailed": "data"}
 
-        with patch.object(garmin_workouts, "_make_api_request", return_value=activity_detail) as mock_request:
+        with patch.object(
+            garmin_workouts, "_make_api_request", autospec=True, return_value=activity_detail
+        ) as mock_request:
             result = garmin_workouts.get_activity_detail(db, user.id, "123")
 
             assert result == activity_detail
@@ -336,7 +366,9 @@ class TestGarminWorkouts:
         """Test getting workout detail via public API method."""
         user = UserFactory()
 
-        with patch.object(garmin_workouts, "get_activity_detail", return_value={"detail": "data"}) as mock_detail:
+        with patch.object(
+            garmin_workouts, "get_activity_detail", autospec=True, return_value={"detail": "data"}
+        ) as mock_detail:
             result = garmin_workouts.get_workout_detail_from_api(db, user.id, "workout_123")
 
             assert result == {"detail": "data"}
@@ -355,26 +387,28 @@ class TestActivityNotificationLinkedProfiles:
 
     def test_a_profile_deleted_meanwhile_does_not_stop_the_others(self) -> None:
         """The deleted user's insert violates its foreign key; the linked profile still gets the activity."""
-        deleted, linked = MagicMock(user_id=uuid4()), MagicMock(user_id=uuid4())
-        connection_repo = MagicMock()
+        deleted, linked = UserConnection(user_id=uuid4()), UserConnection(user_id=uuid4())
+        connection_repo = create_autospec(UserConnectionRepository, instance=True)
         connection_repo.get_all_by_provider_user_id.return_value = [deleted, linked]
-        garmin_workouts = MagicMock()
+        garmin_workouts = create_autospec(GarminWorkouts, instance=True)
         garmin_workouts.process_push_activities.side_effect = [
             IntegrityError("INSERT ...", {}, ForeignKeyViolation("user is gone")),
             [uuid4()],
         ]
 
         results = process_activity_notification(
-            MagicMock(), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1"
+            MagicMock(spec=Session), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1"
         )
 
         assert [r["status"] for r in results] == ["skipped", "saved"]
 
     def test_another_constraint_violation_is_raised(self) -> None:
-        connection_repo = MagicMock()
-        connection_repo.get_all_by_provider_user_id.return_value = [MagicMock(user_id=uuid4())]
-        garmin_workouts = MagicMock()
+        connection_repo = create_autospec(UserConnectionRepository, instance=True)
+        connection_repo.get_all_by_provider_user_id.return_value = [UserConnection(user_id=uuid4())]
+        garmin_workouts = create_autospec(GarminWorkouts, instance=True)
         garmin_workouts.process_push_activities.side_effect = IntegrityError("INSERT ...", {}, NotNullViolation("x"))
 
         with pytest.raises(IntegrityError):
-            process_activity_notification(MagicMock(), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1")
+            process_activity_notification(
+                MagicMock(spec=Session), connection_repo, garmin_workouts, self.NOTIFICATION, "trace-1"
+            )

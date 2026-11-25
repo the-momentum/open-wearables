@@ -10,7 +10,7 @@ from scripts.data_migrations.register_strava_token_callback import register_stra
 
 def _send_task(db: Session, mode: LiveSyncMode) -> MagicMock:
     ProviderSettingsRepository().upsert(db, "strava", is_enabled=True, live_sync_mode=mode)
-    with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+    with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
         assert register_strava_token_callback(db)
     return send_task
 
@@ -29,7 +29,7 @@ def test_strava_in_pull_mode_is_left_alone(db: Session) -> None:
 
 def test_dry_run_queues_nothing(db: Session) -> None:
     ProviderSettingsRepository().upsert(db, "strava", is_enabled=True, live_sync_mode=LiveSyncMode.WEBHOOK)
-    with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+    with patch("app.services.providers.base_strategy.celery_app.send_task", autospec=True) as send_task:
         assert not register_strava_token_callback(db, dry_run=True)
 
     send_task.assert_not_called()

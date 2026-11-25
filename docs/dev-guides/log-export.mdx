@@ -56,6 +56,7 @@ Each process reports itself with its own `service.name`, in the `open-wearables`
 | API (`scripts/start/app.sh`) | `open-wearables-api` |
 | I/O worker (`io@...`) | `open-wearables-worker-io` |
 | CPU worker (`cpu@...`) | `open-wearables-worker-cpu` |
+| Extension worker (`ext@...`, only when installed extensions declare queues) | `open-wearables-worker-ext` |
 | Beat | `open-wearables-beat` |
 
 `service.version` and `deployment.environment.name` (from `ENVIRONMENT`) are set as well. Values in `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` take precedence.

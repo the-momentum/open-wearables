@@ -3,6 +3,7 @@ API v1 specific fixtures.
 """
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -14,10 +15,14 @@ from tests.utils import api_key_headers, developer_auth_headers
 
 
 @pytest.fixture(autouse=True)
-def _sdk_auth_on_test_session(db: Session) -> Iterator[None]:
+def _sdk_auth_on_test_session(request: pytest.FixtureRequest) -> Iterator[None]:
     """Route the detached session of get_sdk_auth onto the test session, like the client's DbSession override."""
-    with patch("app.utils.auth.SessionLocal", create=True) as session_local:
-        session_local.return_value.__enter__.return_value = db
+
+    @contextmanager
+    def session_local() -> Iterator[Session]:
+        yield request.getfixturevalue("db")
+
+    with patch("app.utils.auth.SessionLocal", session_local):
         yield
 
 

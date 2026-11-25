@@ -11,17 +11,18 @@ t_5912f22f adds: ACTIVITY + SLEEP HealthScore extraction from /v1/scores (parity
 
 from datetime import date, datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import SleepDetails
+from app.models import EventRecord, SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
+from app.services.providers.sensorbio.oauth import SensorBioOAuth
 from tests.factories import UserFactory
 
 # ---------------------------------------------------------------------------
@@ -29,7 +30,7 @@ from tests.factories import UserFactory
 # ---------------------------------------------------------------------------
 
 USER_ID = uuid4()
-DB = MagicMock()
+DB = MagicMock(spec=Session)
 _SEPT_10 = datetime(2026, 9, 10, tzinfo=timezone.utc)
 
 
@@ -38,7 +39,7 @@ def data_247() -> SensorBio247Data:
     return SensorBio247Data(
         provider_name="sensorbio",
         api_base_url="https://api.sensorbio.com",
-        oauth=MagicMock(),
+        oauth=create_autospec(SensorBioOAuth, instance=True),
     )
 
 
@@ -151,7 +152,7 @@ class TestSensorBio247SaveSleepData:
     """save_sleep_data() — skips records with a missing or reversed window; persists valid ones."""
 
     def test_skips_missing_start_time(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "id": uuid4(),
             "start_time": None,
@@ -161,7 +162,7 @@ class TestSensorBio247SaveSleepData:
         assert result is False
 
     def test_skips_missing_end_time(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "id": uuid4(),
             "start_time": datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
@@ -171,20 +172,20 @@ class TestSensorBio247SaveSleepData:
         assert result is False
 
     def test_skips_window_that_ends_before_it_starts(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "id": uuid4(),
             "start_time": datetime(2024, 1, 15, 8, 0, 0, tzinfo=timezone.utc),
             "end_time": datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
             "duration_seconds": -28800,
         }
-        with patch("app.services.providers.sensorbio.data_247.event_record_service") as mock_svc:
+        with patch("app.services.providers.sensorbio.data_247.event_record_service", autospec=True) as mock_svc:
             result = data_247.save_sleep_data(db, USER_ID, normalized)
         assert result is False
         mock_svc.create.assert_not_called()
 
     def test_persists_valid_record(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "id": uuid4(),
             "start_time": datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
@@ -195,8 +196,8 @@ class TestSensorBio247SaveSleepData:
             "is_nap": False,
             "sensorbio_sleep_id": "sleep-abc",
         }
-        with patch("app.services.providers.sensorbio.data_247.event_record_service") as mock_svc:
-            mock_svc.create.return_value = MagicMock(id=normalized["id"])
+        with patch("app.services.providers.sensorbio.data_247.event_record_service", autospec=True) as mock_svc:
+            mock_svc.create.return_value = EventRecord(id=normalized["id"])
             result = data_247.save_sleep_data(db, USER_ID, normalized)
         assert result is True
         mock_svc.create.assert_called_once()
@@ -210,9 +211,9 @@ class TestSensorBio247SaveSleepData:
             "duration_seconds": 28800,
             "stages": {"deep_seconds": None, "light_seconds": None, "rem_seconds": 0, "awake_seconds": None},
         }
-        with patch("app.services.providers.sensorbio.data_247.event_record_service") as mock_svc:
-            mock_svc.create.return_value = MagicMock(id=normalized["id"])
-            data_247.save_sleep_data(MagicMock(), USER_ID, normalized)
+        with patch("app.services.providers.sensorbio.data_247.event_record_service", autospec=True) as mock_svc:
+            mock_svc.create.return_value = EventRecord(id=normalized["id"])
+            data_247.save_sleep_data(MagicMock(spec=Session), USER_ID, normalized)
 
         detail = mock_svc.create_detail.call_args[0][1]
         assert detail.sleep_deep_minutes is None
@@ -301,7 +302,7 @@ class TestSensorBio247SaveRecoveryData:
     """save_recovery_data() — persists timeseries AND HealthScore (gap #2 fix)."""
 
     def test_persists_recovery_health_score(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2024, 1, 15, tzinfo=timezone.utc),
             "recovery_score": 72,
@@ -311,8 +312,8 @@ class TestSensorBio247SaveRecoveryData:
             "spo2_percentage": 97.0,
         }
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True) as mock_ts,
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
             mock_hs.bulk_create.return_value = WriteCounts(1, 0)
@@ -334,15 +335,15 @@ class TestSensorBio247SaveRecoveryData:
         assert scores[0].qualifier == "good"
 
     def test_skips_health_score_when_none(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2024, 1, 15, tzinfo=timezone.utc),
             "recovery_score": None,
             "resting_heart_rate": 52.0,
         }
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True) as mock_ts,
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             data_247.save_recovery_data(db, USER_ID, normalized)
@@ -350,11 +351,11 @@ class TestSensorBio247SaveRecoveryData:
         mock_hs.bulk_create.assert_not_called()
 
     def test_skips_all_when_no_timestamp(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {"timestamp": None, "recovery_score": 72, "resting_heart_rate": 52.0}
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True) as mock_ts,
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
         assert counts == 0
@@ -424,16 +425,16 @@ class TestSensorBio247PaginationStopConditions:
     """get_activity_samples() stops on: empty data, cursor unchanged, links.next absent."""
 
     def test_stops_on_empty_data(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2024, 1, 31, tzinfo=timezone.utc)
-        with patch.object(data_247, "_make_api_request", return_value={"data": []}):
+        with patch.object(data_247, "_make_api_request", autospec=True, return_value={"data": []}):
             result = data_247.get_activity_samples(db, USER_ID, start, end)
         assert result == []
 
     def test_stops_when_cursor_unchanged(self, data_247: SensorBio247Data) -> None:
         """If the last record's timestamp doesn't advance, stop to avoid infinite loop."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2025, 1, 1, tzinfo=timezone.utc)
         # First call returns data with timestamp = 0 (same as initial last_timestamp)
@@ -454,18 +455,18 @@ class TestSensorBio247PaginationStopConditions:
                 "links": {"next": "/v1/biometrics?last-timestamp=1700000000000"},
             }
 
-        with patch.object(data_247, "_make_api_request", side_effect=fake_request):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=fake_request):
             data_247.get_activity_samples(db, USER_ID, start, end)
 
         # Should have called twice: first page, then detected cursor unchanged and stopped
         assert call_count == 2  # second call detects unchanged cursor → break
 
     def test_stops_when_links_next_absent(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
-        with patch.object(data_247, "_make_api_request") as mock_req:
+        with patch.object(data_247, "_make_api_request", autospec=True) as mock_req:
             mock_req.return_value = {
                 "data": [{"timestamp": 1_700_000_000_000, "bpm": 72.0}],
                 "links": {},  # no 'next'
@@ -487,40 +488,40 @@ class TestSensorBio247HttpErrorPropagation:
     """HTTP errors in get_sleep_data, get_recovery_data, get_activity_samples are handled."""
 
     def test_sleep_api_error_logs_and_continues(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2024, 1, 2, tzinfo=timezone.utc)
 
-        with patch.object(data_247, "_make_api_request", side_effect=Exception("HTTP 404")):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=Exception("HTTP 404")):
             result = data_247.get_sleep_data(db, USER_ID, start, end)
 
         assert result == []  # exception swallowed, returns empty
 
     def test_recovery_api_error_logs_and_continues(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2024, 1, 2, tzinfo=timezone.utc)
 
-        with patch.object(data_247, "_make_api_request", side_effect=Exception("HTTP 204")):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=Exception("HTTP 204")):
             result = data_247.get_recovery_data(db, USER_ID, start, end)
 
         assert result == []
 
     def test_biometrics_api_error_raises_when_no_partial(self, data_247: SensorBio247Data) -> None:
         """get_activity_samples re-raises if no partial results have been accumulated."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2024, 1, 2, tzinfo=timezone.utc)
 
         with (
-            patch.object(data_247, "_make_api_request", side_effect=Exception("timeout")),
+            patch.object(data_247, "_make_api_request", autospec=True, side_effect=Exception("timeout")),
             pytest.raises(Exception, match="timeout"),
         ):
             data_247.get_activity_samples(db, USER_ID, start, end)
 
     def test_biometrics_api_error_returns_partial_on_subsequent_pages(self, data_247: SensorBio247Data) -> None:
         """If we have partial results (within date window) and hit an error on page 2, return partial."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         # Use a date window that includes the first-page timestamp
         # 1_700_000_000_000 ms = 2023-11-14 UTC
         start = datetime(2023, 11, 1, tzinfo=timezone.utc)
@@ -537,7 +538,7 @@ class TestSensorBio247HttpErrorPropagation:
                 }
             raise Exception("connection reset")
 
-        with patch.object(data_247, "_make_api_request", side_effect=fake_request):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=fake_request):
             result = data_247.get_activity_samples(db, USER_ID, start, end)
 
         # Should return the partial first page without re-raising
@@ -599,14 +600,14 @@ class TestSensorBio247SaveDailyActivity:
     """save_daily_activity() — bulk-upserts steps, energy, distance_walking_running."""
 
     def test_saves_all_three_series(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2024, 1, 15, tzinfo=timezone.utc),
             "steps": 8200,
             "distance": 6.1,
             "energy": 312.0,
         }
-        with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+        with patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True) as mock_ts:
             mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
@@ -619,14 +620,14 @@ class TestSensorBio247SaveDailyActivity:
         assert SeriesType.distance_walking_running in series_types
 
     def test_skips_none_fields(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2024, 1, 15, tzinfo=timezone.utc),
             "steps": 8200,
             "distance": None,
             "energy": None,
         }
-        with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+        with patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True) as mock_ts:
             mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
@@ -635,9 +636,9 @@ class TestSensorBio247SaveDailyActivity:
         assert samples[0].series_type == SeriesType.steps
 
     def test_skips_when_no_timestamp(self, data_247: SensorBio247Data) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {"timestamp": None, "steps": 8200}
-        with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+        with patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True) as mock_ts:
             count = data_247.save_daily_activity(db, USER_ID, normalized)
         assert count == 0
         mock_ts.bulk_create_samples.assert_not_called()
@@ -743,7 +744,7 @@ class TestSensorBio247SaveRecoveryDataScores:
 
     def test_persists_activity_health_score(self, data_247: SensorBio247Data) -> None:
         """activity_score present → HealthScore(ACTIVITY) written."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
             "recovery_score": 48,
@@ -751,8 +752,8 @@ class TestSensorBio247SaveRecoveryDataScores:
             "activity_score": 97,
         }
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True),
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
@@ -770,7 +771,7 @@ class TestSensorBio247SaveRecoveryDataScores:
 
     def test_persists_sleep_health_score(self, data_247: SensorBio247Data) -> None:
         """sleep_score present → HealthScore(SLEEP) written."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
             "recovery_score": 48,
@@ -778,8 +779,8 @@ class TestSensorBio247SaveRecoveryDataScores:
             "sleep_score": 99,
         }
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True),
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
@@ -795,7 +796,7 @@ class TestSensorBio247SaveRecoveryDataScores:
 
     def test_persists_all_three_health_scores(self, data_247: SensorBio247Data) -> None:
         """All three scores present → RECOVERY + ACTIVITY + SLEEP all written."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
             "recovery_score": 48,
@@ -807,8 +808,8 @@ class TestSensorBio247SaveRecoveryDataScores:
             "spo2_percentage": 97.0,
         }
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True) as mock_ts,
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
             mock_hs.bulk_create.return_value = WriteCounts(3, 0)
@@ -824,7 +825,7 @@ class TestSensorBio247SaveRecoveryDataScores:
 
     def test_none_activity_score_no_write(self, data_247: SensorBio247Data) -> None:
         """activity_score=None → no ACTIVITY HealthScore written, no crash."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
             "recovery_score": 48,
@@ -832,8 +833,8 @@ class TestSensorBio247SaveRecoveryDataScores:
             "sleep_score": None,
         }
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True),
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             mock_hs.bulk_create.return_value = WriteCounts(1, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
@@ -847,14 +848,14 @@ class TestSensorBio247SaveRecoveryDataScores:
 
     def test_missing_all_scores_no_crash(self, data_247: SensorBio247Data) -> None:
         """Missing activity/sleep blocks in normalized dict → no write, no crash."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         normalized = {
             "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
             # activity_score and sleep_score keys absent entirely
         }
         with (
-            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
-            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+            patch("app.services.providers.sensorbio.data_247.timeseries_service", autospec=True),
+            patch("app.services.providers.sensorbio.data_247.health_score_service", autospec=True) as mock_hs,
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
@@ -904,7 +905,7 @@ class TestSensorBio247SleepStageIntervals:
         def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
             return {"data": [NIGHT, NAP]} if endpoint == "/v1/sleep" else DETAILS_DAY
 
-        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=fake_request):
             records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
 
         assert [len(record["stage_intervals"]) for record in records] == [3, 3]
@@ -915,7 +916,7 @@ class TestSensorBio247SleepStageIntervals:
                 return {"data": [NIGHT]}
             raise RuntimeError("boom")
 
-        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=fake_request):
             records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
 
         assert records[0].get("stage_intervals") is None
@@ -924,7 +925,7 @@ class TestSensorBio247SleepStageIntervals:
         def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
             return {"data": ["nonsense", NIGHT]} if endpoint == "/v1/sleep" else DETAILS_DAY
 
-        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=fake_request):
             records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
 
         assert [record for record in records if isinstance(record, dict)][0]["id"] == "night"

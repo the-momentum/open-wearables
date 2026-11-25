@@ -1,11 +1,12 @@
 """Tests for StravaWorkouts normalization."""
 
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import create_autospec
 from uuid import uuid4
 
 import pytest
 
+from app.repositories import EventRecordRepository, UserConnectionRepository, UserRepository
 from app.schemas.enums import EntrySource
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.services.providers.strava.oauth import StravaOAuth
@@ -18,14 +19,14 @@ class TestStravaWorkoutsNormalization:
     @pytest.fixture
     def workouts(self) -> StravaWorkouts:
         oauth = StravaOAuth(
-            user_repo=MagicMock(),
-            connection_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
             provider_name="strava",
             api_base_url="https://www.strava.com/api/v3",
         )
         return StravaWorkouts(
-            workout_repo=MagicMock(),
-            connection_repo=MagicMock(),
+            workout_repo=create_autospec(EventRecordRepository, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
             provider_name="strava",
             api_base_url="https://www.strava.com/api/v3",
             oauth=oauth,

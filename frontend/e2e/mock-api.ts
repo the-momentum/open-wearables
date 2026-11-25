@@ -99,6 +99,8 @@ let EMPTY_AGGREGATES = false;
 /** What the default password earns at sign-in: a token with `required`/`recommended`, or a refusal. */
 let PASSWORD_CHANGE: 'required' | 'recommended' | 'refused' = 'required';
 
+const LOCKED_OUT_EMAIL = 'locked-out@example.com';
+
 const DEFAULT_PASSWORD_REFUSED =
 	"Signing in with the default password is disabled in production. Set the ADMIN_EMAIL and ADMIN_PASSWORD environment variables on the backend (backend/config/.env or your hosting provider's settings) to this account's email and a new password, then restart the backend.";
 
@@ -133,6 +135,7 @@ const TITLES: Record<number, string> = {
 	403: 'Forbidden',
 	404: 'Not Found',
 	409: 'Conflict',
+	429: 'Too Many Requests',
 	422: 'Unprocessable Content',
 	500: 'Internal Server Error',
 	503: 'Service Unavailable'
@@ -242,6 +245,13 @@ const server = Bun.serve({
 		if (pathname === '/api/v1/auth/login') {
 			const form = await request.formData();
 			const password = form.get('password');
+			if (form.get('username') === LOCKED_OUT_EMAIL) {
+				return problem(
+					429,
+					'Too many failed login attempts. Try again later.',
+					'TOO_MANY_REQUESTS'
+				);
+			}
 			// Like the API: refused before the account lookup, so any email gets the same answer.
 			if (password === DEFAULT_PASSWORD && PASSWORD_CHANGE === 'refused') {
 				return problem(403, DEFAULT_PASSWORD_REFUSED, 'FORBIDDEN');

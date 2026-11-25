@@ -146,27 +146,30 @@ class EventRecordDetailRepository(
 
     def _upsert(self, db_session: DbSession, rows: list[dict], detail_type: DetailType) -> None:
         child_table = self._table(detail_type)
-        child_stmt = insert(child_table).values(rows)
         # record_id is the conflict key; created_at is an immutable audit column and
         # must not be reset to now() when an existing row is re-synced. A value this write does not
         # carry keeps the stored one, as the mirrored aggregate row does: Garmin sends a workout's
         # steps from one endpoint and its speed from another.
         immutable_on_upsert = {"record_id", "created_at"}
-        update_dict = {
-            col_name: func.coalesce(child_stmt.excluded[col_name], child_table.c[col_name])
-            for col_name in rows[0]
-            if col_name not in immutable_on_upsert
-        }
-        if update_dict:
-            # Skips the write when nothing changed, so a plain re-sync costs no new row version
-            child_stmt = child_stmt.on_conflict_do_update(
-                index_elements=["record_id"],
-                set_=update_dict,
-                where=or_(*(child_table.c[col].is_distinct_from(value) for col, value in update_dict.items())),
-            )
-        else:
-            child_stmt = child_stmt.on_conflict_do_nothing(index_elements=["record_id"])
-        db_session.execute(child_stmt)
+        # Chunk to stay under PostgreSQL's 65535 bind-parameter limit.
+        chunk_size = 65_535 // len(rows[0])
+        for i in range(0, len(rows), chunk_size):
+            child_stmt = insert(child_table).values(rows[i : i + chunk_size])
+            update_dict = {
+                col_name: func.coalesce(child_stmt.excluded[col_name], child_table.c[col_name])
+                for col_name in rows[0]
+                if col_name not in immutable_on_upsert
+            }
+            if update_dict:
+                # Skips the write when nothing changed, so a plain re-sync costs no new row version
+                child_stmt = child_stmt.on_conflict_do_update(
+                    index_elements=["record_id"],
+                    set_=update_dict,
+                    where=or_(*(child_table.c[col].is_distinct_from(value) for col, value in update_dict.items())),
+                )
+            else:
+                child_stmt = child_stmt.on_conflict_do_nothing(index_elements=["record_id"])
+            db_session.execute(child_stmt)
 
     def get_by_record_id(
         self,

@@ -35,19 +35,21 @@ class TestPolar247ApiRequest:
     def test_no_data_is_none(self, data_247: Polar247Data, upstream_status: int) -> None:
         with patch(
             "app.services.providers.polar.data_247.make_authenticated_request",
+            autospec=True,
             side_effect=ProviderError("polar", upstream_status=upstream_status),
         ):
-            assert data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep") is None
+            assert data_247._make_api_request(MagicMock(spec=Session), uuid4(), "/v3/users/sleep") is None
 
     def test_other_failures_propagate(self, data_247: Polar247Data) -> None:
         with (
             patch(
                 "app.services.providers.polar.data_247.make_authenticated_request",
+                autospec=True,
                 side_effect=ProviderError("polar", upstream_status=500),
             ),
             pytest.raises(ProviderError),
         ):
-            data_247._make_api_request(MagicMock(), uuid4(), "/v3/users/sleep")
+            data_247._make_api_request(MagicMock(spec=Session), uuid4(), "/v3/users/sleep")
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +278,7 @@ class TestPolar247SleepSave:
 
     def test_resync_keeps_one_copy_of_the_night(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             for _ in range(3):
                 assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
 
@@ -289,7 +291,7 @@ class TestPolar247SleepSave:
         self, db: Session, data_247: Polar247Data
     ) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
             # As an old pod writes it during a deploy, before Polar sleep carried an id
             self._sleep_records(db, user.id)[0].external_id = None
@@ -305,12 +307,12 @@ class TestPolar247SleepSave:
         self, db: Session, data_247: Polar247Data
     ) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
         # As dedupe_polar_sleep leaves a night without stages, or an old pod writes one
         self._sleep_records(db, user.id)[0].external_id = None
         db.commit()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.MOVED]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.MOVED]):
             for _ in range(2):
                 assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
 
@@ -324,13 +326,13 @@ class TestPolar247SleepSave:
         self, db: Session, data_247: Polar247Data
     ) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self.NIGHT]):
             data_247._save_sleep(db, user.id, *self.WINDOW)
         recharge = {"date": "2024-01-15", "hrv_samples": {"23:58": 40, "00:03": 42}}
 
         with (
-            patch.object(data_247, "get_nightly_recharge_data", return_value=[recharge]),
-            patch.object(data_247, "normalize_nightly_recharge", return_value=([], [])) as normalize,
+            patch.object(data_247, "get_nightly_recharge_data", autospec=True, return_value=[recharge]),
+            patch.object(data_247, "normalize_nightly_recharge", autospec=True, return_value=([], [])) as normalize,
         ):
             data_247._save_nightly_recharge(db, user.id, *self.WINDOW, sleep_starts={})
 
@@ -340,7 +342,7 @@ class TestPolar247SleepSave:
     def test_a_moved_resync_links_its_score_to_the_stored_night(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
         for night in (self.NIGHT, self.MOVED):
-            with patch.object(data_247, "get_sleep_data", return_value=[{**night, "sleep_score": 80}]):
+            with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[{**night, "sleep_score": 80}]):
                 assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
 
         (record,) = self._sleep_records(db, user.id)
@@ -351,7 +353,7 @@ class TestPolar247SleepSave:
     ) -> None:
         user = UserFactory()
         for night in (self.NIGHT, self.MOVED):
-            with patch.object(data_247, "_make_api_request", return_value={**night, "sleep_score": 80}):
+            with patch.object(data_247, "_make_api_request", autospec=True, return_value={**night, "sleep_score": 80}):
                 data_247.fetch_and_save_from_webhook(db, user.id, PolarWebhookEventType.SLEEP, "/sleep/2024-01-15")
 
         (record,) = self._sleep_records(db, user.id)
@@ -396,7 +398,7 @@ class TestPolar247LateSleep:
             fetched.append(day)
             return self._night(day)
 
-        with patch.object(data_247, "_make_api_request", side_effect=api):
+        with patch.object(data_247, "_make_api_request", autospec=True, side_effect=api):
             data_247.get_sleep_data(db, user_id, *self.WINDOW)
         return sorted(fetched)
 
@@ -407,7 +409,7 @@ class TestPolar247LateSleep:
 
     def test_late_night_already_stored_is_not_fetched_again(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self._night("2024-01-12")]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self._night("2024-01-12")]):
             data_247._save_sleep(db, user.id, *self.WINDOW)
 
         fetched = self._fetch(db, data_247, user.id, ["2024-01-12", "2024-01-20"])
@@ -416,14 +418,12 @@ class TestPolar247LateSleep:
 
     def test_another_users_night_does_not_count_as_stored(self, db: Session, data_247: Polar247Data) -> None:
         other, user = UserFactory(), UserFactory()
-        with patch.object(data_247, "get_sleep_data", return_value=[self._night("2024-01-12")]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[self._night("2024-01-12")]):
             data_247._save_sleep(db, other.id, *self.WINDOW)
 
         assert self._fetch(db, data_247, user.id, ["2024-01-12"]) == ["2024-01-12"]
 
-    def test_late_night_merged_into_the_next_one_is_not_fetched_again(
-        self, db: Session, data_247: Polar247Data
-    ) -> None:
+    def test_late_night_next_to_the_next_one_is_not_fetched_again(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
         late = self._night("2024-01-12")
         next_night = {
@@ -431,10 +431,10 @@ class TestPolar247LateSleep:
             "sleep_start_time": "2024-01-12T08:30:00+02:00",
             "sleep_end_time": "2024-01-12T12:00:00+02:00",
         }
-        with patch.object(data_247, "get_sleep_data", return_value=[late, next_night]):
+        with patch.object(data_247, "get_sleep_data", autospec=True, return_value=[late, next_night]):
             data_247._save_sleep(db, user.id, *self.WINDOW)
-        [merged] = TestPolar247SleepSave._sleep_records(db, user.id)
-        assert merged.external_id == "sleep-2024-01-13"
+        stored = TestPolar247SleepSave._sleep_records(db, user.id)
+        assert {record.external_id for record in stored} == {"sleep-2024-01-12", "sleep-2024-01-13"}
 
         assert self._fetch(db, data_247, user.id, ["2024-01-12", "2024-01-20"]) == ["2024-01-20"]
 
@@ -696,9 +696,9 @@ class TestPolar247DailyActivityNormalization:
         assert [s.value for s in samples if s.series_type == SeriesType.exercise_time] == [54]
 
     def test_requests_activity_zones(self, data_247: Polar247Data) -> None:
-        with patch.object(data_247, "_make_api_request", return_value=[]) as request:
+        with patch.object(data_247, "_make_api_request", autospec=True, return_value=[]) as request:
             data_247.get_daily_activity_statistics(
-                MagicMock(),
+                MagicMock(spec=Session),
                 uuid4(),
                 datetime(2024, 1, 1, tzinfo=timezone.utc),
                 datetime(2024, 1, 2, tzinfo=timezone.utc),
@@ -917,12 +917,12 @@ class TestPolar247NightlyRechargeNormalization:
         sample_recharge.pop("nightly_recharge_status")
 
         with (
-            patch.object(data_247, "get_nightly_recharge_data", return_value=[sample_recharge]),
-            patch("app.services.providers.polar.data_247.timeseries_service") as timeseries,
+            patch.object(data_247, "get_nightly_recharge_data", autospec=True, return_value=[sample_recharge]),
+            patch("app.services.providers.polar.data_247.timeseries_service", autospec=True) as timeseries,
         ):
             timeseries.bulk_create_samples.return_value = WriteCounts(inserted=2, updated=0)
             saved = data_247._save_nightly_recharge(
-                MagicMock(),
+                MagicMock(spec=Session),
                 uuid4(),
                 datetime(2024, 1, 1, tzinfo=timezone.utc),
                 datetime(2024, 1, 31, tzinfo=timezone.utc),
@@ -1017,3 +1017,148 @@ class TestPolar247HypnogramParsing:
         start = datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc)
         assert data_247._parse_hypnogram({}, start, end) == []
+
+
+# ---------------------------------------------------------------------------
+# Elixir biosensing endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestPolar247ElixirEndpoints:
+    @pytest.mark.parametrize(
+        ("method", "endpoint"),
+        [
+            ("get_body_temperature_data", "/v3/users/biosensing/bodytemperature"),
+            ("get_sleep_skin_temperature_data", "/v3/users/biosensing/skintemperature"),
+            ("get_spo2_data", "/v3/users/biosensing/spo2"),
+            ("get_wrist_ecg_data", "/v3/users/biosensing/ecg"),
+        ],
+    )
+    def test_requests_the_biosensing_path(self, data_247: Polar247Data, method: str, endpoint: str) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=[]) as request:
+            getattr(data_247, method)(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 28, tzinfo=timezone.utc),
+            )
+
+        assert request.call_args.args[2] == endpoint
+        assert request.call_args.kwargs["params"] == {"from": "2024-01-01", "to": "2024-01-28"}
+
+    def test_splits_windows_longer_than_28_days(self, data_247: Polar247Data) -> None:
+        responses = [[{"sleep_date": "2024-01-02"}], None, [{"sleep_date": "2024-02-28"}]]
+        with patch.object(data_247, "_make_api_request", side_effect=responses) as request:
+            raw = data_247.get_sleep_skin_temperature_data(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 3, 1, tzinfo=timezone.utc),
+            )
+
+        assert [c.kwargs["params"] for c in request.call_args_list] == [
+            {"from": "2024-01-01", "to": "2024-01-28"},
+            {"from": "2024-01-29", "to": "2024-02-25"},
+            {"from": "2024-02-26", "to": "2024-03-01"},
+        ]
+        assert raw == [{"sleep_date": "2024-01-02"}, {"sleep_date": "2024-02-28"}]
+
+    def test_windows_cover_the_last_day_when_it_ends_earlier_in_the_day(self, data_247: Polar247Data) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=None) as request:
+            data_247.get_sleep_skin_temperature_data(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, 18, 0, tzinfo=timezone.utc),
+                datetime(2024, 1, 29, 9, 0, tzinfo=timezone.utc),
+            )
+
+        assert [c.kwargs["params"] for c in request.call_args_list] == [
+            {"from": "2024-01-01", "to": "2024-01-28"},
+            {"from": "2024-01-29", "to": "2024-01-29"},
+        ]
+
+
+class TestPolar247SleepSkinTemperature:
+    def test_night_is_anchored_to_utc_midnight(self, data_247: Polar247Data) -> None:
+        raw = {
+            "sleep_time_skin_temperature_celsius": 34.2,
+            "deviation_from_baseline_celsius": -0.3,
+            "sleep_date": "2024-01-15",
+        }
+
+        samples = data_247.normalize_sleep_skin_temperature([raw], uuid4())
+
+        by_type = {s.series_type: s for s in samples}
+        assert float(by_type[SeriesType.skin_temperature].value) == 34.2
+        assert float(by_type[SeriesType.skin_temperature_deviation].value) == -0.3
+        assert {s.recorded_at for s in samples} == {datetime(2024, 1, 15, tzinfo=timezone.utc)}
+
+
+# ---------------------------------------------------------------------------
+# Physical info
+# ---------------------------------------------------------------------------
+
+
+class TestPolar247PhysicalInfo:
+    @pytest.fixture
+    def physical_info(self) -> dict:
+        return {
+            "weight": 70.5,
+            "height": 175,
+            "created": "2024-06-01T12:00:00Z",
+            "modified": "2024-06-10T12:00:00Z",
+            "birthday": "1990-01-01",
+            "gender": "MALE",
+            "maximum_heart_rate": 190,
+            "resting_heart_rate": 60,
+            "aerobic_threshold": 140,
+            "anaerobic_threshold": 170,
+            "vo2_max": 50,
+            "weight_source": "SOURCE_USER",
+            "training_background": "REGULAR",
+            "typical_day": "MOSTLY_MOVING",
+            "sleep_goal": "PT8H",
+        }
+
+    def test_requests_physical_info(self, data_247: Polar247Data, physical_info: dict) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=physical_info) as request:
+            raw = data_247.get_physical_info(MagicMock(), uuid4())
+
+        assert request.call_args.args[2] == "/v3/users/physical-info"
+        assert raw == physical_info
+
+    def test_weight_and_vo2max_are_stamped_at_the_last_change(
+        self, data_247: Polar247Data, physical_info: dict
+    ) -> None:
+        user_id = uuid4()
+        samples = data_247.normalize_physical_info(physical_info, user_id)
+
+        by_type = {s.series_type: s for s in samples}
+        assert set(by_type) == {SeriesType.weight, SeriesType.vo2_max}
+        assert float(by_type[SeriesType.weight].value) == 70.5
+        assert float(by_type[SeriesType.vo2_max].value) == 50
+        changed = datetime(2024, 6, 10, 12, 0, tzinfo=timezone.utc)
+        assert all(s.recorded_at == changed for s in samples)
+        assert all(s.user_id == user_id for s in samples)
+
+    def test_falls_back_to_creation_time(self, data_247: Polar247Data, physical_info: dict) -> None:
+        physical_info.pop("modified")
+
+        samples = data_247.normalize_physical_info(physical_info, uuid4())
+
+        assert {s.recorded_at for s in samples} == {datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)}
+
+    def test_skips_missing_and_zero_values(self, data_247: Polar247Data, physical_info: dict) -> None:
+        physical_info["vo2_max"] = 0
+        physical_info.pop("weight")
+
+        assert data_247.normalize_physical_info(physical_info, uuid4()) == []
+
+    def test_without_a_timestamp_nothing_is_stored(self, data_247: Polar247Data, physical_info: dict) -> None:
+        physical_info.pop("modified")
+        physical_info.pop("created")
+
+        assert data_247.normalize_physical_info(physical_info, uuid4()) == []
+
+    def test_no_data(self, data_247: Polar247Data) -> None:
+        assert data_247.normalize_physical_info(None, uuid4()) == []

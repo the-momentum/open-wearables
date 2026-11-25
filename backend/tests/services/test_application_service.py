@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.services.application_service import application_service
 from app.utils.exceptions import AuthenticationError, NotFoundError
+from app.utils.security import verify_password
 from tests.factories import DeveloperFactory
 
 
@@ -34,8 +35,7 @@ class TestApplicationServiceCreate:
 
         # The stored hash should not equal the plain secret
         assert app.app_secret_hash != plain_secret
-        # Should start with hashed_ (our test mock) or be a bcrypt hash
-        assert app.app_secret_hash.startswith("hashed_") or "$2b$" in app.app_secret_hash
+        assert verify_password(plain_secret, app.app_secret_hash)
 
     def test_create_application_sets_developer_id(self, db: Session) -> None:
         """Should set developer_id correctly."""
@@ -167,6 +167,18 @@ class TestApplicationServiceRotateSecret:
             application_service.validate_credentials(db, app.app_id, old_secret)
 
         assert exc_info.value.status_code == 401
+
+    def test_rotate_secret_outlives_the_request(self, db: Session) -> None:
+        """A request ends by closing its session, which discards anything not committed."""
+        developer = DeveloperFactory()
+        app, old_secret = application_service.create_application(db, developer.id, "Test App")
+
+        _, new_secret = application_service.rotate_secret(db, app.app_id, developer.id)
+        db.rollback()
+
+        assert application_service.validate_credentials(db, app.app_id, new_secret)
+        with pytest.raises(AuthenticationError):
+            application_service.validate_credentials(db, app.app_id, old_secret)
 
     def test_rotate_secret_not_owner_raises_404(self, db: Session) -> None:
         """Should raise 404 when rotating another developer's app secret."""

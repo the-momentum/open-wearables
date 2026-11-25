@@ -58,7 +58,7 @@ def _logged_statuses(mock: MagicMock) -> list[int]:
 class TestAccessLogMiddleware:
     def test_all_level_logs_every_status(self) -> None:
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/ok")
             client.get("/client-error")
             client.get("/boom")
@@ -66,7 +66,7 @@ class TestAccessLogMiddleware:
 
     def test_errors_level_drops_2xx_keeps_4xx_5xx(self) -> None:
         client = _build_client(AccessLogLevel.ERRORS)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/ok")
             client.get("/client-error")
             client.get("/boom")
@@ -74,14 +74,14 @@ class TestAccessLogMiddleware:
 
     def test_off_level_logs_nothing(self) -> None:
         client = _build_client(AccessLogLevel.OFF)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/ok")
             client.get("/client-error")
         mock.assert_not_called()
 
     def test_log_level_is_error_for_4xx_and_5xx(self) -> None:
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/ok")
             client.get("/client-error")
         levels = [call.args[0] for call in mock.call_args_list]
@@ -89,7 +89,7 @@ class TestAccessLogMiddleware:
 
     def test_query_string_is_preserved_in_path(self) -> None:
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/ok?limit=5&sort_by=created_at")
         assert mock.call_args_list[0].kwargs["path"] == "/ok?limit=5&sort_by=created_at"
 
@@ -101,7 +101,7 @@ class TestAccessLogMiddleware:
         # These authenticate unsigned provider webhooks, so a logged value is a
         # usable credential — Withings' grants a forced disconnect.
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get(f"/ok?{key}=s3cret&appli=1")
         path = mock.call_args_list[0].kwargs["path"]
         assert "s3cret" not in path
@@ -111,7 +111,7 @@ class TestAccessLogMiddleware:
     def test_webhook_callback_token_is_redacted(self) -> None:
         # The secret path segment is the only credential of an unsigned Strava event.
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.post("/api/v1/providers/strava/webhooks/s3cret?hub.verify_token=v3rify")
         path = mock.call_args_list[0].kwargs["path"]
         assert path == "/api/v1/providers/strava/webhooks/redacted?hub.verify_token=REDACTED"
@@ -119,7 +119,7 @@ class TestAccessLogMiddleware:
     def test_garmin_webhook_callback_token_is_redacted(self) -> None:
         # Garmin does not sign its notifications either; the operator sets this URL in its portal.
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.post("/api/v1/providers/garmin/webhooks/s3cret")
         assert mock.call_args_list[0].kwargs["path"] == "/api/v1/providers/garmin/webhooks/redacted"
 
@@ -127,7 +127,7 @@ class TestAccessLogMiddleware:
         # Subscription endpoints take the callback URL as ?callback_url=.
         client = _build_client(AccessLogLevel.ALL)
         callback = "https://example.com/api/v1/providers/strava/webhooks/s3cret"
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/ok", params={"callback_url": callback})
         path = mock.call_args_list[0].kwargs["path"]
         assert "s3cret" not in path
@@ -135,7 +135,7 @@ class TestAccessLogMiddleware:
 
     def test_sdk_attribution_headers_are_logged(self) -> None:
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get(
                 "/ok",
                 headers={
@@ -155,7 +155,7 @@ class TestAccessLogMiddleware:
 
     def test_absent_sdk_headers_add_no_fields(self) -> None:
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/ok", headers={"User-Agent": ""})
         attributes = mock.call_args_list[0].kwargs
         for key in ("sdk_version", "sdk_platform", "request_id", "outbox_item_id", "user_agent"):
@@ -173,7 +173,7 @@ class TestAccessLogMiddleware:
         """The access log carries the traceback as text; the exception itself reaches
         Sentry through the integrations, not as a second event from the log line."""
         client = _build_client(AccessLogLevel.ALL)
-        with patch("app.middlewares.logger.log") as mock:
+        with patch("app.middlewares.logger.log", autospec=True) as mock:
             client.get("/boom")
 
         assert "exc_info" not in mock.call_args.kwargs

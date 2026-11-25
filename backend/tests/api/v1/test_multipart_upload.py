@@ -1,9 +1,10 @@
 """Tests for the Apple XML S3/MinIO multipart upload endpoints."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from celery.result import AsyncResult
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,7 @@ BASE = "/api/v1/users/{user_id}/import/apple/xml/s3/multipart"
 
 
 class TestCreateMultipart:
-    def test_create_success(self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]) -> None:
+    def test_create_success(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
 
@@ -40,9 +41,7 @@ class TestCreateMultipart:
         )
         assert response.status_code == 401
 
-    def test_create_rejects_file_below_min_part_size(
-        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
-    ) -> None:
+    def test_create_rejects_file_below_min_part_size(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
         response = client.post(
@@ -52,9 +51,7 @@ class TestCreateMultipart:
         )
         assert response.status_code == 422
 
-    def test_create_unknown_user(
-        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
-    ) -> None:
+    def test_create_unknown_user(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         response = client.post(
             BASE.format(user_id=uuid4()) + "/create",
@@ -62,11 +59,9 @@ class TestCreateMultipart:
             json={"filename": "export.xml", "file_size": 200 * 1024 * 1024},
         )
         assert response.status_code == 404
-        mock_external_apis["s3"].create_multipart_upload.assert_not_called()
+        mock_s3.create_multipart_upload.assert_not_called()
 
-    def test_create_rejects_non_uuid_user_id(
-        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
-    ) -> None:
+    def test_create_rejects_non_uuid_user_id(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         response = client.post(
             BASE.format(user_id="not-a-uuid") + "/create",
@@ -74,11 +69,11 @@ class TestCreateMultipart:
             json={"filename": "export.xml", "file_size": 200 * 1024 * 1024},
         )
         assert response.status_code == 422
-        mock_external_apis["s3"].create_multipart_upload.assert_not_called()
+        mock_s3.create_multipart_upload.assert_not_called()
 
 
 class TestSignMultipart:
-    def test_sign_returns_urls(self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]) -> None:
+    def test_sign_returns_urls(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
         response = client.post(
@@ -96,9 +91,7 @@ class TestSignMultipart:
         assert [u["part_number"] for u in urls] == [1, 2]
         assert all(u["url"] for u in urls)
 
-    def test_sign_rejects_foreign_key(
-        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
-    ) -> None:
+    def test_sign_rejects_foreign_key(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
         response = client.post(
@@ -118,7 +111,7 @@ class TestCompleteMultipart:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "client")
@@ -126,8 +119,8 @@ class TestCompleteMultipart:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         key = f"{user.id}/raw/export.xml"
 
-        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload") as mock_task:
-            mock_task.delay.return_value = MagicMock(id="task-123")
+        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload", autospec=True) as mock_task:
+            mock_task.delay.return_value = create_autospec(AsyncResult, instance=True, id="task-123")
             response = client.post(
                 BASE.format(user_id=user.id) + "/complete",
                 headers=headers,
@@ -146,13 +139,13 @@ class TestCompleteMultipart:
             parts=[{"part_number": 1, "etag": "e1"}],
             user_id=str(user.id),
         )
-        mock_external_apis["s3"].complete_multipart_upload.assert_not_called()
+        mock_s3.complete_multipart_upload.assert_not_called()
 
     def test_complete_client_mode_keeps_upload_incomplete_when_queueing_fails(
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "client")
@@ -160,7 +153,7 @@ class TestCompleteMultipart:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         key = f"{user.id}/raw/export.xml"
 
-        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload") as mock_task:
+        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload", autospec=True) as mock_task:
             mock_task.delay.side_effect = RuntimeError("broker unavailable")
             response = client.post(
                 BASE.format(user_id=user.id) + "/complete",
@@ -170,13 +163,13 @@ class TestCompleteMultipart:
 
         assert response.status_code == 503
         assert "remains incomplete" in response.json()["detail"]
-        mock_external_apis["s3"].complete_multipart_upload.assert_not_called()
+        mock_s3.complete_multipart_upload.assert_not_called()
 
     def test_complete_sns_mode_does_not_dispatch(
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "sns")
@@ -184,7 +177,7 @@ class TestCompleteMultipart:
         headers = api_key_headers(ApiKeyFactory().plain_key)
         key = f"{user.id}/raw/export.xml"
 
-        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload") as mock_task:
+        with patch("app.api.routes.v1.import_xml.complete_and_process_aws_upload", autospec=True) as mock_task:
             response = client.post(
                 BASE.format(user_id=user.id) + "/complete",
                 headers=headers,
@@ -195,9 +188,7 @@ class TestCompleteMultipart:
         assert response.json()["status"] == "uploaded"
         mock_task.delay.assert_not_called()
 
-    def test_complete_rejects_foreign_key(
-        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
-    ) -> None:
+    def test_complete_rejects_foreign_key(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
         response = client.post(
@@ -209,7 +200,7 @@ class TestCompleteMultipart:
 
 
 class TestAbortMultipart:
-    def test_abort_success(self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]) -> None:
+    def test_abort_success(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
         key = f"{user.id}/raw/export.xml"
@@ -220,7 +211,7 @@ class TestAbortMultipart:
         )
         assert response.status_code == 200
         assert response.json() == {"status": "aborted", "key": key}
-        mock_external_apis["s3"].abort_multipart_upload.assert_called_once()
+        mock_s3.abort_multipart_upload.assert_called_once()
 
 
 class TestUserIdPath:
@@ -239,7 +230,7 @@ class TestUserIdPath:
         self,
         client: TestClient,
         db: Session,
-        mock_external_apis: dict[str, MagicMock],
+        mock_s3: MagicMock,
         endpoint: str,
         payload: dict,
     ) -> None:
@@ -247,11 +238,9 @@ class TestUserIdPath:
         response = client.post(BASE.format(user_id="not-a-uuid") + f"/{endpoint}", headers=headers, json=payload)
 
         assert response.status_code == 422
-        assert mock_external_apis["s3"].method_calls == []
+        assert mock_s3.method_calls == []
 
-    def test_uppercase_user_id_maps_to_the_same_key(
-        self, client: TestClient, db: Session, mock_external_apis: dict[str, MagicMock]
-    ) -> None:
+    def test_uppercase_user_id_maps_to_the_same_key(self, client: TestClient, db: Session, mock_s3: MagicMock) -> None:
         user = UserFactory()
         headers = api_key_headers(ApiKeyFactory().plain_key)
         upper_id = str(user.id).upper()

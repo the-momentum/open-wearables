@@ -110,7 +110,7 @@ def _repair(db: Session) -> Counter[str]:
 
 
 def _session(db: Session) -> MagicMock:
-    session = MagicMock()
+    session = MagicMock(spec=Session)
     session.__enter__.return_value = db
     return session
 
@@ -347,8 +347,8 @@ class TestRepairCondensedSeries:
             return real(*args, **kwargs)
 
         with (
-            patch.object(timeseries_service, "stored_in_windows", side_effect=lookup),
-            patch.object(repair_condensed_series_task, "logger") as logger,
+            patch.object(timeseries_service, "stored_in_windows", autospec=True, side_effect=lookup),
+            patch.object(repair_condensed_series_task, "logger", autospec=True) as logger,
         ):
             done = _repair(db)
 
@@ -395,7 +395,7 @@ class TestRepairCondensedSeriesTask:
         _originals(db, source)
         _sample(db, source, SeriesType.active_energy, START, "15", window=600)
 
-        with patch(f"{_TASK}.SessionLocal", return_value=_session(db)):
+        with patch(f"{_TASK}.SessionLocal", autospec=True, return_value=_session(db)):
             assert repair_condensed_series() == {"finished": True, "failed": 0, "restored": 1, "deleted": 0, "kept": 0}
             assert repair_condensed_series() == {"skipped": "done"}
 
@@ -409,8 +409,8 @@ class TestRepairCondensedSeriesTask:
         db.commit()
 
         with (
-            patch(f"{_TASK}.SessionLocal", return_value=_session(db)),
-            patch.object(timeseries_service, "stored_in_windows", side_effect=RuntimeError("boom")),
+            patch(f"{_TASK}.SessionLocal", autospec=True, return_value=_session(db)),
+            patch.object(timeseries_service, "stored_in_windows", autospec=True, side_effect=RuntimeError("boom")),
         ):
             assert repair_condensed_series()["failed"] == 1
 
@@ -420,9 +420,9 @@ class TestRepairCondensedSeriesTask:
         source = _source()
 
         with (
-            patch(f"{_TASK}.SessionLocal", return_value=_session(db)),
+            patch(f"{_TASK}.SessionLocal", autospec=True, return_value=_session(db)),
             patch(f"{_TASK}._BUDGET_SECONDS", 0),
-            patch.object(repair_condensed_series, "apply_async") as apply_async,
+            patch.object(repair_condensed_series, "apply_async", autospec=True) as apply_async,
         ):
             assert repair_condensed_series()["finished"] is False
 
@@ -437,9 +437,9 @@ class TestRepairCondensedSeriesTask:
 class TestScript:
     def test_queues_the_task_until_it_is_done(self, db: Session) -> None:
         with (
-            patch.object(_script, "SessionLocal", return_value=_session(db)),
-            patch.object(_script, "create_celery"),
-            patch.object(_script.repair_condensed_series, "delay") as delay,
+            patch.object(_script, "SessionLocal", autospec=True, return_value=_session(db)),
+            patch.object(_script, "create_celery", autospec=True),
+            patch.object(_script.repair_condensed_series, "delay", autospec=True) as delay,
         ):
             _script.main(dry_run=False)
             DataMigrationRepository().mark_completed(db, MIGRATION)

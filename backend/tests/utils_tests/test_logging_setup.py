@@ -18,10 +18,10 @@ from unittest.mock import patch
 from uuid import UUID
 
 import pytest
+import time_machine
 import uvicorn
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from freezegun import freeze_time
 from pydantic import ValidationError
 
 from app.config import Settings, settings
@@ -106,7 +106,7 @@ def _with_log_level(level: LogLevel | None) -> None:
 class TestLegacyOutputUnchanged:
     """With the defaults, the app logger prints exactly what log_structured printed before."""
 
-    @freeze_time(FROZEN_AT)
+    @time_machine.travel(FROZEN_AT, tick=False)
     @pytest.mark.parametrize(
         ("level", "message", "attributes", "expected"),
         [
@@ -160,7 +160,7 @@ class TestLegacyOutputUnchanged:
 
         assert capsys.readouterr().out == expected + "\n"
 
-    @freeze_time(FROZEN_AT)
+    @time_machine.travel(FROZEN_AT, tick=False)
     def test_trace_id_from_context_keeps_the_caller_key_order(self, capsys: pytest.CaptureFixture[str]) -> None:
         token = trace_id_var.set("abcd1234")
         try:
@@ -193,7 +193,7 @@ class TestLegacyOutputUnchanged:
         assert records == []
 
     def test_the_alert_flag_is_not_printed(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with patch("app.utils.structured_logging.sentry_sdk"):
+        with patch("app.utils.structured_logging.sentry_sdk", autospec=True):
             logger.warning("flagged", alert=True)
 
         assert "alert" not in json.loads(capsys.readouterr().out)
@@ -373,7 +373,7 @@ class TestAttributeChecks:
         line = json.loads(capsys.readouterr().out)
         assert (line["error_type"], line["attr_error_type"]) == ("ValueError", "custom")
 
-    @freeze_time(FROZEN_AT)
+    @time_machine.travel(FROZEN_AT, tick=False)
     def test_in_production_the_line_is_printed_anyway(self, lenient: None, capsys: pytest.CaptureFixture[str]) -> None:
         logger.info("odd values", value=datetime(2026, 1, 1), timestamp="from a header", message="other")
 
@@ -503,7 +503,7 @@ class TestTextFormat:
 
 
 class TestJsonFormat:
-    @freeze_time(FROZEN_AT)
+    @time_machine.travel(FROZEN_AT, tick=False)
     def test_app_logger_output_matches_legacy(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch.object(settings, "log_format", LogFormat.JSON):
             logger.info("Sync done", provider="garmin", user_id="u1")

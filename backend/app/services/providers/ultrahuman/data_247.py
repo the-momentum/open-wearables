@@ -316,7 +316,9 @@ class Ultrahuman247Data(Base247DataTemplate):
             sleep_stages=normalized_sleep.get("stage_timestamps") or None,
         )
 
-        event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+        event_record_service.create_or_merge_sleep(
+            db, user_id, record, detail, settings.sleep_end_gap_minutes, merge_adjacent=False
+        )
         return True
 
     # -------------------------------------------------------------------------

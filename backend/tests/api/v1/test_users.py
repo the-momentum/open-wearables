@@ -16,6 +16,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from dirty_equals import IsDatetime, IsInt, IsList, IsPartialDict, IsUUID
 from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.orm import Session
@@ -52,12 +53,7 @@ class TestListUsers:
         assert response.status_code == 200
         data = response.json()
         # Response is paginated format with 'items' list
-        assert "items" in data
-        assert isinstance(data["items"], list)
-        assert len(data["items"]) >= 2
-        assert "total" in data
-        assert "page" in data
-        assert "limit" in data
+        assert data == IsPartialDict(items=IsList(length=(2, ...)), total=IsInt, page=IsInt, limit=IsInt)
 
         # Find our test users
         user_ids = [str(user1.id), str(user2.id)]
@@ -139,11 +135,18 @@ class TestGetUser:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == str(user.id)
-        assert data["email"] == "user@example.com"
-        assert data["first_name"] == "John"
-        assert data["last_name"] == "Doe"
-        assert "created_at" in data
+        assert data == {
+            "id": str(user.id),
+            "created_at": IsDatetime(iso_string=True),
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "user@example.com",
+            "external_user_id": None,
+            "last_synced_at": None,
+            "last_synced_provider": None,
+            "has_active_connection": False,
+            "has_womens_health_data": False,
+        }
 
     def test_get_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent user raises ResourceNotFoundError."""
@@ -218,7 +221,9 @@ class TestCreateUser:
         db.commit()
 
         # Act - the other request commits between this one's check and its insert
-        with patch("app.services.user_service.user_service.crud.get_by_external_user_id", return_value=None):
+        with patch(
+            "app.services.user_service.user_service.crud.get_by_external_user_id", autospec=True, return_value=None
+        ):
             response = client.post(
                 f"{api_v1_prefix}/users",
                 json={"external_user_id": "ext123"},
@@ -248,12 +253,18 @@ class TestCreateUser:
         # Assert
         assert response.status_code == 201
         data = response.json()
-        assert data["email"] == "newuser@example.com"
-        assert data["first_name"] == "Alice"
-        assert data["last_name"] == "Johnson"
-        assert data["external_user_id"] == "ext123"
-        assert "id" in data
-        assert "created_at" in data
+        assert data == {
+            "id": IsUUID,
+            "created_at": IsDatetime(iso_string=True),
+            "first_name": "Alice",
+            "last_name": "Johnson",
+            "email": "newuser@example.com",
+            "external_user_id": "ext123",
+            "last_synced_at": None,
+            "last_synced_provider": None,
+            "has_active_connection": False,
+            "connections": None,
+        }
 
         # Verify in database
         from app.services import user_service
@@ -275,9 +286,18 @@ class TestCreateUser:
 
         # Assert
         assert response.status_code == 201
-        data = response.json()
-        assert "id" in data
-        assert "created_at" in data
+        assert response.json() == {
+            "id": IsUUID,
+            "created_at": IsDatetime(iso_string=True),
+            "first_name": None,
+            "last_name": None,
+            "email": None,
+            "external_user_id": None,
+            "last_synced_at": None,
+            "last_synced_provider": None,
+            "has_active_connection": False,
+            "connections": None,
+        }
 
     def test_create_user_only_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with only email."""

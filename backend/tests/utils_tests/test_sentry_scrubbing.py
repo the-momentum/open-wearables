@@ -9,7 +9,7 @@ import logging
 from collections.abc import Generator, Iterator
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -20,6 +20,7 @@ from pydantic import BaseModel, ValidationError
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.transport import Transport
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.integrations import sentry as sentry_integration
@@ -27,10 +28,12 @@ from app.main import app_error_handler
 from app.services import raw_payload_storage
 from app.services.providers.sensorbio import data_247 as sensorbio_data_247
 from app.services.providers.sync_247_result import Sync247Run
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.config_utils import LogLevel
 from app.utils.exceptions import AppError, ConfigurationError, NotFoundError, ProviderError, ProviderRateLimitError
 from app.utils.logging_setup import configure_app_logger
 from app.utils.structured_logging import get_logger, is_expected_error
+from tests.utils.aws import mock_s3_client
 
 # A library logger: its ERROR records keep becoming Sentry events, like before.
 logger = logging.getLogger("library.test_sentry_scrubbing")
@@ -89,7 +92,7 @@ def captured(
     try:
         yield transport.events
     finally:
-        sentry_sdk.flush()
+        sentry_sdk.get_client().close()  # flushes and stops the SDK's monitor thread, which outlives the test
         sentry_sdk.get_global_scope().set_client(None)
 
 
@@ -216,7 +219,7 @@ def test_app_errors_without_an_exception_do_not_alert(captured: list[dict[str, A
 
 def test_app_errors_do_not_go_through_the_logging_integration(captured: list[dict[str, Any]]) -> None:
     """Otherwise every app ERROR record (each 4xx/5xx access log line) is built into an event first."""
-    with patch("sentry_sdk.integrations.logging.sentry_sdk.capture_event") as capture_event:
+    with patch("sentry_sdk.integrations.logging.sentry_sdk.capture_event", autospec=True) as capture_event:
         app_logger.error("http_request", status=401)
         logger.error("library error")
 
@@ -271,7 +274,7 @@ def test_alert_below_error_without_an_exception_keeps_its_level(captured: list[d
 )
 def test_alert_can_leave_out_expected_errors(captured: list[dict[str, Any]], exc: Exception, reported: bool) -> None:
     exc = _raised(exc)
-    with patch.object(app_logger.logger, "log", wraps=app_logger.logger.log) as log:
+    with patch.object(app_logger.logger, "log", autospec=True, wraps=app_logger.logger.log) as log:
         app_logger.warning("Fetch failed", exc_info=exc, alert=not is_expected_error(exc))
     sentry_sdk.flush()
 
@@ -287,20 +290,25 @@ def test_alert_can_leave_out_expected_errors(captured: list[dict[str, Any]], exc
         (lambda: ProviderError("sensorbio", upstream_status=503), 3),
         (lambda: RuntimeError("boom"), 3),
     ],
+    ids=["http-401", "provider-404", "provider-503", "runtime-error"],
 )
 def test_sensorbio_daily_details_do_not_alert_on_client_errors(
     captured: list[dict[str, Any]], make_exc: Any, events: int
 ) -> None:
     """Like log_and_capture_error(level="warning") did: an expired token is no alert for each day of a sync."""
-    data_247 = sensorbio_data_247.SensorBio247Data("sensorbio", "https://api.sensorbio.com", MagicMock())
+    data_247 = sensorbio_data_247.SensorBio247Data(
+        "sensorbio", "https://api.sensorbio.com", create_autospec(BaseOAuthTemplate, instance=True)
+    )
     start, end = datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 3, tzinfo=timezone.utc)
     sensorbio_logger = sensorbio_data_247.logger.logger
     with (
         # A new exception per day, as in a real sync: Sentry drops a repeat of the same object.
-        patch.object(data_247, "_make_api_request", side_effect=lambda *args, **kwargs: _raise(make_exc())),
-        patch.object(sensorbio_logger, "log", wraps=sensorbio_logger.log) as log,
+        patch.object(
+            data_247, "_make_api_request", autospec=True, side_effect=lambda *args, **kwargs: _raise(make_exc())
+        ),
+        patch.object(sensorbio_logger, "log", autospec=True, wraps=sensorbio_logger.log) as log,
     ):
-        assert data_247._get_daily_details(MagicMock(), uuid4(), start, end, "/v1/activity/details") == []
+        assert data_247._get_daily_details(MagicMock(spec=Session), uuid4(), start, end, "/v1/activity/details") == []
     sentry_sdk.flush()
 
     assert [call.args[0] for call in log.call_args_list] == [logging.WARNING] * 3
@@ -400,7 +408,7 @@ def test_sensitive_mode_ships_full_data_but_still_masks_credentials(captured: li
 
 
 def test_stored_raw_payload_is_referenced_not_included(captured: list[dict[str, Any]]) -> None:
-    with patch.object(raw_payload_storage, "_create_s3_client", return_value=MagicMock()):
+    with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_s3_client()):
         raw_payload_storage.configure("s3", 1024 * 1024, s3_bucket="raw-bucket")
     try:
         raw_payload_storage.store_raw_payload(
@@ -436,10 +444,10 @@ def test_query_string_is_filtered_in_transactions_and_param_names(
 
 
 def test_failed_s3_upload_adds_no_breadcrumb(captured: list[dict[str, Any]]) -> None:
-    with patch.object(raw_payload_storage, "_create_s3_client", return_value=MagicMock()):
+    with patch.object(raw_payload_storage, "_create_s3_client", autospec=True, return_value=mock_s3_client()):
         raw_payload_storage.configure("s3", 1024 * 1024, s3_bucket="raw-bucket")
     try:
-        with patch.object(raw_payload_storage, "put_payload_to_s3", return_value=None):
+        with patch.object(raw_payload_storage, "put_payload_to_s3", autospec=True, return_value=None):
             raw_payload_storage.store_raw_payload(source="webhook", provider="oura", payload={"x": 1})
     finally:
         raw_payload_storage.configure("disabled", 10 * 1024 * 1024)
@@ -509,7 +517,7 @@ def test_request_the_provider_refused_is_reported_grouped(captured: list[dict[st
 
 def test_captured_sync_step_reports_failures_not_a_users_state(captured: list[dict[str, Any]]) -> None:
     """A lost grant or missing data would report every hour per user; an outage is worth hearing about."""
-    run = Sync247Run("withings", MagicMock(), uuid4())
+    run = Sync247Run("withings", MagicMock(spec=Session), uuid4())
     run.fail("sleep", _raised(ProviderError("withings", upstream_status=404)), capture=True)
     run.fail("weight", _raised(ProviderRateLimitError("withings", "throttled (status=601)")), capture=True)
     run.fail("activity", _raised(ProviderError("withings", upstream_status=503)), capture=True)

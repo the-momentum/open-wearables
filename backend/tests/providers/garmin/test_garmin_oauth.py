@@ -1,10 +1,13 @@
 """Tests for Garmin OAuth implementation."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import httpx
 import pytest
+import redis
+import respx
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -15,6 +18,24 @@ from app.schemas.model_crud.credentials import OAuthTokenResponse, ProviderCrede
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.utils.exceptions import InvalidInputError, ProviderError, ReauthRequiredError
 from tests.factories import UserConnectionFactory, UserFactory
+
+USER_ID_URL = "https://apis.garmin.com/partner-gateway/rest/user/id"
+PERMISSIONS_URL = "https://apis.garmin.com/partner-gateway/rest/user/permissions"
+REGISTRATION_URL = "https://apis.garmin.com/partner-gateway/rest/user/registration"
+TOKEN_URL = "https://diauth.garmin.com/di-oauth2-service/oauth/token"
+
+TOKEN_RESPONSE = OAuthTokenResponse(
+    access_token="test_access_token",
+    token_type="Bearer",
+    expires_in=3600,
+    refresh_token="test_refresh_token",
+)
+NEW_TOKENS = {
+    "access_token": "new_access_token",
+    "refresh_token": "new_refresh_token",
+    "expires_in": 3600,
+    "token_type": "Bearer",
+}
 
 
 class TestGarminOAuth:
@@ -55,11 +76,11 @@ class TestGarminOAuth:
         """Garmin should use body authentication method."""
         assert garmin_oauth.auth_method == AuthenticationMethod.BODY
 
-    @patch("app.services.providers.templates.base_oauth.get_redis_client")
-    def test_get_authorization_url(self, mock_get_redis: MagicMock, garmin_oauth: GarminOAuth) -> None:
+    def test_get_authorization_url(self, mocker: MockerFixture, garmin_oauth: GarminOAuth) -> None:
         """Test generating authorization URL with PKCE."""
+        mock_get_redis = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
         # Arrange
-        mock_redis_client = MagicMock()
+        mock_redis_client = MagicMock(spec=redis.Redis)
         mock_get_redis.return_value = mock_redis_client
 
         user_id = uuid4()
@@ -76,205 +97,90 @@ class TestGarminOAuth:
         assert len(state) > 0
         mock_redis_client.setex.assert_called_once()
 
-    @patch("httpx.get")
-    def test_get_provider_user_info_success(
-        self,
-        mock_httpx_get: MagicMock,
-        garmin_oauth: GarminOAuth,
-    ) -> None:
+    def test_get_provider_user_info_success(self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth) -> None:
         """Test fetching Garmin user info successfully (without permissions)."""
-        # Arrange
-        token_response = OAuthTokenResponse(
-            access_token="test_access_token",
-            token_type="Bearer",
-            expires_in=3600,
-            refresh_token="test_refresh_token",
+        user_id = respx_mock.get(USER_ID_URL).respond(200, json={"userId": "garmin_user_123"})
+        permissions = respx_mock.get(PERMISSIONS_URL).respond(
+            200, json={"permissions": ["ACTIVITY_EXPORT", "HEALTH_EXPORT"]}
         )
 
-        mock_user_id_response = MagicMock()
-        mock_user_id_response.json.return_value = {"userId": "garmin_user_123"}
-        mock_user_id_response.raise_for_status.return_value = None
+        user_info = garmin_oauth._get_provider_user_info(TOKEN_RESPONSE, "internal_user_id")
 
-        mock_permissions_response = MagicMock()
-        mock_permissions_response.json.return_value = {
-            "permissions": ["ACTIVITY_EXPORT", "HEALTH_EXPORT"],
-        }
-        mock_permissions_response.raise_for_status.return_value = None
-
-        mock_httpx_get.side_effect = [mock_user_id_response, mock_permissions_response]
-
-        # Act
-        user_info = garmin_oauth._get_provider_user_info(token_response, "internal_user_id")
-
-        # Assert
         assert user_info["user_id"] == "garmin_user_123"
         assert user_info["username"] is None
         assert user_info["scope"] == "ACTIVITY_EXPORT HEALTH_EXPORT"
-        assert mock_httpx_get.call_count == 2
+        for route in (user_id, permissions):
+            assert route.call_count == 1
+            assert route.calls.last.request.headers["Authorization"] == "Bearer test_access_token"
 
-    @patch("httpx.get")
-    def test_get_provider_user_info_failure(
-        self,
-        mock_httpx_get: MagicMock,
-        garmin_oauth: GarminOAuth,
-    ) -> None:
+    def test_get_provider_user_info_failure(self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth) -> None:
         """Test fetching Garmin user info handles errors gracefully."""
-        # Arrange
-        token_response = OAuthTokenResponse(
-            access_token="test_access_token",
-            token_type="Bearer",
-            expires_in=3600,
-            refresh_token="test_refresh_token",
-        )
+        respx_mock.get(USER_ID_URL).respond(503)
 
-        mock_httpx_get.side_effect = httpx.HTTPError("API Error")
-
-        # Act
-        user_info = garmin_oauth._get_provider_user_info(token_response, "internal_user_id")
+        user_info = garmin_oauth._get_provider_user_info(TOKEN_RESPONSE, "internal_user_id")
 
         # Assert - should return None values on error
         assert user_info["user_id"] is None
         assert user_info["username"] is None
         assert user_info["scope"] is None
 
-    @patch("httpx.get")
     def test_get_provider_user_info_returns_scope(
-        self,
-        mock_httpx_get: MagicMock,
-        garmin_oauth: GarminOAuth,
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
         """Test that both API calls succeed and scope is populated."""
-        # Arrange
-        token_response = OAuthTokenResponse(
-            access_token="test_access_token",
-            token_type="Bearer",
-            expires_in=3600,
-            refresh_token="test_refresh_token",
+        respx_mock.get(USER_ID_URL).respond(200, json={"userId": "garmin_user_456"})
+        respx_mock.get(PERMISSIONS_URL).respond(
+            200, json={"permissions": ["ACTIVITY_EXPORT", "HEALTH_EXPORT", "WELLNESS_EXPORT"]}
         )
 
-        mock_user_id_response = MagicMock()
-        mock_user_id_response.json.return_value = {"userId": "garmin_user_456"}
-        mock_user_id_response.raise_for_status.return_value = None
+        user_info = garmin_oauth._get_provider_user_info(TOKEN_RESPONSE, "internal_user_id")
 
-        mock_permissions_response = MagicMock()
-        mock_permissions_response.json.return_value = {
-            "permissions": ["ACTIVITY_EXPORT", "HEALTH_EXPORT", "WELLNESS_EXPORT"],
-        }
-        mock_permissions_response.raise_for_status.return_value = None
-
-        mock_httpx_get.side_effect = [mock_user_id_response, mock_permissions_response]
-
-        # Act
-        user_info = garmin_oauth._get_provider_user_info(token_response, "internal_user_id")
-
-        # Assert
         assert user_info["user_id"] == "garmin_user_456"
         assert user_info["scope"] == "ACTIVITY_EXPORT HEALTH_EXPORT WELLNESS_EXPORT"
 
-    @patch("httpx.get")
     def test_get_provider_user_info_permissions_failure_returns_user_id(
-        self,
-        mock_httpx_get: MagicMock,
-        garmin_oauth: GarminOAuth,
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
         """Test that permissions failure still returns user_id with scope=None."""
-        # Arrange
-        token_response = OAuthTokenResponse(
-            access_token="test_access_token",
-            token_type="Bearer",
-            expires_in=3600,
-            refresh_token="test_refresh_token",
-        )
+        respx_mock.get(USER_ID_URL).respond(200, json={"userId": "garmin_user_789"})
+        respx_mock.get(PERMISSIONS_URL).respond(500)
 
-        mock_user_id_response = MagicMock()
-        mock_user_id_response.json.return_value = {"userId": "garmin_user_789"}
-        mock_user_id_response.raise_for_status.return_value = None
-
-        mock_httpx_get.side_effect = [mock_user_id_response, httpx.HTTPError("Permissions API Error")]
-
-        # Act
-        user_info = garmin_oauth._get_provider_user_info(token_response, "internal_user_id")
+        user_info = garmin_oauth._get_provider_user_info(TOKEN_RESPONSE, "internal_user_id")
 
         # Assert - user_id returned, scope is None
         assert user_info["user_id"] == "garmin_user_789"
         assert user_info["username"] is None
         assert user_info["scope"] is None
 
-    @patch("httpx.get")
     def test_get_provider_user_info_empty_permissions(
-        self,
-        mock_httpx_get: MagicMock,
-        garmin_oauth: GarminOAuth,
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
         """Test that empty permissions list results in scope=None."""
-        # Arrange
-        token_response = OAuthTokenResponse(
-            access_token="test_access_token",
-            token_type="Bearer",
-            expires_in=3600,
-            refresh_token="test_refresh_token",
-        )
+        respx_mock.get(USER_ID_URL).respond(200, json={"userId": "garmin_user_abc"})
+        respx_mock.get(PERMISSIONS_URL).respond(200, json={"permissions": []})
 
-        mock_user_id_response = MagicMock()
-        mock_user_id_response.json.return_value = {"userId": "garmin_user_abc"}
-        mock_user_id_response.raise_for_status.return_value = None
+        user_info = garmin_oauth._get_provider_user_info(TOKEN_RESPONSE, "internal_user_id")
 
-        mock_permissions_response = MagicMock()
-        mock_permissions_response.json.return_value = {"permissions": []}
-        mock_permissions_response.raise_for_status.return_value = None
-
-        mock_httpx_get.side_effect = [mock_user_id_response, mock_permissions_response]
-
-        # Act
-        user_info = garmin_oauth._get_provider_user_info(token_response, "internal_user_id")
-
-        # Assert
         assert user_info["user_id"] == "garmin_user_abc"
         assert user_info["scope"] is None
 
-    @patch("httpx.post")
-    @patch("app.integrations.redis_client.get_redis_client")
     def test_exchange_token_with_pkce(
-        self,
-        mock_redis: MagicMock,
-        mock_httpx_post: MagicMock,
-        garmin_oauth: GarminOAuth,
+        self, mocker: MockerFixture, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
         """Test token exchange includes PKCE verifier."""
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "new_access_token",
-            "refresh_token": "new_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_httpx_post.return_value = mock_response
+        mocker.patch("app.integrations.redis_client.get_redis_client", autospec=True)
+        token = respx_mock.post(TOKEN_URL).respond(200, json=NEW_TOKENS)
 
-        code = "auth_code_123"
-        code_verifier = "test_verifier_abc123"
+        token_response = garmin_oauth._exchange_token("auth_code_123", "test_verifier_abc123")
 
-        # Act
-        token_response = garmin_oauth._exchange_token(code, code_verifier)
-
-        # Assert
         assert token_response.access_token == "new_access_token"
         assert token_response.refresh_token == "new_refresh_token"
+        form = httpx.QueryParams(token.calls.last.request.content.decode())
+        assert form["code"] == "auth_code_123"
+        assert form["code_verifier"] == "test_verifier_abc123"
 
-        # Verify PKCE verifier was included in request
-        call_args = mock_httpx_post.call_args
-        assert call_args[1]["data"]["code_verifier"] == code_verifier
-
-    @patch("httpx.post")
-    def test_refresh_access_token(
-        self,
-        mock_httpx_post: MagicMock,
-        garmin_oauth: GarminOAuth,
-        db: Session,
-    ) -> None:
+    def test_refresh_access_token(self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth, db: Session) -> None:
         """Test refreshing access token."""
-        # Arrange
         user = UserFactory()
         UserConnectionFactory(
             user=user,
@@ -282,23 +188,15 @@ class TestGarminOAuth:
             access_token="old_access_token",
             refresh_token="old_refresh_token",
         )
+        token = respx_mock.post(TOKEN_URL).respond(200, json=NEW_TOKENS)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "access_token": "new_access_token",
-            "refresh_token": "new_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        }
-        mock_response.raise_for_status.return_value = None
-        mock_httpx_post.return_value = mock_response
-
-        # Act
         token_response = garmin_oauth.refresh_access_token(db, user.id, "old_refresh_token")
 
-        # Assert
         assert token_response.access_token == "new_access_token"
         assert token_response.refresh_token == "new_refresh_token"
+        form = httpx.QueryParams(token.calls.last.request.content.decode())
+        assert form["grant_type"] == "refresh_token"
+        assert form["refresh_token"] == "old_refresh_token"
 
     def test_prepare_token_request_uses_body_auth(self, garmin_oauth: GarminOAuth) -> None:
         """Test token request preparation uses body authentication."""
@@ -327,38 +225,22 @@ class TestGarminOAuth:
         assert headers["Content-Type"] == "application/x-www-form-urlencoded"
         assert "Authorization" not in headers  # Body auth, not Basic auth
 
-    @patch("httpx.delete")
-    def test_deregister_user_success(self, mock_httpx_delete: MagicMock, garmin_oauth: GarminOAuth) -> None:
+    def test_deregister_user_success(self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth) -> None:
         """Test calling Garmin deregistration endpoint."""
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.status_code = 204
-        mock_response.raise_for_status.return_value = None
-        mock_httpx_delete.return_value = mock_response
+        registration = respx_mock.delete(REGISTRATION_URL).respond(204)
 
-        # Act
         garmin_oauth.deregister_user("test_access_token")
 
-        # Assert
-        mock_httpx_delete.assert_called_once_with(
-            "https://apis.garmin.com/partner-gateway/rest/user/registration",
-            headers={"Authorization": "Bearer test_access_token"},
-            timeout=30.0,
-        )
+        assert registration.call_count == 1
+        assert registration.calls.last.request.headers["Authorization"] == "Bearer test_access_token"
+        assert registration.calls.last.request.extensions["timeout"]["read"] == 30.0
 
-    @patch("httpx.delete")
     def test_deregister_user_raises_on_http_error(
-        self, mock_httpx_delete: MagicMock, garmin_oauth: GarminOAuth
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
         """Test that deregister_user raises on HTTP error (caller handles it)."""
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)
-        )
-        mock_httpx_delete.return_value = mock_response
+        respx_mock.delete(REGISTRATION_URL).respond(401)
 
-        # Act & Assert
         with pytest.raises(httpx.HTTPStatusError):
             garmin_oauth.deregister_user("expired_token")
 
@@ -366,68 +248,65 @@ class TestGarminOAuth:
 class TestOAuthTokenErrors:
     """How the shared OAuth template turns a failed token request into a domain error."""
 
-    TOKEN_URL = "https://diauth.garmin.com/di-oauth2-service/oauth/token"
-
     @pytest.fixture
     def garmin_oauth(self) -> GarminOAuth:
         return GarminOAuth(
-            user_repo=MagicMock(),
-            connection_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
             provider_name="garmin",
             api_base_url="https://apis.garmin.com",
         )
 
-    def _response(self, status_code: int, text: str = "") -> httpx.Response:
-        return httpx.Response(status_code, text=text, request=httpx.Request("POST", self.TOKEN_URL))
-
     @pytest.mark.parametrize("status_code", [400, 401])
-    @patch("httpx.post")
     def test_rejected_refresh_token_revokes_and_requires_reconnection(
-        self, mock_post: MagicMock, garmin_oauth: GarminOAuth, status_code: int
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth, status_code: int
     ) -> None:
-        mock_post.return_value = self._response(status_code, '{"error": "invalid_grant"}')
+        respx_mock.post(TOKEN_URL).respond(status_code, json={"error": "invalid_grant"})
 
         with (
-            patch.object(garmin_oauth, "revoke_connection") as mock_revoke,
+            patch.object(garmin_oauth, "revoke_connection", autospec=True) as mock_revoke,
             pytest.raises(ReauthRequiredError),
         ):
-            garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "dead-refresh-token")
+            garmin_oauth.refresh_access_token(MagicMock(spec=Session), uuid4(), "dead-refresh-token")
 
         mock_revoke.assert_called_once()
 
-    @patch("httpx.post")
     def test_refresh_during_a_provider_outage_keeps_the_connection(
-        self, mock_post: MagicMock, garmin_oauth: GarminOAuth
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
-        mock_post.return_value = self._response(503, "maintenance")
+        respx_mock.post(TOKEN_URL).respond(503, text="maintenance")
 
-        with patch.object(garmin_oauth, "revoke_connection") as mock_revoke, pytest.raises(ProviderError) as exc_info:
-            garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "refresh-token")
+        with (
+            patch.object(garmin_oauth, "revoke_connection", autospec=True) as mock_revoke,
+            pytest.raises(ProviderError) as exc_info,
+        ):
+            garmin_oauth.refresh_access_token(MagicMock(spec=Session), uuid4(), "refresh-token")
 
         assert (exc_info.value.status_code, exc_info.value.upstream_status) == (502, 503)
         mock_revoke.assert_not_called()
 
-    @patch("httpx.post", side_effect=httpx.ConnectError("connection refused"))
-    def test_refresh_without_a_response(self, mock_post: MagicMock, garmin_oauth: GarminOAuth) -> None:
+    def test_refresh_without_a_response(self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth) -> None:
+        respx_mock.post(TOKEN_URL).mock(side_effect=httpx.ConnectError("connection refused"))
+
         with pytest.raises(ProviderError) as exc_info:
-            garmin_oauth.refresh_access_token(MagicMock(), uuid4(), "refresh-token")
+            garmin_oauth.refresh_access_token(MagicMock(spec=Session), uuid4(), "refresh-token")
 
         assert exc_info.value.detail == "Garmin token refresh failed"
 
-    @patch("httpx.post")
     def test_rejected_authorization_code_is_a_client_error(
-        self, mock_post: MagicMock, garmin_oauth: GarminOAuth
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
     ) -> None:
-        mock_post.return_value = self._response(400, '{"error": "invalid_grant", "code": "abc"}')
+        respx_mock.post(TOKEN_URL).respond(400, json={"error": "invalid_grant", "code": "abc"})
 
         with pytest.raises(InvalidInputError) as exc_info:
             garmin_oauth._exchange_token("expired-code", "verifier")
 
         assert exc_info.value.detail == "Failed to exchange authorization code"
 
-    @patch("httpx.post")
-    def test_code_exchange_during_a_provider_outage(self, mock_post: MagicMock, garmin_oauth: GarminOAuth) -> None:
-        mock_post.return_value = self._response(500, "oops")
+    def test_code_exchange_during_a_provider_outage(
+        self, respx_mock: respx.MockRouter, garmin_oauth: GarminOAuth
+    ) -> None:
+        respx_mock.post(TOKEN_URL).respond(500, text="oops")
 
         with pytest.raises(ProviderError) as exc_info:
             garmin_oauth._exchange_token("code", "verifier")

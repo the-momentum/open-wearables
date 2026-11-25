@@ -264,7 +264,7 @@ class TestRequireApiKeyDetached:
     async def test_accepts_a_developer_token(self, db: Session) -> None:
         developer = DeveloperFactory(email="detached@example.com")
 
-        with patch("app.services.api_key_service.SessionLocal") as mock_session_local:
+        with patch("app.services.api_key_service.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             result = await _require_api_key_detached(token=create_access_token(subject=str(developer.id)))
 
@@ -274,7 +274,7 @@ class TestRequireApiKeyDetached:
     async def test_accepts_an_api_key_header(self, db: Session) -> None:
         api_key = ApiKeyFactory()
 
-        with patch("app.services.api_key_service.SessionLocal") as mock_session_local:
+        with patch("app.services.api_key_service.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             result = await _require_api_key_detached(token=None, x_open_wearables_api_key=api_key.plain_key)
 
@@ -282,7 +282,7 @@ class TestRequireApiKeyDetached:
 
     @pytest.mark.asyncio
     async def test_rejects_a_request_with_neither(self, db: Session) -> None:
-        with patch("app.services.api_key_service.SessionLocal") as mock_session_local:
+        with patch("app.services.api_key_service.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             with pytest.raises(AuthenticationError) as exc_info:
                 await _require_api_key_detached(token=None, x_open_wearables_api_key=None)
@@ -291,7 +291,7 @@ class TestRequireApiKeyDetached:
 
     @pytest.mark.asyncio
     async def test_rejects_an_unknown_api_key(self, db: Session) -> None:
-        with patch("app.services.api_key_service.SessionLocal") as mock_session_local:
+        with patch("app.services.api_key_service.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             with pytest.raises(HTTPException) as exc_info:
                 await _require_api_key_detached(token=None, x_open_wearables_api_key="nope")

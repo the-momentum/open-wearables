@@ -36,6 +36,7 @@ from app.schemas.providers.polar import (
     ContinuousHeartRateJSON,
     DailyActivityJSON,
     NightlyRechargeJSON,
+    PhysicalInfoJSON,
     PolarWebhookEventType,
     SleepJSON,
 )
@@ -807,7 +808,32 @@ class Polar247Data(Base247DataTemplate):
         return scores
 
     # -------------------------------------------------------------------------
-    # Elixir — Body Temperature: GET /v3/users/body-temperature
+    # Elixir biosensing: GET /v3/users/biosensing/*
+    # -------------------------------------------------------------------------
+
+    def _get_biosensing(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        endpoint: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch a biosensing list endpoint; Polar enforces a max 28-day window per request."""
+        # Polar takes dates, both ends inclusive, so the chunks advance by date: advancing by
+        # datetime would skip the last day when the window ends earlier in the day than it starts.
+        results: list[dict[str, Any]] = []
+        chunk_start = start_time.date()
+        last_day = end_time.date()
+        while chunk_start <= last_day:
+            chunk_end = min(chunk_start + timedelta(days=27), last_day)
+            params = {"from": chunk_start.isoformat(), "to": chunk_end.isoformat()}
+            results.extend(self._make_api_request(db, user_id, endpoint, params=params) or [])
+            chunk_start = chunk_end + timedelta(days=1)
+        return results
+
+    # -------------------------------------------------------------------------
+    # Elixir — Body Temperature: GET /v3/users/biosensing/bodytemperature
     # -------------------------------------------------------------------------
 
     def get_body_temperature_data(
@@ -817,9 +843,7 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        params = {"from": start_time.date().isoformat(), "to": end_time.date().isoformat()}
-        response = self._make_api_request(db, user_id, "/v3/users/body-temperature", params=params)
-        return response or []
+        return self._get_biosensing(db, user_id, "/v3/users/biosensing/bodytemperature", start_time, end_time)
 
     def normalize_body_temperature(
         self,
@@ -852,7 +876,7 @@ class Polar247Data(Base247DataTemplate):
         return samples
 
     # -------------------------------------------------------------------------
-    # Elixir — Sleep Skin Temperature: GET /v3/users/sleep-skin-temperature
+    # Elixir — Sleep Skin Temperature: GET /v3/users/biosensing/skintemperature
     # -------------------------------------------------------------------------
 
     def get_sleep_skin_temperature_data(
@@ -862,9 +886,7 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        params = {"from": start_time.date().isoformat(), "to": end_time.date().isoformat()}
-        response = self._make_api_request(db, user_id, "/v3/users/sleep-skin-temperature", params=params)
-        return response or []
+        return self._get_biosensing(db, user_id, "/v3/users/biosensing/skintemperature", start_time, end_time)
 
     def normalize_sleep_skin_temperature(
         self,
@@ -877,7 +899,8 @@ class Polar247Data(Base247DataTemplate):
                 continue
             if not parsed.sleep_date:
                 continue
-            recorded_at = datetime.fromisoformat(parsed.sleep_date)
+            # A bare date, anchored to UTC midnight like the Nightly Recharge night.
+            recorded_at = datetime.fromisoformat(parsed.sleep_date).replace(tzinfo=timezone.utc)
             if parsed.sleep_time_skin_temperature_celsius is not None:
                 samples.append(
                     TimeSeriesSampleCreate(
@@ -907,7 +930,7 @@ class Polar247Data(Base247DataTemplate):
         return samples
 
     # -------------------------------------------------------------------------
-    # Elixir — SpO2: GET /v3/users/spo2
+    # Elixir — SpO2: GET /v3/users/biosensing/spo2
     # -------------------------------------------------------------------------
 
     def get_spo2_data(
@@ -917,9 +940,7 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        params = {"from": start_time.date().isoformat(), "to": end_time.date().isoformat()}
-        response = self._make_api_request(db, user_id, "/v3/users/spo2", params=params)
-        return response or []
+        return self._get_biosensing(db, user_id, "/v3/users/biosensing/spo2", start_time, end_time)
 
     def normalize_spo2(
         self,
@@ -960,7 +981,7 @@ class Polar247Data(Base247DataTemplate):
         return samples
 
     # -------------------------------------------------------------------------
-    # Elixir — Wrist ECG: GET /v3/users/wrist-ecg
+    # Elixir — Wrist ECG: GET /v3/users/biosensing/ecg
     # -------------------------------------------------------------------------
 
     def get_wrist_ecg_data(
@@ -970,9 +991,7 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        params = {"from": start_time.date().isoformat(), "to": end_time.date().isoformat()}
-        response = self._make_api_request(db, user_id, "/v3/users/wrist-ecg", params=params)
-        return response or []
+        return self._get_biosensing(db, user_id, "/v3/users/biosensing/ecg", start_time, end_time)
 
     def normalize_wrist_ecg(
         self,
@@ -1013,21 +1032,54 @@ class Polar247Data(Base247DataTemplate):
         return samples
 
     # -------------------------------------------------------------------------
-    # Persistence helpers
+    # Physical info: GET /v3/users/physical-info
     # -------------------------------------------------------------------------
 
-    @staticmethod
-    def _claim_night_stored_without_id(db: DbSession, user_id: UUID, record: EventRecordCreate) -> None:
-        """Give the record's id to the Polar night stored without one that it overlaps, so the save replaces it.
+    def get_physical_info(self, db: DbSession, user_id: UUID) -> dict[str, Any] | None:
+        response = self._make_api_request(db, user_id, "/v3/users/physical-info")
+        return response if isinstance(response, dict) else None
 
-        Polar keeps one sleep per date, so an overlapping night is this one, moved or not. Nights stored before
-        Polar sleep carried an id, by an old pod during a deploy, or without stages by dedupe_polar_sleep have none.
+    def normalize_physical_info(
+        self,
+        raw: dict[str, Any] | None,
+        user_id: UUID,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Weight and VO2max, stamped when the user's physical settings last changed.
+
+        The endpoint returns current values only, so the change time keeps a value that
+        did not change at the same timestamp on every sync.
         """
-        stored = event_record_service.find_adjacent_sleep_record(
-            db, user_id, record.start_datetime, record.end_datetime, 0, source=record.source, provider=record.provider
+        if raw is None:
+            return []
+        if (parsed := self._parse(raw, PhysicalInfoJSON, user_id, "physical_info")) is None:
+            return []
+        stamp = parsed.modified or parsed.created
+        if not stamp:
+            return []
+        recorded_at = datetime.fromisoformat(stamp)
+        if recorded_at.tzinfo is None:
+            recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+        values = (
+            (SeriesType.weight, parsed.weight),
+            (SeriesType.vo2_max, parsed.vo2_max),
         )
-        if stored is not None and stored.external_id is None:
-            stored.external_id = record.external_id
+        return [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=ProviderName.POLAR,
+                source=ProviderName.POLAR,
+                recorded_at=recorded_at,
+                value=value,
+                series_type=series_type,
+            )
+            for series_type, value in values
+            if value is not None and value > 0
+        ]
+
+    # -------------------------------------------------------------------------
+    # Persistence helpers
+    # -------------------------------------------------------------------------
 
     def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> WriteCounts:
         counts = WriteCounts(0, 0)
@@ -1057,9 +1109,9 @@ class Polar247Data(Base247DataTemplate):
             case PolarWebhookEventType.SLEEP:
                 count = 0
                 for record, detail, score, hr_samples in self.normalize_sleep([raw], user_id):
-                    self._claim_night_stored_without_id(db, user_id, record)
+                    event_record_service.claim_sleep_stored_without_id(db, user_id, record)
                     stored = event_record_service.create_or_merge_sleep(
-                        db, user_id, record, detail, settings.sleep_end_gap_minutes
+                        db, user_id, record, detail, settings.sleep_end_gap_minutes, merge_adjacent=False
                     )
                     count += 1
                     if score:
@@ -1079,6 +1131,9 @@ class Polar247Data(Base247DataTemplate):
 
             case PolarWebhookEventType.SLEEP_WISE_CIRCADIAN_BEDTIME:
                 return {"circadian_bedtime": self._save_scores(db, self.normalize_circadian_bedtime([raw], user_id))}
+
+            case PolarWebhookEventType.PHYSICAL_INFORMATION:
+                return {"physical_info": self._save_timeseries(db, self.normalize_physical_info(raw, user_id))}
 
             case _:
                 logger.warning(
@@ -1149,9 +1204,9 @@ class Polar247Data(Base247DataTemplate):
             if sleep_starts is not None and record.external_id:
                 sleep_starts[record.external_id.removeprefix("sleep-")] = record.start_datetime
             try:
-                self._claim_night_stored_without_id(db, user_id, record)
+                event_record_service.claim_sleep_stored_without_id(db, user_id, record)
                 stored = event_record_service.create_or_merge_sleep(
-                    db, user_id, record, detail, settings.sleep_end_gap_minutes
+                    db, user_id, record, detail, settings.sleep_end_gap_minutes, merge_adjacent=False
                 )
                 count += 1
                 # A re-sync keeps the stored night, not the id normalize_sleep drew for it
@@ -1228,6 +1283,9 @@ class Polar247Data(Base247DataTemplate):
             ),
             "wrist_ecg": lambda: self._save_timeseries(
                 db, self.normalize_wrist_ecg(self.get_wrist_ecg_data(db, user_id, start_time, end_time), user_id)
+            ),
+            "physical_info": lambda: self._save_timeseries(
+                db, self.normalize_physical_info(self.get_physical_info(db, user_id), user_id)
             ),
         }
 

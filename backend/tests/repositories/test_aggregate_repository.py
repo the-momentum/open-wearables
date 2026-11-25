@@ -1085,7 +1085,9 @@ class TestRollupTask:
         db.add(setting)
         db.commit()
 
-        with patch("app.integrations.celery.tasks.archival_task.SessionLocal", return_value=nullcontext(db)):
+        with patch(
+            "app.integrations.celery.tasks.archival_task.SessionLocal", autospec=True, return_value=nullcontext(db)
+        ):
             assert roll_up_queued_days() == {"rolled_up_days": 0}
         assert get_redis_client().get("series_rollup:lock") is None
 
@@ -1094,9 +1096,11 @@ class TestRollupTask:
         requeue_dirty_days([(uuid4(), date(2025, 1, 10))])
 
         with (
-            patch("app.integrations.celery.tasks.archival_task.SessionLocal", return_value=nullcontext(db)),
-            patch.object(archival_service, "roll_up_queued_days", return_value=0),
-            patch.object(roll_up_queued_days, "apply_async") as next_run,
+            patch(
+                "app.integrations.celery.tasks.archival_task.SessionLocal", autospec=True, return_value=nullcontext(db)
+            ),
+            patch.object(archival_service, "roll_up_queued_days", autospec=True, return_value=0),
+            patch.object(roll_up_queued_days, "apply_async", autospec=True) as next_run,
         ):
             roll_up_queued_days()
 

@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import UUID
 
 import pytest
@@ -46,7 +46,7 @@ def _workouts_api(exercises: dict[str, dict], refused: dict[UUID, Exception] | N
     """A PolarWorkouts stand-in: real offset maths, Polar's exercise list as canned JSON by exercise id."""
     from app.services.providers.polar.workouts import PolarWorkouts
 
-    api = MagicMock()
+    api = create_autospec(PolarWorkouts, instance=True)
     api._extract_dates_with_offset = PolarWorkouts._extract_dates_with_offset.__get__(api)
 
     def exercise_list(_db: Session, user_id: UUID, **_kwargs: Any) -> list[dict]:
@@ -321,7 +321,7 @@ class TestRollupAndCoverage:
         _, source = _stale_workout(db, "EX1")
 
         # Act
-        with patch.object(_module, "data_type_coverage_repository") as coverage:
+        with patch.object(_module, "data_type_coverage_repository", autospec=True) as coverage:
             fix(db, _workouts_api({"EX1": _polar_json()}), dry_run=False)
 
         # Assert
