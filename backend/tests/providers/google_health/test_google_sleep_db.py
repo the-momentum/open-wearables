@@ -91,30 +91,7 @@ def test_a_revised_session_replaces_the_stored_one(db: Session) -> None:
     assert _stored(db) == [("n0", 420)]
 
 
-def test_copies_under_other_data_sources_collapse_to_one(db: Session) -> None:
-    # What a device rename left behind before sessions were keyed on their name.
-    user = UserFactory()
-    for device in ("Google Fitbit Air", "Fitbit Air"):
-        source = DataSourceFactory(
-            user=user, provider=ProviderName.GOOGLE_HEALTH, source=GOOGLE_HEALTH_API_SOURCE, device_model=device
-        )
-        EventRecordFactory(
-            data_source=source,
-            category=EventCategory.SLEEP,
-            type=None,
-            external_id=_name("n0"),
-            start_datetime=BEDTIME,
-            end_datetime=BEDTIME + timedelta(hours=7),
-        )
-    db.commit()
-
-    _sync(db, user.id, [_session("n0", BEDTIME)])
-
-    assert _stored(db) == [("n0", 420)]
-    assert db.query(EventRecord.type).scalar() == "sleep_session"
-
-
-def test_a_session_reissued_under_a_new_name_takes_the_new_name(db: Session) -> None:
+def test_a_session_under_a_new_name_refreshes_the_stored_night(db: Session) -> None:
     user = UserFactory()
     source = DataSourceFactory(
         user=user, provider=ProviderName.GOOGLE_HEALTH, source=GOOGLE_HEALTH_API_SOURCE, device_model="Fitbit Air"
@@ -128,9 +105,11 @@ def test_a_session_reissued_under_a_new_name_takes_the_new_name(db: Session) -> 
     )
     db.commit()
 
-    _sync(db, user.id, [_session("new", BEDTIME)])
+    with patch("app.services.event_record_service.on_sleep_created") as announce:
+        _sync(db, user.id, [_session("new", BEDTIME)])
 
-    assert _stored(db) == [("new", 420)]
+    assert _stored(db) == [("old", 420)]
+    announce.assert_not_called()
 
 
 def test_a_nap_next_to_a_night_survives_a_resync(db: Session) -> None:

@@ -1,8 +1,9 @@
 """Google Health API sleep handler.
 
 Fetches Sleep sessions via the dataPoints ``list`` operation and stores them as
-``EventRecord(category=EventCategory.SLEEP)`` via ``create_or_merge_sleep`` (merges fragmented
-sessions). Composed into GoogleHealth247Data.load_and_save_all.
+``EventRecord(category=EventCategory.SLEEP)`` via ``create_or_merge_sleep``, matched on the data
+point name. Google already consolidates sessions, so they are not merged. Composed into
+GoogleHealth247Data.load_and_save_all.
 """
 
 from datetime import datetime
@@ -52,7 +53,7 @@ class GoogleHealthApiSleep:
         self.api_base_url = api_base_url
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
-        """Fetch sleep sessions ending in the window and merge-save each.
+        """Fetch sleep sessions ending in the window and save each.
 
         Keyed on the end, like the fetch filter: an overnight session starts before any
         morning window and would never be kept if the start were tested.
@@ -67,7 +68,9 @@ class GoogleHealthApiSleep:
             if start is None or end is None or not (start_time <= end < end_time):
                 continue
             record, detail = self._normalize(point, sleep, interval, start, end, user_id)
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            event_record_service.create_or_merge_sleep(
+                db, user_id, record, detail, settings.sleep_end_gap_minutes, merge_adjacent=False
+            )
             count += 1
         return count
 
