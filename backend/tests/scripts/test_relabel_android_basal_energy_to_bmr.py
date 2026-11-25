@@ -9,6 +9,7 @@ row is a BMR reading. See scripts/data_migrations/relabel_android_basal_energy_t
 import importlib.util
 import threading
 import time
+from typing import Any
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -361,7 +362,7 @@ def test_idempotent_second_run_is_noop(db: Session) -> None:
     assert _type_ids(db, "series_sample") == [BMR_ID]
 
 
-def test_concurrent_bmr_writer_is_not_overwritten(engine, session_factory) -> None:
+def test_concurrent_bmr_writer_is_not_overwritten(session_factory: Any) -> None:
     """Two sessions, real concurrency: a pod already on the new release writes BMR rows and
     widens coverage while the migration re-keys. Whatever the interleaving, the final
     basal_metabolic_rate span must exactly envelope the rows held — the recompute must never
