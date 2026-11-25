@@ -741,6 +741,18 @@ class EventRecordService(
 
         created_record = self.crud.create_and_flush(db_session, record)
         new_detail = detail.model_copy(update={"record_id": created_record.id})
+        if created_record.id != record.id:
+            # A stored night under another external_id holds this window: it is this session, re-issued
+            created_record.external_id = record.external_id
+            self.event_record_detail_repo.delete_by_record_id(db_session, created_record.id, EventCategory.SLEEP)
+            self.event_record_detail_repo.create_and_flush(db_session, new_detail, detail_type=EventCategory.SLEEP)
+            self._recompute_sleep_scores(
+                db_session,
+                user_id,
+                {self._local_sleep_date(created_record.start_datetime, created_record.zone_offset)},
+            )
+            db_session.commit()
+            return created_record, False, new_detail
         self.event_record_detail_repo.create_and_flush(
             db_session,
             new_detail,
