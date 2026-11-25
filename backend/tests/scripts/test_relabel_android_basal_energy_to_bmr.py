@@ -324,12 +324,16 @@ def test_interleaved_rolling_deploy_write_keeps_coverage_for_both_series(db: Ses
 
     rows = {
         row.data_type: row
-        for row in db.execute(text("SELECT data_type, coverage_start, coverage_end FROM data_type_coverage"))
+        for row in db.execute(
+            text("SELECT data_type, coverage_start, coverage_end, last_written_at FROM data_type_coverage")
+        )
     }
     assert set(rows) == {"basal_metabolic_rate", "basal_energy"}
     # the straggler keeps a basal_energy span narrowed to itself
     assert rows["basal_energy"].coverage_start == late_at
     assert rows["basal_energy"].coverage_end == late_at
+    # last_written_at approximates arrival with the sample time, never the repair time
+    assert rows["basal_energy"].last_written_at == late_at
     # the BMR span is recomputed from the rows actually held and does not reach the straggler
     assert rows["basal_metabolic_rate"].coverage_start == T
     assert rows["basal_metabolic_rate"].coverage_end == T
@@ -489,3 +493,34 @@ def test_concurrent_bmr_writer_is_not_overwritten(session_factory: Any) -> None:
         cleanup.execute(text('DELETE FROM "user" WHERE id = :uid'), {"uid": user_id})
         cleanup.commit()
         cleanup.close()
+
+
+def test_repair_preserves_a_surviving_writers_arrival_time(db: Session) -> None:
+    """When the straggler's own coverage write lands after the re-key, its row survives and
+    the repair only widens it: the writer's arrival time is always >= the sample time, so
+    GREATEST keeps it instead of the approximation."""
+    source = DataSourceFactory(provider=ProviderName.HEALTH_CONNECT)
+    straggler_at = T
+    writer_arrival = T + timedelta(hours=2)
+    DataPointSeriesFactory(
+        data_source=source,
+        series_type=_series_type(db, BASAL_ENERGY_ID),
+        recorded_at=straggler_at,
+        value=Decimal("1500"),
+    )
+    db.flush()
+    db.execute(
+        text(
+            "INSERT INTO data_type_coverage"
+            " (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)"
+            " VALUES (:uid, :prov, 'basal_energy', 'series', :t, :t, :arrival)"
+        ),
+        {"uid": source.user_id, "prov": source.provider, "t": straggler_at, "arrival": writer_arrival},
+    )
+
+    db.execute(_module._COVERAGE_REPAIR, _module._PARAMS)
+
+    row = db.execute(text("SELECT coverage_start, coverage_end, last_written_at FROM data_type_coverage")).one()
+    assert row.coverage_start == straggler_at
+    assert row.coverage_end == straggler_at
+    assert row.last_written_at == writer_arrival

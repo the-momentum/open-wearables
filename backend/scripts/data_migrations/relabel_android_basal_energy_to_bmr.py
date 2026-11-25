@@ -224,9 +224,13 @@ _COVERAGE_MOVE = [
 # exactly to what survived: the write paths widen it from there. Runs in the same
 # transaction, so the keys always describe the rows they cover once this commits; the
 # startup rerun relabels the straggler itself once the rollout ends.
+# last_written_at mirrors the coverage backfill and uses the sample time: a write arrives
+# no earlier than its samples, so on conflict GREATEST always keeps the writer's own
+# arrival time where its row survived, and the approximation only applies to a fresh
+# insert, where the true arrival time was carried away with the re-keyed row.
 _COVERAGE_REPAIR = _q("""
     INSERT INTO data_type_coverage (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
-    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, clock_timestamp()
+    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, coverage_end
     FROM (
         SELECT ds.user_id, ds.provider, 'basal_energy' AS data_type, 'series' AS kind,
                MIN(s.recorded_at) AS coverage_start, MAX(s.recorded_at) AS coverage_end
