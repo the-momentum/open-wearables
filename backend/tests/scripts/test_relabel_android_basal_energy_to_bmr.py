@@ -806,3 +806,110 @@ def test_recompute_leaves_writer_created_bmr_keys_untouched(session_factory: Any
         cleanup.execute(text('DELETE FROM "user" WHERE id = :uid'), {"uid": user_id})
         cleanup.commit()
         cleanup.close()
+
+
+def test_uncommitted_second_write_survives_the_recompute(session_factory: Any) -> None:
+    """The full round-9/10 ordering with two committed sessions: the writer's first write
+    creates a BMR key after the migration's lock scan, its second write — sample and
+    coverage widening in one transaction, as the write path really commits them — is still
+    uncommitted while the migration runs its recompute. The recompute must leave the key
+    alone, so once the write commits the span is exactly what the write path wrote."""
+    setup = session_factory()
+    user = User(id=uuid4(), email=f"inflight-{uuid4().hex[:8]}@example.com", first_name="I", last_name="F")
+    setup.add(user)
+    setup.flush()
+    source = DataSource(
+        id=uuid4(),
+        user_id=user.id,
+        provider=ProviderName.HEALTH_CONNECT,
+        device_model=f"dev-{uuid4().hex[:8]}",
+        software_version="1.0.0",
+        source="health_connect",
+        device_type="phone",
+    )
+    setup.add(source)
+    setup.flush()
+    user_id, source_id = user.id, source.id
+    setup.commit()
+    setup.close()
+
+    migration = session_factory()
+    writer = session_factory()
+    first_at = T + timedelta(hours=2)
+    second_at = first_at + timedelta(hours=1)
+    try:
+        # migration passes its lock and re-key before the writer's key exists
+        migration.execute(_module._COVERAGE_ADVISORY_LOCK)
+        migration.execute(_module._COVERAGE_ROW_LOCK, _module._PARAMS)
+        for statement in _module._COVERAGE_CAPTURE:
+            migration.execute(statement, _module._PARAMS)
+        for statement in _module._COVERAGE_MOVE:
+            migration.execute(statement, _module._PARAMS)
+
+        # first write commits sample and coverage together, as the write path does
+        writer.add(
+            SeriesSample(
+                id=uuid4(),
+                data_source_id=source_id,
+                series_type_definition_id=BMR_ID,
+                recorded_at=first_at,
+                value=Decimal("1520"),
+            )
+        )
+        writer.execute(
+            text(
+                "INSERT INTO data_type_coverage"
+                " (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)"
+                " VALUES (:uid, :prov, 'basal_metabolic_rate', 'series', :t, :t, :t)"
+            ),
+            {"uid": user_id, "prov": ProviderName.HEALTH_CONNECT, "t": first_at},
+        )
+        writer.commit()
+
+        # second write: sample and widening in one transaction, held open while the
+        # migration recomputes — the overwrite race itself
+        writer.add(
+            SeriesSample(
+                id=uuid4(),
+                data_source_id=source_id,
+                series_type_definition_id=BMR_ID,
+                recorded_at=second_at,
+                value=Decimal("1521"),
+            )
+        )
+        writer.execute(
+            text(
+                "UPDATE data_type_coverage SET coverage_end = :t, last_written_at = :t"
+                " WHERE user_id = :uid AND data_type = 'basal_metabolic_rate'"
+            ),
+            {"uid": user_id, "t": second_at},
+        )
+        writer.flush()
+
+        migration.execute(_module._COVERAGE_REPAIR, _module._PARAMS)
+        migration.execute(_module._BMR_SPAN_RECOMPUTE, _module._PARAMS)
+        migration.commit()
+
+        writer.commit()
+
+        rows = migration.execute(
+            text(
+                "SELECT coverage_start, coverage_end FROM data_type_coverage"
+                " WHERE user_id = :uid AND data_type = 'basal_metabolic_rate'"
+            ),
+            {"uid": user_id},
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].coverage_start == first_at
+        assert rows[0].coverage_end == second_at
+    finally:
+        for s in (migration, writer):
+            s.rollback()
+            s.close()
+        cleanup = session_factory()
+        cleanup.execute(text("DELETE FROM series_sample WHERE data_source_id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text("DELETE FROM data_type_coverage WHERE user_id = :uid"), {"uid": user_id})
+        cleanup.execute(text("DELETE FROM data_source WHERE id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text('DELETE FROM "user" WHERE id = :uid'), {"uid": user_id})
+        cleanup.commit()
+        cleanup.close()
