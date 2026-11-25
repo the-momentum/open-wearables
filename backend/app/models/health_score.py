@@ -14,12 +14,15 @@ class HealthScore(BaseDbModel):
 
     __tablename__ = "health_score"
     __table_args__ = (
+        # NULLS NOT DISTINCT keeps provider scores, which have no source, unique per provider
         UniqueConstraint(
             "user_id",
             "provider",
+            "data_source_id",
             "category",
             "recorded_at",
-            name="uq_health_score_user_provider_category_time",
+            name="uq_health_score_user_provider_source_category_time",
+            postgresql_nulls_not_distinct=True,
         ),
         # SQLAlchemy's UniqueConstraint doesn't support postgresql_where, so we
         # use Index(..., unique=True) to express this partial unique constraint.

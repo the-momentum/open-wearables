@@ -17,6 +17,16 @@ test('rejects wrong credentials without saying which field was wrong', async ({ 
 	await expect(page).toHaveURL('/login');
 });
 
+test('tells a locked-out email to try again later', async ({ page }) => {
+	await page.goto('/login');
+	await page.getByLabel('Email').fill('locked-out@example.com');
+	await page.getByLabel('Password').fill('any-password');
+	await page.getByRole('button', { name: 'Sign in' }).click();
+
+	await expect(page.getByRole('alert')).toContainText('Too many failed login attempts');
+	await expect(page).toHaveURL('/login');
+});
+
 test('signs in and reaches the dashboard', async ({ page }) => {
 	await signIn(page);
 	await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
@@ -50,4 +60,32 @@ test('sends an already signed-in visitor away from the sign-in page', async ({ p
 	await signIn(page);
 	await page.goto('/login');
 	await expect(page).toHaveURL('/dashboard');
+});
+
+// A session from another stack, or from before its SECRET_KEY rotated.
+test('sends a session the API no longer accepts back to sign in', async ({
+	page,
+	context,
+	request
+}) => {
+	await signIn(page);
+	await request.post('http://localhost:8787/__forget-tokens/all');
+
+	await page.goto('/login');
+	await expect(page).toHaveURL('/login');
+	await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+	const cookie = (await context.cookies()).find((c) => c.name === 'ow_session');
+	expect(cookie, 'the dead session should be cleared').toBeUndefined();
+});
+
+test('renews a refused access token while its refresh token still works', async ({
+	page,
+	request
+}) => {
+	await signIn(page);
+	await request.post('http://localhost:8787/__forget-tokens/access');
+
+	await page.goto('/users');
+	await expect(page).toHaveURL('/users');
+	await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
 });

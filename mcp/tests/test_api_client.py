@@ -70,3 +70,20 @@ def test_typed_errors_inherit_from_base() -> None:
     assert issubclass(AuthenticationError, OpenWearablesError)
     assert issubclass(NotFoundError, OpenWearablesError)
     assert issubclass(ConfigurationError, OpenWearablesError)
+
+
+async def test_get_workouts_asks_for_one_copy_per_session(
+    api_client: OpenWearablesClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Workouts are requested per_session so cross-provider copies are not counted twice."""
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://api.test.com/api/v1/users/user-1/events/workouts"
+            "?start_date=2026-04-01&end_date=2026-04-30&limit=100&source_selection=per_session"
+        ),
+        json={"data": []},
+    )
+
+    await api_client.get_workouts("user-1", "2026-04-01", "2026-04-30")

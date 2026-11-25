@@ -7,12 +7,12 @@ Covers the contract the sync orchestrator relies on:
 - the Mapping shim and the sync-log payload
 """
 
-import logging
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.sync_status import SyncStatus
@@ -21,11 +21,19 @@ from app.services.providers.sync_247_result import (
     Sync247Run,
     error_code_of,
 )
+from app.utils.exceptions import (
+    ProviderAuthRejectedError,
+    ProviderConnectionError,
+    ProviderError,
+    ProviderNotConnectedError,
+    ProviderRateLimitError,
+    ReauthRequiredError,
+)
 
 
 @pytest.fixture
 def run() -> Sync247Run:
-    return Sync247Run("testprovider", MagicMock(), uuid4(), logging.getLogger(__name__))
+    return Sync247Run("testprovider", MagicMock(spec=Session), uuid4())
 
 
 class TestWriteCountsArithmetic:
@@ -117,7 +125,7 @@ class TestSync247Result:
         result = Sync247Result(provider="p")
         result.record("heart_rate", WriteCounts(4, 1), truncated=True)
         result.record("sleep", 3)
-        result.fail("steps", HTTPException(status_code=401))
+        result.fail("steps", ProviderError("p", upstream_status=500))
         result.skip("vo2_max")
 
         payload = result.summary().model_dump(mode="json")
@@ -151,7 +159,7 @@ class TestSync247Result:
                 "items_reported": 0,
                 "items_skipped": 0,
                 "truncated": False,
-                "error_code": "http_401",
+                "error_code": "http_500",
             },
             "vo2_max": {
                 "status": "skipped",
@@ -170,8 +178,17 @@ class TestSync247Result:
         assert (payload["status"], payload["items_reported"], payload["tasks"]) == ("skipped", None, {})
 
 
-def test_error_code_carries_the_http_status_or_the_error_type_never_its_text() -> None:
+def test_error_code_carries_the_http_status_or_the_error_code_never_its_text() -> None:
     assert error_code_of(HTTPException(status_code=403, detail="user 42 revoked")) == "http_403"
+    # the provider's own status, not the 502 the client gets
+    assert error_code_of(ProviderError("p", upstream_status=404, upstream_body="user 42 not found")) == "http_404"
+    assert error_code_of(ProviderAuthRejectedError("p")) == "http_401"
+    # our own status would read like the provider's: a lost grant is not the provider's 409,
+    # a call that got no response not its 502; class names never reach clients
+    assert error_code_of(ReauthRequiredError("p", uuid4(), "revoked")) == "reauth_required"
+    assert error_code_of(ProviderNotConnectedError("p")) == "provider_not_connected"
+    assert error_code_of(ProviderError("p")) == "provider_error"
+    assert error_code_of(ProviderRateLimitError("withings", "throttled (status=601)")) == "provider_rate_limited"
     assert error_code_of(RuntimeError("heart_rate=72 violates constraint")) == "RuntimeError"
 
 
@@ -265,10 +282,10 @@ class TestSync247RunStep:
         assert run.result.outcomes["heart_rate"].status is SyncStatus.FAILED
 
     def test_fatal_errors_propagate_instead_of_being_recorded(self, run: Sync247Run) -> None:
-        run.fatal = (HTTPException,)
+        run.fatal = (ProviderConnectionError,)
 
-        with pytest.raises(HTTPException), run.step("sleep"):
-            raise HTTPException(status_code=401, detail="token expired")
+        with pytest.raises(ReauthRequiredError), run.step("sleep"):
+            raise ReauthRequiredError("p", uuid4(), "revoked")
 
         assert "sleep" not in run.result.outcomes
 

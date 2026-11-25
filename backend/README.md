@@ -134,7 +134,32 @@ uv run pytest --cov=app --cov-report=html
 
 # Run specific test file
 uv run pytest tests/path/to/test_file.py
+
+# Run in a single process (needed for --pdb and breakpoint())
+uv run pytest -n0 tests/path/to/test_file.py --pdb
 ```
+
+Tests run in parallel (pytest-xdist, at most 4 workers). Add `-n0` when debugging.
+
+Provider mapping tests use `inline-snapshot` for complete metrics and normalized
+workout structures. Expected values live inside `snapshot(...)` in the test file.
+Normal test runs compare them without editing source files.
+
+```bash
+# Fill new snapshot() assertions (use one process when editing snapshots)
+uv run pytest -n0 tests/providers/ --inline-snapshot=create
+
+# Update existing snapshots after an intentional mapping change
+uv run pytest -n0 tests/providers/ --inline-snapshot=fix
+```
+
+Review the generated diff before accepting it: snapshots capture the current
+output, which still needs to be checked for correctness. For random IDs and other
+nondeterministic values, prefer `dirty-equals` matchers that check the relevant
+properties instead of recording literal values. Alternatively, keep those fields
+outside snapshots. Assert relationships between IDs separately. Workout snapshots serialize
+models with `mode="json"` and `exclude_none=True` to keep populated fields readable;
+use explicit assertions for internal fields excluded from model serialization.
 
 ### Code Quality
 

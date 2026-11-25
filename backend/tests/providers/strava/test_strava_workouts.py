@@ -1,10 +1,12 @@
 """Tests for StravaWorkouts normalization."""
 
-from unittest.mock import MagicMock
+from decimal import Decimal
+from unittest.mock import create_autospec
 from uuid import uuid4
 
 import pytest
 
+from app.repositories import EventRecordRepository, UserConnectionRepository, UserRepository
 from app.schemas.enums import EntrySource
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.services.providers.strava.oauth import StravaOAuth
@@ -17,14 +19,14 @@ class TestStravaWorkoutsNormalization:
     @pytest.fixture
     def workouts(self) -> StravaWorkouts:
         oauth = StravaOAuth(
-            user_repo=MagicMock(),
-            connection_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
             provider_name="strava",
             api_base_url="https://www.strava.com/api/v3",
         )
         return StravaWorkouts(
-            workout_repo=MagicMock(),
-            connection_repo=MagicMock(),
+            workout_repo=create_autospec(EventRecordRepository, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
             provider_name="strava",
             api_base_url="https://www.strava.com/api/v3",
             oauth=oauth,
@@ -57,6 +59,14 @@ class TestStravaWorkoutsNormalization:
         _, detail = workouts._normalize_workout(self._activity(), uuid4())
 
         assert detail.entry_source is None
+
+    def test_ride_without_calories_takes_kilojoules_one_to_one(self, workouts: StravaWorkouts) -> None:
+        activity = self._activity().model_copy(update={"kilojoules": 750.0})
+
+        _, detail = workouts._normalize_workout(activity, uuid4())
+
+        # Pedal work at ~24% efficiency makes 1 kJ of work about 1 kcal burned.
+        assert detail.energy_burned == Decimal("750")
 
     def test_oversized_name_does_not_abort_the_batch(self, workouts: StravaWorkouts) -> None:
         """An overlong name is truncated so the surrounding activities still import."""

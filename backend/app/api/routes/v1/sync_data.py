@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any
@@ -15,10 +14,7 @@ from app.schemas.enums import ProviderName
 from app.schemas.responses.upload import SyncDetails, SyncQueuedResponse, SyncResponse
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import UnsupportedProviderError
 from app.utils.sync_params import build_sync_params
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -268,18 +264,19 @@ def sync_historical_data(
     days: Annotated[
         int,
         Query(
-            description="Days of historical data to fetch (default: 90, max: 365). "
-            "Ignored for providers with their own limits (e.g. Garmin: 30 days).",
+            description="Days of historical data to fetch (default: 90, max: 3650). "
+            "Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); "
+            "the response `days` reflects the window scheduled for sync.",
             ge=1,
-            le=365,
+            le=3650,
         ),
     ] = DEFAULT_HISTORICAL_DAYS,
 ) -> dict[str, Any]:
     """Trigger a historical sync of the user's data from a connected provider.
 
     Each provider strategy decides how to dispatch the sync (REST polling,
-    webhook backfill, etc.). The ``days`` parameter may be ignored by
-    providers that enforce their own limits.
+    webhook backfill, etc.). The ``days`` parameter is capped at the
+    provider's ``max_historical_days``.
 
     **Automatic historical sync on connect (grace period)**
 
@@ -300,13 +297,8 @@ def sync_historical_data(
     """
     strategy = factory.get_provider(provider.value)
 
-    try:
-        result = strategy.start_historical_sync(user_id, days)
-    except UnsupportedProviderError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=exc.detail,
-        )
+    # UnsupportedProviderError is an InvalidInputError: the global handler answers 400
+    result = strategy.start_historical_sync(user_id, days)
 
     return {
         "success": True,

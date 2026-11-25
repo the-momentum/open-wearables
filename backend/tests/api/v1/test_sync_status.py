@@ -1,10 +1,8 @@
 """Tests for the sync status SSE / history API endpoints."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,6 +10,7 @@ from fastapi import HTTPException
 from fastapi.dependencies.models import Dependant
 from fastapi.dependencies.utils import get_dependant
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 import app.services.sync_status_service as sync_status_service
@@ -158,14 +157,10 @@ class TestHistoryEndpointFilters:
             )
         )
 
-    @patch("app.services.sync_status_service.SessionLocal")
     def test_filters_by_provider_and_covered_window(
-        self,
-        mock_session_local: MagicMock,
-        client: TestClient,
-        api_key_header: dict[str, str],
-        db: Session,
+        self, mocker: MockerFixture, client: TestClient, api_key_header: dict[str, str], db: Session
     ) -> None:
+        mock_session_local = mocker.patch("app.services.sync_status_service.SessionLocal", autospec=True)
         mock_session_local.return_value.__enter__.return_value = db
         user = UserFactory()
         march = (datetime(2026, 3, 1, tzinfo=timezone.utc), datetime(2026, 4, 1, tzinfo=timezone.utc))
@@ -207,7 +202,7 @@ class TestStreamHoldsNoDbSession:
 
     def test_checks_the_user_without_the_request_session(self, db: Session) -> None:
         user = UserFactory()
-        with patch("app.api.routes.v1.sync_status.SessionLocal") as mock_session_local:
+        with patch("app.api.routes.v1.sync_status.SessionLocal", autospec=True) as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
             _ensure_user_exists_detached(user.id)
             with pytest.raises(HTTPException) as exc_info:

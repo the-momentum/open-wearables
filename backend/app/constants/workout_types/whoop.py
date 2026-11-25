@@ -1,9 +1,7 @@
-import logging
-
 from app.schemas.enums import WorkoutType
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # WHOOP sports. sport_name is a lowercase hyphenated slug ("hiking-rucking"), not the
 # display name the docs table shows. sport_id is deprecated (nominally removed after
@@ -210,9 +208,7 @@ def get_unified_workout_type(whoop_sport_name: str | None, whoop_sport_id: int |
             return unified_type
 
     if whoop_sport_name or whoop_sport_id is not None:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Unmapped Whoop sport, falling back to OTHER",
             provider="whoop",
             sport_name=whoop_sport_name,

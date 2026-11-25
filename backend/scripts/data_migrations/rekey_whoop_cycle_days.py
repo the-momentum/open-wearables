@@ -65,8 +65,8 @@ _HEALTH_SCORE = _Table(
 )
 
 _DATA_POINT_SERIES = _Table(
-    name="data_point_series",
-    label="data_point_series (active_energy, total_energy, steps)",
+    name="series_sample",
+    label="series_sample (active_energy, total_energy, steps)",
     eligible=(
         "t.is_daily_total IS TRUE"
         " AND EXISTS (SELECT 1 FROM data_source ds WHERE ds.id = t.data_source_id AND ds.provider = 'whoop')"
@@ -164,7 +164,7 @@ def _rekey(db: Session, table: _Table, *, dry_run: bool) -> int:
             FROM ({_movable(table)}) v
             WHERE tgt.id = v.id
         """)
-    ).rowcount  # ty: ignore[unresolved-attribute]
+    ).rowcount  # ty: ignore[missing-attribute]
     print(f"  re-keyed {moved}")
     return moved
 

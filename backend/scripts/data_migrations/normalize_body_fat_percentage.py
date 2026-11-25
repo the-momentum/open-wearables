@@ -23,7 +23,7 @@ SERIES_TYPE_CODE = "body_fat_percentage"
 
 _AFFECTED_COUNT = text("""
     SELECT COUNT(*)
-    FROM data_point_series dps
+    FROM series_sample dps
     JOIN series_type_definition std ON std.id = dps.series_type_definition_id
     WHERE std.code = :code
       AND dps.value > 100
@@ -31,7 +31,7 @@ _AFFECTED_COUNT = text("""
 
 _SAMPLE_ROWS = text("""
     SELECT dps.id, dps.value, dps.value / 100 AS corrected, ds.provider, dps.recorded_at
-    FROM data_point_series dps
+    FROM series_sample dps
     JOIN series_type_definition std ON std.id = dps.series_type_definition_id
     JOIN data_source ds ON ds.id = dps.data_source_id
     WHERE std.code = :code
@@ -41,7 +41,7 @@ _SAMPLE_ROWS = text("""
 """)
 
 _UPDATE = text("""
-    UPDATE data_point_series dps
+    UPDATE series_sample dps
     SET value = dps.value / 100
     FROM series_type_definition std
     WHERE std.id = dps.series_type_definition_id

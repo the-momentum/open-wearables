@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import asc, func
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
@@ -21,7 +21,7 @@ class ProviderPriorityRepository(
         super().__init__(model)
 
     def get_all_ordered(self, db_session: DbSession) -> list[ProviderPriority]:
-        return db_session.query(self.model).order_by(asc(self.model.priority)).all()
+        return db_session.query(self.model).order_by(self.model.priority.asc()).all()
 
     def get_by_provider(self, db_session: DbSession, provider: ProviderName) -> ProviderPriority | None:
         return db_session.query(self.model).filter(self.model.provider == provider).one_or_none()
@@ -89,7 +89,7 @@ class ProviderPriorityRepository(
         )
         db_session.execute(stmt)
         db_session.flush()
-        return self.get_by_provider(db_session, provider)  # ty: ignore[invalid-return-type]
+        return self.get_by_provider(db_session, provider)  # ty: ignore[invalid-explicit-return]
 
     def bulk_update(
         self,

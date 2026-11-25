@@ -12,7 +12,6 @@ import threading
 import time
 from collections import Counter
 from datetime import date, datetime, timezone
-from logging import getLogger
 from typing import Any, cast
 
 from fastapi.routing import APIRoute
@@ -22,8 +21,9 @@ from starlette.types import Scope
 from app.config import settings
 from app.integrations.redis_client import get_redis_client
 from app.schemas.enums import ProviderName
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 UNMATCHED = "unmatched"
 UNRESOLVED = "unresolved"
@@ -150,9 +150,9 @@ class EndpointUsageRecorder:
             for day in {day for day, _ in pending}:
                 pipeline.expire(_redis_key(day), _REDIS_TTL_SECONDS)
             pipeline.execute()
-        except Exception:
+        except Exception as e:
             # Best effort: a lost flush interval is not worth retrying or surfacing.
-            logger.debug("Could not flush endpoint usage counters", exc_info=True)
+            logger.debug("Could not flush endpoint usage counters", exc_info=e)
 
     def read_day(self, day: date) -> dict[str, dict[str, dict[str, str]]]:
         """Bucketed counters for one UTC day as {route: {auth: {status_class: bucket}}}."""

@@ -16,11 +16,28 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.dates import offset_to_iso
 
 
 class PolarWorkouts(BaseWorkoutsTemplate):
     """Polar implementation of workouts template."""
+
+    def _make_api_request(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        endpoint: str,
+        method: str = "GET",
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        json_data: dict[str, Any] | None = None,
+    ) -> Any:
+        result = super()._make_api_request(db, user_id, endpoint, method, params, headers, json_data)
+        store_raw_payload(
+            source="api_response", provider="polar", payload=result, user_id=str(user_id), trace_id=endpoint
+        )
+        return result
 
     def get_workouts(
         self,
@@ -66,10 +83,10 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         start_time_utc_offset: int,
         duration: str,
     ) -> tuple[datetime, datetime]:
-        """Extract start and end dates from timestamps with UTC offset."""
-        start_date = isodate.parse_datetime(start_time)
+        """Start and end in UTC: ``start_time`` is naive local time, ``start_time_utc_offset`` its offset in minutes."""
+        local_start = isodate.parse_datetime(start_time)
         offset = timedelta(minutes=start_time_utc_offset)
-        start_date = start_date + offset
+        start_date = local_start - offset
         duration_td = isodate.parse_duration(duration)
         end_date = start_date + duration_td
         return start_date, end_date

@@ -1,7 +1,10 @@
 import { apiGet } from './api';
 import { resolutionFor, type Sample } from '$lib/timeseries/samples';
 
-type SamplePage = { data: Sample[]; pagination: { total_count: number | null } };
+type SamplePage = {
+	data: Sample[];
+	pagination: { total_count: number | null; has_more: boolean };
+};
 
 /** The endpoint's own ceiling, and what one curve is allowed to cost. */
 const PAGE = 1000;
@@ -18,7 +21,9 @@ export async function fetchSamples(
 	userId: string,
 	accessToken: string,
 	window: { from: string; to: string; seconds: number; types: string[] },
-	provider: string
+	provider: string,
+	/** `1day` for series kept as day values (resting pulse, nightly HRV, VO2 max): raw holds none. */
+	resolution: 'raw' | '1day' = 'raw'
 ): Promise<FetchedSamples> {
 	const load = async (resolution: string) => {
 		const params = new URLSearchParams({
@@ -37,8 +42,14 @@ export async function fetchSamples(
 			accessToken
 		);
 		const total = page.pagination.total_count ?? page.data.length;
-		return { samples: page.data, resolution, truncated: total > page.data.length };
+		return {
+			samples: page.data,
+			resolution,
+			truncated: total > page.data.length || page.pagination.has_more
+		};
 	};
+
+	if (resolution === '1day') return load('1day');
 
 	// Stored readings first: a minute average smooths exactly the spikes an admin
 	// opened the chart to look at. Only when they do not fit does the curve get

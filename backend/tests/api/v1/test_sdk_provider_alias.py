@@ -13,7 +13,7 @@ from tests.factories import ApiKeyFactory
 
 @pytest.fixture(autouse=True)
 def mock_celery_tasks() -> Generator[MagicMock, None, None]:
-    with patch("app.api.routes.v1.sdk_sync.process_sdk_upload") as mock:
+    with patch("app.api.routes.v1.sdk_sync.process_sdk_upload", autospec=True) as mock:
         mock.delay.return_value = None
         yield mock
 
@@ -63,4 +63,4 @@ class TestSDKProviderAlias:
         """The cloud OAuth provider must not be reachable through the SDK upload endpoint."""
         response = _post(client, api_v1_prefix, "google_health")
 
-        assert response.status_code == 400
+        assert response.status_code == 422

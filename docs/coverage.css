@@ -4,32 +4,18 @@
 
 .ow-cov,
 .ow-cov-legend {
-  --ow-cov-border: #e5e7eb;
-  --ow-cov-border-soft: #f1f3f5;
-  --ow-cov-bg: #ffffff;
-  --ow-cov-bg-alt: #f9fafb;
-  --ow-cov-text: #111827;
-  --ow-cov-muted: #6b7280;
-  --ow-cov-chip: #eef0f2;
-  --ow-cov-dot-off: #c4c9cf;
-  --ow-cov-dot-on: #16a34a;
-  --ow-cov-dot-ring: rgba(22, 163, 74, 0.22);
+  --ow-cov-border: var(--ow-neutral-200);
+  --ow-cov-border-soft: var(--ow-neutral-100);
+  --ow-cov-bg: var(--ow-white);
+  --ow-cov-bg-alt: var(--ow-neutral-50);
+  --ow-cov-text: var(--ow-black);
+  --ow-cov-muted: var(--ow-neutral-600);
+  --ow-cov-chip: var(--ow-neutral-100);
+  --ow-cov-dot-off: var(--ow-neutral-400);
+  --ow-cov-dot-on: var(--ow-blue);
+  --ow-cov-dot-ring: color-mix(in srgb, var(--ow-blue) 22%, transparent);
   font-size: 0.8125rem;
   color: var(--ow-cov-text);
-}
-
-.dark .ow-cov,
-.dark .ow-cov-legend {
-  --ow-cov-border: #27272a;
-  --ow-cov-border-soft: #1f1f23;
-  --ow-cov-bg: #0b0b0c;
-  --ow-cov-bg-alt: #121214;
-  --ow-cov-text: #e4e4e7;
-  --ow-cov-muted: #a1a1aa;
-  --ow-cov-chip: #27272a;
-  --ow-cov-dot-off: #3f3f46;
-  --ow-cov-dot-on: #22c55e;
-  --ow-cov-dot-ring: rgba(34, 197, 94, 0.25);
 }
 
 /* One scroll box for both axes so the header row and the metric column can
