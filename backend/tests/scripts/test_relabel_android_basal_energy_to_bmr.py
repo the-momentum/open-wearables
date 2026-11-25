@@ -9,11 +9,11 @@ row is a BMR reading. See scripts/data_migrations/relabel_android_basal_energy_t
 import importlib.util
 import threading
 import time
-from typing import Any
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import text
