@@ -25,6 +25,8 @@ OLD = "series.walking_heart_rate_average.created"
 NEW = "series.walking_heart_rate.created"
 RETIRED = "series.average_met.created"
 STEPS = "series.steps.created"
+BASAL = "series.basal_energy.created"
+BMR = "series.basal_metabolic_rate.created"
 target_filters = _MODULE._target_filters
 
 
@@ -38,6 +40,10 @@ target_filters = _MODULE._target_filters
         pytest.param([OLD, NEW, RETIRED, STEPS], "remove", [NEW, STEPS], id="remove-drops-old-and-retired"),
         pytest.param([NEW, STEPS], "remove", None, id="remove-is-idempotent"),
         pytest.param([RETIRED], "remove", None, id="remove-never-empties-the-filter-list"),
+        pytest.param([BASAL, STEPS], "add", [BASAL, STEPS, BMR], id="add-appends-the-split-off-event"),
+        pytest.param([BASAL, BMR], "add", None, id="add-split-is-idempotent"),
+        pytest.param([BASAL, STEPS], "remove", None, id="remove-keeps-the-split-source-it-still-fires"),
+        pytest.param([OLD, BASAL], "remove", [BASAL], id="remove-drops-renamed-but-keeps-split-source"),
     ],
 )
 def test_filter_transitions(current: list[str], phase: str, expected: list[str] | None) -> None:
@@ -48,3 +54,13 @@ def test_every_new_name_is_one_we_dispatch() -> None:
     dispatched = {event.value for event in WebhookEventType}
     assert {new for new in _MODULE.RENAMED.values() if new} <= dispatched
     assert not set(_MODULE.RENAMED) & dispatched
+
+
+def test_split_pairs_stay_add_only() -> None:
+    """A split's source keeps firing for the providers whose data never moved, so neither
+    direction may appear in RENAMED, and both names must be ones we dispatch."""
+    dispatched = {event.value for event in WebhookEventType}
+    assert set(_MODULE.SPLIT) <= dispatched
+    assert set(_MODULE.SPLIT.values()) <= dispatched
+    assert not set(_MODULE.SPLIT) & set(_MODULE.RENAMED)
+    assert not set(_MODULE.SPLIT.values()) & set(_MODULE.RENAMED)

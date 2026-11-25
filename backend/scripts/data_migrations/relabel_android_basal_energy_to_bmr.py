@@ -113,6 +113,10 @@ _ARCHIVE_COUNT = _q("""
       AND a.series_type_definition_id = :basal
 """)
 
+# basal_energy is a SUM series, so its archived buckets are sums of rate samples, while
+# basal_metabolic_rate is read through its canonical AVG row. sum/sample_count is exactly
+# the mean the archiver would have written, so conversion preserves the information; every
+# relabeled bucket lands as an 'avg' row, which is also what the conflict checks key on.
 _ARCHIVE_CONFLICT_COUNT = _q("""
     SELECT COUNT(*)
     FROM data_point_series_archive a
@@ -124,13 +128,15 @@ _ARCHIVE_CONFLICT_COUNT = _q("""
           WHERE e.data_source_id = a.data_source_id
             AND e.series_type_definition_id = :bmr
             AND e.bucket_start_at = a.bucket_start_at
-            AND e.aggregation_type = a.aggregation_type
+            AND e.aggregation_type = 'avg'
       )
 """)
 
 _ARCHIVE_UPDATE = _q("""
     UPDATE data_point_series_archive a
-    SET series_type_definition_id = :bmr
+    SET series_type_definition_id = :bmr,
+        value = CASE WHEN a.aggregation_type = 'sum' THEN a.value / GREATEST(a.sample_count, 1) ELSE a.value END,
+        aggregation_type = 'avg'
     FROM data_source ds
     WHERE ds.id = a.data_source_id
       AND ds.provider IN :providers
@@ -140,7 +146,7 @@ _ARCHIVE_UPDATE = _q("""
           WHERE e.data_source_id = a.data_source_id
             AND e.series_type_definition_id = :bmr
             AND e.bucket_start_at = a.bucket_start_at
-            AND e.aggregation_type = a.aggregation_type
+            AND e.aggregation_type = 'avg'
       )
 """)
 
@@ -155,8 +161,49 @@ _ARCHIVE_DELETE_DUPLICATES = _q("""
           WHERE e.data_source_id = a.data_source_id
             AND e.series_type_definition_id = :bmr
             AND e.bucket_start_at = a.bucket_start_at
-            AND e.aggregation_type = a.aggregation_type
+            AND e.aggregation_type = 'avg'
       )
+""")
+
+# data_type_coverage keyed (user, provider, 'basal_energy', series) describes only BMR
+# data on the Android providers, so it re-keys to basal_metabolic_rate with the rows.
+# The narrowing advisory lock matches DataTypeCoverageRepository, so a concurrent
+# coverage backfill cannot re-widen the old key after the move.
+_COVERAGE_LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended('data_type_coverage:narrowing', 0))")
+
+# The same three-step re-key merge_average_met_into_physical_effort uses: widen an existing
+# basal_metabolic_rate span with the basal_energy one, drop the merged old rows, then rename
+# whatever old rows have no counterpart. Scoped to the Android providers, so Apple's genuine
+# basal_energy coverage is left alone.
+_COVERAGE_MOVE = [
+    _q("""
+        UPDATE data_type_coverage n SET
+            coverage_start = LEAST(n.coverage_start, o.coverage_start),
+            coverage_end = GREATEST(n.coverage_end, o.coverage_end),
+            last_written_at = GREATEST(n.last_written_at, o.last_written_at)
+        FROM data_type_coverage o
+        WHERE o.user_id = n.user_id AND o.provider = n.provider AND o.kind = n.kind
+          AND o.provider IN :providers AND o.kind = 'series'
+          AND o.data_type = 'basal_energy' AND n.data_type = 'basal_metabolic_rate'
+    """),
+    _q("""
+        DELETE FROM data_type_coverage o
+        WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
+          AND EXISTS (
+            SELECT 1 FROM data_type_coverage n
+            WHERE n.user_id = o.user_id AND n.provider = o.provider AND n.kind = o.kind
+              AND n.data_type = 'basal_metabolic_rate'
+          )
+    """),
+    _q("""
+        UPDATE data_type_coverage SET data_type = 'basal_metabolic_rate'
+        WHERE provider IN :providers AND kind = 'series' AND data_type = 'basal_energy'
+    """),
+]
+
+_COVERAGE_COUNT = _q("""
+    SELECT COUNT(*) FROM data_type_coverage
+    WHERE provider IN :providers AND data_type = 'basal_energy' AND kind = 'series'
 """)
 
 
@@ -178,14 +225,17 @@ def relabel_android_basal_energy(db: Session, *, dry_run: bool) -> dict[str, int
         series_updated = _scalar_count(db, _SERIES_COUNT) - series_deleted
         archive_deleted = _scalar_count(db, _ARCHIVE_CONFLICT_COUNT)
         archive_updated = _scalar_count(db, _ARCHIVE_COUNT) - archive_deleted
+        coverage_moved = _scalar_count(db, _COVERAGE_COUNT)
         print(f"series_sample:         Would relabel {series_updated}, remove {series_deleted} duplicate(s)")
         print(f"data_point_series_archive: Would relabel {archive_updated}, remove {archive_deleted} duplicate(s)")
+        print(f"data_type_coverage:    Would re-key {coverage_moved} span(s) to basal_metabolic_rate")
         print("\nDry run — no changes made.")
         return {
             "series_updated": series_updated,
             "series_deleted": series_deleted,
             "archive_updated": archive_updated,
             "archive_deleted": archive_deleted,
+            "coverage_moved": coverage_moved,
         }
 
     series_updated = db.execute(_SERIES_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
@@ -193,14 +243,21 @@ def relabel_android_basal_energy(db: Session, *, dry_run: bool) -> dict[str, int
     archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
     archive_deleted = db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[missing-attribute]
 
+    db.execute(_COVERAGE_LOCK)
+    coverage_moved = 0
+    for statement in _COVERAGE_MOVE:
+        coverage_moved += db.execute(statement, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+
     print(f"series_sample:         Relabeled {series_updated}, removed {series_deleted} duplicate(s)")
     print(f"data_point_series_archive: Relabeled {archive_updated}, removed {archive_deleted} duplicate(s)")
+    print(f"data_type_coverage:    Re-keyed {coverage_moved} span(s) to basal_metabolic_rate")
 
     return {
         "series_updated": series_updated,
         "series_deleted": series_deleted,
         "archive_updated": archive_updated,
         "archive_deleted": archive_deleted,
+        "coverage_moved": coverage_moved,
     }
 
 

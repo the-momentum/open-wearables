@@ -244,6 +244,8 @@ Two series changed in this release, and their events with them:
 | `series.average_met.created` | retired: a workout's average MET is its `physical_effort` average, returned as the workout's `average_met` |
 
 Self-hosting with endpoints that filter on the old names: run `scripts/data_migrations/rename_series_webhook_events.py --phase=add` from the new image before it takes traffic, so those endpoints also subscribe to the new names, and `--phase=remove` once the deploy is done. An endpoint whose filter names only old events is left as it is, as removing them would leave it with no filter and every event: the script lists it, and its filter needs the new names set by hand.
+
+Android basal metabolic rate also moved out of `series.basal_energy.created` into its own `series.basal_metabolic_rate.created`. That one is a split, not a rename — Apple's interval basal energy keeps dispatching the old name — so the same `--phase=add` run appends the new event next to it, and `--phase=remove` never drops it.
 </Note>
 
 ### Extension Events
