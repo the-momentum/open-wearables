@@ -13,10 +13,13 @@ from pathlib import Path
 from types import ModuleType
 from uuid import uuid4
 
+import threading
+import time
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeriesArchive, SeriesSample, SeriesTypeDefinition
+from app.models import DataPointSeriesArchive, DataSource, SeriesSample, SeriesTypeDefinition, User
 from app.schemas.enums.aggregation_method import AggregationMethod
 from app.schemas.enums.provider import ProviderName
 from tests.factories import DataPointSeriesFactory, DataSourceFactory
@@ -357,3 +360,132 @@ def test_idempotent_second_run_is_noop(db: Session) -> None:
     assert second["series_updated"] == 0
     assert second["series_deleted"] == 0
     assert _type_ids(db, "series_sample") == [BMR_ID]
+
+
+def test_concurrent_bmr_writer_is_not_overwritten(engine, session_factory) -> None:
+    """Two sessions, real concurrency: a pod already on the new release writes BMR rows and
+    widens coverage while the migration re-keys. Whatever the interleaving, the final
+    basal_metabolic_rate span must exactly envelope the rows held — the recompute must never
+    overwrite a wider span written from rows its snapshot did not include."""
+    setup = session_factory()
+    user = User(id=uuid4(), email=f"concurrent-{uuid4().hex[:8]}@example.com", first_name="C", last_name="T")
+    setup.add(user)
+    setup.flush()
+    source = DataSource(
+        id=uuid4(),
+        user_id=user.id,
+        provider=ProviderName.HEALTH_CONNECT,
+        device_model=f"dev-{uuid4().hex[:8]}",
+        software_version="1.0.0",
+        source="health_connect",
+        device_type="phone",
+    )
+    setup.add(source)
+    setup.flush()
+    setup.add(
+        SeriesSample(
+            id=uuid4(),
+            data_source_id=source.id,
+            series_type_definition_id=BASAL_ENERGY_ID,
+            recorded_at=T,
+            value=Decimal("1500"),
+        )
+    )
+    setup.execute(
+        text(
+            "INSERT INTO data_type_coverage"
+            " (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)"
+            " VALUES (:uid, :prov, 'basal_energy', 'series', :t, :t, :t)"
+        ),
+        {"uid": user.id, "prov": ProviderName.HEALTH_CONNECT, "t": T},
+    )
+    user_id, source_id = user.id, source.id
+    setup.commit()
+    setup.close()
+
+    writer_errors: list[Exception] = []
+
+    def write_bmr_rows() -> None:
+        try:
+            for i in range(6):
+                w = session_factory()
+                at = T + timedelta(hours=1, minutes=i)
+                w.add(
+                    SeriesSample(
+                        id=uuid4(),
+                        data_source_id=source_id,
+                        series_type_definition_id=BMR_ID,
+                        recorded_at=at,
+                        value=Decimal("1520"),
+                    )
+                )
+                w.execute(
+                    text(
+                        "INSERT INTO data_type_coverage"
+                        " (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)"
+                        " VALUES (:uid, :prov, 'basal_metabolic_rate', 'series', :t, :t, :t)"
+                        " ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET"
+                        " coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),"
+                        " coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),"
+                        " last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)"
+                    ),
+                    {"uid": user_id, "prov": ProviderName.HEALTH_CONNECT, "t": at},
+                )
+                w.commit()
+                w.close()
+                time.sleep(0.05)
+        except Exception as exc:  # noqa: BLE001 - surfaced in the assertion below
+            writer_errors.append(exc)
+
+    writer = threading.Thread(target=write_bmr_rows)
+    writer.start()
+
+    migration_errors: list[Exception] = []
+
+    def run_migration() -> None:
+        for _attempt in range(3):
+            m = session_factory()
+            try:
+                relabel_android_basal_energy(m, dry_run=False)
+                m.commit()
+                m.close()
+                return
+            except Exception as exc:  # noqa: BLE001 - a deadlock loser retries, like the next startup would
+                m.rollback()
+                m.close()
+                migration_errors.append(exc)
+
+    run_migration()
+    writer.join(timeout=30)
+
+    assert not migration_errors, f"migration failed every attempt: {migration_errors}"
+    assert not writer_errors, f"writer failed: {writer_errors}"
+
+    try:
+        check = session_factory()
+        rows = check.execute(
+            text(
+                "SELECT coverage_start, coverage_end FROM data_type_coverage"
+                " WHERE user_id = :uid AND data_type = 'basal_metabolic_rate'"
+            ),
+            {"uid": user_id},
+        ).all()
+        held = check.execute(
+            text(
+                "SELECT MIN(recorded_at), MAX(recorded_at) FROM series_sample"
+                " WHERE data_source_id = :dsid AND series_type_definition_id = :bmr"
+            ),
+            {"dsid": source_id, "bmr": BMR_ID},
+        ).one()
+        assert len(rows) == 1
+        assert rows[0].coverage_start == held[0]
+        assert rows[0].coverage_end == held[1]
+        check.close()
+    finally:
+        cleanup = session_factory()
+        cleanup.execute(text("DELETE FROM series_sample WHERE data_source_id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text("DELETE FROM data_type_coverage WHERE user_id = :uid"), {"uid": user_id})
+        cleanup.execute(text("DELETE FROM data_source WHERE id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text('DELETE FROM "user" WHERE id = :uid'), {"uid": user_id})
+        cleanup.commit()
+        cleanup.close()

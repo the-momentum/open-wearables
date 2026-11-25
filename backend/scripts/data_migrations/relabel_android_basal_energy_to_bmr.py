@@ -169,7 +169,21 @@ _ARCHIVE_DELETE_DUPLICATES = _q("""
 # data on the Android providers, so it re-keys to basal_metabolic_rate with the rows.
 # The narrowing advisory lock matches DataTypeCoverageRepository, so a concurrent
 # coverage backfill cannot re-widen the old key after the move.
-_COVERAGE_LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended('data_type_coverage:narrowing', 0))")
+_COVERAGE_ADVISORY_LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended('data_type_coverage:narrowing', 0))")
+
+# Row-lock every coverage key this migration touches before re-keying, in the same
+# canonical order the write paths widen them, so a concurrent writer's widening UPDATE
+# blocks until this transaction commits instead of interleaving: without it the span
+# recompute below can read a snapshot that excludes a writer's uncommitted sample and
+# then overwrite that writer's wider span when the row lock unblocks. Taken after the
+# row relabel so the locks are only held for the short coverage section.
+_COVERAGE_ROW_LOCK = _q("""
+    SELECT user_id, provider, data_type FROM data_type_coverage
+    WHERE provider IN :providers AND kind = 'series'
+      AND data_type IN ('basal_energy', 'basal_metabolic_rate')
+    ORDER BY user_id, provider, data_type
+    FOR UPDATE
+""")
 
 # The same three-step re-key merge_average_met_into_physical_effort uses: widen an existing
 # basal_metabolic_rate span with the basal_energy one, drop the merged old rows, then rename
@@ -212,7 +226,7 @@ _COVERAGE_MOVE = [
 # startup rerun relabels the straggler itself once the rollout ends.
 _COVERAGE_REPAIR = _q("""
     INSERT INTO data_type_coverage (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
-    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, NOW()
+    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, clock_timestamp()
     FROM (
         SELECT ds.user_id, ds.provider, 'basal_energy' AS data_type, 'series' AS kind,
                MIN(s.recorded_at) AS coverage_start, MAX(s.recorded_at) AS coverage_end
@@ -278,7 +292,8 @@ def _rekey_coverage(db: Session) -> tuple[int, int]:
     """Re-key basal_energy coverage spans to basal_metabolic_rate, then repair the key of
     any basal_energy rows that survived the relabel (a rolling-deploy write can land one
     between the two steps — split out so tests can interleave one)."""
-    db.execute(_COVERAGE_LOCK)
+    db.execute(_COVERAGE_ADVISORY_LOCK)
+    db.execute(_COVERAGE_ROW_LOCK, _PARAMS)
     moved = 0
     for statement in _COVERAGE_MOVE:
         moved += db.execute(statement, _PARAMS).rowcount  # ty: ignore[missing-attribute]
