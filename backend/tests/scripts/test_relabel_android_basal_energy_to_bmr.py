@@ -38,7 +38,10 @@ def _load_module() -> ModuleType:
     return module
 
 
-relabel_android_basal_energy = _load_module().relabel_android_basal_energy
+_module = _load_module()
+relabel_android_basal_energy = _module.relabel_android_basal_energy
+_relabel_rows = _module._relabel_rows
+_rekey_coverage = _module._rekey_coverage
 
 
 def _series_type(db: Session, type_id: int) -> SeriesTypeDefinition:
@@ -279,6 +282,45 @@ def test_rolling_deploy_write_converges_on_the_next_run(db: Session) -> None:
     rows = db.execute(text("SELECT data_type FROM data_type_coverage")).scalars().all()
     assert rows == ["basal_metabolic_rate"]
     assert late.id is not None
+
+
+def test_interleaved_rolling_deploy_write_keeps_coverage_for_both_series(db: Session) -> None:
+    """The race itself, in order: rows relabeled, then a pod on the previous release commits
+    a basal_energy write before the coverage statements run. The re-key must still move the
+    original span to basal_metabolic_rate (the moved rows are most of the data), and the
+    repair must leave a basal_energy key narrowed to exactly the straggler."""
+    source = DataSourceFactory(provider=ProviderName.HEALTH_CONNECT)
+    DataPointSeriesFactory(
+        data_source=source,
+        series_type=_series_type(db, BASAL_ENERGY_ID),
+        recorded_at=T,
+        value=Decimal("1500"),
+    )
+    db.flush()
+    _insert_coverage(db, source=source, data_type="basal_energy", start="2026-01-01", end="2026-01-01")
+
+    series_updated, _, _, _ = _relabel_rows(db)
+    assert series_updated == 1
+
+    late_at = T + timedelta(hours=5)
+    DataPointSeriesFactory(
+        data_source=source,
+        series_type=_series_type(db, BASAL_ENERGY_ID),
+        recorded_at=late_at,
+        value=Decimal("1510"),
+    )
+    db.flush()
+
+    _, repaired = _rekey_coverage(db)
+
+    rows = {
+        row.data_type: row
+        for row in db.execute(text("SELECT data_type, coverage_start, coverage_end FROM data_type_coverage"))
+    }
+    assert set(rows) == {"basal_metabolic_rate", "basal_energy"}
+    assert rows["basal_energy"].coverage_start == late_at
+    assert rows["basal_energy"].coverage_end == late_at
+    assert repaired == 1
 
 
 def test_dry_run_makes_no_changes(db: Session) -> None:

@@ -174,23 +174,11 @@ _COVERAGE_LOCK = text("SELECT pg_advisory_xact_lock(hashtextextended('data_type_
 # The same three-step re-key merge_average_met_into_physical_effort uses: widen an existing
 # basal_metabolic_rate span with the basal_energy one, drop the merged old rows, then rename
 # whatever old rows have no counterpart. Scoped to the Android providers, so Apple's genuine
-# basal_energy coverage is left alone.
-#
-# The HAS_REMAINING_ROWS guard keeps a key put when basal_energy rows survive the relabel:
-# during a rolling deploy a pod on the previous release can commit one after the row UPDATE
-# in this same transaction, and its coverage must then stay keyed basal_energy. The next
-# startup run relabels the row and re-keys the coverage once nothing remains.
-_HAS_REMAINING_ROWS = """
-        AND NOT EXISTS (
-            SELECT 1 FROM series_sample s
-            JOIN data_source ds ON ds.id = s.data_source_id AND ds.provider = o.provider
-            WHERE ds.user_id = o.user_id
-              AND s.series_type_definition_id = :basal
-        )
-"""
+# basal_energy coverage is left alone. Unconditional: most basal_energy rows are already
+# relabeled at this point and their span belongs under the new key no matter what happens
+# to stragglers.
 _COVERAGE_MOVE = [
-    _q(
-        """
+    _q("""
         UPDATE data_type_coverage n SET
             coverage_start = LEAST(n.coverage_start, o.coverage_start),
             coverage_end = GREATEST(n.coverage_end, o.coverage_end),
@@ -199,11 +187,8 @@ _COVERAGE_MOVE = [
         WHERE o.user_id = n.user_id AND o.provider = n.provider AND o.kind = n.kind
           AND o.provider IN :providers AND o.kind = 'series'
           AND o.data_type = 'basal_energy' AND n.data_type = 'basal_metabolic_rate'
-    """
-        + _HAS_REMAINING_ROWS
-    ),
-    _q(
-        """
+    """),
+    _q("""
         DELETE FROM data_type_coverage o
         WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
           AND EXISTS (
@@ -211,17 +196,37 @@ _COVERAGE_MOVE = [
             WHERE n.user_id = o.user_id AND n.provider = o.provider AND n.kind = o.kind
               AND n.data_type = 'basal_metabolic_rate'
           )
-    """
-        + _HAS_REMAINING_ROWS
-    ),
-    _q(
-        """
+    """),
+    _q("""
         UPDATE data_type_coverage o SET data_type = 'basal_metabolic_rate'
         WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
-    """
-        + _HAS_REMAINING_ROWS
-    ),
+    """),
 ]
+
+# Rolling-deploy repair: under READ COMMITTED each statement reads a fresh snapshot, so a
+# pod on the previous release can commit a basal_energy row after the relabel UPDATE above
+# but before the coverage re-key. The re-key then moves the coverage the write path wrote
+# for it, leaving the surviving row with no basal_energy span at all. Re-create one keyed
+# exactly to what survived: the write paths widen it from there. Runs in the same
+# transaction, so the keys always describe the rows they cover once this commits; the
+# startup rerun relabels the straggler itself once the rollout ends.
+_COVERAGE_REPAIR = _q("""
+    INSERT INTO data_type_coverage (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
+    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, coverage_end
+    FROM (
+        SELECT ds.user_id, ds.provider, 'basal_energy' AS data_type, 'series' AS kind,
+               MIN(s.recorded_at) AS coverage_start, MAX(s.recorded_at) AS coverage_end
+        FROM series_sample s
+        JOIN data_source ds ON ds.id = s.data_source_id
+        WHERE ds.provider IN :providers
+          AND s.series_type_definition_id = :basal
+        GROUP BY ds.user_id, ds.provider
+    ) spans
+    ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
+        coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
+        coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
+        last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
+""")
 
 _COVERAGE_COUNT = _q("""
     SELECT COUNT(*) FROM data_type_coverage
@@ -231,6 +236,27 @@ _COVERAGE_COUNT = _q("""
 
 def _scalar_count(db: Session, query: TextClause) -> int:
     return db.execute(query, _PARAMS).scalar() or 0
+
+
+def _relabel_rows(db: Session) -> tuple[int, int, int, int]:
+    """Move Android basal_energy rows in series_sample and the archive to the BMR series."""
+    series_updated = db.execute(_SERIES_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    series_deleted = db.execute(_SERIES_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    archive_deleted = db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    return series_updated, series_deleted, archive_updated, archive_deleted
+
+
+def _rekey_coverage(db: Session) -> tuple[int, int]:
+    """Re-key basal_energy coverage spans to basal_metabolic_rate, then repair the key of
+    any basal_energy rows that survived the relabel (a rolling-deploy write can land one
+    between the two steps — split out so tests can interleave one)."""
+    db.execute(_COVERAGE_LOCK)
+    moved = 0
+    for statement in _COVERAGE_MOVE:
+        moved += db.execute(statement, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    repaired = db.execute(_COVERAGE_REPAIR, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    return moved, repaired
 
 
 def relabel_android_basal_energy(db: Session, *, dry_run: bool) -> dict[str, int]:
@@ -260,19 +286,15 @@ def relabel_android_basal_energy(db: Session, *, dry_run: bool) -> dict[str, int
             "coverage_moved": coverage_moved,
         }
 
-    series_updated = db.execute(_SERIES_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
-    series_deleted = db.execute(_SERIES_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[missing-attribute]
-    archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[missing-attribute]
-    archive_deleted = db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[missing-attribute]
-
-    db.execute(_COVERAGE_LOCK)
-    coverage_moved = 0
-    for statement in _COVERAGE_MOVE:
-        coverage_moved += db.execute(statement, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    series_updated, series_deleted, archive_updated, archive_deleted = _relabel_rows(db)
+    coverage_moved, coverage_repaired = _rekey_coverage(db)
 
     print(f"series_sample:         Relabeled {series_updated}, removed {series_deleted} duplicate(s)")
     print(f"data_point_series_archive: Relabeled {archive_updated}, removed {archive_deleted} duplicate(s)")
-    print(f"data_type_coverage:    Re-keyed {coverage_moved} span(s) to basal_metabolic_rate")
+    print(
+        f"data_type_coverage:    Re-keyed {coverage_moved} span(s) to basal_metabolic_rate,"
+        f" repaired {coverage_repaired} rolling-deploy span(s)"
+    )
 
     return {
         "series_updated": series_updated,
