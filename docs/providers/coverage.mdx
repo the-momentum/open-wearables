@@ -908,7 +908,7 @@ Key differences and limitations to be aware of when working with each provider:
   - HRV is measured as RMSSD; SDNN is not available
   - Body fat percentage arrives already in percent
   - Blood glucose arrives in mmol/L; values are stored as received until unit conversion ships
-  - Health Connect basal metabolic rate is a kcal/day rate, stored in its own `basal_metabolic_rate` series (rows synced before this split sit in `basal_energy`)
+  - Health Connect basal metabolic rate is a kcal/day rate, stored in its own `basal_metabolic_rate` series; rows synced before this split sit in `basal_energy` and are moved over by `scripts/data_migrations/relabel_android_basal_energy_to_bmr.py`
   - All Health Connect distance is stored as `distance_walking_running` regardless of activity type
   - No health scores
   - Workout GPS routes are stored as `latitude`, `longitude` and `elevation` `/timeseries` data when `ingest_workout_samples` is enabled. Samsung Health also sends in-workout heart rate, speed, cadence and power samples, stored the same way
