@@ -248,8 +248,8 @@ Create `backend/app/services/providers/suunto/oauth.py`:
 ```python
 import httpx
 from app.config import settings
-from app.schemas import (
-    AuthenticationMethod,
+from app.schemas.auth import AuthenticationMethod
+from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
     ProviderEndpoints,
@@ -347,7 +347,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics
+from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 
 
@@ -555,7 +555,7 @@ Create `backend/app/constants/workout_types/suunto.py`:
 
 ```python
 """Suunto activity type to OpenWearables unified workout type mapping."""
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 SUUNTO_WORKOUT_TYPE_MAPPINGS: list[tuple[int, str, WorkoutType]] = [
     (0, "Walking", WorkoutType.WALKING),
@@ -625,7 +625,7 @@ class ProviderFactory:
 
 Update the `ProviderName` enum to include your new provider.
 
-Edit `backend/app/schemas/oauth.py`:
+Edit `backend/app/schemas/enums/provider.py`:
 
 ```python
 from enum import Enum
