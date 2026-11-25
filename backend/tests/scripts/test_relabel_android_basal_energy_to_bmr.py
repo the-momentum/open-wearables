@@ -448,27 +448,30 @@ def test_concurrent_bmr_writer_is_not_overwritten(session_factory: Any) -> None:
     writer.start()
 
     migration_errors: list[Exception] = []
+    migration_done = False
 
     def run_migration() -> None:
+        nonlocal migration_done
         for _attempt in range(3):
             m = session_factory()
             try:
                 relabel_android_basal_energy(m, dry_run=False)
                 m.commit()
                 m.close()
+                migration_done = True
                 return
             except Exception as exc:  # noqa: BLE001 - a deadlock loser retries, like the next startup would
                 m.rollback()
                 m.close()
                 migration_errors.append(exc)
 
-    run_migration()
-    writer.join(timeout=30)
-
-    assert not migration_errors, f"migration failed every attempt: {migration_errors}"
-    assert not writer_errors, f"writer failed: {writer_errors}"
-
     try:
+        run_migration()
+        writer.join(timeout=30)
+
+        assert migration_done, f"migration failed every attempt: {migration_errors}"
+        assert not writer_errors, f"writer failed: {writer_errors}"
+
         check = session_factory()
         rows = check.execute(
             text(
@@ -597,6 +600,103 @@ def test_key_inserted_mid_migration_keeps_its_arrival_time(session_factory: Any)
         assert rows["basal_energy"].coverage_end == sample_at
         # the key did not exist when the migration started, yet its genuine arrival
         # time survives — captured in the statement that moved it
+        assert rows["basal_energy"].last_written_at == arrival
+    finally:
+        for s in (migration, writer):
+            s.rollback()
+            s.close()
+        cleanup = session_factory()
+        cleanup.execute(text("DELETE FROM series_sample WHERE data_source_id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text("DELETE FROM data_type_coverage WHERE user_id = :uid"), {"uid": user_id})
+        cleanup.execute(text("DELETE FROM data_source WHERE id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text('DELETE FROM "user" WHERE id = :uid'), {"uid": user_id})
+        cleanup.commit()
+        cleanup.close()
+
+
+def test_key_inserted_between_delete_and_rename_does_not_abort(session_factory: Any) -> None:
+    """The round-8 ordering, two committed sessions: a basal_metabolic_rate key exists, the
+    migration passes its delete statement, and only then does the old pod commit a fresh
+    basal_energy key for the same user. Renaming it would violate the coverage primary key
+    and roll the migration back — instead it must stay in place as accurate coverage for
+    the straggler row that arrived with it."""
+    setup = session_factory()
+    user = User(id=uuid4(), email=f"collision-{uuid4().hex[:8]}@example.com", first_name="C", last_name="K")
+    setup.add(user)
+    setup.flush()
+    source = DataSource(
+        id=uuid4(),
+        user_id=user.id,
+        provider=ProviderName.HEALTH_CONNECT,
+        device_model=f"dev-{uuid4().hex[:8]}",
+        software_version="1.0.0",
+        source="health_connect",
+        device_type="phone",
+    )
+    setup.add(source)
+    setup.flush()
+    user_id, source_id = user.id, source.id
+    # a basal_metabolic_rate coverage key already exists for this user — the collision target
+    setup.execute(
+        text(
+            "INSERT INTO data_type_coverage"
+            " (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)"
+            " VALUES (:uid, :prov, 'basal_metabolic_rate', 'series', :t, :t, :t)"
+        ),
+        {"uid": user_id, "prov": ProviderName.HEALTH_CONNECT, "t": T},
+    )
+    setup.commit()
+    setup.close()
+
+    migration = session_factory()
+    writer = session_factory()
+    try:
+        # migration: lock, capture table, merge and delete statements — the writer's key
+        # does not exist yet, so none of this touches it
+        migration.execute(_module._COVERAGE_ADVISORY_LOCK)
+        migration.execute(_module._COVERAGE_ROW_LOCK, _module._PARAMS)
+        for statement in _module._COVERAGE_CAPTURE:
+            migration.execute(statement, _module._PARAMS)
+        migration.execute(_module._COVERAGE_MOVE[0], _module._PARAMS)
+
+        # the old pod commits row and coverage key atomically, between delete and rename
+        sample_at = T - timedelta(days=2)
+        arrival = T + timedelta(hours=1)
+        writer.add(
+            SeriesSample(
+                id=uuid4(),
+                data_source_id=source_id,
+                series_type_definition_id=BASAL_ENERGY_ID,
+                recorded_at=sample_at,
+                value=Decimal("1500"),
+            )
+        )
+        writer.execute(
+            text(
+                "INSERT INTO data_type_coverage"
+                " (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)"
+                " VALUES (:uid, :prov, 'basal_energy', 'series', :t, :t, :arrival)"
+            ),
+            {"uid": user_id, "prov": ProviderName.HEALTH_CONNECT, "t": sample_at, "arrival": arrival},
+        )
+        writer.commit()
+
+        # the delete captures the late key's arrival time; repair and recompute complete
+        migration.execute(_module._COVERAGE_MOVE[1], _module._PARAMS)
+        migration.execute(_module._COVERAGE_REPAIR, _module._PARAMS)
+        migration.execute(_module._BMR_SPAN_RECOMPUTE, _module._PARAMS)
+        migration.commit()
+
+        rows = {
+            row.data_type: row
+            for row in migration.execute(
+                text("SELECT data_type, coverage_start, coverage_end, last_written_at FROM data_type_coverage")
+            )
+        }
+        assert set(rows) == {"basal_metabolic_rate", "basal_energy"}
+        # the colliding key stays in place as accurate coverage for the straggler row
+        assert rows["basal_energy"].coverage_start == sample_at
+        assert rows["basal_energy"].coverage_end == sample_at
         assert rows["basal_energy"].last_written_at == arrival
     finally:
         for s in (migration, writer):

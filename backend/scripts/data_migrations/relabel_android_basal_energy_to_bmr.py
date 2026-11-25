@@ -201,40 +201,30 @@ _COVERAGE_CAPTURE = [
     """),
 ]
 
-# The same three-step re-key merge_average_met_into_physical_effort uses: widen an existing
-# basal_metabolic_rate span with the basal_energy one, drop the merged old rows, then rename
-# whatever old rows have no counterpart. Scoped to the Android providers, so Apple's genuine
-# basal_energy coverage is left alone. Unconditional: most basal_energy rows are already
-# relabeled at this point and their span belongs under the new key no matter what happens
-# to stragglers.
+# Two statements, both race-safe. The insert-widen uses the same speculative-insertion
+# ON CONFLICT the write paths use, so a concurrent writer inserting a brand-new
+# basal_metabolic_rate key collides into a widen instead of raising the unique violation
+# an UPDATE-rename would hit. The delete then removes exactly the keys the first statement
+# moved — anything committed later is invisible to both and stays as accurate basal_energy
+# coverage — and captures each moved key's last_written_at atomically through RETURNING,
+# so no interleaving can lose the genuine arrival time. Span exactness comes from the
+# recompute below, so the widening merge here does not need to be precise.
 _COVERAGE_MOVE = [
     _q("""
-        UPDATE data_type_coverage n SET
-            coverage_start = LEAST(n.coverage_start, o.coverage_start),
-            coverage_end = GREATEST(n.coverage_end, o.coverage_end),
-            last_written_at = GREATEST(n.last_written_at, o.last_written_at)
-        FROM data_type_coverage o
-        WHERE o.user_id = n.user_id AND o.provider = n.provider AND o.kind = n.kind
-          AND o.provider IN :providers AND o.kind = 'series'
-          AND o.data_type = 'basal_energy' AND n.data_type = 'basal_metabolic_rate'
+        INSERT INTO data_type_coverage
+            (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
+        SELECT user_id, provider, 'basal_metabolic_rate', kind, coverage_start, coverage_end, last_written_at
+        FROM data_type_coverage
+        WHERE provider IN :providers AND kind = 'series' AND data_type = 'basal_energy'
+        ORDER BY user_id, provider
+        ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
+            coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
+            coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
+            last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
     """),
     _q("""
         WITH moved AS (
             DELETE FROM data_type_coverage o
-            WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
-              AND EXISTS (
-                SELECT 1 FROM data_type_coverage n
-                WHERE n.user_id = o.user_id AND n.provider = o.provider AND n.kind = o.kind
-                  AND n.data_type = 'basal_metabolic_rate'
-              )
-            RETURNING o.user_id, o.provider, o.last_written_at
-        )
-        INSERT INTO _bmr_relabel_arrival (user_id, provider, last_written_at)
-        SELECT user_id, provider, last_written_at FROM moved
-    """),
-    _q("""
-        WITH moved AS (
-            UPDATE data_type_coverage o SET data_type = 'basal_metabolic_rate'
             WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
             RETURNING o.user_id, o.provider, o.last_written_at
         )
@@ -250,10 +240,10 @@ _COVERAGE_MOVE = [
 # exactly to what survived: the write paths widen it from there. Runs in the same
 # transaction, so the keys always describe the rows they cover once this commits; the
 # startup rerun relabels the straggler itself once the rollout ends.
-# last_written_at is the pre-re-key arrival time captured above — a straggler can carry
-# samples recorded days earlier, and the sample time would misreport when data last
-# arrived. The sample time remains the fallback where no basal key existed to capture,
-# and on conflict GREATEST keeps the latest genuine arrival either way.
+# last_written_at is the genuine arrival time the delete captured from the moved key — a
+# straggler can carry samples recorded days earlier, and the sample time would misreport
+# when data last arrived. The sample time remains the fallback where no basal key existed
+# to capture, and on conflict GREATEST keeps the latest genuine arrival either way.
 _COVERAGE_REPAIR = _q("""
     INSERT INTO data_type_coverage (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
     SELECT spans.user_id, spans.provider, spans.data_type, spans.kind, spans.coverage_start, spans.coverage_end,
@@ -301,6 +291,7 @@ _BMR_SPAN_RECOMPUTE = _q("""
     WHERE c.user_id = spans.user_id AND c.provider = spans.provider
       AND c.kind = 'series' AND c.data_type = 'basal_metabolic_rate'
 """)
+
 
 _COVERAGE_COUNT = _q("""
     SELECT COUNT(*) FROM data_type_coverage
