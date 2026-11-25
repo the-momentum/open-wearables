@@ -212,7 +212,7 @@ _COVERAGE_MOVE = [
 # startup rerun relabels the straggler itself once the rollout ends.
 _COVERAGE_REPAIR = _q("""
     INSERT INTO data_type_coverage (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
-    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, coverage_end
+    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, NOW()
     FROM (
         SELECT ds.user_id, ds.provider, 'basal_energy' AS data_type, 'series' AS kind,
                MIN(s.recorded_at) AS coverage_start, MAX(s.recorded_at) AS coverage_end
@@ -226,6 +226,33 @@ _COVERAGE_REPAIR = _q("""
         coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
         coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
         last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
+""")
+
+# The re-keyed basal_metabolic_rate span is the old basal_energy envelope, which the write
+# path may have widened for a straggler that is not in the BMR series. Recompute it from the
+# rows actually held — live and archived, the same sources DataTypeCoverageRepository's own
+# backfill derives spans from — so both keys exactly envelope their rows.
+_BMR_SPAN_RECOMPUTE = _q("""
+    UPDATE data_type_coverage c SET
+        coverage_start = spans.coverage_start,
+        coverage_end = spans.coverage_end
+    FROM (
+        SELECT user_id, provider, MIN(ts) AS coverage_start, MAX(ts) AS coverage_end
+        FROM (
+            SELECT ds.user_id, ds.provider, s.recorded_at AS ts
+            FROM series_sample s
+            JOIN data_source ds ON ds.id = s.data_source_id
+            WHERE ds.provider IN :providers AND s.series_type_definition_id = :bmr
+            UNION ALL
+            SELECT ds.user_id, ds.provider, a.bucket_start_at
+            FROM data_point_series_archive a
+            JOIN data_source ds ON ds.id = a.data_source_id
+            WHERE ds.provider IN :providers AND a.series_type_definition_id = :bmr
+        ) rows_held
+        GROUP BY user_id, provider
+    ) spans
+    WHERE c.user_id = spans.user_id AND c.provider = spans.provider
+      AND c.kind = 'series' AND c.data_type = 'basal_metabolic_rate'
 """)
 
 _COVERAGE_COUNT = _q("""
@@ -256,6 +283,7 @@ def _rekey_coverage(db: Session) -> tuple[int, int]:
     for statement in _COVERAGE_MOVE:
         moved += db.execute(statement, _PARAMS).rowcount  # ty: ignore[missing-attribute]
     repaired = db.execute(_COVERAGE_REPAIR, _PARAMS).rowcount  # ty: ignore[missing-attribute]
+    db.execute(_BMR_SPAN_RECOMPUTE, _PARAMS)
     return moved, repaired
 
 
