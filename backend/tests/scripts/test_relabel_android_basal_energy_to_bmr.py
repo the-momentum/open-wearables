@@ -314,10 +314,12 @@ def test_interleaved_rolling_deploy_write_keeps_coverage_for_both_series(db: Ses
     )
     db.flush()
     # the write path widens basal_energy coverage for the late write before the migration's
-    # coverage statements run — the re-key then carries that width over to the BMR key
+    # coverage statements run — the re-key then carries that width over to the BMR key.
+    # the straggler syncs a sample recorded days before it arrives, as a real pod would
+    writer_arrival = late_at + timedelta(days=2)
     db.execute(
-        text("UPDATE data_type_coverage SET coverage_end = :late, last_written_at = :late"),
-        {"late": late_at},
+        text("UPDATE data_type_coverage SET coverage_end = :late, last_written_at = :arrival"),
+        {"late": late_at, "arrival": writer_arrival},
     )
 
     _, repaired = _rekey_coverage(db)
@@ -332,8 +334,9 @@ def test_interleaved_rolling_deploy_write_keeps_coverage_for_both_series(db: Ses
     # the straggler keeps a basal_energy span narrowed to itself
     assert rows["basal_energy"].coverage_start == late_at
     assert rows["basal_energy"].coverage_end == late_at
-    # last_written_at approximates arrival with the sample time, never the repair time
-    assert rows["basal_energy"].last_written_at == late_at
+    # last_written_at preserves the writer's arrival time captured before the re-key,
+    # not the sample time and never the repair time
+    assert rows["basal_energy"].last_written_at == writer_arrival
     # the BMR span is recomputed from the rows actually held and does not reach the straggler
     assert rows["basal_metabolic_rate"].coverage_start == T
     assert rows["basal_metabolic_rate"].coverage_end == T
@@ -518,6 +521,8 @@ def test_repair_preserves_a_surviving_writers_arrival_time(db: Session) -> None:
         {"uid": source.user_id, "prov": source.provider, "t": straggler_at, "arrival": writer_arrival},
     )
 
+    for statement in _module._COVERAGE_CAPTURE:
+        db.execute(statement, _module._PARAMS)
     db.execute(_module._COVERAGE_REPAIR, _module._PARAMS)
 
     row = db.execute(text("SELECT coverage_start, coverage_end, last_written_at FROM data_type_coverage")).one()

@@ -185,6 +185,20 @@ _COVERAGE_ROW_LOCK = _q("""
     FOR UPDATE
 """)
 
+# Snapshot each basal_energy key's last_written_at before the re-key destroys it: it is a
+# genuine arrival time, which an old pod's sync of a days-old sample otherwise loses when
+# the repair falls back to the sample time. Temp tables are session-scoped, so drop first —
+# the idempotency rerun in the same session must not trip over it.
+_COVERAGE_CAPTURE = [
+    text("DROP TABLE IF EXISTS _bmr_relabel_arrival"),
+    _q("""
+        CREATE TEMP TABLE _bmr_relabel_arrival AS
+        SELECT user_id, provider, last_written_at
+        FROM data_type_coverage
+        WHERE provider IN :providers AND kind = 'series' AND data_type = 'basal_energy'
+    """),
+]
+
 # The same three-step re-key merge_average_met_into_physical_effort uses: widen an existing
 # basal_metabolic_rate span with the basal_energy one, drop the merged old rows, then rename
 # whatever old rows have no counterpart. Scoped to the Android providers, so Apple's genuine
@@ -224,13 +238,14 @@ _COVERAGE_MOVE = [
 # exactly to what survived: the write paths widen it from there. Runs in the same
 # transaction, so the keys always describe the rows they cover once this commits; the
 # startup rerun relabels the straggler itself once the rollout ends.
-# last_written_at mirrors the coverage backfill and uses the sample time: a write arrives
-# no earlier than its samples, so on conflict GREATEST always keeps the writer's own
-# arrival time where its row survived, and the approximation only applies to a fresh
-# insert, where the true arrival time was carried away with the re-keyed row.
+# last_written_at is the pre-re-key arrival time captured above — a straggler can carry
+# samples recorded days earlier, and the sample time would misreport when data last
+# arrived. The sample time remains the fallback where no basal key existed to capture,
+# and on conflict GREATEST keeps the latest genuine arrival either way.
 _COVERAGE_REPAIR = _q("""
     INSERT INTO data_type_coverage (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
-    SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, coverage_end
+    SELECT spans.user_id, spans.provider, spans.data_type, spans.kind, spans.coverage_start, spans.coverage_end,
+           COALESCE(arr.last_written_at, spans.coverage_end)
     FROM (
         SELECT ds.user_id, ds.provider, 'basal_energy' AS data_type, 'series' AS kind,
                MIN(s.recorded_at) AS coverage_start, MAX(s.recorded_at) AS coverage_end
@@ -240,6 +255,8 @@ _COVERAGE_REPAIR = _q("""
           AND s.series_type_definition_id = :basal
         GROUP BY ds.user_id, ds.provider
     ) spans
+    LEFT JOIN _bmr_relabel_arrival arr
+      ON arr.user_id = spans.user_id AND arr.provider = spans.provider
     ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
         coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
         coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
@@ -298,6 +315,8 @@ def _rekey_coverage(db: Session) -> tuple[int, int]:
     between the two steps — split out so tests can interleave one)."""
     db.execute(_COVERAGE_ADVISORY_LOCK)
     db.execute(_COVERAGE_ROW_LOCK, _PARAMS)
+    for statement in _COVERAGE_CAPTURE:
+        db.execute(statement, _PARAMS)
     moved = 0
     for statement in _COVERAGE_MOVE:
         moved += db.execute(statement, _PARAMS).rowcount  # ty: ignore[missing-attribute]
