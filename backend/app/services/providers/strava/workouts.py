@@ -538,12 +538,14 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         record, detail = self._normalize_workout(activity, user_id)
         created_record = event_record_service.create(db, record)
         # Retries re-run this flow; skip the detail (and its workout webhook) when it already exists.
-        if (
-            event_record_service.event_record_detail_repo.get_by_record_id(db, created_record.id, EventCategory.WORKOUT)
-            is None
-        ):
+        detail_repo = event_record_service.event_record_detail_repo
+        if detail_repo.get_by_record_id(db, created_record.id, EventCategory.WORKOUT) is None:
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+        elif detail.segments:
+            # A workout stored from the summary list has no laps; the detailed payload adds them.
+            detail_repo.update_workout_fields(db, created_record.id, {"segments": detail.segments})
+            db.commit()
         created_ids.append(created_record.id)
         # The webhook often beats Strava's stream processing and the pull won't re-cover it, so retry later.
         if self._ingest_workout_streams(db, activity, user_id, record) is None:

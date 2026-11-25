@@ -1,14 +1,19 @@
 """Tests for Strava laps/splits -> workout segments mapping."""
 
 from typing import Any
-from unittest.mock import MagicMock
-from uuid import uuid4
+from unittest.mock import MagicMock, patch
+from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.models import WorkoutDetails
+from app.schemas.enums import EventCategory
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
+from app.services.event_record_service import event_record_service
 from app.services.providers.strava.oauth import StravaOAuth
 from app.services.providers.strava.workouts import StravaWorkouts
+from tests.factories import UserFactory
 
 _SINGLE_LAP = [
     {
@@ -149,3 +154,22 @@ class TestStravaSegments:
         assert detail.segments is not None
         assert len(detail.segments) == 2
         assert detail.segments[0]["kind"] == "lap"
+
+    def test_webhook_adds_segments_to_a_workout_stored_from_the_summary_list(
+        self, workouts: StravaWorkouts, db: Session
+    ) -> None:
+        user_id = UUID(str(UserFactory().id))
+        with (
+            patch.object(workouts, "get_workouts", autospec=True, return_value=[self._activity()]),
+            patch.object(workouts, "_ingest_workout_streams", autospec=True, return_value=0),
+        ):
+            workouts.load_data(db, user_id)
+            # The second delivery is a webhook retry: it must not duplicate anything.
+            for _ in range(2):
+                (record_id,) = workouts.process_push_activity(
+                    db, self._activity(laps=_MANUAL_LAPS, splits_metric=_SPLITS), user_id
+                )
+
+        stored = event_record_service.event_record_detail_repo.get_by_record_id(db, record_id, EventCategory.WORKOUT)
+        assert isinstance(stored, WorkoutDetails)
+        assert [s["distance_meters"] for s in stored.segments or []] == [400.0, 200.0, 400.0]
