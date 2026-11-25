@@ -185,17 +185,19 @@ _COVERAGE_ROW_LOCK = _q("""
     FOR UPDATE
 """)
 
-# Snapshot each basal_energy key's last_written_at before the re-key destroys it: it is a
-# genuine arrival time, which an old pod's sync of a days-old sample otherwise loses when
-# the repair falls back to the sample time. Temp tables are session-scoped, so drop first —
-# the idempotency rerun in the same session must not trip over it.
+# The re-key below fills this with the last_written_at of every basal_energy key it moves
+# or deletes, captured in the same statement via RETURNING: a key inserted by an old pod
+# after any earlier snapshot would otherwise lose its genuine arrival time when the repair
+# falls back to the sample time. Temp tables are session-scoped, so drop first — the
+# idempotency rerun in the same session must not trip over it.
 _COVERAGE_CAPTURE = [
     text("DROP TABLE IF EXISTS _bmr_relabel_arrival"),
-    _q("""
-        CREATE TEMP TABLE _bmr_relabel_arrival AS
-        SELECT user_id, provider, last_written_at
-        FROM data_type_coverage
-        WHERE provider IN :providers AND kind = 'series' AND data_type = 'basal_energy'
+    text("""
+        CREATE TEMP TABLE _bmr_relabel_arrival (
+            user_id UUID NOT NULL,
+            provider VARCHAR(64) NOT NULL,
+            last_written_at TIMESTAMPTZ NOT NULL
+        )
     """),
 ]
 
@@ -217,17 +219,27 @@ _COVERAGE_MOVE = [
           AND o.data_type = 'basal_energy' AND n.data_type = 'basal_metabolic_rate'
     """),
     _q("""
-        DELETE FROM data_type_coverage o
-        WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
-          AND EXISTS (
-            SELECT 1 FROM data_type_coverage n
-            WHERE n.user_id = o.user_id AND n.provider = o.provider AND n.kind = o.kind
-              AND n.data_type = 'basal_metabolic_rate'
-          )
+        WITH moved AS (
+            DELETE FROM data_type_coverage o
+            WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
+              AND EXISTS (
+                SELECT 1 FROM data_type_coverage n
+                WHERE n.user_id = o.user_id AND n.provider = o.provider AND n.kind = o.kind
+                  AND n.data_type = 'basal_metabolic_rate'
+              )
+            RETURNING o.user_id, o.provider, o.last_written_at
+        )
+        INSERT INTO _bmr_relabel_arrival (user_id, provider, last_written_at)
+        SELECT user_id, provider, last_written_at FROM moved
     """),
     _q("""
-        UPDATE data_type_coverage o SET data_type = 'basal_metabolic_rate'
-        WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
+        WITH moved AS (
+            UPDATE data_type_coverage o SET data_type = 'basal_metabolic_rate'
+            WHERE o.provider IN :providers AND o.kind = 'series' AND o.data_type = 'basal_energy'
+            RETURNING o.user_id, o.provider, o.last_written_at
+        )
+        INSERT INTO _bmr_relabel_arrival (user_id, provider, last_written_at)
+        SELECT user_id, provider, last_written_at FROM moved
     """),
 ]
 

@@ -529,3 +529,83 @@ def test_repair_preserves_a_surviving_writers_arrival_time(db: Session) -> None:
     assert row.coverage_start == straggler_at
     assert row.coverage_end == straggler_at
     assert row.last_written_at == writer_arrival
+
+
+def test_key_inserted_mid_migration_keeps_its_arrival_time(session_factory: Any) -> None:
+    """Round-7 interleaving with two committed sessions: the migration transaction has
+    already relabeled the rows when an old pod inserts a brand-new basal_energy coverage
+    key — nothing existed to lock or snapshot when the migration started. READ COMMITTED
+    means the re-key still sees it, so the capture must happen in the moving statement
+    itself, and the repair must hand the genuine arrival time to the replacement key."""
+    setup = session_factory()
+    user = User(id=uuid4(), email=f"midkey-{uuid4().hex[:8]}@example.com", first_name="M", last_name="K")
+    setup.add(user)
+    setup.flush()
+    source = DataSource(
+        id=uuid4(),
+        user_id=user.id,
+        provider=ProviderName.HEALTH_CONNECT,
+        device_model=f"dev-{uuid4().hex[:8]}",
+        software_version="1.0.0",
+        source="health_connect",
+        device_type="phone",
+    )
+    setup.add(source)
+    setup.flush()
+    user_id, source_id = user.id, source.id
+    setup.commit()
+    setup.close()
+
+    migration = session_factory()
+    writer = session_factory()
+    try:
+        # nothing to relabel yet — the basal row only arrives with the writer
+        _relabel_rows(migration)
+
+        sample_at = T - timedelta(days=4)
+        arrival = T + timedelta(hours=3)
+        writer.add(
+            SeriesSample(
+                id=uuid4(),
+                data_source_id=source_id,
+                series_type_definition_id=BASAL_ENERGY_ID,
+                recorded_at=sample_at,
+                value=Decimal("1500"),
+            )
+        )
+        writer.execute(
+            text(
+                "INSERT INTO data_type_coverage"
+                " (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)"
+                " VALUES (:uid, :prov, 'basal_energy', 'series', :t, :t, :arrival)"
+            ),
+            {"uid": user_id, "prov": ProviderName.HEALTH_CONNECT, "t": sample_at, "arrival": arrival},
+        )
+        writer.commit()
+
+        _rekey_coverage(migration)
+        migration.commit()
+
+        rows = {
+            row.data_type: row
+            for row in migration.execute(
+                text("SELECT data_type, coverage_start, coverage_end, last_written_at FROM data_type_coverage")
+            )
+        }
+        assert set(rows) == {"basal_metabolic_rate", "basal_energy"}
+        assert rows["basal_energy"].coverage_start == sample_at
+        assert rows["basal_energy"].coverage_end == sample_at
+        # the key did not exist when the migration started, yet its genuine arrival
+        # time survives — captured in the statement that moved it
+        assert rows["basal_energy"].last_written_at == arrival
+    finally:
+        for s in (migration, writer):
+            s.rollback()
+            s.close()
+        cleanup = session_factory()
+        cleanup.execute(text("DELETE FROM series_sample WHERE data_source_id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text("DELETE FROM data_type_coverage WHERE user_id = :uid"), {"uid": user_id})
+        cleanup.execute(text("DELETE FROM data_source WHERE id = :dsid"), {"dsid": source_id})
+        cleanup.execute(text('DELETE FROM "user" WHERE id = :uid'), {"uid": user_id})
+        cleanup.commit()
+        cleanup.close()
