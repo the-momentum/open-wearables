@@ -330,6 +330,21 @@ _RESTORE_REPLACED = text(
 )
 
 
+# A row stored before entry keys holds one item of its instant under the item's external id. It takes that id as its
+# entry key once keyed items reach the instant, so the item sent again updates it instead of adding a row.
+_CLAIM_UNKEYED_ENTRIES = """
+    UPDATE series_sample s SET entry_key = s.external_id
+    FROM (
+        SELECT DISTINCT data_source_id, series_type_definition_id, recorded_at
+        FROM series_sample_staging WHERE entry_key IS NOT NULL
+    ) staged
+    WHERE s.data_source_id = staged.data_source_id
+        AND s.series_type_definition_id = staged.series_type_definition_id
+        AND s.recorded_at = staged.recorded_at
+        AND s.entry_key IS NULL AND s.external_id IS NOT NULL
+"""
+
+
 class LatestValue(NamedTuple):
     """A series' latest reading and the source it came from."""
 
@@ -567,6 +582,7 @@ class DataPointSeriesRepository(
 
         id: UUID
         external_id: str | None
+        entry_key: str | None
         data_source_id: UUID
         recorded_at: datetime
         zone_offset: str | None
@@ -596,6 +612,7 @@ class DataPointSeriesRepository(
                 self._StagingRow(
                     id=creator.id,
                     external_id=creator.external_id,
+                    entry_key=creator.entry_key,
                     data_source_id=source_id,
                     recorded_at=creator.recorded_at,
                     zone_offset=creator.zone_offset,
@@ -608,9 +625,9 @@ class DataPointSeriesRepository(
 
         # Dedup within the batch: PostgreSQL cannot upsert the same row twice in one
         # statement. Keep the last value for each conflicting key.
-        deduped: dict[tuple[UUID, int, datetime], DataPointSeriesRepository._StagingRow] = {}
+        deduped: dict[tuple[UUID, int, datetime, str | None], DataPointSeriesRepository._StagingRow] = {}
         for row in rows:
-            deduped[(row.data_source_id, row.series_type_definition_id, row.recorded_at)] = row
+            deduped[(row.data_source_id, row.series_type_definition_id, row.recorded_at, row.entry_key)] = row
         return list(deduped.values()), owners
 
     def _insert_data_points(
@@ -647,13 +664,16 @@ class DataPointSeriesRepository(
                 for row in rows:
                     copy.write_row(row)
 
+            if any(row.entry_key is not None for row in rows):
+                cursor.execute(_CLAIM_UNKEYED_ENTRIES)
+
             cursor.execute(
                 f"""
                     WITH merged AS (
                         INSERT INTO series_sample ({self._COPY_COLUMNS_SQL})
                         SELECT {self._COPY_COLUMNS_SQL} FROM series_sample_staging
-                        ORDER BY data_source_id, series_type_definition_id, recorded_at
-                        ON CONFLICT (data_source_id, series_type_definition_id, recorded_at)
+                        ORDER BY data_source_id, series_type_definition_id, recorded_at, entry_key
+                        ON CONFLICT (data_source_id, series_type_definition_id, recorded_at, entry_key)
                         DO UPDATE SET
                             external_id = excluded.external_id,
                             value = excluded.value,
@@ -708,6 +728,7 @@ class DataPointSeriesRepository(
                         self.model.data_source_id == creation.data_source_id,
                         self.model.series_type_definition_id == creation.series_type_definition_id,
                         self.model.recorded_at == creation.recorded_at,
+                        self.model.entry_key.is_not_distinct_from(creation.entry_key),
                     )
                     .first()
                 )

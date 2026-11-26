@@ -64,7 +64,7 @@ DEFAULT_BATCH = 50_000
 _SOURCE_IDS = text("SELECT id FROM data_source WHERE provider = ANY(:providers) AND source = :source")
 
 # Live rows: legacy = untagged. The predicate matches the leading columns of
-# uq_series_sample_source_type_time, so each batch is an index range scan.
+# uq_series_sample_source_type_time_entry, so each batch is an index range scan.
 _LIVE_PREDICATE = """
     data_source_id = ANY(:sources)
     AND series_type_definition_id = :series
