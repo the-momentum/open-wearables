@@ -21,13 +21,15 @@ Copy the example and adjust it:
 cp .env.example .env
 ```
 
-| Variable       | Required | Purpose                                                                                                     |
-| -------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `VITE_API_URL` | yes      | Public URL of the API, as a browser or phone reaches it. Also used by the server when `API_URL` is not set. |
-| `API_URL`      | no       | A shorter route from the portal's server to the API, e.g. `http://app:8000` inside Docker.                  |
+| Variable            | Required | Purpose                                                                                                                                                                      |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL`      | yes      | Public URL of the API, as a browser or phone reaches it. Also used by the server when `API_URL` is not set.                                                                  |
+| `API_URL`           | no       | A shorter route from the portal's server to the API, e.g. `http://app:8000` inside Docker.                                                                                   |
+| `INSTANCE_BRANDING` | no       | JSON object with `name` and/or `faviconUrl` that tells this instance apart. Fields and rules: [docs/deployment/docker.mdx](../docs/deployment/docker.mdx#instance-branding). |
 
-Both are read at runtime, so one image works against any backend without a
-rebuild.
+All are read at runtime, so one image works against any backend without a
+rebuild. `INSTANCE_BRANDING` is validated once at startup; a bad value is logged
+and ignored rather than stopping the portal.
 
 ## Development
 
