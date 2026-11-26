@@ -8,9 +8,9 @@
 
 <!-- Desktop only; below lg the same destinations live in BottomNav. -->
 <aside
-	class="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-surface lg:flex"
+	class="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card lg:flex"
 >
-	<div class="flex h-28 items-center justify-center border-b border-border/60 px-6">
+	<div class="flex h-28 items-center justify-center border-b border-border-subtle px-6">
 		<Wordmark class="h-12" />
 	</div>
 
@@ -24,5 +24,5 @@
 		</ul>
 	</nav>
 
-	<AccountFooter class="py-3" />
+	<AccountFooter class="p-3" />
 </aside>

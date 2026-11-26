@@ -3,6 +3,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { MICRO } from '$lib/components/ui/typography';
 	import type { ArchivalSettings } from '$lib/lifecycle/types';
 
@@ -51,7 +52,7 @@
 			{/if}
 		</p>
 		<Button variant="outline" disabled={blocked !== null} onclick={() => (open = true)}>
-			<Play size={14} aria-hidden="true" />
+			<Play size={ICON.sm} aria-hidden="true" />
 			Run now
 		</Button>
 	</div>

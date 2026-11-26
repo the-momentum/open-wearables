@@ -1,5 +1,5 @@
 <script lang="ts">
-	import DeleteAction from '$lib/components/events/DeleteAction.svelte';
+	import EventDetails from '$lib/components/events/EventDetails.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import FieldGroups from '$lib/components/ui/FieldGroups.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
@@ -34,7 +34,13 @@
 	);
 </script>
 
-<div class="flex flex-col gap-5 border-t border-border pt-4">
+<!-- Laps are stored but not drawn yet; saying so beats an empty space that
+     reads as "this workout has none". -->
+<EventDetails
+	deleteLabel="Delete workout"
+	{ondelete}
+	note={workout.segments?.length ? `${workout.segments.length} laps recorded` : ''}
+>
 	<div class="flex flex-col gap-1.5">
 		<Caption>During the workout</Caption>
 
@@ -69,14 +75,4 @@
 	{/if}
 
 	<FieldGroups groups={detailGroups(workout)} />
-
-	<div class="flex items-center justify-between gap-3 border-t border-border pt-3">
-		<!-- Laps are stored but not drawn yet; saying so beats an empty space that
-		     reads as "this workout has none". -->
-		<span class="text-xs text-muted-foreground">
-			{workout.segments?.length ? `${workout.segments.length} laps recorded` : ''}
-		</span>
-
-		<DeleteAction label="Delete workout" onclick={ondelete} />
-	</div>
-</div>
+</EventDetails>

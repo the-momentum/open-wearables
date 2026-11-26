@@ -1,7 +1,8 @@
 <script lang="ts">
 	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
-	import { TONE } from '$lib/components/ui/tone';
+	import StatusCode from '$lib/components/ui/StatusCode.svelte';
 	import { MICRO, MONO } from '$lib/components/ui/typography';
+	import { cn } from '$lib/utils/cn';
 	import { formatLocalTime } from '$lib/utils/format';
 	import { hasContent, statusOf, triggerOf } from '$lib/webhooks/status';
 	import type { Delivery } from '$lib/webhooks/types';
@@ -26,74 +27,67 @@
 		{ label: 'Event payload', value: delivery.msg?.payload as unknown },
 		{ label: 'Response body', value: delivery.response as unknown }
 	]);
-
-	const ROW = 'flex w-full items-center gap-3 py-2 text-left';
 </script>
 
-{#snippet summary()}
-	<!-- The HTTP code is what a reader checks first, so it wears the colour rather
-	     than sitting in grey next to a dot that repeats it. -->
-	<span class="w-11 shrink-0 rounded-md py-0.5 text-center tabular-nums {MONO} {TONE[status.tone]}">
-		{delivery.responseStatusCode || '-'}
-	</span>
+{#snippet summary(stacked: boolean)}
+	<StatusCode code={delivery.responseStatusCode} tone={status.tone} />
 	<span class="sr-only">{status.label}</span>
 
 	<code class="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
 		{delivery.msg?.eventType ?? 'unknown event'}
 	</code>
 
-	{#if delivery.triggerType === 1}
-		<span class="shrink-0 {MICRO}">retry</span>
-	{/if}
-
-	<span class="hidden shrink-0 tabular-nums sm:inline {MICRO}">{delivery.responseDurationMs}ms</span
+	<span
+		class={cn(
+			'flex shrink-0 items-center gap-3 whitespace-nowrap tabular-nums',
+			MICRO,
+			stacked && 'max-sm:basis-full'
+		)}
 	>
-	<span class="shrink-0 whitespace-nowrap tabular-nums {MICRO}">
-		{formatLocalTime(delivery.timestamp, null)}
+		{#if delivery.triggerType === 1}<span>retry</span>{/if}
+		<span>{delivery.responseDurationMs}ms</span>
+		<span>{formatLocalTime(delivery.timestamp, null)}</span>
 	</span>
 {/snippet}
 
-<div>
-	{#if expandable}
-		<button
-			type="button"
-			onclick={() => (open = !open)}
-			aria-expanded={open}
-			aria-controls={panelId}
-			class={ROW}
-		>
-			{@render summary()}
-			<ExpandChevron {open} />
-		</button>
-	{:else}
-		<div class={ROW}>{@render summary()}</div>
-	{/if}
+{#if expandable}
+	<button
+		type="button"
+		onclick={() => (open = !open)}
+		aria-expanded={open}
+		aria-controls={panelId}
+		class="flex w-full items-center gap-2 p-4 text-left transition-colors hover:bg-surface"
+	>
+		{@render summary(false)}
+		<ExpandChevron {open} />
+	</button>
 
-	{#if expandable && open}
-		<div id={panelId} class="flex flex-col gap-3 pb-3">
-			<dl class="flex flex-wrap gap-x-4 gap-y-1 {MICRO}">
+	{#if open}
+		<div id={panelId} class="flex flex-col gap-3 px-4 pb-4">
+			<hr class="border-border" />
+			<dl class="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:gap-x-6 {MICRO}">
 				{#each facts as [label, value] (label)}
-					<div class="flex gap-1.5">
-						<dt class="text-muted-foreground/70">{label}</dt>
-						<dd class="text-secondary-foreground">{value}</dd>
+					<div class="flex min-w-0 gap-1.5">
+						<dt>{label}</dt>
+						<dd class="min-w-0 break-all text-secondary-foreground">{value}</dd>
 					</div>
 				{/each}
 			</dl>
 
-			<p class="{MICRO} truncate">POST {delivery.url}</p>
+			<p class="{MICRO} break-all">POST {delivery.url}</p>
 
 			<!-- Side by side where there is room: a delivery is a round trip, and
 			     reading what went out against what came back is the whole point. -->
 			<div class="grid gap-3 lg:grid-cols-2">
 				{#each parts as part (part.label)}
-					<div class="flex min-w-0 flex-col gap-1">
+					<div class="flex min-w-0 flex-col gap-1.5">
 						<span class={MICRO}>{part.label}</span>
 						{#if hasContent(part.value)}
 							<pre
-								class="max-h-64 overflow-auto rounded-lg bg-surface-muted/60 p-2 whitespace-pre-wrap
-									text-secondary-foreground {MONO}">{show(part.value)}</pre>
+								class="max-h-64 overflow-auto rounded-lg border border-border p-2 whitespace-pre-wrap
+									text-foreground {MONO}">{show(part.value)}</pre>
 						{:else}
-							<p class="{MICRO} rounded-lg bg-surface-muted/40 p-2 italic">
+							<p class="{MICRO} rounded-lg border border-border p-2">
 								Not returned by the webhook service.
 							</p>
 						{/if}
@@ -102,4 +96,6 @@
 			</div>
 		</div>
 	{/if}
-</div>
+{:else}
+	<div class="flex flex-wrap items-center gap-x-2 gap-y-1">{@render summary(true)}</div>
+{/if}

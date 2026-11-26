@@ -13,7 +13,7 @@
 	} = $props();
 </script>
 
-<dl class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+<dl class="grid grid-cols-2 gap-4 sm:grid-cols-4">
 	{#each metrics as metric (metric.label)}
 		<MetricCell icon={metric.icon} label={metric.label} value={metric.value} />
 	{/each}

@@ -9,6 +9,7 @@
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import CopyableId from '$lib/components/ui/CopyableId.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import NameDialog from '../NameDialog.svelte';
 	import CredentialRow from './CredentialRow.svelte';
 	import SecretReveal from './SecretReveal.svelte';
@@ -33,11 +34,12 @@
 <Card
 	icon={Smartphone}
 	title="SDK applications"
+	stack
 	description="Credentials for mobile apps that push health data through the SDK. Keep the app secret on your own backend."
 >
 	{#snippet action()}
 		<Button size="sm" onclick={() => (createOpen = true)}>
-			<Plus size={14} aria-hidden="true" />
+			<Plus size={ICON.xs} aria-hidden="true" />
 			New application
 		</Button>
 	{/snippet}

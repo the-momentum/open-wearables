@@ -11,12 +11,13 @@
 	const count = $derived(group.sources.length);
 </script>
 
-<Card title={brand.name} bodyClass="p-0 sm:p-0">
+<Card section title={brand.name} bodyClass="p-0 sm:p-0">
 	{#snippet leading()}
 		<ProviderLogo provider={brand} size="xs" />
 	{/snippet}
 	{#snippet action()}
-		<span class={MICRO}>{count} {count === 1 ? 'source' : 'sources'}</span>
+		<!-- As tall as the logo, so the count sits on the name's line. -->
+		<span class="flex h-6 items-center {MICRO}">{count} {count === 1 ? 'source' : 'sources'}</span>
 	{/snippet}
 	<ul class="divide-y divide-border">
 		{#each group.sources as source (source.id)}

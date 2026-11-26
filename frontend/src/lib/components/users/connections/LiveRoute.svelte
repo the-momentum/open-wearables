@@ -3,6 +3,7 @@
 	import Zap from '@lucide/svelte/icons/zap';
 	import { enhance } from '$app/forms';
 	import Button from '$lib/components/ui/Button.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import StatePlate from '$lib/components/ui/StatePlate.svelte';
 	import { SDK_DELIVERY, canForceLiveSync, liveDelivery } from '$lib/connections/delivery';
 	import type { Connection } from '$lib/connections/types';
@@ -25,10 +26,10 @@
 	hint={viaSdk ? SDK_DELIVERY.live.hint : forceable ? liveDelivery(connection) : null}
 >
 	{#if forceable}
-		<form method="POST" action="?/syncNow" use:enhance={submit.enhance} class="w-full">
+		<form method="POST" action="?/syncNow" use:enhance={submit.enhance} class="sm:w-full">
 			<input type="hidden" name="provider" value={connection.provider} />
-			<Button variant="outline" type="submit" disabled={submit.submitting} class="w-full px-3">
-				<RefreshCw size={15} aria-hidden="true" />
+			<Button variant="outline" type="submit" disabled={submit.submitting} class="sm:w-full">
+				<RefreshCw size={ICON.sm} aria-hidden="true" />
 				{submit.submitting ? 'Syncing…' : 'Sync now'}
 			</Button>
 		</form>

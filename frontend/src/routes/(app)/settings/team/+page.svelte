@@ -11,6 +11,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { outstanding } from '$lib/settings/invitations';
 	import type { Developer, Invitation } from '$lib/settings/types';
 	import type { ActionData, PageData } from './$types';
@@ -31,59 +32,67 @@
 	let removeOpen = $state(false);
 	let revoking = $state<Invitation | null>(null);
 	let revokeOpen = $state(false);
+
+	// The rows carry their own padding, so the body only frames them.
+	const ROWS = 'py-2 sm:py-2';
 </script>
 
-<div class="flex flex-col gap-5">
-	{#if pending.length > 0}
-		<Card
-			icon={Clock}
-			title="Pending invitations"
-			description={emailEnabled
-				? 'Sent but not yet accepted. Each one expires on its own.'
-				: 'Not yet accepted. Each one expires on its own. Email delivery is not configured, so share the invite link yourself.'}
-		>
-			<div class="divide-y divide-border">
-				{#each pending as invitation (invitation.id)}
-					<PendingInvite
-						{invitation}
-						{emailEnabled}
-						onrevoke={() => {
-							revoking = invitation;
-							revokeOpen = true;
-						}}
-					/>
-				{/each}
-			</div>
-		</Card>
-	{/if}
-
-	<Card icon={Users} title="Developers" description="Everyone who can sign in to this dashboard.">
-		{#snippet action()}
-			<Button size="sm" onclick={() => (inviteOpen = true)}>
-				<UserPlus size={14} aria-hidden="true" />
-				Invite
-			</Button>
-		{/snippet}
-
-		{#if data.developers.length === 0}
-			<EmptyState icon={Users} title="No team members yet" />
-		{:else}
-			<div class="divide-y divide-border">
-				{#each data.developers as developer (developer.id)}
-					<TeamMember
-						{developer}
-						you={developer.id === me}
-						onpassword={() => (passwordOpen = true)}
-						onremove={() => {
-							removing = developer;
-							removeOpen = true;
-						}}
-					/>
-				{/each}
-			</div>
-		{/if}
+{#if pending.length > 0}
+	<Card
+		icon={Clock}
+		title="Pending invitations"
+		description={emailEnabled
+			? 'Sent but not yet accepted. Each one expires on its own.'
+			: 'Not yet accepted. Each one expires on its own. Email delivery is not configured, so share the invite link yourself.'}
+		bodyClass={ROWS}
+	>
+		<div class="divide-y divide-border">
+			{#each pending as invitation (invitation.id)}
+				<PendingInvite
+					{invitation}
+					{emailEnabled}
+					onrevoke={() => {
+						revoking = invitation;
+						revokeOpen = true;
+					}}
+				/>
+			{/each}
+		</div>
 	</Card>
-</div>
+{/if}
+
+<Card
+	icon={Users}
+	title="Developers"
+	description="Everyone who can sign in to this dashboard."
+	stack
+	bodyClass={data.developers.length > 0 ? ROWS : undefined}
+>
+	{#snippet action()}
+		<Button size="sm" onclick={() => (inviteOpen = true)}>
+			<UserPlus size={ICON.xs} aria-hidden="true" />
+			Invite
+		</Button>
+	{/snippet}
+
+	{#if data.developers.length === 0}
+		<EmptyState icon={Users} title="No team members yet" />
+	{:else}
+		<div class="divide-y divide-border">
+			{#each data.developers as developer (developer.id)}
+				<TeamMember
+					{developer}
+					you={developer.id === me}
+					onpassword={() => (passwordOpen = true)}
+					onremove={() => {
+						removing = developer;
+						removeOpen = true;
+					}}
+				/>
+			{/each}
+		</div>
+	{/if}
+</Card>
 
 <InviteDialog bind:open={inviteOpen} message={messageFor('invite')} {emailEnabled} />
 

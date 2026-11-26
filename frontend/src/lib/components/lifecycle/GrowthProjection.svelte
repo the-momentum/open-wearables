@@ -3,7 +3,7 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import { TONE_COLOUR } from '$lib/components/ui/tone';
-	import { FOOTNOTE, MICRO } from '$lib/components/ui/typography';
+	import { MICRO } from '$lib/components/ui/typography';
 	import { GROWTH } from '$lib/lifecycle/growth';
 	import {
 		dailyIngest,
@@ -30,7 +30,7 @@
 
 <Card icon={TrendingUp} title="Growth projection" description={growth.description}>
 	{#snippet action()}
-		<Badge tone={growth.tone} class="font-mono">{growth.label}</Badge>
+		<Badge tone={growth.tone}>{growth.label}</Badge>
 	{/snippet}
 
 	<div class="flex flex-col gap-4">
@@ -49,11 +49,10 @@
 
 		<ProjectionChart {points} {colour} />
 
-		<div class="flex flex-col gap-1 {FOOTNOTE}">
+		<div class="flex flex-col gap-1 {MICRO}">
 			{#if storage.live_row_count > 0}
 				<p>
-					Daily ingest ≈ <strong class="font-medium text-muted-foreground"
-						>{formatBytes(dailyIngest(storage))}/day</strong
+					Daily ingest ≈ <strong class="font-medium">{formatBytes(dailyIngest(storage))}/day</strong
 					>
 					- the live table ({formatBytes(liveBytes(storage))}) over the {Math.max(
 						storage.live_data_span_days,

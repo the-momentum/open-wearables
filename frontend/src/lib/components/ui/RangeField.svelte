@@ -22,7 +22,7 @@
 		class?: string;
 	} = $props();
 
-	const BOX = `${FIELD} w-20 px-2.5 text-center tabular-nums`;
+	const BOX = `${FIELD} w-18 px-3 tabular-nums`;
 </script>
 
 <fieldset class={cn('flex flex-col gap-1.5', className)}>

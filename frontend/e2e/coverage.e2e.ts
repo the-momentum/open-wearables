@@ -30,7 +30,7 @@ test('calls out a capability only one provider can deliver', async ({ page }) =>
 test('ranks the providers by how much of the matrix they cover', async ({ page }) => {
 	await page.goto('/coverage');
 
-	const summary = page.getByRole('region', { name: 'What each provider can deliver' });
+	const summary = page.getByRole('region', { name: 'Provider coverage' });
 	// Garmin is in every row of the fixture: 9 of 9.
 	await expect(summary.getByText('9 · 100%')).toBeVisible();
 	await expect(summary.getByText('Garmin')).toBeVisible();
@@ -38,7 +38,8 @@ test('ranks the providers by how much of the matrix they cover', async ({ page }
 
 test('searches across every layer at once', async ({ page }) => {
 	await page.goto('/coverage');
-	await expect(page.getByText('9 of 9 capabilities · 4 providers')).toBeVisible();
+	await expect(page.getByText('9 of 9 capabilities')).toBeVisible();
+	await expect(page.getByText('4 providers')).toBeVisible();
 
 	await page.getByLabel('Search capabilities').fill('heart');
 	await expect(page).toHaveURL(/search=heart/);
@@ -50,7 +51,7 @@ test('narrows to one layer', async ({ page }) => {
 	await page.goto('/coverage');
 
 	await page
-		.getByRole('group', { name: 'Layer' })
+		.getByRole('navigation', { name: 'Layer' })
 		.getByRole('link', { name: 'Sleep fields' })
 		.click();
 

@@ -30,7 +30,7 @@
 			d={linePath(line.points, { from, to }, range, SPARK_BOX)}
 			fill="none"
 			stroke={colourFor(line.type)}
-			stroke-width="1.75"
+			stroke-width="2"
 			stroke-linejoin="round"
 			vector-effect="non-scaling-stroke"
 		/>

@@ -23,7 +23,7 @@ test('keeps every sub-metric on the tile, zero included', async ({ page }) => {
 
 	// Each tile carries its own breakdown, and the rolled-up figure is the one that
 	// would go missing were an empty part simply left out. Scoped to the tiles:
-	// the same counts appear again in the rankings below.
+	// the provider counts appear again in the connections card below.
 	const tiles = page.getByRole('region', { name: 'Platform totals' });
 	await expect(tiles.getByText('day and session rows', { exact: true })).toBeVisible();
 	await expect(tiles.getByText('266K', { exact: true })).toBeVisible();
@@ -36,9 +36,10 @@ test('shows nothing rolled up as zero rather than hiding it', async ({ page, req
 	await request.post('http://localhost:8787/__empty-aggregates');
 	await page.goto('/dashboard');
 
+	// Scoped to the term's own row: "other" reads 0 too.
 	const tiles = page.getByRole('region', { name: 'Platform totals' });
-	await expect(tiles.getByText('day and session rows', { exact: true })).toBeVisible();
-	await expect(tiles.getByText('0', { exact: true })).toBeVisible();
+	const rolled = tiles.getByText('day and session rows', { exact: true }).locator('..');
+	await expect(rolled).toHaveText(/^day and session rows\s*0$/);
 });
 
 test('splits the user base into connected and not', async ({ page }) => {
@@ -48,7 +49,8 @@ test('splits the user base into connected and not', async ({ page }) => {
 	// 902 of 1247.
 	await expect(connections.getByText('72%')).toBeVisible();
 	await expect(connections.getByText('No connection')).toBeVisible();
-	await expect(connections.getByText('345 · 28%')).toBeVisible();
+	await expect(connections.getByText('345', { exact: true })).toBeVisible();
+	await expect(connections.getByText('28%', { exact: true })).toBeVisible();
 });
 
 test('ranks the providers by name, with their counts grouped', async ({ page }) => {
@@ -60,16 +62,27 @@ test('ranks the providers by name, with their counts grouped', async ({ page }) 
 	await expect(connections.getByText('Garmin', { exact: true })).toBeVisible();
 	await expect(connections.getByText('Whoop', { exact: true })).toBeVisible();
 	// A count alone does not say whether that is half the estate or a tenth.
-	await expect(connections.getByText('480 · 53%', { exact: true })).toBeVisible();
+	const providers = connections.getByRole('group', { name: 'Connections per provider' });
+	await expect(providers.getByRole('listitem').first()).toHaveText(/Garmin\s*480\s*53%/);
 });
 
-test('breaks the event records down by category', async ({ page }) => {
+test('breaks the event records down by category, exact on hover', async ({ page }) => {
 	await page.goto('/dashboard');
 
-	const stored = page.getByRole('region', { name: 'Event records' });
-	await expect(stored.getByText('Cycles', { exact: true })).toBeVisible();
-	// Grouped, because a bare 11766 is a number nobody reads at a glance.
-	await expect(stored.getByText('11,766', { exact: true })).toBeVisible();
+	const tiles = page.getByRole('region', { name: 'Platform totals' });
+	await expect(tiles.getByText('other', { exact: true })).toBeVisible();
+	// Compact on the tile, exact and grouped behind it.
+	await tiles.getByRole('button', { name: 'Exact sleep' }).hover();
+	await expect(tiles.getByRole('tooltip').filter({ hasText: '11,766 sleep' })).toBeVisible();
+});
+
+test('keeps the event records compact on a phone', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto('/dashboard');
+
+	const tiles = page.getByRole('region', { name: 'Platform totals' });
+	await expect(tiles.getByText('11.8K', { exact: true }).filter({ visible: true })).toHaveCount(1);
+	await expect(tiles.getByRole('button', { name: /^Exact / })).toHaveCount(0);
 });
 
 test('lists the newest users with how long ago each one synced', async ({ page }) => {
@@ -87,7 +100,7 @@ test('lists the newest users with how long ago each one synced', async ({ page }
 	await expect(newest.getByText('Never').first()).toBeVisible();
 
 	// And the providers each one is connected to, which is what the list is for.
-	await expect(newest.getByTitle(/^suunto: active$/).first()).toBeVisible();
+	await expect(newest.getByRole('button', { name: 'Suunto: active' }).first()).toBeVisible();
 	await expect(newest.getByText('No connections').first()).toBeVisible();
 
 	await newest.getByRole('link').first().click();

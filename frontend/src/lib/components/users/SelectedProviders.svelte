@@ -1,6 +1,7 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
 	import FilterChip from '$lib/components/ui/FilterChip.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import type { Provider } from '$lib/server/providers';
 	import {
 		toggleProvider,
@@ -34,7 +35,7 @@
 			href={usersQueryHref(withUsersQuery(query, { providers: [] }))}
 			class="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
 		>
-			<X size={13} aria-hidden="true" />
+			<X size={ICON.xs} aria-hidden="true" />
 			Clear
 		</a>
 	</div>

@@ -3,6 +3,8 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import { createCopier } from '$lib/utils/clipboard.svelte';
 	import { cn } from '$lib/utils/cn';
+	import { buttonClass, ICON_BUTTON } from './button';
+	import { ICON } from './icon';
 
 	let {
 		value,
@@ -24,25 +26,24 @@
 	const copier = createCopier();
 
 	const PLACE = {
-		inline: 'size-7 rounded',
-		field: 'size-11 rounded-lg border border-border hover:bg-surface-muted',
-		action: 'min-h-8 px-2.5 rounded-lg border border-border hover:bg-surface-muted'
+		inline:
+			'grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:text-secondary-foreground',
+		field: buttonClass('outline'),
+		action: ICON_BUTTON
 	} as const;
+
+	const size = $derived(place === 'inline' ? ICON.xs : ICON.sm);
 </script>
 
 <button
 	type="button"
 	onclick={() => copier.copy(value)}
 	aria-label={copier.copied ? `${label} copied` : `Copy ${label}`}
-	class={cn(
-		'grid shrink-0 place-items-center text-muted-foreground transition-colors hover:text-foreground',
-		PLACE[place],
-		className
-	)}
+	class={cn(PLACE[place], className)}
 >
 	{#if copier.copied}
-		<Check size={place === 'field' ? 16 : 13} aria-hidden="true" class="text-success" />
+		<Check {size} aria-hidden="true" class="text-success" />
 	{:else}
-		<Icon size={place === 'field' ? 16 : 13} aria-hidden="true" />
+		<Icon {size} aria-hidden="true" />
 	{/if}
 </button>

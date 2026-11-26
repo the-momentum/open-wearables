@@ -11,7 +11,7 @@
 </script>
 
 <SectionCard icon={Utensils} title="Meals" summary={mealSummary(meals)} bind:on={meals.on}>
-	<div class="flex flex-wrap gap-x-6 gap-y-4">
+	<div class="flex flex-wrap gap-x-8 gap-y-4">
 		<NumberField
 			label="Per user"
 			bind:value={meals.count}

@@ -26,31 +26,29 @@
 		connection ? providerLabel(data.providers, connection.provider) : '';
 </script>
 
-<div class="flex flex-col gap-4">
-	{#if failure}
-		<Alert>{failure}</Alert>
-	{/if}
+{#if failure}
+	<Alert>{failure}</Alert>
+{/if}
 
-	<ConnectionsCard
-		connections={data.connections}
-		providers={data.providers}
-		backfills={data.backfills}
-		onrevoke={(connection) => {
-			revoking = connection;
-			revokeOpen = true;
-		}}
-		onpurge={(connection) => {
-			purging = connection;
-			purgeOpen = true;
-		}}
-	/>
+<ConnectionsCard
+	connections={data.connections}
+	providers={data.providers}
+	backfills={data.backfills}
+	onrevoke={(connection) => {
+		revoking = connection;
+		revokeOpen = true;
+	}}
+	onpurge={(connection) => {
+		purging = connection;
+		purgeOpen = true;
+	}}
+/>
 
-	<RecentSyncsCard
-		runs={data.recentRuns}
-		providers={data.connections.map((connection) => connection.provider)}
-		labelFor={(provider) => providerLabel(data.providers, provider)}
-	/>
-</div>
+<RecentSyncsCard
+	runs={data.recentRuns}
+	providers={data.connections.map((connection) => connection.provider)}
+	labelFor={(provider) => providerLabel(data.providers, provider)}
+/>
 
 {#if revoking}
 	<ConfirmDialog

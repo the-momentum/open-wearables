@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { MONO } from './typography';
+	import { ID_CHIP } from './typography';
 	import CopyButton from './CopyButton.svelte';
 
 	let {
@@ -15,11 +15,6 @@
 <!-- z-10 keeps this above the row-wide overlay link, so copying does not also
      open the row. -->
 <span class="relative z-10 inline-flex items-center gap-1">
-	<code
-		title={value}
-		class="rounded bg-surface-muted px-1.5 py-0.5 text-secondary-foreground {MONO}"
-	>
-		{shown}
-	</code>
+	<code title={value} class={ID_CHIP}>{shown}</code>
 	<CopyButton {value} {label} />
 </span>

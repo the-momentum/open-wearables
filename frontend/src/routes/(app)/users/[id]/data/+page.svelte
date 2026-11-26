@@ -29,51 +29,52 @@
 	const from = $derived(chosen ? ` from ${label(chosen)}` : '');
 </script>
 
-<div class="flex flex-col gap-4">
-	<FilterBar
-		period={data.period}
-		{hrefFor}
-		providers={connected}
-		labelFor={label}
-		selected={chosen}
-	/>
+<FilterBar
+	period={data.period}
+	{hrefFor}
+	providers={connected}
+	labelFor={label}
+	selected={chosen}
+/>
 
-	<Card
-		title="Data collected"
-		description={chosen ? `From ${label(chosen)}` : 'Everything stored for this user'}
-	>
-		<div class="flex flex-col gap-5">
-			<SummaryTotals summary={totals} />
-			<ShareBar parts={providerParts(data.summary.by_provider, label)} selected={chosen} />
+<Card
+	section
+	title="Data collected"
+	description={chosen ? `From ${label(chosen)}` : 'Everything stored for this user'}
+>
+	<div class="flex flex-col gap-5">
+		<SummaryTotals summary={totals} />
+		<ShareBar parts={providerParts(data.summary.by_provider, label)} selected={chosen} />
 
-			<!-- Providers get a heatmap and never a ranking: the share bar above
-			     already ranks them, and one day of one provider is a single bar. -->
-			{#if overTime && data.byProvider.series.length > 0}
-				<div class="flex flex-col gap-2 border-t border-border pt-4">
-					<span class={CAPTION}>
-						Data points per {data.byProvider.bucket} - workouts and sleep are counted above, not here
-					</span>
-					<Heatmap timeline={data.byProvider} period={data.period} labelFor={label} />
-				</div>
-			{/if}
-		</div>
-	</Card>
+		<!-- Providers get a heatmap and never a ranking: the share bar above
+		     already ranks them, and one day of one provider is a single bar. -->
+		{#if overTime && data.byProvider.series.length > 0}
+			<div class="flex flex-col gap-2 border-t border-border pt-4">
+				<span class={CAPTION}>
+					Data points per {data.byProvider.bucket} - workouts and sleep are counted above, not here
+				</span>
+				<Heatmap timeline={data.byProvider} period={data.period} labelFor={label} />
+			</div>
+		{/if}
+	</div>
+</Card>
 
-	<Card
-		title="Series types"
-		description={overTime
-			? `Data points per ${data.byType.bucket}${from}, busiest first`
-			: `Measurements recorded that day${from}`}
-	>
-		<TimelinePanel timeline={data.byType} period={data.period} labelFor={humanise} />
-	</Card>
+<Card
+	section
+	title="Series types"
+	description={overTime
+		? `Data points per ${data.byType.bucket}${from}, busiest first`
+		: `Measurements recorded that day${from}`}
+>
+	<TimelinePanel timeline={data.byType} period={data.period} labelFor={humanise} />
+</Card>
 
-	<Card
-		title="Workout types"
-		description={overTime
-			? `Workouts per ${data.byWorkout.bucket}${from}, most frequent first`
-			: `Workouts recorded that day${from}`}
-	>
-		<TimelinePanel timeline={data.byWorkout} period={data.period} labelFor={humanise} limit={6} />
-	</Card>
-</div>
+<Card
+	section
+	title="Workout types"
+	description={overTime
+		? `Workouts per ${data.byWorkout.bucket}${from}, most frequent first`
+		: `Workouts recorded that day${from}`}
+>
+	<TimelinePanel timeline={data.byWorkout} period={data.period} labelFor={humanise} limit={6} />
+</Card>

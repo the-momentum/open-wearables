@@ -2,6 +2,7 @@
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import type { Component } from 'svelte';
 	import { formatLocalDay, localRange } from '$lib/utils/format';
+	import { ICON } from './icon';
 
 	let {
 		from,
@@ -34,31 +35,33 @@
 </script>
 
 <!-- The date muted, the two clock times not: run together in one grey line they
-     read as a single blur rather than as when to when. -->
+     read as a single blur rather than as when to when. The range is one piece, so
+     a narrow card wraps it under the date whole rather than at the arrow. -->
 <span class="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
 	<span>{day}</span>
-	<span aria-hidden="true" class="text-muted-foreground/40">·</span>
 
-	<span class="inline-flex items-center gap-1">
-		{#if FromIcon}
-			<FromIcon size={12} aria-hidden="true" class="text-muted-foreground/60" />
-		{/if}
-		<span class="text-secondary-foreground tabular-nums">
-			{#if marked === 'from'}<span class="text-muted-foreground">{range.fromDay}</span>{/if}
-			{range.from}
+	<span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+		<span class="inline-flex items-center gap-1">
+			{#if FromIcon}
+				<FromIcon size={ICON.xs} aria-hidden="true" class="text-muted-foreground/60" />
+			{/if}
+			<span class="text-secondary-foreground tabular-nums">
+				{#if marked === 'from'}<span class="text-muted-foreground">{range.fromDay}</span>{/if}
+				{range.from}
+			</span>
 		</span>
-	</span>
 
-	<ArrowRight size={12} aria-hidden="true" class="text-muted-foreground/40" />
+		<ArrowRight size={ICON.xs} aria-hidden="true" class="text-muted-foreground/40" />
 
-	<span class="inline-flex items-center gap-1">
-		{#if ToIcon}
-			<ToIcon size={12} aria-hidden="true" class="text-muted-foreground/60" />
-		{/if}
-		<span class="text-secondary-foreground tabular-nums">
-			{#if marked === 'to'}<span class="text-muted-foreground">{range.toDay}</span>{/if}
-			{range.to}
+		<span class="inline-flex items-center gap-1">
+			{#if ToIcon}
+				<ToIcon size={ICON.xs} aria-hidden="true" class="text-muted-foreground/60" />
+			{/if}
+			<span class="text-secondary-foreground tabular-nums">
+				{#if marked === 'to'}<span class="text-muted-foreground">{range.toDay}</span>{/if}
+				{range.to}
+			</span>
+			{#if range.utc}<span class="text-muted-foreground/70">UTC</span>{/if}
 		</span>
-		{#if range.utc}<span class="text-muted-foreground/70">UTC</span>{/if}
 	</span>
 </span>

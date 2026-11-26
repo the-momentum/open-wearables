@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import { ICON } from './icon';
 	import TextField from './TextField.svelte';
 
 	let {
@@ -37,9 +38,9 @@
 				transition-colors hover:text-foreground"
 		>
 			{#if shown}
-				<EyeOff size={16} aria-hidden="true" />
+				<EyeOff size={ICON.sm} aria-hidden="true" />
 			{:else}
-				<Eye size={16} aria-hidden="true" />
+				<Eye size={ICON.sm} aria-hidden="true" />
 			{/if}
 		</button>
 	{/snippet}

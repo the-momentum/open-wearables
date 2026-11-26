@@ -14,10 +14,11 @@ test('shows where the storage goes, in the units the API uses', async ({ page })
 	await page.goto('/settings/data-lifecycle');
 
 	const storage = page.getByRole('region', { name: 'Storage' });
-	await expect(storage.getByText('458.0 MB', { exact: true })).toBeVisible();
-	await expect(storage.getByText('475.0 MB', { exact: true })).toBeVisible();
+	const byTable = storage.getByLabel('Storage by table');
+	await expect(byTable.getByText('458.0 MB', { exact: true })).toBeVisible();
+	await expect(byTable.getByText('475.0 MB', { exact: true })).toBeVisible();
 	// 56 KB of a 475 MB database is small, not absent.
-	await expect(storage.getByText(/Aggregates\s*56\.0 KB · <1%/)).toBeVisible();
+	await expect(storage.getByText(/Aggregates\s*56\.0 KB\s*<1%/)).toBeVisible();
 	// A planner statistic, and the page says so rather than printing it as a count.
 	await expect(storage.getByText(/~1\.9K rows/)).toBeVisible();
 });

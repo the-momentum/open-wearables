@@ -3,6 +3,7 @@
 	import Moon from '@lucide/svelte/icons/moon';
 	import Sun from '@lucide/svelte/icons/sun';
 	import { page } from '$app/state';
+	import { ICON } from '$lib/components/ui/icon';
 	import { applyTheme, type Theme } from '$lib/theme';
 	import { cn } from '$lib/utils/cn';
 
@@ -46,7 +47,7 @@
 				active ? 'text-inverted-foreground' : 'text-muted-foreground hover:text-foreground'
 			)}
 		>
-			<option.icon size={14} aria-hidden="true" />
+			<option.icon size={ICON.xs} aria-hidden="true" />
 		</button>
 	{/each}
 </div>

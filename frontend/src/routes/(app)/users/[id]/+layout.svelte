@@ -9,8 +9,6 @@
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 </script>
 
-<div class="flex flex-col gap-5">
-	<UserHeader user={data.user} />
-	<UserTabs user={data.user} />
-	<PendingOutlet within={userTabHref(data.user.id, '')}>{@render children()}</PendingOutlet>
-</div>
+<UserHeader user={data.user} />
+<UserTabs user={data.user} />
+<PendingOutlet within={userTabHref(data.user.id, '')}>{@render children()}</PendingOutlet>

@@ -2,6 +2,7 @@
 	import type { Component } from 'svelte';
 	import Figures from '$lib/components/ui/Figures.svelte';
 	import Skeleton from '$lib/components/ui/Skeleton.svelte';
+	import { MICRO } from '$lib/components/ui/typography';
 	import { resource } from '$lib/utils/resource.svelte';
 
 	let {
@@ -28,13 +29,13 @@
 {#if totals}
 	<Figures figures={figures(totals)} {label} />
 {:else}
-	<Skeleton class="h-[52px]" />
+	<Skeleton class="h-11" />
 {/if}
 
 {#if totals?.partial}
 	<!-- Say it rather than quietly under-reporting: the count is exact, the sums
 	     beside it are not, and an admin comparing them deserves to know which. -->
-	<p class="mt-3 text-xs text-muted-foreground">
+	<p class="mt-3 {MICRO}">
 		Totals cover the most recent {noun} in this period, not all {totals.count}.
 	</p>
 {/if}

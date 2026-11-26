@@ -2,6 +2,7 @@
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Check from '@lucide/svelte/icons/check';
 	import X from '@lucide/svelte/icons/x';
+	import { ICON } from '$lib/components/ui/icon';
 	import LinkButton from '$lib/components/ui/LinkButton.svelte';
 	import PairingShell from '$lib/components/pairing/PairingShell.svelte';
 	import type { PageData } from './$types';
@@ -27,14 +28,14 @@
 				aria-hidden="true"
 				class="grid size-16 place-items-center rounded-full bg-success/12 text-success"
 			>
-				<Check size={30} />
+				<Check size={ICON.xl} />
 			</span>
 		{:else}
 			<span
 				aria-hidden="true"
 				class="grid size-16 place-items-center rounded-full bg-danger/12 text-danger"
 			>
-				<X size={30} />
+				<X size={ICON.xl} />
 			</span>
 		{/if}
 
@@ -42,7 +43,7 @@
 			{#if data.connected && data.returnUrl}
 				<LinkButton href={data.returnUrl} rel="noreferrer">
 					Continue
-					<ArrowRight size={16} aria-hidden="true" />
+					<ArrowRight size={ICON.sm} aria-hidden="true" />
 				</LinkButton>
 			{/if}
 

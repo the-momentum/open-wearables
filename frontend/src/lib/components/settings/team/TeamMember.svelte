@@ -5,6 +5,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import CopyableId from '$lib/components/ui/CopyableId.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { formatDate } from '$lib/utils/datetime';
 	import SettingRow from '../SettingRow.svelte';
 	import type { Developer } from '$lib/settings/types';
@@ -26,7 +27,7 @@
 	const name = $derived([developer.first_name, developer.last_name].filter(Boolean).join(' '));
 </script>
 
-<SettingRow>
+<SettingRow below={you}>
 	{#snippet title()}
 		<span class="truncate text-sm font-medium text-foreground">{developer.email}</span>
 		{#if you}<Badge tone="primary">You</Badge>{/if}
@@ -41,7 +42,7 @@
 	{#snippet actions()}
 		{#if you}
 			<Button variant="outline" size="sm" onclick={onpassword}>
-				<KeyRound size={13} aria-hidden="true" />
+				<KeyRound size={ICON.xs} aria-hidden="true" />
 				Change password
 			</Button>
 		{:else}

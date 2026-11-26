@@ -1,8 +1,9 @@
 <script lang="ts">
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { paginationItems, type PageSize } from '$lib/lists/pagination';
+	import { paginationItems, type PageItem, type PageSize } from '$lib/lists/pagination';
 	import { cn } from '$lib/utils/cn';
+	import { ICON } from './icon';
 	import PageSizeSelect from './PageSizeSelect.svelte';
 	import { STEP, STEP_SPENT } from './typography';
 
@@ -15,7 +16,8 @@
 		hrefFor,
 		sizeHrefFor,
 		noun = '',
-		label = 'Pagination'
+		label = 'Pagination',
+		placement
 	}: {
 		/** 1-based position, which both kinds of paging know. */
 		page: number;
@@ -35,6 +37,11 @@
 		noun?: string;
 		/** Distinguishes the bars when one appears above the list and one below. */
 		label?: string;
+		/**
+		 * Of a pair round one list. A phone has room for half of each: the bar above
+		 * keeps the range and page size, the one below the range and the steps.
+		 */
+		placement?: 'above' | 'below';
 	} = $props();
 
 	// An uncounted list has no last page, so it gets a position and nothing else:
@@ -42,14 +49,15 @@
 	const pages = $derived(total === null ? null : Math.max(Math.ceil(total / size), 1));
 	const first = $derived((page - 1) * size + 1);
 	const last = $derived(total === null ? page * size : Math.min(page * size, total));
-	const items = $derived(hrefFor && pages !== null ? paginationItems(page, pages) : []);
+	// A phone keeps only the current page between first and last, so the steps fit one row.
+	const wide = $derived(hrefFor && pages !== null ? paginationItems(page, pages) : []);
+	const narrow = $derived(hrefFor && pages !== null ? paginationItems(page, pages, 0) : []);
 
 	const chip = (current: boolean) =>
 		cn(
-			'grid size-10 place-items-center rounded-lg border text-sm tabular-nums transition-colors',
-			current
-				? 'border-primary/40 bg-primary/10 font-medium text-primary'
-				: 'border-border hover:bg-surface-muted'
+			STEP,
+			'text-sm tabular-nums',
+			current && 'border-primary/40 bg-primary/10 font-medium text-primary hover:bg-primary/10'
 		);
 </script>
 
@@ -57,6 +65,28 @@
      this bar sits under the list, so jumping to the top of the page puts the
      control the reader just used out of reach. -->
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
+{#snippet numbers(items: PageItem[], shown: string)}
+	<ul class="items-center gap-1.5 {shown}">
+		{#each items as item, index (item === 'gap' ? `gap-${index}` : item)}
+			<li>
+				{#if item === 'gap'}
+					<span class="grid size-10 place-items-center text-sm text-muted-foreground">…</span>
+				{:else}
+					<a
+						href={hrefFor?.(item)}
+						aria-label="Page {item}"
+						aria-current={item === page ? 'page' : undefined}
+						data-sveltekit-noscroll
+						class={chip(item === page)}
+					>
+						{item}
+					</a>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+{/snippet}
+
 <nav class="flex flex-wrap items-center justify-between gap-3" aria-label={label}>
 	<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
 		<p class="text-sm text-muted-foreground" aria-live="polite">
@@ -72,11 +102,13 @@
 		</p>
 
 		{#if sizeHrefFor}
-			<PageSizeSelect {size} hrefFor={sizeHrefFor} />
+			<div class={cn(placement === 'below' && 'hidden sm:block')}>
+				<PageSizeSelect {size} hrefFor={sizeHrefFor} />
+			</div>
 		{/if}
 	</div>
 
-	<div class="flex items-center gap-1.5">
+	<div class={cn('items-center gap-1.5', placement === 'above' ? 'hidden sm:flex' : 'flex')}>
 		{#if previousHref}
 			<a
 				href={previousHref}
@@ -85,41 +117,21 @@
 				data-sveltekit-noscroll
 				class={STEP}
 			>
-				<ChevronLeft size={18} aria-hidden="true" />
+				<ChevronLeft size={ICON.md} aria-hidden="true" />
 			</a>
 		{:else}
-			<span class={STEP_SPENT} aria-hidden="true"><ChevronLeft size={18} /></span>
+			<span class={STEP_SPENT} aria-hidden="true"><ChevronLeft size={ICON.md} /></span>
 		{/if}
 
-		<!-- Numbers need room, so the small screen keeps the plain counter. -->
-		<span class="px-1 text-sm text-muted-foreground tabular-nums sm:hidden">
-			{pages === null ? page : `${page} / ${pages}`}
-		</span>
-
-		{#if items.length}
-			<ul class="hidden items-center gap-1 sm:flex">
-				{#each items as item, index (item === 'gap' ? `gap-${index}` : item)}
-					<li>
-						{#if item === 'gap'}
-							<span class="grid size-10 place-items-center text-sm text-muted-foreground/60">…</span
-							>
-						{:else}
-							<a
-								href={hrefFor?.(item)}
-								aria-label="Page {item}"
-								aria-current={item === page ? 'page' : undefined}
-								data-sveltekit-noscroll
-								class={chip(item === page)}
-							>
-								{item}
-							</a>
-						{/if}
-					</li>
-				{/each}
-			</ul>
+		{#if wide.length}
+			{@render numbers(narrow, 'flex sm:hidden')}
+			{@render numbers(wide, 'hidden sm:flex')}
 		{:else}
-			<!-- Keyset paging can mark where you are but cannot link anywhere else,
-			     so the position wears the same chip with nothing beside it. -->
+			<!-- Keyset paging can mark where you are but cannot link anywhere else:
+			     a counter on a phone, the position's chip from sm up. -->
+			<span class="px-1 text-sm text-muted-foreground tabular-nums sm:hidden">
+				{pages === null ? page : `${page} / ${pages}`}
+			</span>
 			<span class="hidden items-center gap-2 sm:flex">
 				<span aria-current="page" class={chip(true)}>{page}</span>
 				{#if pages !== null}
@@ -130,10 +142,10 @@
 
 		{#if nextHref}
 			<a href={nextHref} rel="next" aria-label="Next page" data-sveltekit-noscroll class={STEP}>
-				<ChevronRight size={18} aria-hidden="true" />
+				<ChevronRight size={ICON.md} aria-hidden="true" />
 			</a>
 		{:else}
-			<span class={STEP_SPENT} aria-hidden="true"><ChevronRight size={18} /></span>
+			<span class={STEP_SPENT} aria-hidden="true"><ChevronRight size={ICON.md} /></span>
 		{/if}
 	</div>
 </nav>

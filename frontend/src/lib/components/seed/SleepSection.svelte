@@ -19,7 +19,7 @@
 </script>
 
 <SectionCard icon={Moon} title="Sleep" summary={sleepSummary(sleep, profiles)} bind:on={sleep.on}>
-	<div class="flex flex-wrap items-end gap-x-6 gap-y-4">
+	<div class="flex flex-wrap items-end gap-x-8 gap-y-4">
 		<NumberField
 			label="Per user"
 			bind:value={sleep.count}
@@ -45,7 +45,7 @@
 		<SwitchField label="Short weekdays, long weekends" bind:checked={sleep.weekendCatchup} />
 	</div>
 
-	<div class="flex flex-col gap-2">
+	<div class="flex flex-col gap-1.5">
 		<span class={MICRO}>Stages</span>
 		<div class="flex flex-wrap gap-1.5">
 			{#each profiles as profile (profile.id)}
@@ -68,17 +68,20 @@
 				Custom
 			</button>
 		</div>
+	</div>
 
+	<div class="flex flex-col gap-2">
 		<StagePreview {...shown} />
-
 		{#if named}
 			<p class={MICRO}>{named.description}.</p>
-		{:else}
-			<div class="flex flex-wrap gap-x-6 gap-y-4 pt-1">
-				<RangeField label="Deep" bind:value={sleep.deep} min={0} max={100} unit="%" />
-				<RangeField label="REM" bind:value={sleep.rem} min={0} max={100} unit="%" />
-				<RangeField label="Awake" bind:value={sleep.awake} min={0} max={100} unit="%" />
-			</div>
 		{/if}
 	</div>
+
+	{#if !named}
+		<div class="flex flex-wrap gap-x-8 gap-y-4">
+			<RangeField label="Deep" bind:value={sleep.deep} min={0} max={100} unit="%" />
+			<RangeField label="REM" bind:value={sleep.rem} min={0} max={100} unit="%" />
+			<RangeField label="Awake" bind:value={sleep.awake} min={0} max={100} unit="%" />
+		</div>
+	{/if}
 </SectionCard>

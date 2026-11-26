@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import { ICON } from '$lib/components/ui/icon';
 	import PublicPage from '$lib/components/layout/PublicPage.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -73,7 +74,7 @@
 
 			<Button type="submit" disabled={submit.submitting} class="mt-1 w-full">
 				{#if submit.submitting}
-					<LoaderCircle size={16} aria-hidden="true" class="animate-spin" />
+					<LoaderCircle size={ICON.sm} aria-hidden="true" class="animate-spin" />
 				{/if}
 				{submit.submitting ? 'Creating your account…' : 'Join the team'}
 			</Button>

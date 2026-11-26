@@ -8,11 +8,25 @@ export const SERIES_TONES = [
 ];
 
 /**
+ * Hues for a chart where colour names the thing, like a provider's slice. Below
+ * 3:1 on a light card, so every slice is also named in the legend. Six at most:
+ * fold the rest into one "other".
+ */
+export const CATEGORY_TONES = [
+	'var(--color-chart-blue)',
+	'var(--color-chart-orange)',
+	'var(--color-chart-teal)',
+	'var(--color-chart-amber)',
+	'var(--color-chart-pink)',
+	'var(--color-chart-green)'
+];
+
+/**
  * Colour by position rather than by name: a hash of the key would sooner or
  * later hand two lines on the same chart the same colour, and two
  * indistinguishable curves is the one thing a legend cannot fix.
  */
-export function tones(keys: string[]): (key: string) => string {
-	const byKey = new Map(keys.map((key, index) => [key, SERIES_TONES[index % SERIES_TONES.length]]));
-	return (key) => byKey.get(key) ?? SERIES_TONES[SERIES_TONES.length - 1];
+export function tones(keys: string[], palette: string[] = SERIES_TONES): (key: string) => string {
+	const byKey = new Map(keys.map((key, index) => [key, palette[index % palette.length]]));
+	return (key) => byKey.get(key) ?? palette[palette.length - 1];
 }

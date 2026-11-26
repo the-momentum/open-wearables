@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import { ICON } from '$lib/components/ui/icon';
 	import { enhance } from '$app/forms';
 	import type { Provider } from '$lib/server/providers';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
@@ -41,9 +42,9 @@
 		</span>
 
 		{#if submit.submitting}
-			<LoaderCircle size={18} aria-hidden="true" class="shrink-0 animate-spin text-primary" />
+			<LoaderCircle size={ICON.md} aria-hidden="true" class="shrink-0 animate-spin text-primary" />
 		{:else}
-			<ChevronRight size={18} aria-hidden="true" class="shrink-0 text-muted-foreground" />
+			<ChevronRight size={ICON.md} aria-hidden="true" class="shrink-0 text-muted-foreground" />
 		{/if}
 	</button>
 </form>

@@ -11,6 +11,7 @@
 <!-- A size change has to reach the server: the page it lands on depends on it. -->
 <FilterSelect
 	label="Per page"
+	size="sm"
 	value={size}
 	{options}
 	onselect={(next) => {

@@ -3,6 +3,8 @@
 	import History from '@lucide/svelte/icons/history';
 	import { enhance } from '$app/forms';
 	import StatePlate from '$lib/components/ui/StatePlate.svelte';
+	import { SELECT } from '$lib/components/ui/field';
+	import { ICON } from '$lib/components/ui/icon';
 	import {
 		SDK_DELIVERY,
 		DEFAULT_RANGE,
@@ -12,6 +14,7 @@
 		historyRanges
 	} from '$lib/connections/delivery';
 	import type { Connection } from '$lib/connections/types';
+	import { cn } from '$lib/utils/cn';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 	import RoutePane from './RoutePane.svelte';
 
@@ -45,23 +48,31 @@
 			<input type="hidden" name="provider" value={connection.provider} />
 
 			<!-- The wrapper owns the outline, the children round their own outer
-			     corners: no overflow-hidden, so a keyboard outline is not clipped. -->
-			<div class="flex w-full items-stretch rounded-lg border border-border">
+			     corners: no overflow-hidden, so a keyboard outline is not clipped.
+			     The select's focus ring is drawn on the wrapper, so it follows the
+			     rounded outline rather than squaring off mid-group. -->
+			<div
+				class="flex w-full items-stretch rounded-lg border border-border
+					has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2
+					has-[select:focus-visible]:outline-ring"
+			>
 				<div class="relative flex shrink-0 items-center">
 					<label class="sr-only" for={rangeId}>History range</label>
 					<select
 						id={rangeId}
 						name="days"
 						value={preselected}
-						class="min-h-11 appearance-none rounded-l-lg bg-background pr-7 pl-3 text-sm
-							text-foreground tabular-nums"
+						class={cn(
+							SELECT.md,
+							'h-auto min-h-11 rounded-r-none border-0 bg-transparent pl-3 text-sm focus-visible:outline-none'
+						)}
 					>
 						{#each ranges as days (days)}
 							<option value={days}>{days} days</option>
 						{/each}
 					</select>
 					<ChevronDown
-						size={14}
+						size={ICON.xs}
 						aria-hidden="true"
 						class="pointer-events-none absolute right-2 text-muted-foreground"
 					/>
@@ -73,7 +84,7 @@
 					type="submit"
 					disabled={submit.submitting}
 					class="min-h-11 flex-1 rounded-r-lg px-3 text-sm font-medium whitespace-nowrap
-						transition-colors hover:bg-surface-muted disabled:opacity-50"
+						transition-colors hover:bg-surface-muted focus-visible:rounded-l-lg disabled:opacity-50"
 				>
 					{submit.submitting ? 'Starting…' : 'Sync history'}
 				</button>

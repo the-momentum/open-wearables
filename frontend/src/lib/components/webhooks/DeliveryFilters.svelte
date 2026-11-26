@@ -25,7 +25,7 @@
 	]);
 </script>
 
-<div class="flex flex-wrap items-end gap-x-6 gap-y-3">
+<div class="flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:gap-6">
 	<FilterGroup label="Status">
 		<FilterSelect
 			label="Status"

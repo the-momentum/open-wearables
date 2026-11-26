@@ -1,5 +1,5 @@
 <script lang="ts">
-	import DeleteAction from '$lib/components/events/DeleteAction.svelte';
+	import EventDetails from '$lib/components/events/EventDetails.svelte';
 	import Layers from '@lucide/svelte/icons/layers';
 	import DistributionBar from '$lib/components/charts/DistributionBar.svelte';
 	import IntervalChart from '$lib/components/charts/IntervalChart.svelte';
@@ -26,7 +26,7 @@
 	const rows = $derived(stageRows(session));
 </script>
 
-<div class="flex flex-col gap-5 border-t border-border pt-4">
+<EventDetails deleteLabel="Delete session" {ondelete}>
 	<div class="flex flex-col gap-1.5">
 		<Caption icon={Layers}>Through the {session.is_nap ? 'nap' : 'night'}</Caption>
 
@@ -52,8 +52,4 @@
 	<DistributionBar title="Time in each stage" icon={Layers} {rows} />
 
 	<FieldGroups groups={detailGroups(session)} />
-
-	<div class="flex justify-end border-t border-border pt-3">
-		<DeleteAction label="Delete session" onclick={ondelete} />
-	</div>
-</div>
+</EventDetails>

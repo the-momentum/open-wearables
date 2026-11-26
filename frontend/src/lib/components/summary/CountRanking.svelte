@@ -1,23 +1,12 @@
 <script lang="ts">
+	import BarTrack from '$lib/components/charts/BarTrack.svelte';
 	import ChartRow from '$lib/components/ui/ChartRow.svelte';
 	import ShowAll from '$lib/components/ui/ShowAll.svelte';
 	import { NOTE } from '$lib/components/ui/typography';
 	import { formatNumber } from '$lib/utils/format';
 	import { humanise } from '$lib/utils/text';
 
-	let {
-		counts,
-		limit = 8,
-		labelFor = humanise,
-		format = formatNumber
-	}: {
-		counts: Record<string, number>;
-		limit?: number;
-		/** Backend codes read through `humanise`; a provider has a catalogue name. */
-		labelFor?: (key: string) => string;
-		/** The figure beside each bar, where a bare count is not the whole story. */
-		format?: (count: number) => string;
-	} = $props();
+	let { counts, limit = 8 }: { counts: Record<string, number>; limit?: number } = $props();
 
 	let expanded = $state(false);
 
@@ -34,15 +23,8 @@
 		<ul class="flex flex-col gap-1.5">
 			{#each shown as [code, count] (code)}
 				<li>
-					<ChartRow label={labelFor(code)} value={format(count)}>
-						<span class="block h-2.5 overflow-hidden rounded-full bg-surface-muted">
-							<span
-								aria-hidden="true"
-								class="block h-full rounded-full bg-gradient-to-r from-primary to-primary/55
-									transition-[width] duration-300"
-								style="width: {top === 0 ? 0 : (count / top) * 100}%"
-							></span>
-						</span>
+					<ChartRow label={humanise(code)} value={formatNumber(count)}>
+						<BarTrack fraction={top === 0 ? 0 : count / top} />
 					</ChartRow>
 				</li>
 			{/each}

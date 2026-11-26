@@ -4,6 +4,7 @@
 	import { MICRO, NOTE } from '$lib/components/ui/typography';
 	import { knownCategory } from '$lib/scores/categories';
 	import type { CategoryTrend } from '$lib/scores/trends';
+	import { cn } from '$lib/utils/cn';
 	import { formatLocalDay } from '$lib/utils/format';
 	import CategoryChart from './CategoryChart.svelte';
 	import ScoreTrend from './ScoreTrend.svelte';
@@ -44,7 +45,7 @@
 		{/each}
 	</div>
 {:else if trends.length === 0}
-	<p class={NOTE}>No score was recorded in this period.</p>
+	<p class={cn(NOTE, 'py-3')}>No score was recorded in this period.</p>
 {:else if chosen}
 	<CategoryChart trend={chosen} from={window.from} to={window.to} {colourFor} />
 {:else}

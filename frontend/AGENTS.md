@@ -28,7 +28,8 @@ that app, which lives on only in git history.
   server-side shortcut). Both are read via `$env/dynamic/*`, so one
   image fits any backend.
 - **No dependency before the code that needs it.** Say what it buys over the
-  platform. `bits-ui`, `shadcn-svelte` and `svelte-query` are deliberately absent.
+  platform. `bits-ui` is for the date pickers only (typed segments and a calendar
+  the platform lacks); `shadcn-svelte` and `svelte-query` are deliberately absent.
 - **Backend changes only when the task asks for them**, and never migrations
   unless asked. Remote databases (Railway, Hetzner, client prod) are read-only.
 - **The owner commits.** Propose a conventional commit name; do not commit, push,
@@ -111,16 +112,24 @@ heavy aggregate runs only on the tab that shows it.
 - Tailwind v4 with semantic tokens only (`bg-surface`, `text-muted-foreground`),
   never raw colours. Tokens are `light-dark()` pairs in `app.css`, and the theme follows
   the OS or the theme cookie.
-- Palette, fonts (Switzer 400/500, Fragment Mono), 1px Lucide stroke and 200ms
-  motion come from the Open Wearables design system. **Its 1px corners were rejected**:
-  keep our radius scale.
+- Palette, fonts (Switzer 400/500, Fragment Mono), radius scale (6/10/14), 1px Lucide
+  stroke and 200ms motion come from the Open Wearables design system in Figma.
+- **The design covers light mode only.** Dark keeps its own palette: the dark half of a
+  new token reuses a colour that palette already has. Where the design's light colour
+  fails WCAG AA as text, the token is darkened and says so in a comment.
+- Icon sizes come from `ICON` in `ui/icon.ts` (the design's scale); no other sizes.
 - Shared class strings live in `ui/button.ts`, `chip.ts`, `field.ts`, `tone.ts`,
-  `typography.ts` (`CAPTION`, `HEADING`, `NOTE`, `MICRO`, `INLINE_LINK`). Reuse them;
-  do not paste class strings.
+  `table.ts` (`LIST_FRAME`, `LIST_ROW`, `TABLE_HEAD`, ...), `typography.ts` (`CAPTION`,
+  `HEADING`, `TITLE`, `STAT`, `NOTE`, `MICRO`, `INLINE_LINK`). Reuse them; do not paste
+  class strings.
 - Component `<style>` is scoped. `app.css` holds only tokens and base element
   styles.
-- Numbers have no thousands separator (`formatNumber`). `formatCompact` is for
-  estimates only.
+- Pickers: a select's open list is styled in `app.css` (`base-select`, Chromium only;
+  elsewhere the system list). Dates use `DateField` / `DateRangeField`: bits-ui
+  segments and a drawn calendar under a fine pointer, the native input on touch.
+  Their classes live in `ui/calendar.ts`.
+- Whole numbers go through `formatNumber` (rounded, en-GB grouping). `formatCompact`
+  is for estimates, or a count squeezed onto a tile with the exact one behind it.
 
 ## Tests
 

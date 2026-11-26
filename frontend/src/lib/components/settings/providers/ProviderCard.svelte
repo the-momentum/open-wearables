@@ -23,12 +23,12 @@
 	const missingCredentials = $derived(enabled && provider.credentials_configured === false);
 </script>
 
-<li class="flex flex-col gap-3 rounded-lg border border-border p-4">
-	<div class="flex items-start gap-3">
-		<ProviderLogo {provider} size="lg" />
+<li class="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
+	<div class="flex w-full items-start gap-3">
+		<ProviderLogo {provider} size="md" />
 
-		<div class="flex min-w-0 flex-1 flex-col items-start gap-1.5">
-			<span class="max-w-full truncate text-sm font-medium text-foreground">{provider.name}</span>
+		<div class="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+			<span class="max-w-full truncate text-base font-medium text-foreground">{provider.name}</span>
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 				<!-- What the server holds; the switch is the draft, and the note
 				     says when the two disagree. -->
@@ -53,9 +53,7 @@
 		</Alert>
 	{/if}
 
-	<!-- Full width under the header: beside the logo, a third of a desktop row
-	     is too narrow for both pills. -->
-	<div class="border-t border-border/60 pt-3">
-		<LiveSync {provider} />
-	</div>
+	<!-- Under the header: beside the logo, a third of a desktop row is too
+	     narrow for both pills. -->
+	<LiveSync {provider} />
 </li>

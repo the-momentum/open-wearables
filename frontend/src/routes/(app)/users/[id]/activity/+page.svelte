@@ -8,7 +8,8 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import CursorBar from '$lib/components/events/CursorBar.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
-	import { cursorHrefs } from '$lib/lists/cursor';
+	import { RESULTS } from '$lib/components/ui/table';
+	import { cursorHrefs, filterSearch } from '$lib/lists/cursor';
 	import { providerLabel } from '$lib/providers/labels';
 	import type { PageData } from './$types';
 
@@ -21,36 +22,34 @@
 	const days = $derived(data.days.data);
 </script>
 
-<div class="flex flex-col gap-6">
-	<!-- No provider control: the endpoint has no such parameter, because it picks
-	     the winning source per day itself. Each card names the one it used. -->
-	<FilterBar period={data.period} {hrefFor} providers={[]} labelFor={label} selected="" />
+<!-- No provider control: the endpoint has no such parameter, because it picks
+     the winning source per day itself. Each card names the one it used. -->
+<FilterBar period={data.period} {hrefFor} providers={[]} labelFor={label} selected="" />
 
-	<div class="flex flex-col gap-5 border-t border-border pt-6">
-		<ActivitySummary userId={page.params.id ?? ''} search={page.url.search} />
+<div class={RESULTS}>
+	<ActivitySummary userId={page.params.id ?? ''} search={filterSearch(page.url)} />
 
-		{#if days.length === 0}
-			<Card>
-				<EmptyState
-					icon={Activity}
-					title={data.period.from ? 'No days in this period' : 'No activity recorded'}
-					description="Steps, energy and heart rate are aggregated by day, so a day with none of them does not appear."
+	{#if days.length === 0}
+		<Card>
+			<EmptyState
+				icon={Activity}
+				title={data.period.from ? 'No days in this period' : 'No activity recorded'}
+				description="Steps, energy and heart rate are aggregated by day, so a day with none of them does not appear."
+			/>
+		</Card>
+	{:else}
+		<p class={MICRO}>One row a day, from whichever source ranks highest for that date.</p>
+
+		<div class="flex flex-col gap-3">
+			{#each days as day (day.date)}
+				<ActivityCard
+					{day}
+					userId={page.params.id ?? ''}
+					providerLabel={label(day.source.provider)}
 				/>
-			</Card>
-		{:else}
-			<p class={MICRO}>One row a day, from whichever source ranks highest for that date.</p>
+			{/each}
+		</div>
 
-			<div class="flex flex-col gap-3">
-				{#each days as day (day.date)}
-					<ActivityCard
-						{day}
-						userId={page.params.id ?? ''}
-						providerLabel={label(day.source.provider)}
-					/>
-				{/each}
-			</div>
-
-			<CursorBar {nav} pagination={data.days.pagination} size={data.pageSize} />
-		{/if}
-	</div>
+		<CursorBar {nav} pagination={data.days.pagination} size={data.pageSize} />
+	{/if}
 </div>

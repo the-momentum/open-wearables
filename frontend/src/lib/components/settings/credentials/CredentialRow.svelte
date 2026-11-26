@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
 	import { formatRelativeTime } from '$lib/utils/datetime';
+	import { ICON } from '$lib/components/ui/icon';
 	import SettingRow from '../SettingRow.svelte';
 
 	let {
@@ -25,7 +26,7 @@
 			aria-hidden="true"
 			class="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-muted text-muted-foreground"
 		>
-			<Icon size={16} />
+			<Icon size={ICON.sm} />
 		</span>
 	{/snippet}
 

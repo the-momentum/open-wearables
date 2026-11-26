@@ -15,14 +15,12 @@
 		form && 'secret' in form && actions.includes(form.action) ? form.secret : undefined;
 </script>
 
-<div class="flex flex-col gap-5">
-	<ApiEndpoint />
+<ApiEndpoint />
 
-	<ApiKeys keys={data.keys} {messageFor} secret={secretFrom(['createKey', 'rotateKey'])} />
+<ApiKeys keys={data.keys} {messageFor} secret={secretFrom(['createKey', 'rotateKey'])} />
 
-	<Applications
-		applications={data.applications}
-		{messageFor}
-		secret={secretFrom(['createApp', 'rotateApp'])}
-	/>
-</div>
+<Applications
+	applications={data.applications}
+	{messageFor}
+	secret={secretFrom(['createApp', 'rotateApp'])}
+/>

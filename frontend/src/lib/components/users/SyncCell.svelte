@@ -11,10 +11,10 @@
 	</span>
 	{#if user.last_synced_provider}
 		<!-- capitalize only the provider: on the whole string it also lifts "via". -->
-		<span class="block text-xs text-muted-foreground/70">
+		<span class="block text-xs text-muted-foreground">
 			via <span class="capitalize">{user.last_synced_provider}</span>
 		</span>
 	{/if}
 {:else}
-	<span class="text-sm text-muted-foreground/60">Never</span>
+	<span class="text-sm text-muted-foreground">Never</span>
 {/if}

@@ -5,14 +5,12 @@
 	let { groups }: { groups: EventSummary[] } = $props();
 </script>
 
-<div class="flex flex-col gap-2">
+<div class="flex flex-col gap-1">
 	<span class={MICRO}>Listens to</span>
 
 	{#if groups.length === 0}
 		<!-- An empty filter is a choice: it includes events the catalogue adds later. -->
-		<p class="text-sm text-secondary-foreground">
-			Every event, including ones added after this was created.
-		</p>
+		<p class="text-sm text-foreground">Every event, including ones added after this was created.</p>
 	{:else}
 		<dl class="grid grid-cols-[minmax(0,9rem)_1fr] gap-x-4 gap-y-1.5 text-sm">
 			{#each groups as group (group.label)}
@@ -20,7 +18,7 @@
 				<dd
 					class="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 {group.stray
 						? 'text-warning'
-						: 'text-secondary-foreground'}"
+						: 'text-foreground'}"
 				>
 					{#if group.groupEvent}
 						<!-- One event for the lot, not one per series: it says so. -->

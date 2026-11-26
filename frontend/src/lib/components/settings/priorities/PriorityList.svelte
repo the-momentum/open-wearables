@@ -3,6 +3,8 @@
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import type { Snippet } from 'svelte';
+	import { ICON } from '$lib/components/ui/icon';
+	import RankBadge from '$lib/components/ui/RankBadge.svelte';
 	import { moved } from '$lib/settings/priorities';
 
 	let {
@@ -84,7 +86,7 @@
 		{@const first = index === 0}
 		{@const held = dragging === index}
 		<li
-			class="flex items-center gap-2 py-2.5 sm:gap-3 {held
+			class="flex items-center gap-3 py-2.5 {held
 				? 'relative z-10 rounded-lg bg-surface shadow-lg ring-1 ring-primary/30'
 				: ''}"
 			style={held ? `transform: translateY(${offset}px)` : undefined}
@@ -98,19 +100,10 @@
 				class="grid w-5 shrink-0 cursor-grab touch-none place-items-center self-stretch
 					text-muted-foreground/50 transition-colors hover:text-foreground active:cursor-grabbing"
 			>
-				<GripVertical size={14} />
+				<GripVertical size={ICON.xs} />
 			</span>
 
-			<!-- The rank is what the list is about, so it is what you see first; the
-			     winner carries the accent, because "who wins" is the whole question
-			     this page answers. -->
-			<span
-				aria-hidden="true"
-				class="grid size-7 shrink-0 place-items-center rounded-lg text-xs font-medium tabular-nums
-					{first ? 'bg-primary/12 text-primary' : 'bg-surface-muted text-muted-foreground'}"
-			>
-				{index + 1}
-			</span>
+			<RankBadge rank={index + 1} />
 
 			<div class="flex min-w-0 flex-1 items-center gap-2.5">{@render row(item)}</div>
 
@@ -122,7 +115,7 @@
 					aria-label="Move {keyOf(item)} up"
 					class={ARROW}
 				>
-					<ChevronUp size={14} aria-hidden="true" />
+					<ChevronUp size={ICON.xs} aria-hidden="true" />
 				</button>
 				<button
 					type="button"
@@ -131,7 +124,7 @@
 					aria-label="Move {keyOf(item)} down"
 					class={ARROW}
 				>
-					<ChevronDown size={14} aria-hidden="true" />
+					<ChevronDown size={ICON.xs} aria-hidden="true" />
 				</button>
 			</div>
 		</li>

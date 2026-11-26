@@ -17,7 +17,7 @@
 		$props();
 </script>
 
-<div class="flex items-start justify-between gap-3">
+<div class="flex items-center justify-between gap-3">
 	<div class="flex min-w-0 items-center gap-3">
 		<ProviderMark provider={connection.provider} {label} />
 		<div class="min-w-0">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Gridlines from '$lib/components/charts/Gridlines.svelte';
 	import HoverReadout from '$lib/components/charts/HoverReadout.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { CHART_BOX, linePath } from '$lib/charts/geometry';
@@ -42,17 +43,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="relative h-44" onpointermove={track} onpointerleave={() => (hovered = null)}>
 		<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" class="size-full" aria-hidden="true">
-			{#each [0.25, 0.5, 0.75] as fraction (fraction)}
-				<line
-					x1="0"
-					x2={W}
-					y1={H * fraction}
-					y2={H * fraction}
-					class="stroke-border"
-					stroke-dasharray="4 4"
-					vector-effect="non-scaling-stroke"
-				/>
-			{/each}
+			<Gridlines box={CHART_BOX} />
 			<path d={area} fill={colour} fill-opacity="0.12" />
 			<path
 				d={line}

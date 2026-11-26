@@ -6,13 +6,16 @@
 	import CopyableId from '$lib/components/ui/CopyableId.svelte';
 	import Fact from '$lib/components/ui/Fact.svelte';
 	import Facts from '$lib/components/ui/Facts.svelte';
+	import { LIST_ROW } from '$lib/components/ui/table';
+	import { cn } from '$lib/utils/cn';
 	import { MICRO, MONO } from '$lib/components/ui/typography';
-	import { formatDuration, isRunning, itemsLabel } from '$lib/syncs/format';
+	import { formatDuration, isRunning, itemsLabel, savedCounts } from '$lib/syncs/format';
 	import type { SyncRunSummary } from '$lib/syncs/types';
 	import { formatDateTime, formatRelativeTime } from '$lib/utils/datetime';
 	import { DASH } from '$lib/utils/format';
 	import RunProgress from './RunProgress.svelte';
 	import RunStatus from './RunStatus.svelte';
+	import SavedCounts from './SavedCounts.svelte';
 	import SourceGlyph from './SourceGlyph.svelte';
 	import StoredRun from './StoredRun.svelte';
 
@@ -21,6 +24,7 @@
 	let open = $state(false);
 	const panelId = $props.id();
 	const running = $derived(isRunning(run.status));
+	const saved = $derived(savedCounts(run));
 
 	const took = $derived(
 		formatDuration(run.started_at, run.ended_at) ?? (running ? 'still running' : DASH)
@@ -33,7 +37,15 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<li onclick={toggle} class="flex cursor-pointer flex-col gap-3 px-4 py-3 sm:px-5">
+<li
+	onclick={toggle}
+	class={cn(
+		'flex cursor-pointer flex-col gap-3 px-4 py-3 sm:px-5',
+		LIST_ROW,
+		// An open row is mostly its panel, which a click does not toggle.
+		open && 'hover:bg-transparent'
+	)}
+>
 	<div class="flex items-start gap-3">
 		<ProviderMark provider={run.provider} {label} size="sm" />
 
@@ -44,16 +56,24 @@
 			aria-controls={panelId}
 			class="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
 		>
-			<span class="flex flex-wrap items-center gap-2">
-				<span class="text-sm text-secondary-foreground">{label}</span>
+			<span class="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<span class="text-sm text-foreground">{label}</span>
 				<RunStatus {run} />
 				<SourceGlyph source={run.source} />
 			</span>
-			{#if run.error}
-				<span class="max-w-full truncate text-xs text-danger" title={run.error}>{run.error}</span>
-			{:else if run.message}
-				<span class="max-w-full truncate {MICRO}" title={run.message}>{run.message}</span>
-			{/if}
+			<!-- Wraps rather than truncates: on a phone the line is half a sentence wide. -->
+			<span class="flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
+				{#if run.error}
+					<span class="line-clamp-2 text-xs break-words text-danger" title={run.error}>
+						{run.error}
+					</span>
+				{:else if run.message}
+					<span class="line-clamp-2 break-words {MICRO}" title={run.message}>{run.message}</span>
+				{/if}
+				{#if saved}
+					<SavedCounts inserted={saved.inserted} updated={saved.updated} />
+				{/if}
+			</span>
 			{#if running && run.progress !== null}
 				<RunProgress value={run.progress} class="mt-1" />
 			{/if}
@@ -84,6 +104,7 @@
 			class="flex cursor-auto flex-col gap-3 pl-9"
 			onclick={(event) => event.stopPropagation()}
 		>
+			<hr class="border-border" />
 			<Facts>
 				<Fact label="Started">{formatDateTime(run.started_at)}</Fact>
 				<Fact label="Took">{took}</Fact>

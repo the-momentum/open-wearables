@@ -24,6 +24,15 @@ export const itemsLabel = (run: Pick<SyncRunSummary, 'items_processed' | 'items_
 			? String(run.items_processed)
 			: `${run.items_processed}/${run.items_total}`;
 
+/**
+ * What a run saved, when the backend says. The summary schema does not carry it
+ * yet, so absent is "not told", not "nothing".
+ */
+export const savedCounts = (run: Pick<SyncRunSummary, 'items_inserted' | 'items_updated'>) =>
+	run.items_inserted != null || run.items_updated != null
+		? { inserted: run.items_inserted ?? 0, updated: run.items_updated ?? 0 }
+		: null;
+
 export function formatDuration(startIso: string | null, endIso: string | null): string | null {
 	if (!startIso || !endIso) return null;
 

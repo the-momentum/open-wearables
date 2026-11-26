@@ -2,6 +2,7 @@
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Hint from '$lib/components/ui/Hint.svelte';
+	import { ICON } from '$lib/components/ui/icon';
 	import { parseScopes, scopeLabel } from '$lib/connections/scopes';
 
 	let { scope }: { scope: string | null } = $props();
@@ -14,8 +15,8 @@
 {#if scopes.length > 0}
 	<Hint label="{scopes.length} granted scopes" align="left">
 		{#snippet trigger()}
-			<Badge class="px-1.5 tabular-nums">
-				<KeyRound size={11} aria-hidden="true" />
+			<Badge class="px-1.5 font-medium tabular-nums">
+				<KeyRound size={ICON.xs} aria-hidden="true" />
 				{scopes.length}
 			</Badge>
 		{/snippet}

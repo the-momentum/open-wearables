@@ -2,9 +2,9 @@
 	import { goto } from '$app/navigation';
 	import FilterGroup from '$lib/components/filters/FilterGroup.svelte';
 	import FilterSelect from '$lib/components/ui/FilterSelect.svelte';
-	import ScrollFade from '$lib/components/ui/ScrollFade.svelte';
 	import SearchField from '$lib/components/ui/SearchField.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
+	import TabStrip from '$lib/components/ui/TabStrip.svelte';
 	import { LAYERS, type Filters } from '$lib/coverage/rows';
 
 	let {
@@ -20,12 +20,8 @@
 	} = $props();
 
 	const layers = $derived([
-		{ value: '', label: 'All', href: hrefFor({ layer: null }) },
-		...Object.entries(LAYERS).map(([value, name]) => ({
-			value,
-			label: name,
-			href: hrefFor({ layer: value })
-		}))
+		{ label: 'All', href: hrefFor({ layer: null }) },
+		...Object.entries(LAYERS).map(([value, label]) => ({ label, href: hrefFor({ layer: value }) }))
 	]);
 
 	const providerOptions = $derived([
@@ -39,26 +35,14 @@
 	]);
 </script>
 
-<div class="flex flex-wrap items-end gap-x-6 gap-y-3">
-	<div class="min-w-56 flex-1">
+<div class="flex flex-wrap items-end gap-x-3 gap-y-4">
+	<div class="w-full min-w-0 sm:w-auto sm:flex-1">
 		<SearchField
 			value={filters.search}
 			hrefFor={(term) => hrefFor({ search: term || null })}
 			label="Search capabilities"
 			placeholder="heart_rate, vo2_max, …"
 		/>
-	</div>
-
-	<!-- `min-w-0` is what lets this shrink: a flex item keeps `min-width: auto`,
-	     so without it `overflow-x-auto` has nothing to scroll inside and the whole
-	     page goes sideways. `w-full` is layout - the strip gets its own row on a
-	     phone rather than a sliver of one. -->
-	<div class="w-full min-w-0 sm:w-auto sm:flex-1">
-		<FilterGroup label="Layer">
-			<ScrollFade>
-				<Segmented label="Layer" items={layers} selected={filters.layer} />
-			</ScrollFade>
-		</FilterGroup>
 	</div>
 
 	<FilterGroup label="Provider">
@@ -79,4 +63,9 @@
 			<Segmented label="Side" items={sides} selected={filters.missing ? 'missing' : 'has'} />
 		</FilterGroup>
 	{/if}
+</div>
+
+<!-- A filter, not a page: changing it keeps the reader where they are. -->
+<div data-sveltekit-noscroll>
+	<TabStrip label="Layer" tabs={layers} active={hrefFor({ layer: filters.layer || null })} />
 </div>

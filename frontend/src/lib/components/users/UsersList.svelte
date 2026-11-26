@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { LIST_FRAME, LIST_ROW } from '$lib/components/ui/table';
 	import type { UsersQuery } from '$lib/users/query';
 	import type { User } from '$lib/users/types';
 	import UserCard from './UserCard.svelte';
@@ -9,12 +10,12 @@
 
 <!-- Both are rendered and one is hidden by CSS. Choosing in JS instead would
      need the viewport width, which the server does not have. -->
-<div class="hidden overflow-x-auto rounded-xl border border-border bg-surface md:block">
+<div class="hidden overflow-x-auto md:block {LIST_FRAME}">
 	<UsersTable {users} {query} />
 </div>
 
-<ul class="flex flex-col gap-3 md:hidden">
+<ul class="overflow-hidden md:hidden {LIST_FRAME}">
 	{#each users as user (user.id)}
-		<li><UserCard {user} /></li>
+		<li class={LIST_ROW}><UserCard {user} /></li>
 	{/each}
 </ul>

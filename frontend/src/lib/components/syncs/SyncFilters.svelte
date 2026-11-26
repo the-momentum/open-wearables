@@ -49,7 +49,8 @@
 		goto(hrefFor({ [key]: value || null }), { noScroll: true });
 </script>
 
-<div class="flex flex-wrap items-end gap-x-6 gap-y-3">
+<!-- Stacked full width on a phone, where three selects in a row are too small to tap. -->
+<div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-6">
 	<div class="w-full min-w-0 sm:w-72">
 		<SearchField
 			value={filters.user}
@@ -59,15 +60,18 @@
 		/>
 	</div>
 
-	{#each selects as select (select.key)}
-		<FilterGroup label={select.label}>
-			<FilterSelect
-				label={select.label}
-				labelled={false}
-				value={select.value}
-				options={select.options}
-				onselect={pick(select.key)}
-			/>
-		</FilterGroup>
-	{/each}
+	<div class="flex flex-col gap-6 sm:contents">
+		{#each selects as select (select.key)}
+			<FilterGroup label={select.label}>
+				<FilterSelect
+					label={select.label}
+					labelled={false}
+					fill
+					value={select.value}
+					options={select.options}
+					onselect={pick(select.key)}
+				/>
+			</FilterGroup>
+		{/each}
+	</div>
 </div>

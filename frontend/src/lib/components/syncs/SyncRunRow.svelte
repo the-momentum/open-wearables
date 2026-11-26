@@ -1,7 +1,8 @@
 <script lang="ts">
 	import Layers from '@lucide/svelte/icons/layers';
+	import { ICON } from '$lib/components/ui/icon';
 	import ProviderMark from '$lib/components/providers/ProviderMark.svelte';
-	import { isRunning, itemsLabel } from '$lib/syncs/format';
+	import { isRunning, itemsLabel, savedCounts } from '$lib/syncs/format';
 	import type { SyncRunSummary } from '$lib/syncs/types';
 	import { formatDateTime, formatRelativeTime } from '$lib/utils/datetime';
 	import RunProgress from './RunProgress.svelte';
@@ -13,11 +14,7 @@
 
 	const items = $derived(itemsLabel(run));
 
-	const saved = $derived(
-		run.items_inserted != null || run.items_updated != null
-			? { inserted: run.items_inserted ?? 0, updated: run.items_updated ?? 0 }
-			: null
-	);
+	const saved = $derived(savedCounts(run));
 
 	// At 100% it would only repeat the badge.
 	const progress = $derived(isRunning(run.status) ? run.progress : null);
@@ -58,7 +55,7 @@
 				class="flex items-center gap-1 text-xs text-muted-foreground/70 tabular-nums"
 				title="Items processed"
 			>
-				<Layers size={12} aria-hidden="true" />
+				<Layers size={ICON.xs} aria-hidden="true" />
 				{items}
 			</p>
 		{/if}

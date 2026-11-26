@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './support';
+import { shownDate, signIn, typeDate } from './support';
 
 const USER = '00000000-0000-4000-8000-000000000007';
 const DATA = `/users/${USER}/data`;
@@ -117,9 +117,9 @@ test('opens on the last 30 days, counted from today', async ({ page }) => {
 	const period = page.getByRole('group', { name: 'Period' });
 	await expect(period.getByRole('link', { name: 'Range' })).toHaveAttribute('aria-current', 'true');
 	const today = new Date();
-	await expect(page.getByRole('textbox', { name: 'To' })).toHaveValue(isoDay(today));
+	await expect(page.getByRole('group', { name: 'To' })).toHaveText(shownDate(isoDay(today)));
 	today.setUTCDate(today.getUTCDate() - 29);
-	await expect(page.getByRole('textbox', { name: 'From' })).toHaveValue(isoDay(today));
+	await expect(page.getByRole('group', { name: 'From' })).toHaveText(shownDate(isoDay(today)));
 	await expect(
 		page.getByRole('group', { name: 'Range preset' }).getByRole('link', { name: '1M' })
 	).toHaveAttribute('aria-current', 'true');
@@ -134,7 +134,7 @@ test('sets a range from a preset, and drops the mark once the dates are edited',
 	await presets.getByRole('link', { name: '1W' }).click();
 	const from = new Date();
 	from.setUTCDate(from.getUTCDate() - 6);
-	await expect(page.getByRole('textbox', { name: 'From' })).toHaveValue(isoDay(from));
+	await expect(page.getByRole('group', { name: 'From' })).toHaveText(shownDate(isoDay(from)));
 	await expect(presets.getByRole('link', { name: '1W' })).toHaveAttribute('aria-current', 'true');
 
 	await page.goto(QUARTER);
@@ -143,10 +143,10 @@ test('sets a range from a preset, and drops the mark once the dates are edited',
 
 test('offers all time, a single day, and a range', async ({ page }) => {
 	await page.goto(QUARTER);
-	await expect(page.getByRole('textbox', { name: 'From' })).toHaveValue('2026-06-13');
+	await expect(page.getByRole('group', { name: 'From' })).toHaveText(shownDate('2026-06-13'));
 
 	await page.getByRole('link', { name: 'Day' }).click();
-	await expect(page.getByRole('textbox', { name: 'Day' })).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Day' })).toBeVisible();
 
 	// Asked for by name: no bounds at all means the default range.
 	await page.getByRole('link', { name: 'All time' }).click();
@@ -162,7 +162,8 @@ test('keeps the provider filter visible while stepping through days', async ({ p
 	// not vanish and reappear as the day changes.
 	await page.getByRole('link', { name: 'Day' }).click();
 	await expect(filter).toBeVisible();
-	await page.getByRole('textbox', { name: 'Day' }).fill('2026-01-15');
+	await typeDate(page.getByRole('group', { name: 'Day' }), '2026-01-15');
+	await expect(page).toHaveURL(/from=2026-01-15&to=2026-01-15/);
 	await expect(filter).toBeVisible();
 });
 

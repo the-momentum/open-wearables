@@ -3,46 +3,74 @@
 	import Link2 from '@lucide/svelte/icons/link-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
+	import { ICON } from '$lib/components/ui/icon';
+	import { menuItemClass } from '$lib/components/ui/menu';
 	import { fullName } from '$lib/users/avatar';
 	import { fetchPairingLink } from '$lib/pairing/links';
 	import { getRowActions } from '$lib/users/row-actions';
 	import type { User } from '$lib/users/types';
 	import { createCopier } from '$lib/utils/clipboard.svelte';
 
-	let { user }: { user: User } = $props();
+	let {
+		user,
+		menu = false
+	}: {
+		user: User;
+		/** Behind one "…": a phone's row has no room for three buttons. */
+		menu?: boolean;
+	} = $props();
 
 	const actions = getRowActions();
 	const copier = createCopier();
 	const who = $derived(fullName(user) || user.email || 'this user');
 
-	const base =
-		'grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground';
+	let open = $state(false);
+
+	// The menu closes first, so the dialog an entry opens is not stacked on the sheet.
+	function run(action: () => void) {
+		open = false;
+		action();
+	}
+
+	const edit = () => actions.edit(user);
+	const remove = () => actions.remove(user);
+	const copyLink = () => copier.copyPending(fetchPairingLink(user.id));
 </script>
 
 <!-- z-10 keeps these above the row-wide overlay link in UserIdentity, so a
      click here does not also open the user. -->
 <div class="relative z-10 flex items-center justify-end gap-0.5">
-	<button type="button" onclick={() => actions.edit(user)} aria-label="Edit {who}" class={base}>
-		<Pencil size={15} aria-hidden="true" />
-	</button>
-	<button
-		type="button"
-		onclick={() => copier.copyPending(fetchPairingLink(user.id))}
-		aria-label={copier.copied ? 'Pairing link copied' : `Copy pairing link for ${who}`}
-		class={base}
-	>
-		{#if copier.copied}
-			<Check size={15} aria-hidden="true" class="text-success" />
-		{:else}
-			<Link2 size={15} aria-hidden="true" />
-		{/if}
-	</button>
-	<button
-		type="button"
-		onclick={() => actions.remove(user)}
-		aria-label="Delete {who}"
-		class="{base} hover:bg-danger/10 hover:text-danger"
-	>
-		<Trash2 size={15} aria-hidden="true" />
-	</button>
+	{#if menu}
+		<ActionMenu bind:open quiet label="Actions for {who}" title="User actions">
+			<button type="button" onclick={() => run(edit)} class={menuItemClass()}>
+				<Pencil size={ICON.sm} aria-hidden="true" />
+				Edit user
+			</button>
+			<!-- Stays open, so the sheet is where the copy is confirmed. -->
+			<button type="button" onclick={copyLink} class={menuItemClass()}>
+				{#if copier.copied}
+					<Check size={ICON.sm} aria-hidden="true" class="text-success" />
+					Pairing link copied
+				{:else}
+					<Link2 size={ICON.sm} aria-hidden="true" />
+					Copy pairing link
+				{/if}
+			</button>
+			<button type="button" onclick={() => run(remove)} class={menuItemClass(true)}>
+				<Trash2 size={ICON.sm} aria-hidden="true" />
+				Delete user
+			</button>
+		</ActionMenu>
+	{:else}
+		<IconButton icon={Pencil} label="Edit {who}" onclick={edit} />
+		<IconButton
+			icon={copier.copied ? Check : Link2}
+			label={copier.copied ? 'Pairing link copied' : `Copy pairing link for ${who}`}
+			onclick={copyLink}
+			class={copier.copied ? 'text-success hover:text-success' : undefined}
+		/>
+		<IconButton icon={Trash2} label="Delete {who}" onclick={remove} danger />
+	{/if}
 </div>

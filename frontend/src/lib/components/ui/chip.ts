@@ -5,23 +5,34 @@ export const CHIP_ON = 'border-primary/40 bg-primary/10 text-primary';
 export const CHIP_OFF =
 	'border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground';
 
+const CHIP = 'items-center border transition-colors disabled:opacity-50';
+
 /**
- * Shared by FilterChip (a link) and ToggleChip (a button) so the two cannot
- * drift apart visually.
+ * For a short row of filters. Shared by FilterChip (a link) and ToggleChip
+ * (a button) so the two cannot drift apart.
  */
 export function chipClass(selected: boolean): string {
 	return cn(
-		'inline-flex min-h-9 items-center rounded-full border px-3 text-sm capitalize transition-colors',
+		CHIP,
+		'inline-flex min-h-9 gap-2 rounded-lg px-2 text-sm capitalize',
 		selected ? CHIP_ON : CHIP_OFF
 	);
 }
 
-/**
- * The small square chip for picking many from a long list - event types,
- * workout types, series. `chipClass` is the round one for a short filter row.
- */
+/** For picking many from a long list - event types, workout types, series. */
 export const tagClass = (selected: boolean): string =>
 	cn(
-		'rounded-md border px-2 py-1 text-left text-xs transition-colors',
+		CHIP,
+		'inline-flex min-h-7 gap-1.5 rounded-md px-2.5 py-1 text-left text-xs',
 		selected ? CHIP_ON : CHIP_OFF
+	);
+
+/** The bed a segmented choice sits in; its padding and gap are the caller's. */
+export const SEGMENTS = 'inline-flex items-center rounded-lg border border-border bg-surface';
+
+/** One option of a segmented choice, the chosen one lifted. */
+export const segmentClass = (active: boolean): string =>
+	cn(
+		'inline-flex h-7.5 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors',
+		active ? 'bg-surface-hover text-foreground' : 'text-muted-foreground hover:text-foreground'
 	);

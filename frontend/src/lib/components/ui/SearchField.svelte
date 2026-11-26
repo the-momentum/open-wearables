@@ -2,6 +2,7 @@
 	import Search from '@lucide/svelte/icons/search';
 	import { goto } from '$app/navigation';
 	import { FIELD } from './field';
+	import { ICON } from './icon';
 
 	let {
 		value: current,
@@ -45,7 +46,7 @@
 	}}
 >
 	<Search
-		size={16}
+		size={ICON.sm}
 		aria-hidden="true"
 		class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
 	/>

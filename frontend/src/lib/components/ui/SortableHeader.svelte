@@ -4,6 +4,7 @@
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 	import type { SortOrder } from '$lib/lists/types';
+	import { ICON } from './icon';
 
 	let {
 		field,
@@ -33,10 +34,10 @@
 >
 	{@render children()}
 	{#if !active}
-		<ChevronsUpDown size={13} aria-hidden="true" class="opacity-40" />
+		<ChevronsUpDown size={ICON.xs} aria-hidden="true" />
 	{:else if order === 'asc'}
-		<ArrowUp size={13} aria-hidden="true" />
+		<ArrowUp size={ICON.xs} aria-hidden="true" />
 	{:else}
-		<ArrowDown size={13} aria-hidden="true" />
+		<ArrowDown size={ICON.xs} aria-hidden="true" />
 	{/if}
 </a>

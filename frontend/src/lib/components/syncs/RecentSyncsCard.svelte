@@ -33,6 +33,7 @@
 </script>
 
 <Card
+	section
 	title="Recent sync activity"
 	description="The {RECENT_SHOWN} most recent runs; the buffer behind it only keeps 24 hours"
 	bodyClass="p-0"

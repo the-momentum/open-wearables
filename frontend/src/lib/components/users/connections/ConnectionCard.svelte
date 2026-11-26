@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import { ICON } from '$lib/components/ui/icon';
 	import type { Connection } from '$lib/connections/types';
 	import type { SyncRun } from '$lib/syncs/types';
 	import BackfillList from './BackfillList.svelte';
@@ -27,7 +28,7 @@
 	const shared = $derived(connection.linked_user_ids.length);
 </script>
 
-<article class="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
+<article class="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
 	<ConnectionHeader {connection} {label} {onrevoke} {onpurge} />
 
 	<ConnectionRoutes {connection} {viaSdk} />
@@ -49,7 +50,7 @@
 				<span class="tabular-nums">({backfills.length})</span>
 			</span>
 			<ChevronDown
-				size={15}
+				size={ICON.sm}
 				aria-hidden="true"
 				class="transition-transform group-open:rotate-180"
 			/>
