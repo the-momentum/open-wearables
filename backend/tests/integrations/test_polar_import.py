@@ -81,7 +81,7 @@ class TestPolarOAuthFlow:
     ) -> None:
         """Test successful Polar OAuth callback."""
         mock_redis_client = mocker.patch("app.services.providers.templates.base_oauth.get_redis_client", autospec=True)
-        mock_celery_task = mocker.patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
+        mock_celery_task = mocker.patch("app.services.providers.base_strategy.celery_app")
         # Arrange
         user = UserFactory()
         developer = DeveloperFactory()
@@ -114,7 +114,7 @@ class TestPolarOAuthFlow:
         register = respx_mock.post(POLAR_REGISTER_URL).respond(200)
 
         # Mock Celery task
-        mock_celery_task.return_value = create_autospec(AsyncResult, instance=True)
+        mock_celery_task.send_task.return_value = create_autospec(AsyncResult, instance=True)
 
         # Act - Endpoint is /oauth/polar/callback
         response = client.get(

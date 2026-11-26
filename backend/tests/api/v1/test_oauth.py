@@ -16,12 +16,14 @@ import pytest
 from dirty_equals import IsInstance, IsPartialDict, IsStr
 from fastapi.testclient import TestClient
 from jose import jwt
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.connect_token import create_connect_token
-from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
+from app.utils.exceptions import UnsupportedProviderError
+from tests.factories import ApiKeyFactory, DeveloperFactory, UserConnectionFactory, UserFactory
 from tests.utils import api_key_headers, developer_auth_headers
 
 
@@ -534,3 +536,56 @@ class TestOAuthCallbackProbe:
     def test_head_callback_invalid_provider(self, client: TestClient, db: Session) -> None:
         response = client.head("/api/v1/oauth/not-a-provider/callback")
         assert response.status_code == 422
+
+
+class TestOAuthCallbackHistoricalSync:
+    """The on-connect backfill goes through the same strategy method as POST /sync/historical."""
+
+    def _callback(self, client: TestClient, mocker: MockerFixture, strategy: MagicMock, *, flag: bool = True) -> int:
+        mocker.patch("app.api.routes.v1.oauth.get_oauth_strategy", return_value=strategy)
+        mocker.patch.object(settings, "historical_sync_on_connect", flag)
+        response = client.get(
+            "/api/v1/oauth/oura/callback",
+            params={"code": "code", "state": "state"},
+            follow_redirects=False,
+        )
+        return response.status_code
+
+    def _strategy(self, user_id: UUID) -> MagicMock:
+        strategy = MagicMock()
+        strategy.oauth.handle_callback.return_value = MagicMock(user_id=user_id, redirect_uri=None)
+        return strategy
+
+    def test_first_connect_dispatches_full_window(self, client: TestClient, mocker: MockerFixture, db: Session) -> None:
+        user_id = uuid4()
+        strategy = self._strategy(user_id)
+
+        assert self._callback(client, mocker, strategy) == 303
+
+        strategy.start_historical_sync.assert_called_once_with(user_id, 90, since=None)
+
+    def test_reconnect_passes_gap_start(self, client: TestClient, mocker: MockerFixture, db: Session) -> None:
+        last = datetime.now(timezone.utc) - timedelta(days=5)
+        connection = UserConnectionFactory(provider="oura", last_synced_at=last)
+        strategy = self._strategy(connection.user_id)
+        gap_start = mocker.patch(
+            "app.api.routes.v1.oauth.user_connection_service.reconnect_gap_start", return_value=last
+        )
+
+        assert self._callback(client, mocker, strategy) == 303
+
+        assert gap_start.call_args.args[1:] == (connection.user_id, "oura", last)
+        strategy.start_historical_sync.assert_called_once_with(connection.user_id, 90, since=last)
+
+    def test_flag_off_skips_backfill(self, client: TestClient, mocker: MockerFixture, db: Session) -> None:
+        strategy = self._strategy(uuid4())
+
+        assert self._callback(client, mocker, strategy, flag=False) == 303
+
+        strategy.start_historical_sync.assert_not_called()
+
+    def test_unsupported_provider_still_connects(self, client: TestClient, mocker: MockerFixture, db: Session) -> None:
+        strategy = self._strategy(uuid4())
+        strategy.start_historical_sync.side_effect = UnsupportedProviderError("oura", "historical sync")
+
+        assert self._callback(client, mocker, strategy) == 303

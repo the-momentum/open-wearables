@@ -124,7 +124,7 @@ class TestPolarOAuth:
         self, mocker: MockerFixture, respx_mock: respx.MockRouter, client: TestClient, db: Session
     ) -> None:
         """Test Polar OAuth callback handles tokens."""
-        mocker.patch("app.integrations.celery.tasks.sync_vendor_data.delay", autospec=True)
+        mocker.patch("app.services.providers.base_strategy.celery_app")
         # Arrange
 
         from app.integrations.redis_client import get_redis_client
