@@ -20,8 +20,8 @@ from app.schemas.sync_status import (
     SyncStatus,
     SyncStatusEvent,
 )
-from app.services.sdk_token_service import create_sdk_user_token
 from app.services.sync_status_service import try_persist_run, try_record_data_types
+from app.utils.security import create_access_token
 from tests.factories import ApiKeyFactory, UserFactory
 
 ENDPOINT = "/api/v1/sdk/users/{user_id}/sync/status"
@@ -224,8 +224,8 @@ class TestSDKSyncState:
         _report(run_key, "heart_rate", SyncStatus.IN_PROGRESS)
         _hold(db, user.id, _at(20), _at(30, 18))
 
-        first = _get(client, user.id, token=create_sdk_user_token("app_1", str(user.id)))
-        relogged = _get(client, user.id, token=create_sdk_user_token("app_1", str(user.id)))
+        first = _get(client, user.id, token=create_access_token(subject=str(user.id), scope="sdk", app_id="app_1"))
+        relogged = _get(client, user.id, token=create_access_token(subject=str(user.id), scope="sdk", app_id="app_1"))
 
         assert relogged == first
         assert relogged["historicalSyncCompleted"] is False
@@ -289,7 +289,7 @@ class TestSDKSyncStateAccess:
 
     def test_token_for_another_user_is_forbidden(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
-        token = create_sdk_user_token("app_1", str(uuid4()))
+        token = create_access_token(subject=str(uuid4()), scope="sdk", app_id="app_1")
         response = client.get(
             ENDPOINT.format(user_id=user.id),
             params={"provider": "apple"},

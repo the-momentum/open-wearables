@@ -19,8 +19,8 @@ from jose import jwt
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.connect_token import create_connect_token
+from app.utils.security import create_access_token
 from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
 from tests.utils import api_key_headers, developer_auth_headers
 
@@ -155,7 +155,9 @@ class TestOAuthAuthorizeEndpoint:
         "make_headers",
         [
             lambda uid: {"X-Open-Wearables-Connect-Token": create_connect_token(uid)[0]},
-            lambda uid: {"Authorization": f"Bearer {create_sdk_user_token('app_1', str(uid))}"},
+            lambda uid: {
+                "Authorization": f"Bearer {create_access_token(subject=str(uid), scope='sdk', app_id='app_1')}"
+            },
         ],
         ids=["connect_token", "sdk_token"],
     )
@@ -184,7 +186,9 @@ class TestOAuthAuthorizeEndpoint:
         response = client.get(
             "/api/v1/oauth/garmin/authorize",
             params={"user_id": str(user_id)},
-            headers={"X-Open-Wearables-Connect-Token": create_sdk_user_token("app_1", str(user_id))},
+            headers={
+                "X-Open-Wearables-Connect-Token": create_access_token(subject=str(user_id), scope="sdk", app_id="app_1")
+            },
         )
         assert response.status_code == 401
 
