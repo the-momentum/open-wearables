@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [[package]]
@@ -674,7 +674,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.163.1"
+version = "0.165.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -685,9 +685,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/62/19000d0f3699cacaeffe8a3c4cc7046d87aac3291163ffeb2ef08b82d859/fastapi-0.163.1.tar.gz", hash = "sha256:3d364b02a68b67292e833ff2dfed3b8dc3aeadf73e271c15316c6c166668792f", size = 544796, upload-time = "2026-11-15T09:51:31.271Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/f9/e7820ef181026fea100bde02d811445bf8e883362d7092b6928767147056/fastapi-0.165.0.tar.gz", hash = "sha256:dd94d4128319c1e1d50535ab023ab698f850a4d2822f0e181747b46f4ff3c0ab", size = 557984, upload-time = "2026-11-18T19:15:37.076Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/b6/2424da1e40825d3fc54539621811f34e21472499677c9490e4967270e38e/fastapi-0.163.1-py3-none-any.whl", hash = "sha256:68f2d8050f5c3583121c0d203046cc7def5c16a7d6c43a0e7707a8ea610fe2d3", size = 154541, upload-time = "2026-11-15T09:51:29.726Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/c1/3b74c030262a1b38b1fee180f80b4007bbc11c9ac12028cb18c7bcecaec9/fastapi-0.165.0-py3-none-any.whl", hash = "sha256:896f48462042bb4f162147eb8fac7e858753dc1f486765709baf105d70e4fc5b", size = 159475, upload-time = "2026-11-18T19:15:35.345Z" },
 ]
 
 [package.optional-dependencies]
@@ -1234,7 +1234,7 @@ requires-dist = [
     { name = "email-validator", specifier = ">=2.4.0" },
     { name = "faker", specifier = ">=40.54.0" },
     { name = "fastapi", specifier = ">=0.163.1" },
-    { name = "fastapi", extras = ["opentelemetry"], marker = "extra == 'otel'", specifier = ">=0.163.1" },
+    { name = "fastapi", extras = ["opentelemetry"], marker = "extra == 'otel'", specifier = ">=0.165.0" },
     { name = "fastapi-cli", specifier = ">=0.0.34" },
     { name = "fitdecode", specifier = ">=0.11.0" },
     { name = "flower", specifier = ">=2.2.0" },
