@@ -7,6 +7,7 @@ from starlette.testclient import TestClient
 from app.config import settings
 from app.constants.provider_urls import from_url_slug
 from app.schemas.enums import ProviderName
+from app.utils.webhook_callback import callback_token
 from tests.factories import ApiKeyFactory
 
 
@@ -38,27 +39,42 @@ class TestUrlSlugMapping:
 
 
 class TestAuthorizeRoute:
+    @pytest.fixture
+    def headers(self) -> dict[str, str]:
+        return {"X-Open-Wearables-API-Key": ApiKeyFactory().plain_key}
+
     @pytest.mark.parametrize("slug", ["google", "google_health"])
-    def test_both_slugs_reach_the_provider(self, client: TestClient, api_v1_prefix: str, slug: str) -> None:
+    def test_both_slugs_reach_the_provider(
+        self, client: TestClient, api_v1_prefix: str, slug: str, headers: dict[str, str]
+    ) -> None:
         """Google redirects to whichever callback path was registered, so both must route."""
         response = client.get(
             f"{api_v1_prefix}/oauth/{slug}/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
+            headers=headers,
         )
         assert response.status_code != 404
 
-    def test_unknown_provider_is_rejected(self, client: TestClient, api_v1_prefix: str) -> None:
+    def test_unknown_provider_is_rejected(
+        self, client: TestClient, api_v1_prefix: str, headers: dict[str, str]
+    ) -> None:
         response = client.get(
             f"{api_v1_prefix}/oauth/nonsense/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
+            headers=headers,
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
+        assert response.json()["code"] == "VALIDATION_ERROR"
+        assert response.json()["errors"][0]["loc"] == ["path", "provider"]
 
-    def test_sdk_provider_cannot_be_authorized(self, client: TestClient, api_v1_prefix: str) -> None:
+    def test_sdk_provider_cannot_be_authorized(
+        self, client: TestClient, api_v1_prefix: str, headers: dict[str, str]
+    ) -> None:
         """health_connect resolves but has no OAuth, so it is a 400 rather than a 404."""
         response = client.get(
             f"{api_v1_prefix}/oauth/health_connect/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
+            headers=headers,
         )
         assert response.status_code == 400
 
@@ -69,9 +85,16 @@ class TestWebhookRoute:
         response = client.post(f"{api_v1_prefix}/providers/{slug}/webhooks", json={})
         assert response.status_code not in (404, 501)
 
-    def test_unknown_provider_is_404(self, client: TestClient, api_v1_prefix: str) -> None:
+    def test_unknown_provider_is_a_validation_error(self, client: TestClient, api_v1_prefix: str) -> None:
         response = client.post(f"{api_v1_prefix}/providers/nonsense/webhooks", json={})
-        assert response.status_code == 404
+        assert response.status_code == 422
+
+    def test_get_challenge_without_provider_support_is_501(self, client: TestClient, api_v1_prefix: str) -> None:
+        """Garmin has a webhook handler but no GET subscription verification."""
+        token = callback_token("garmin").get_secret_value()
+        response = client.get(f"{api_v1_prefix}/providers/garmin/webhooks/{token}")
+        assert response.status_code == 501
+        assert "does not support webhook subscription verification" in response.json()["detail"]
 
 
 class TestDataIdentityStaysStrict:
@@ -90,7 +113,7 @@ class TestDataIdentityStaysStrict:
                 "provider": "google",
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "google_health" in response.text
 
 
@@ -104,7 +127,7 @@ class TestSyncRoutesTakeTheCurrentSlugOnly:
             f"{api_v1_prefix}/providers/google/users/{user_id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "google_health" in response.text
 
     def test_current_slug_is_the_only_one_the_enum_knows(self) -> None:

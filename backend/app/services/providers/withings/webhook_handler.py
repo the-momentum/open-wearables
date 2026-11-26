@@ -1,17 +1,16 @@
 """Authenticate Withings notifications, acknowledge them, and defer ingestion to Celery."""
 
-import logging
 from datetime import datetime, timedelta
-from secrets import compare_digest
 from typing import Any, assert_never
 from urllib.parse import parse_qs
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request, status
+from fastapi import Request
 from pydantic import ValidationError
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
@@ -25,11 +24,12 @@ from app.services.providers.withings.data_247 import Withings247Data
 from app.services.providers.withings.handlers.applis import APPLI_DOMAIN, SUBSCRIBED_APPLIS, Domain
 from app.services.providers.withings.workouts import WithingsWorkouts
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.structured_logging import log_structured
+from app.utils.exceptions import WebhookVerificationError
+from app.utils.structured_logging import get_logger
+from app.utils.webhook_callback import callback_token_matches
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
-_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 _MAX_NOTIFY_WINDOW = timedelta(days=31)
 
 
@@ -58,12 +58,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
 
     @staticmethod
     def _has_valid_callback_token(request: Request) -> bool:
-        expected = settings.withings_webhook_token
-        actual = request.query_params.get("token")
-        if expected is None or not actual:
-            return False
-        # compare_digest raises TypeError on non-ASCII str; the token is caller-supplied.
-        return compare_digest(actual.encode("utf-8"), expected.get_secret_value().encode("utf-8"))
+        return callback_token_matches(settings.withings_webhook_token, request.query_params.get("token"))
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
         """Verify the callback token and require a userid-bearing notify body."""
@@ -72,7 +67,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
     def handle_probe(self, request: Request) -> None:
         """Accept an authenticated subscribe-time HEAD probe."""
         if not self._has_valid_callback_token(request):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Withings callback token")
+            raise WebhookVerificationError("Invalid Withings callback token")
 
     def supported_event_types(self) -> list[str]:
         return [str(appli) for appli in SUBSCRIBED_APPLIS]
@@ -146,9 +141,9 @@ class WithingsWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "user_not_found", "withings_user_id": userid}
 
         celery_app.send_task(
-            _PROCESS_PUSH_TASK,
+            CeleryTask.PROCESS_WEBHOOK_PUSH,
             args=["withings", payload, trace_id],
-            queue="webhook_sync",
+            queue=CeleryQueue.WEBHOOK_SYNC,
         )
         return {"status": "accepted", "appli": notification.appli}
 
@@ -201,9 +196,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
                 metadata={"domain": domain},
             )
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Withings webhook processed",
             provider="withings",
             appli=notification.appli,
@@ -258,9 +251,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
                     revoked_at=connection.updated_at.isoformat(),
                 )
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Withings profile change revoked local connections",
             provider="withings",
             action=notification.action,

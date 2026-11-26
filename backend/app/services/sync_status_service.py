@@ -27,18 +27,24 @@ Keys (all TTL'd to ``HISTORY_TTL_SECONDS``):
 import logging
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import suppress
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession, SessionLocal
 from app.extensions import events as extension_events
+from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
-from app.repositories.sync_run_repository import sync_run_repository
+from app.models import SyncRun
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.repositories.sync_run_repository import HistoricalTypeRow, sync_run_repository
+from app.schemas.enums import EventCategory
+from app.schemas.providers.mobile_sdk import CoveredRange, SDKDataTypeSyncState, SDKSyncState
 from app.schemas.sync_status import (
+    DataTypeKind,
     DataTypeOutcome,
     SyncRunDetail,
     SyncRunRecord,
@@ -53,9 +59,9 @@ from app.schemas.sync_status import (
 from app.services.outgoing_webhooks import events as outgoing
 from app.utils.context import trace_id_var
 from app.utils.sse import format_comment, format_event
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 HISTORY_TTL_SECONDS = 24 * 60 * 60  # 24h
 MAX_RECENT_EVENTS = 200
@@ -109,6 +115,13 @@ _PERSISTED_STAGES = frozenset(
     {SyncStage.STARTED, SyncStage.COMPLETED, SyncStage.FAILED, SyncStage.CANCELLED},
 )
 
+# A type we know went wrong, as opposed to one that simply ended with nothing to write.
+# STALE and UNFINISHED mean we lost track of it, which is a failure from the consumer's
+# side too: the history they were promised is not there.
+_FAILED_DATA_TYPE_STATUSES = frozenset(
+    {SyncStatus.FAILED, SyncStatus.STALE, SyncStatus.UNFINISHED, SyncStatus.CANCELLED},
+)
+
 # Metadata keys that are only the transport for a column, so they are not stored twice.
 _META_COLUMN_KEYS = frozenset({"inserted", "updated"})
 
@@ -124,7 +137,12 @@ def is_persisted_scope(scope: SyncScope | str) -> bool:
     return SyncScope(scope) == SyncScope.HISTORICAL or settings.persist_live_sync_runs
 
 
-def run_status_from(outcomes: list[DataTypeOutcome]) -> SyncStatus:
+class _HasStatus(Protocol):
+    @property
+    def status(self) -> SyncStatus: ...
+
+
+def run_status_from(outcomes: Iterable[_HasStatus]) -> SyncStatus:
     """Overall status of a run, from the outcomes of its data types."""
     match {outcome.status for outcome in outcomes}:
         case seen if seen == {SyncStatus.SKIPPED}:
@@ -174,9 +192,7 @@ def try_persist_run(event: SyncStatusEvent) -> None:
                 ),
             )
     except Exception as exc:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Failed to persist sync run",
             provider=event.provider,
             action="sync_run_persist_failed",
@@ -194,6 +210,7 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
     if not outcomes or not is_persisted_scope(scope):
         return
 
+    outcomes = _one_per_data_type(outcomes)
     try:
         with SessionLocal() as db:
             run = sync_run_repository.get_by_run_key(db, run_key)
@@ -205,15 +222,98 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
                 outcomes=outcomes,
                 updated_at=datetime.now(timezone.utc),
             )
+            _dispatch_data_type_webhooks(db, run, outcomes)
     except Exception as exc:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Failed to record sync run data types",
             action="sync_run_data_types_failed",
             run_id=run_key,
             error=str(exc),
         )
+
+
+def _one_per_data_type(outcomes: list[DataTypeOutcome]) -> list[DataTypeOutcome]:
+    """Merge outcomes reporting the same data type, as two fetch tasks writing one series type do.
+
+    Stored one after another, the later verdict would replace the earlier one: a task that
+    wrote nothing would turn a type another task filled into SKIPPED.
+    """
+    by_type: dict[str, list[DataTypeOutcome]] = {}
+    for outcome in outcomes:
+        by_type.setdefault(outcome.data_type, []).append(outcome)
+    return [group[0] if len(group) == 1 else _merged(group) for group in by_type.values()]
+
+
+def _merged(group: list[DataTypeOutcome]) -> DataTypeOutcome:
+    verdicts = [o for o in group if o.status != SyncStatus.IN_PROGRESS]
+    reported = [o.reported_records for o in group if o.reported_records is not None]
+    starts = [o.covered_start for o in group if o.covered_start is not None]
+    ends = [o.covered_end for o in group if o.covered_end is not None]
+    return group[0].model_copy(
+        update={
+            "status": run_status_from(verdicts) if verdicts else SyncStatus.IN_PROGRESS,
+            "reported_records": sum(reported) if reported else None,
+            "items_inserted": sum(o.items_inserted for o in group),
+            "items_updated": sum(o.items_updated for o in group),
+            "covered_start": min(starts, default=None),
+            "covered_end": max(ends, default=None),
+            "error_code": next((o.error_code for o in group if o.error_code), None),
+            "error": next((o.error for o in group if o.error), None),
+        }
+    )
+
+
+def _dispatch_data_type_webhooks(db: DbSession, run: SyncRun, outcomes: list[DataTypeOutcome]) -> None:
+    """Forward the data types that reached a verdict, as stored for the run.
+
+    IN_PROGRESS outcomes are skipped: an SDK export reports its types once per batch long
+    before they are done, and only the log's end event knows how each one turned out.
+    The stored row is sent rather than the outcome, so the counts and span cover every
+    batch the type reported, not only the last one.
+
+    Fires per type rather than per run, so a consumer learns a type's history is in
+    without waiting for the whole backfill. The idempotency key is the run and type, so a
+    type reporting the same verdict twice is delivered once.
+    """
+    finished = [o.data_type for o in outcomes if o.status != SyncStatus.IN_PROGRESS]
+    if not finished:
+        return
+
+    rows = sync_run_repository.get_data_types(db, run.id, finished)
+    coverage = {
+        (held.data_type, held.kind): held
+        for held in data_type_coverage_repository.list_for_user(
+            db, run.user_id, provider=run.provider, data_types=finished
+        )
+    }
+
+    for row in rows:
+        held = coverage.get((row.data_type, row.kind))
+        outgoing.on_sync_data_type_finished(
+            user_id=run.user_id,
+            provider=run.provider,
+            source=str(run.source),
+            scope=str(run.scope),
+            run_id=run.run_key,
+            data_type=row.data_type,
+            kind=row.kind,
+            status=str(row.status),
+            succeeded=row.status not in _FAILED_DATA_TYPE_STATUSES,
+            native_data_type=row.native_type,
+            reported_records=row.reported_records,
+            items_inserted=row.items_inserted,
+            items_updated=row.items_updated,
+            covered_start=_iso(row.covered_start),
+            covered_end=_iso(row.covered_end),
+            coverage_start=_iso(held.coverage_start) if held else None,
+            coverage_end=_iso(held.coverage_end) if held else None,
+            error_code=row.error_code,
+            error=row.error,
+        )
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def list_stored_runs(
@@ -244,6 +344,106 @@ def list_stored_runs(
     return [SyncRunRecord.model_validate(run) for run in runs]
 
 
+def record_requested_window(run_key: str, window_start: datetime, window_end: datetime) -> None:
+    """Store the window a provider accepted a backfill request for, best effort like try_persist_run."""
+    if not settings.sync_run_tracking_enabled:
+        return
+    try:
+        with SessionLocal() as db:
+            sync_run_repository.record_window(db, run_key, window_start, window_end)
+    except Exception as exc:
+        logger.warning(
+            "Failed to record requested window", action="sync_run_window_failed", run_id=run_key, error=str(exc)
+        )
+
+
+def last_backfill_requested_until(db: DbSession, user_id: UUID, provider: str) -> datetime | None:
+    """End of the latest window the provider accepted a backfill request for."""
+    return sync_run_repository.last_window_end(db, user_id, provider, SyncSource.BACKFILL)
+
+
+# One SDK export names sleep and workouts differently per writer (batch vs the device's end event).
+_SDK_EVENT_TYPE_NAMES: dict[str, str] = {
+    "sleep": EventCategory.SLEEP,
+    "SLEEP": EventCategory.SLEEP,
+    "HKCategoryTypeIdentifierSleepAnalysis": EventCategory.SLEEP,
+    "workout": EventCategory.WORKOUT,
+    "workouts": EventCategory.WORKOUT,
+    "WORKOUT": EventCategory.WORKOUT,
+    "HKWorkoutTypeIdentifier": EventCategory.WORKOUT,
+}
+
+_FINISHED_STATUSES = frozenset({SyncStatus.SUCCESS, SyncStatus.SKIPPED})
+# IN_PROGRESS is no verdict: a batch writes it while the end event is still to come.
+_UNFINISHED_STATUSES = frozenset({SyncStatus.FAILED, SyncStatus.UNFINISHED, SyncStatus.STALE, SyncStatus.CANCELLED})
+
+
+def _finished_types_by_run(rows: list[HistoricalTypeRow]) -> dict[UUID, dict[str, bool]]:
+    """Per historical run, whether each type it reported finished; a run with no types yet maps to {}."""
+    statuses: dict[UUID, dict[str, set[SyncStatus]]] = {}
+    for row in rows:
+        by_type = statuses.setdefault(row.run_id, {})
+        if row.data_type is None or row.status is None:
+            continue
+        name = _SDK_EVENT_TYPE_NAMES.get(row.data_type, row.data_type)
+        by_type.setdefault(name, set()).add(SyncStatus(row.status))
+    return {
+        run_id: {
+            name: bool(seen & _FINISHED_STATUSES) and not seen & _UNFINISHED_STATUSES for name, seen in by_type.items()
+        }
+        for run_id, by_type in statuses.items()
+    }
+
+
+def _exported_ranges(rows: list[HistoricalTypeRow]) -> dict[str, CoveredRange]:
+    """Per type, the span the latest historical export that reported one has sent so far."""
+    latest: dict[str, tuple[datetime, CoveredRange]] = {}
+    for row in rows:
+        if row.data_type is None or row.covered_start is None or row.covered_end is None:
+            continue
+        name = _SDK_EVENT_TYPE_NAMES.get(row.data_type, row.data_type)
+        if name not in latest or row.run_started_at > latest[name][0]:
+            latest[name] = (row.run_started_at, CoveredRange(startDate=row.covered_start, endDate=row.covered_end))
+    return {name: span for name, (_, span) in latest.items()}
+
+
+def get_sdk_sync_state(db: DbSession, user_id: UUID, provider: str) -> SDKSyncState:
+    """Where a user's SDK sync for this provider stands, from the runs and data we hold."""
+    rows = sync_run_repository.historical_data_type_statuses(db, user_id, provider, SyncSource.SDK)
+    finished_by_run = _finished_types_by_run(rows)
+    exported = _exported_ranges(rows)
+    # None, not False, without an export to judge by: SDKs without syncSessionId never record one.
+    export_completed: bool | None = (
+        any(types and all(types.values()) for types in finished_by_run.values()) if finished_by_run else None
+    )
+    type_finished: dict[str, bool] = {}
+    for types in finished_by_run.values():
+        for name, done in types.items():
+            type_finished[name] = type_finished.get(name, False) or done
+
+    def type_completed(data_type: str) -> bool | None:
+        # A finished export covers types the device skipped for having no records.
+        return True if export_completed else type_finished.get(data_type)
+
+    held = data_type_coverage_repository.list_for_user(db, user_id, provider=provider)
+    return SDKSyncState(
+        provider=provider,
+        historicalSyncCompleted=export_completed,
+        syncedUntil=max((row.coverage_end for row in held), default=None),
+        dataTypes=[
+            SDKDataTypeSyncState(
+                type=row.data_type,
+                kind=DataTypeKind(row.kind),
+                historicalSyncCompleted=type_completed(row.data_type),
+                lastSyncedAt=row.last_written_at,
+                coveredRange=CoveredRange(startDate=row.coverage_start, endDate=row.coverage_end),
+                exportedRange=exported.get(row.data_type),
+            )
+            for row in held
+        ],
+    )
+
+
 def get_stored_run(db: DbSession, run_key: str) -> SyncRunDetail | None:
     """One stored run with its per-data-type breakdown, or None when unknown."""
     run = sync_run_repository.get_with_data_types(db, run_key)
@@ -265,12 +465,12 @@ def emit(event: SyncStatusEvent) -> None:
     # deployment logs, not only on the frontend stream.
     match event.status:
         case SyncStatus.FAILED:
-            level = "error"
+            level = logging.ERROR
         case SyncStatus.PARTIAL:
-            level = "warning"
+            level = logging.WARNING
         case _:
-            level = "info"
-    extra = {
+            level = logging.INFO
+    extra: dict[str, Any] = {
         key: value
         for key, value in {
             "items_processed": event.items_processed,
@@ -283,8 +483,7 @@ def emit(event: SyncStatusEvent) -> None:
         }.items()
         if value is not None
     }
-    log_structured(
-        logger,
+    logger.log(
         level,
         "Sync status",
         provider=event.provider,
@@ -327,7 +526,13 @@ def emit(event: SyncStatusEvent) -> None:
         pipe.publish(_global_channel(), payload)
         pipe.execute()
     except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Failed to emit sync status event: %s", exc, exc_info=True)
+        logger.warning(
+            "Failed to emit sync status event",
+            provider=event.provider,
+            run_id=event.run_id,
+            user_id=str(event.user_id),
+            exc_info=exc,
+        )
 
     # Dispatch outgoing webhooks in a background thread so the Svix HTTP
     # round-trip (~2 s) does not block the Celery task or inflate sync duration.
@@ -380,7 +585,13 @@ def _maybe_dispatch_outgoing_webhook(event: SyncStatusEvent) -> None:
                 metadata=event.metadata,
             )
     except Exception as exc:  # pragma: no cover - defensive
-        logger.debug("Failed to dispatch outgoing sync webhook: %s", exc, exc_info=True)
+        logger.debug(
+            "Failed to dispatch outgoing sync webhook",
+            provider=event.provider,
+            run_id=event.run_id,
+            user_id=str(event.user_id),
+            exc_info=exc,
+        )
 
 
 def emit_event(
@@ -453,9 +664,7 @@ def last_event_at(run_ids: list[str]) -> dict[str, datetime] | None:
                 seen[run_id] = SyncStatusEvent.model_validate_json(raw).timestamp
         return seen
     except Exception as exc:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Failed to read sync run liveness",
             action="sync_run_liveness_failed",
             error=str(exc),
@@ -724,6 +933,9 @@ def emit_sync_completed(
     Finished is not the same as succeeded: pass status=PARTIAL when some types failed,
     or SKIPPED when the run was a no-op. FAILED belongs on emit_sync_failed instead.
     """
+    if scope == SyncScope.HISTORICAL:
+        # History just landed: rolled up now, not at the next 15-minute run.
+        rollup_queue.roll_up_soon()
     return emit_event(
         user_id=user_id,
         provider=provider,

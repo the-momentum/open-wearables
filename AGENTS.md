@@ -36,6 +36,9 @@ open-wearables/
 ### Docker (Recommended)
 
 ```bash
+# Create the .env files and generate SECRET_KEY (safe to repeat)
+make init
+
 # Start all services
 docker compose up -d
 
@@ -60,6 +63,7 @@ make stop
 
 | Command | Description |
 |---------|-------------|
+| `make init` | Create the `.env` files and generate `SECRET_KEY` |
 | `make build` | Build Docker images |
 | `make run` | Start in detached mode |
 | `make up` | Start in foreground |

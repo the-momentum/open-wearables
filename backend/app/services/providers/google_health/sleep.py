@@ -1,11 +1,11 @@
 """Google Health API sleep handler.
 
 Fetches Sleep sessions via the dataPoints ``list`` operation and stores them as
-``EventRecord(category="sleep")`` via ``create_or_merge_sleep`` (merges fragmented
-sessions). Composed into GoogleHealth247Data.load_and_save_all.
+``EventRecord(category=EventCategory.SLEEP)`` via ``create_or_merge_sleep``, matched on the data
+point name. Google already consolidates sessions, so they are not merged. Composed into
+GoogleHealth247Data.load_and_save_all.
 """
 
-import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -17,15 +17,17 @@ from app.constants.series_types.google.sleep_stages import GOOGLE_SLEEP_STAGE_MA
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    SESSION_PAGE_SIZE,
     extract_form_factor,
     extract_source,
+    next_page_token,
     parse_interval,
     parse_page,
     parse_rfc3339,
@@ -42,17 +44,16 @@ class GoogleHealthApiSleep:
     """Fetches Google Health API Sleep sessions and stores them as sleep EventRecords."""
 
     LIST_ENDPOINT = DATAPOINTS_LIST_ENDPOINT.format(data_type="sleep")
-    PAGE_SIZE = 1000
+    PAGE_SIZE = SESSION_PAGE_SIZE
 
     def __init__(self, oauth: BaseOAuthTemplate, connection_repo: UserConnectionRepository, api_base_url: str):
         self.oauth = oauth
         self.connection_repo = connection_repo
         self.provider_name = "google_health"
         self.api_base_url = api_base_url
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
-        """Fetch sleep sessions ending in the window and merge-save each.
+        """Fetch sleep sessions ending in the window and save each.
 
         Keyed on the end, like the fetch filter: an overnight session starts before any
         morning window and would never be kept if the start were tested.
@@ -67,7 +68,9 @@ class GoogleHealthApiSleep:
             if start is None or end is None or not (start_time <= end < end_time):
                 continue
             record, detail = self._normalize(point, sleep, interval, start, end, user_id)
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            event_record_service.create_or_merge_sleep(
+                db, user_id, record, detail, settings.sleep_end_gap_minutes, merge_adjacent=False
+            )
             count += 1
         return count
 
@@ -78,6 +81,7 @@ class GoogleHealthApiSleep:
         )
         points: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen: set[str] = set()
         while True:
             params: dict[str, Any] = {"pageSize": self.PAGE_SIZE, "filter": time_filter}
             if page_token:
@@ -102,7 +106,7 @@ class GoogleHealthApiSleep:
             )
             page = parse_page(response, self.LIST_ENDPOINT)
             points.extend(page.data_points)
-            page_token = page.next_page_token
+            page_token = next_page_token(page, seen, self.LIST_ENDPOINT)
             if not page_token:
                 break
         return points
@@ -124,7 +128,8 @@ class GoogleHealthApiSleep:
 
         record = EventRecordCreate(
             id=record_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
+            type="sleep_session",
             provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
@@ -167,7 +172,16 @@ class GoogleHealthApiSleep:
             sleep_efficiency_score=efficiency,
             is_nap=metadata.get("nap"),
             sleep_stages=self._build_stages(sleep.get("stages", [])) or None,
+            provider_state=self._processing_state(metadata),
         )
+
+    @staticmethod
+    def _processing_state(metadata: dict[str, Any]) -> str | None:
+        """`metadata.processed` as a state: processed, or processing while Google still computes the stages."""
+        processed = metadata.get("processed")
+        if processed is None:
+            return None
+        return "processed" if processed else "processing"
 
     @staticmethod
     def _build_stages(stages: list[dict[str, Any]]) -> list[SleepStage]:

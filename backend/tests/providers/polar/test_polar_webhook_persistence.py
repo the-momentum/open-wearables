@@ -10,13 +10,15 @@ from typing import Any
 from unittest.mock import patch
 from uuid import UUID
 
+import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource
+from app.models import DataSource, SeriesSample
 from app.schemas.providers.polar import PolarWebhookEventType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.polar.webhook_handler import PolarWebhookHandler
+from app.utils.exceptions import ReauthRequiredError
 from tests.factories import UserConnectionFactory, UserFactory
 
 POLAR_USER_ID = "475"
@@ -33,10 +35,10 @@ DAY_RESPONSE: dict[str, Any] = {
 }
 
 
-def _polar_samples(db: Session, user_id: Any) -> list[DataPointSeries]:
+def _polar_samples(db: Session, user_id: Any) -> list[SeriesSample]:
     return (
-        db.query(DataPointSeries)
-        .join(DataSource, DataSource.id == DataPointSeries.data_source_id)
+        db.query(SeriesSample)
+        .join(DataSource, DataSource.id == SeriesSample.data_source_id)
         .filter(DataSource.user_id == user_id, DataSource.provider == "polar")
         .all()
     )
@@ -47,12 +49,27 @@ def test_continuous_hr_webhook_saves_the_single_day_response(db: Session) -> Non
     data_247 = PolarStrategy().data_247
     assert isinstance(data_247, Polar247Data)
 
-    with patch.object(Polar247Data, "_make_api_request", return_value=DAY_RESPONSE):
+    with patch.object(Polar247Data, "_make_api_request", autospec=True, return_value=DAY_RESPONSE):
         saved = data_247.fetch_and_save_from_webhook(
             db, UUID(str(user.id)), PolarWebhookEventType.CONTINUOUS_HEART_RATE, ENDPOINT
         )
 
     assert saved == {"continuous_hr": 2}
+    assert len(_polar_samples(db, user.id)) == 2
+
+
+def test_physical_information_webhook_saves_weight_and_vo2max(db: Session) -> None:
+    user = UserFactory()
+    data_247 = PolarStrategy().data_247
+    assert isinstance(data_247, Polar247Data)
+    physical_info = {"weight": 70.5, "vo2_max": 50, "modified": "2026-09-10T08:00:00Z"}
+
+    with patch.object(Polar247Data, "_make_api_request", autospec=True, return_value=physical_info):
+        saved = data_247.fetch_and_save_from_webhook(
+            db, UUID(str(user.id)), PolarWebhookEventType.PHYSICAL_INFORMATION, "/v3/users/physical-info"
+        )
+
+    assert saved == {"physical_info": 2}
     assert len(_polar_samples(db, user.id)) == 2
 
 
@@ -86,7 +103,7 @@ def test_process_payload_commits_after_saving(db: Session) -> None:
         original_commit()
 
     with (
-        patch.object(Polar247Data, "_make_api_request", return_value=DAY_RESPONSE),
+        patch.object(Polar247Data, "_make_api_request", autospec=True, return_value=DAY_RESPONSE),
         patch.object(Polar247Data, "fetch_and_save_from_webhook", recording_fetch),
         patch.object(db, "commit", recording_commit),
     ):
@@ -105,7 +122,7 @@ def test_process_payload_rolls_back_on_error(db: Session) -> None:
     rolled_back: list[str] = []
 
     with (
-        patch.object(Polar247Data, "fetch_and_save_from_webhook", side_effect=RuntimeError("boom")),
+        patch.object(Polar247Data, "fetch_and_save_from_webhook", autospec=True, side_effect=RuntimeError("boom")),
         patch.object(db, "rollback", lambda: rolled_back.append("rollback")),
     ):
         result = handler.process_payload(db, _webhook_payload(), "test-trace")
@@ -114,12 +131,27 @@ def test_process_payload_rolls_back_on_error(db: Session) -> None:
     assert rolled_back == ["rollback"]
 
 
+def test_process_payload_passes_a_dead_grant_to_the_task(db: Session) -> None:
+    """The push task fails the delivery without a retry; caught here it went to Sentry instead."""
+    user = UserFactory()
+    UserConnectionFactory(user_id=user.id, provider="polar", provider_user_id=POLAR_USER_ID)
+    handler = PolarStrategy().webhooks
+    assert isinstance(handler, PolarWebhookHandler)
+    dead_grant = ReauthRequiredError("polar", UUID(str(user.id)), "reconnection required")
+
+    with (
+        patch.object(Polar247Data, "fetch_and_save_from_webhook", autospec=True, side_effect=dead_grant),
+        pytest.raises(ReauthRequiredError),
+    ):
+        handler.process_payload(db, _webhook_payload(), "test-trace")
+
+
 def test_activity_summary_webhook_requests_activity_zones(db: Session) -> None:
     user = UserFactory()
     data_247 = PolarStrategy().data_247
     assert isinstance(data_247, Polar247Data)
 
-    with patch.object(Polar247Data, "_make_api_request", return_value={}) as request:
+    with patch.object(Polar247Data, "_make_api_request", autospec=True, return_value={}) as request:
         data_247.fetch_and_save_from_webhook(
             db, UUID(str(user.id)), PolarWebhookEventType.ACTIVITY_SUMMARY, "/v3/users/activities/2026-09-10"
         )

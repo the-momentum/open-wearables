@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
-	import { TONE, type Tone } from '$lib/components/ui/tone';
+	import { TONE } from '$lib/components/ui/tone';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { cn } from '$lib/utils/cn';
 
@@ -9,8 +9,7 @@
 		label,
 		value,
 		note,
-		parts,
-		tone = 'primary'
+		parts
 	}: {
 		icon: Component;
 		label: string;
@@ -18,11 +17,10 @@
 		/** A word about the figure itself - that it is an estimate, say. */
 		note?: string;
 		/**
-		 * Always rendered, zero included: "0 archived" says the archive is empty,
+		 * Always rendered, zero included: "0 day and session rows" says nothing has been rolled up,
 		 * and leaving the row out says nothing at all.
 		 */
 		parts: { label: string; value: string }[];
-		tone?: Tone;
 	} = $props();
 </script>
 
@@ -31,7 +29,7 @@
 		<span class="truncate text-xs font-medium text-muted-foreground">{label}</span>
 		<span
 			aria-hidden="true"
-			class={cn('grid size-8 shrink-0 place-items-center rounded-lg', TONE[tone])}
+			class={cn('grid size-8 shrink-0 place-items-center rounded-lg', TONE.muted)}
 		>
 			<Icon size={16} />
 		</span>

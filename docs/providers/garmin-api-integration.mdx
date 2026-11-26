@@ -15,10 +15,6 @@ keywords: ["garmin api", "garmin connect api", "garmin health data", "garmin api
 **Garmin API giving you a headache?** We feel your pain - that's exactly why we created Open Wearables. Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
 </Note>
 
-<Warning>
-**The Garmin Connect Developer Program is currently on hold.** Garmin has suspended the developer program and there is no information on when it will be resumed. This means you **cannot create a new developer account at this time**. Existing accounts continue to work normally - only new sign-ups are blocked.
-</Warning>
-
 ## Overview
 
 Garmin Connect provides access to comprehensive fitness and health data from Garmin devices through their Wellness API. The integration supports activities, daily summaries, sleep data, body composition, and more.
@@ -32,15 +28,32 @@ Through the Garmin Connect platform, you can access data from:
 
 Once you get access to the Developer Portal, you’ll find the full docs, including the [FAQ page](https://developerportal.garmin.com/developer-programs/faqs) and [specification documents](https://developerportal.garmin.com/developer-programs/programs-docs).
 
-<Warning>
-**Enterprise only**: Garmin Connect Developer Program does not support personal use. You must apply as a legal entity (company, university, hospital, research institution, etc.). Personal-use applications are rejected.
-</Warning>
+## Access tiers
+
+Garmin has reopened the [Garmin Connect Developer Program](https://developer.garmin.com/gc-developer-program/overview/) with two business tiers:
+
+| | Starter | Enterprise |
+|---|---|---|
+| Who it's for | Organizations getting started | Companies operating at scale |
+| Data delivery | Push only | Push or Ping/Pull |
+| Historical data | Not included | 1 month+ |
+| User capacity | Up to 1,000 connected users | Unlimited |
+| Technical support | - | Included |
+| How to get it | Create an app with Starter access after joining the program | Request through the Garmin Developer Portal, commercial terms agreed with Garmin |
+
+Open Wearables works with push delivery, so both tiers are supported. Starter doesn't include historical data, so the backfill described below is only available on Enterprise. You can move from Starter to Enterprise later.
+
+Garmin describes both business tiers as intended for organizations (company, university, hospital, research institution, etc.). Individuals who only need their own data should look at the Personal API below.
+
+<Note>
+**Personal API**: Garmin also launched a [Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api/) that lets individual users access their own Garmin Connect data with a personal API key. It has a different base URL, authentication and endpoints than the business APIs, so **it doesn't work with Open Wearables yet**. We may add support for it in the future.
+</Note>
 
 ## What you need by the end
 
 - **App credentials**: Client ID + Client Secret
 - **API Tools configured**:
-  - Endpoints enabled
+  - Endpoints enabled, all pointing at your instance's webhook URL (it carries a secret token, see below)
   - Data types + OAuth scopes selected
 - **Partner verification passed** (to request production access later)
 - **Production credentials** (only after Garmin approves your evaluation app for production use)
@@ -57,11 +70,9 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
   <Step title="Apply for Garmin developer access">
     Garmin access is approval-based. To apply, submit the official form:
 
-    - [Garmin Connect Developer Program Access Request Form](https://www.garmin.com/en-US/forms/GarminConnectDeveloperAccess/)
+    - [Garmin Connect Developer Program Access Request Form](https://www.garmin.com/en-US/forms/StarterGarminConnectDeveloperAccess/)
 
-    <Warning>
-    **The developer program is currently suspended by Garmin**, with no announced resumption date - you cannot create a new developer account right now. Existing accounts still work.
-    </Warning>
+    After approval, you create an app with Starter access. Enterprise access can be requested through the Garmin Developer Portal.
 
     <Note>
     **Tips to avoid rejection:**
@@ -116,21 +127,39 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
     Garmin’s API Tools are configured per app. To access them, log in with that app’s **Client ID** + **Client Secret**.
 
     **Enable endpoints**
+    - Print your webhook URL on the server where Open Wearables runs. Its last path segment is a secret token derived from `SECRET_KEY`, which is not shown anywhere else:
+
+    <CodeGroup>
+    ```bash Docker
+    docker compose exec app uv run python scripts/garmin_webhook_url.py
+    ```
+
+    ```bash Local (from backend/)
+    uv run python scripts/garmin_webhook_url.py
+    ```
+    </CodeGroup>
+
+    With the repository's `docker-compose.yml`, `make garmin_webhook_url` runs the Docker command for you. The script needs only `SECRET_KEY` and `API_BASE_URL` from your backend configuration, so you can run it before adding the Garmin credentials. It prints the URL alone on stdout:
+
+    ```
+    https://<your-domain>/api/v1/providers/garmin/webhooks/<callback token>
+    ```
+
+    For local development with ngrok, set `API_BASE_URL` to your ngrok URL (`https://<your-ngrok-id>.ngrok-free.app`) before you run it.
+
     - Open [API Endpoints](https://apis.garmin.com/tools/endpoints)
-    - For **every** endpoint, set the URL to your Open Wearables webhook push endpoint:
-
-    ```
-    https://<your-domain>/api/v1/garmin/webhooks/push
-    ```
-
-    For local development with ngrok:
-    ```
-    https://<your-ngrok-id>.ngrok-free.app/api/v1/garmin/webhooks/push
-    ```
-
+    - For **every** endpoint, set the URL to the one the script printed
     - Set delivery type to **push** (dropdown on the right)
     - Check **enabled** for each endpoint you want to activate
-    - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint
+    - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint. That includes **Deregistrations** and **User Permissions**
+
+    <Note>
+    Garmin does not sign its notifications, and the `garmin-client-id` header it sends is public: your client ID appears in every OAuth authorization URL. The token in the URL path is what proves that a notification comes from Garmin. Open Wearables rejects every Garmin notification with `401` when the token in the path is wrong, or missing once `GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN` is `false` (see **Upgrading** below). A new `SECRET_KEY` or `API_BASE_URL` changes the URL: run the script again and update every endpoint (see the **Rotate the webhook URL** step below).
+    </Note>
+
+    <Warning>
+    Treat the webhook URL like a password. Anyone who knows it can send health data or account deregistrations in Garmin's name. Open Wearables masks the token in its logs and in Sentry, but your reverse proxy's access logs record full request paths. If the URL leaks, rotate `SECRET_KEY` (see the **Rotate the webhook URL** step below).
+    </Warning>
 
     **Which endpoints to enable:**
 
@@ -146,6 +175,7 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 
     <Note>
     **Backfill limits (practical gotchas):**
+    - Backfill needs historical data access, which is only included in the Enterprise tier.
     - Backfill typically returns **~last month** of data.
     - Each data type can usually be **backfilled only once**.
     - Don’t retry backfill over and over—if you need more history, check the Garmin docs for the supported process and limits.
@@ -179,7 +209,34 @@ GARMIN_CLIENT_SECRET=your_client_secret_here
     <Note>
     If you later move from evaluation to production, you’ll update these credentials to the production ones.
     </Note>
-  </Step> 
+
+    <Warning>
+    **Upgrading an instance that already receives Garmin data?** Older versions accepted Garmin notifications at `/api/v1/providers/garmin/webhooks` and at the deprecated `/api/v1/garmin/webhooks/push` and `/api/v1/garmin/webhooks/ping`, authenticated only by the public client ID, so anyone could send data in Garmin's name. Those URLs keep working while `GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN` is `true`, which is the default for now; a later release turns it off. Switch to the token URL now:
+
+    1. Deploy the new version (backend and Celery workers). Garmin data keeps arriving at the old URLs.
+    2. Print the webhook URL with `docker compose exec app uv run python scripts/garmin_webhook_url.py` (or `uv run python scripts/garmin_webhook_url.py` in `backend/`).
+    3. In [API Endpoints](https://apis.garmin.com/tools/endpoints), change the URL of **every** data type to the one the script printed, **Deregistrations** and **User Permissions** included.
+    4. Set `GARMIN_ACCEPT_WEBHOOKS_WITHOUT_TOKEN=false` and restart the backend. Only then are the old URLs closed.
+
+    While old URLs are accepted, the backend logs a warning (`garmin_webhook_without_token_accepted`) with the URL to set for every notification that arrives without the token. A data type that sends nothing logs nothing, so the warnings stopping is only a hint: check the URL of every data type in the portal before step 4.
+
+    Once old URLs are off, the backend logs an error with the URL to set (the token shown as a placeholder) and the command that prints it, for every notification from your Garmin app (recognized by its `garmin-client-id` header) that it rejects: one sent to an old URL, or to a URL without the current token. Garmin retries a rejected notification with backoff, usually for long enough to fix the URL; to be sure nothing is lost, turn **On Hold** on for the affected data types while you fix them. The client ID is public, so others can trigger this error too. The URL is set per data type, so one type can stop while the others still arrive. Before acting on the error, check whether new data of some type has stopped arriving or a data type in the portal has another URL, and don't rotate `SECRET_KEY` because of it alone.
+    </Warning>
+  </Step>
+  <Step title="Rotate the webhook URL">
+    The token in the webhook URL is derived from `SECRET_KEY`, so rotating it means rotating `SECRET_KEY`. Do it if the webhook URL may have leaked. The URL also changes with `API_BASE_URL`; follow the same steps when you change it.
+
+    1. In [API Endpoints](https://apis.garmin.com/tools/endpoints), turn **On Hold** on for every data type, **Deregistrations** and **User Permissions** included.
+    2. Set a new `SECRET_KEY` (`openssl rand -hex 32`) and restart the backend and Celery workers. From now on, notifications sent to the old URL are rejected with `401`.
+    3. Print the new URL with the script and set it for every data type, **Deregistrations** and **User Permissions** included.
+    4. Turn **On Hold** off for every data type.
+
+    Garmin queues notifications while **On Hold** is on, so none are lost during the rotation.
+
+    <Warning>
+    A new `SECRET_KEY` affects more than Garmin. It invalidates issued access tokens (refresh tokens stay valid, so sessions renew) and changes the other webhook secrets derived from it: Strava's callback URL (register its subscription again, see the [Strava guide](/providers/strava-api-integration)), and the Google Health, Oura and Suunto secrets unless those are set explicitly. Those providers need their subscriptions or portal settings updated too.
+    </Warning>
+  </Step>
   <Step title="Go to production (partner verification + production access)">
     Evaluation apps are for internal development. To go production, Garmin requires partner verification:
 

@@ -5,12 +5,12 @@ for classifying errors that should stop the entire backfill chain.
 """
 
 from datetime import datetime, timezone
-from logging import getLogger
 from typing import Any
 
 from celery import current_app as celery_app
 from celery import shared_task
 
+from app.constants.celery_tasks import CeleryTask
 from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import (
     DELAY_BETWEEN_TYPES,
@@ -30,11 +30,9 @@ from app.services.providers.garmin.backfill_state import (
     record_timed_out_entry,
     update_window_cell,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
-
-_TRIGGER_NEXT_TASK = "app.integrations.celery.tasks.garmin.backfill_task.trigger_next_pending_type"
+logger = get_logger(__name__)
 
 
 def _classify_chain_stop_error(status_code: int | None, error_text: str) -> tuple[str, str] | None:
@@ -79,7 +77,7 @@ def _finalize_chain_stop(user_id: str, current_window: int, error_msg: str) -> N
     complete_backfill(user_id)
 
 
-@shared_task
+@shared_task(name=CeleryTask.GARMIN_CHECK_TRIGGERED_TIMEOUT)
 def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     """Check if a triggered type has timed out and mark it as timed_out.
 
@@ -94,9 +92,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     status = get_redis_client().get(_get_key(user_id_str, "types", data_type, "status"))
 
     if status != "triggered":
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Timeout check: type already resolved",
             provider="garmin",
             trace_id=trace_id,
@@ -113,9 +109,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
         elapsed = (datetime.now(timezone.utc) - triggered_at).total_seconds()
         if elapsed < TRIGGERED_TIMEOUT_SECONDS:
             remaining = int(TRIGGERED_TIMEOUT_SECONDS - elapsed) + 1
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Timeout check: not yet expired, rescheduling",
                 provider="garmin",
                 trace_id=trace_id,
@@ -138,7 +132,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     else:
         record_timed_out_entry(user_id_str, data_type, get_current_window(user_id_str))
 
-    celery_app.send_task(_TRIGGER_NEXT_TASK, args=[user_id_str], countdown=DELAY_BETWEEN_TYPES)
+    celery_app.send_task(CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE, args=[user_id_str], countdown=DELAY_BETWEEN_TYPES)
 
     skip_count = get_type_skip_count(user_id_str, data_type)
     return {

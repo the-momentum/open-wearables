@@ -12,22 +12,26 @@ Tests cover:
 - Workout type mapping
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import PropertyMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.enums import WorkoutType
+from app.schemas.model_crud.credentials import ProviderCredentials
 from app.schemas.providers.suunto import HeartRateJSON
 from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
+from tests.providers.factories import SuuntoWorkoutFactory
 
 
 class TestSuuntoWorkouts:
@@ -39,7 +43,7 @@ class TestSuuntoWorkouts:
         workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
         oauth = SuuntoOAuth(
-            user_repo=MagicMock(),
+            user_repo=create_autospec(UserRepository, instance=True),
             connection_repo=connection_repo,
             provider_name="suunto",
             api_base_url="https://cloudapi.suunto.com",
@@ -55,16 +59,14 @@ class TestSuuntoWorkouts:
     @pytest.fixture
     def sample_workout_data(self) -> dict:
         """Sample Suunto workout data for testing."""
-        return {
-            "workoutId": 123456789,
-            "activityId": 1,  # Running
-            "startTime": 1705309200000,  # 2024-01-15T08:00:00 in milliseconds
-            "stopTime": 1705312800000,  # 2024-01-15T09:00:00 in milliseconds
-            "totalTime": 3600.0,  # 1 hour in seconds
-            "totalDistance": 10000,
-            "stepCount": 8500,
-            "energyConsumption": 650,
-            "hrdata": {
+        return SuuntoWorkoutFactory.build_payload(
+            workoutKey="6aa10da139e69418a2fa8db1",
+            totalDistance=10000,
+            stepCount=8500,
+            energyConsumption=650,
+            avgSpeed=2.78,
+            maxSpeed=4.1,
+            hrdata={
                 "workoutMaxHR": 175,
                 "workoutAvgHR": 145,
                 "userMaxHR": 190,
@@ -73,13 +75,13 @@ class TestSuuntoWorkouts:
                 "max": 175,
                 "min": 120,  # Minimum HR during workout
             },
-            "gear": {
+            gear={
                 "manufacturer": "Suunto",
                 "name": "Suunto 9 Peak",
                 "displayName": "Suunto 9 Peak",
                 "serialNumber": "SN123456",
             },
-        }
+        )
 
     @pytest.fixture
     def sample_hrdata(self) -> HeartRateJSON:
@@ -93,22 +95,20 @@ class TestSuuntoWorkouts:
             max=175,
         )
 
-    def test_extract_dates_from_millisecond_timestamps(self, suunto_workouts: SuuntoWorkouts) -> None:
-        """Should extract datetime objects from millisecond timestamps."""
+    @pytest.mark.usefixtures("non_utc_process_timezone")
+    def test_extract_dates_returns_utc_instants_on_non_utc_host(self, suunto_workouts: SuuntoWorkouts) -> None:
+        """Millisecond timestamps should become UTC instants regardless of the host timezone."""
         # Arrange
-        start_ms = 1705309200000  # 2024-01-15T08:00:00
-        end_ms = 1705312800000  # 2024-01-15T09:00:00
+        start_ms = 1705309200000  # 2024-01-15T09:00:00Z
+        end_ms = 1705312800000  # 2024-01-15T10:00:00Z
 
         # Act
         start_date, end_date = suunto_workouts._extract_dates(start_ms, end_ms)
 
         # Assert
-        assert isinstance(start_date, datetime)
-        assert isinstance(end_date, datetime)
-        assert start_date.year == 2024
-        assert start_date.month == 1
-        assert start_date.day == 15
-        assert end_date > start_date
+        assert start_date == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
+        assert end_date == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
+        assert start_date.utcoffset() == end_date.utcoffset() == timedelta(0)
 
     def test_build_metrics_with_complete_data(
         self,
@@ -129,6 +129,8 @@ class TestSuuntoWorkouts:
         assert metrics["steps_count"] == 8500
         assert metrics["energy_burned"] == Decimal("650")
         assert metrics["distance"] == Decimal("10000")
+        assert metrics["average_speed"] == Decimal("2.78")
+        assert metrics["max_speed"] == Decimal("4.1")
 
     def test_build_metrics_with_missing_heart_rate(
         self,
@@ -193,6 +195,7 @@ class TestSuuntoWorkouts:
         assert workout.totalDistance == 21381.4
         assert metrics["distance"] == Decimal("21381.4")
 
+    @pytest.mark.usefixtures("non_utc_process_timezone")
     def test_normalize_workout_creates_event_record(
         self,
         suunto_workouts: SuuntoWorkouts,
@@ -212,7 +215,9 @@ class TestSuuntoWorkouts:
         assert record.source_name == "Suunto 9 Peak"
         assert record.device_model == "Suunto 9 Peak"  # Uses displayName from gear
         assert record.duration_seconds == 3600
-        assert record.external_id == "123456789"
+        assert record.start_datetime == datetime(2024, 1, 15, 9, 0, tzinfo=timezone.utc)
+        assert record.end_datetime == datetime(2024, 1, 15, 10, 0, tzinfo=timezone.utc)
+        assert record.external_id == "6aa10da139e69418a2fa8db1"
         assert record.user_id == user_id
 
     def test_normalize_workout_without_device(
@@ -260,8 +265,13 @@ class TestSuuntoWorkouts:
         """Should include subscription key in headers when available."""
         # Arrange
         # Mock credentials property using PropertyMock
-        mock_creds = MagicMock()
-        mock_creds.subscription_key = "test_subscription_key"
+        mock_creds = ProviderCredentials(
+            client_id="id",
+            client_secret="secret",
+            redirect_uri="https://example.com/callback",
+            default_scope="workout",
+            subscription_key="test_subscription_key",
+        )
         with patch.object(type(suunto_workouts.oauth), "credentials", new_callable=PropertyMock) as mock_prop:
             mock_prop.return_value = mock_creds
 
@@ -272,15 +282,11 @@ class TestSuuntoWorkouts:
             assert "Ocp-Apim-Subscription-Key" in headers
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
     def test_get_workouts_from_api(
-        self,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Should fetch workouts from Suunto API with correct parameters."""
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -299,20 +305,17 @@ class TestSuuntoWorkouts:
         # Assert
         mock_request.assert_called_once()
         call_args = mock_request.call_args
-        # endpoint is third positional argument (db, user_id, endpoint)
-        assert call_args[0][2] == "/v3/workouts/"
+        # endpoint is fourth positional argument (self, db, user_id, endpoint)
+        assert call_args[0][3] == "/v3/workouts/"
         assert call_args[1]["params"]["since"] == 1705309200
         assert call_args[1]["params"]["limit"] == 50
         assert result["payload"] == [sample_workout_data]
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
     def test_get_workouts_respects_max_limit(
-        self,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session
     ) -> None:
         """Should respect maximum limit of 100 workouts per request."""
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -326,9 +329,9 @@ class TestSuuntoWorkouts:
         call_args = mock_request.call_args
         assert call_args[1]["params"]["limit"] == 100  # Capped at 100
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
-    def test_get_workout_detail(self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session) -> None:
+    def test_get_workout_detail(self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session) -> None:
         """Should fetch detailed workout data from API."""
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -342,25 +345,22 @@ class TestSuuntoWorkouts:
         # Assert
         mock_request.assert_called_once()
         call_args = mock_request.call_args
-        # endpoint is third positional argument (db, user_id, endpoint)
-        assert call_args[0][2] == f"/v3/workouts/{workout_key}"
+        # endpoint is fourth positional argument (self, db, user_id, endpoint)
+        assert call_args[0][3] == f"/v3/workouts/{workout_key}"
         assert result["workoutKey"] == workout_key
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
     def test_load_data_creates_records(
-        self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Should load data and create event records."""
+        mock_ensure_data_source = mocker.patch(
+            "app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True
+        )
+        mock_create_detail = mocker.patch(
+            "app.services.event_record_service.event_record_service.create_detail", autospec=True
+        )
+        mock_create = mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         # Arrange
         from tests.factories import UserFactory
 
@@ -377,21 +377,14 @@ class TestSuuntoWorkouts:
         # Verify data source creation was attempted
         mock_ensure_data_source.assert_called_once()
 
-    @patch.object(SuuntoWorkouts, "_make_api_request")
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
     def test_load_data_walks_every_page(
-        self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        mock_request: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Historical sync must not stop at the first page of 100 workouts."""
+        mocker.patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True)
+        mocker.patch("app.services.event_record_service.event_record_service.create_detail", autospec=True)
+        mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
+        mock_request = mocker.patch.object(SuuntoWorkouts, "_make_api_request", autospec=True)
         from tests.factories import UserFactory
 
         user = UserFactory()
@@ -408,17 +401,8 @@ class TestSuuntoWorkouts:
         assert [(page["offset"], page["limit"]) for page in pages] == [(0, 100), (100, 100), (200, 100)]
         assert {page["since"] for page in pages} == {1735689600000}
 
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
     def test_process_push_activity_creates_record_and_detail(
-        self,
-        mock_ensure_data_source: MagicMock,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
-        suunto_workouts: SuuntoWorkouts,
-        db: Session,
-        sample_workout_data: dict,
+        self, mocker: MockerFixture, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict
     ) -> None:
         """Webhook push path must persist both the event_record and its detail.
 
@@ -426,6 +410,13 @@ class TestSuuntoWorkouts:
         the workout.created outgoing webhook, so skipping it silently drops
         live workouts from every downstream consumer.
         """
+        mock_ensure_data_source = mocker.patch(
+            "app.repositories.data_source_repository.DataSourceRepository.ensure_data_source", autospec=True
+        )
+        mock_create_detail = mocker.patch(
+            "app.services.event_record_service.event_record_service.create_detail", autospec=True
+        )
+        mock_create = mocker.patch("app.services.event_record_service.event_record_service.create", autospec=True)
         from tests.factories import UserFactory
 
         user = UserFactory()

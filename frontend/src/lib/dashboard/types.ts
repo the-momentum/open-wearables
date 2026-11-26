@@ -7,7 +7,7 @@ export type SystemInfo = {
 	 * is served from a Redis cache and falls back to the planner's `reltuples`
 	 * on a cold one, and the archive count is always from planner statistics.
 	 */
-	data_points: { count: number; archived: number };
+	data_points: { count: number; archived: number; aggregated: number };
 	event_records: { count: number; workouts: number; sleep: number; menstrual_cycles: number };
 	connections_coverage: {
 		users_with_active: number;

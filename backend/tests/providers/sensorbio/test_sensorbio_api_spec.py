@@ -10,14 +10,20 @@ Covers:
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
+import httpx
 import pytest
+import respx
+from sqlalchemy.orm import Session
 
+from app.models import UserConnection
+from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.schemas.enums import WorkoutType
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
+from app.services.providers.sensorbio.oauth import SensorBioOAuth
 from app.services.providers.sensorbio.workouts import SensorBioWorkouts
 
 # ---------------------------------------------------------------------------
@@ -27,17 +33,17 @@ from app.services.providers.sensorbio.workouts import SensorBioWorkouts
 
 @pytest.fixture
 def mock_oauth() -> MagicMock:
-    return MagicMock()
+    return create_autospec(SensorBioOAuth, instance=True)
 
 
 @pytest.fixture
 def mock_connection_repo() -> MagicMock:
-    return MagicMock()
+    return create_autospec(UserConnectionRepository, instance=True)
 
 
 @pytest.fixture
 def mock_workout_repo() -> MagicMock:
-    return MagicMock()
+    return create_autospec(EventRecordRepository, instance=True)
 
 
 @pytest.fixture
@@ -61,7 +67,7 @@ def data_247(mock_connection_repo: MagicMock, mock_oauth: MagicMock) -> SensorBi
 
 
 USER_ID = uuid4()
-DB = MagicMock()
+DB = MagicMock(spec=Session)
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +107,7 @@ def test_get_workouts_iterates_nested_activities(workouts: SensorBioWorkouts) ->
     start = datetime(2023, 11, 14, tzinfo=timezone.utc)
     end = datetime(2023, 11, 16, tzinfo=timezone.utc)
 
-    with patch.object(workouts, "_make_api_request", return_value=_ACTIVITIES_SINGLE_PAGE):
+    with patch.object(workouts, "_make_api_request", autospec=True, return_value=_ACTIVITIES_SINGLE_PAGE):
         result = workouts.get_workouts(DB, USER_ID, start, end)
 
     assert len(result) == 1
@@ -137,7 +143,7 @@ def test_get_workouts_cursor_uses_ms_timestamp_directly(workouts: SensorBioWorko
     }
     page2: dict[str, Any] = {"data": [], "links": {}}
 
-    mock_req = MagicMock(side_effect=[page1, page2])
+    mock_req = create_autospec(workouts._make_api_request, side_effect=[page1, page2])
     with patch.object(workouts, "_make_api_request", mock_req):
         start = datetime(2023, 11, 14, tzinfo=timezone.utc)
         end = datetime(2023, 11, 16, tzinfo=timezone.utc)
@@ -155,7 +161,7 @@ def test_get_workouts_empty_activities_list_skipped(workouts: SensorBioWorkouts)
         "data": [{"timestamp": _TS_WS1_MS, "name": "Walk", "activities": []}],
         "links": {},
     }
-    with patch.object(workouts, "_make_api_request", return_value=response):
+    with patch.object(workouts, "_make_api_request", autospec=True, return_value=response):
         start = datetime(2023, 11, 14, tzinfo=timezone.utc)
         end = datetime(2023, 11, 16, tzinfo=timezone.utc)
         result = workouts.get_workouts(DB, USER_ID, start, end)
@@ -214,12 +220,11 @@ _STEP_DETAILS_RESPONSE: dict[str, Any] = {
 
 
 def test_normalize_daily_activity_reads_metrics_by_name(data_247: SensorBio247Data) -> None:
-    """normalize_daily_activity must parse steps/distance/energy from metrics[]."""
+    """normalize_daily_activity must parse steps/distance from metrics[]."""
     normalized = data_247.normalize_daily_activity(_STEP_DETAILS_RESPONSE, USER_ID)
 
     assert normalized["steps"] == 8200
     assert normalized["distance"] == pytest.approx(6.1)
-    assert normalized["energy"] == pytest.approx(312.0)
 
 
 def test_normalize_daily_activity_timestamp_from_date(data_247: SensorBio247Data) -> None:
@@ -230,24 +235,53 @@ def test_normalize_daily_activity_timestamp_from_date(data_247: SensorBio247Data
 
 def test_normalize_daily_activity_missing_metric_is_none(data_247: SensorBio247Data) -> None:
     """When a metric is absent from the array, the field should be None."""
-    response_no_calories = {
+    response_no_distance = {
+        "date": "2024-01-15",
+        "granularity": "day",
+        "metrics": [{"name": "Steps", "value": 5000}],
+    }
+    normalized = data_247.normalize_daily_activity(response_no_distance, USER_ID)
+    assert normalized["steps"] == 5000
+    assert normalized["distance"] is None
+
+
+def test_normalize_daily_calories_reads_resting_and_active(data_247: SensorBio247Data) -> None:
+    response = {
         "date": "2024-01-15",
         "granularity": "day",
         "metrics": [
-            {"name": "Steps", "value": 5000},
-            {"name": "Distance", "value": 3.5, "unit": "km"},
-            # No Calories entry
+            {"name": "Resting Calories", "value": 1650.0, "unit": "kcal"},
+            {"name": "Active Calories", "value": 420.0, "unit": "kcal"},
+            {"name": "Total Calories", "value": 2070.0, "unit": "kcal"},
         ],
     }
-    normalized = data_247.normalize_daily_activity(response_no_calories, USER_ID)
-    assert normalized["steps"] == 5000
-    assert normalized["energy"] is None
+    normalized = data_247.normalize_daily_calories(response, USER_ID)
+    assert normalized["basal_energy"] == pytest.approx(1650.0)
+    assert normalized["energy"] == pytest.approx(420.0)  # Total - Resting
+    assert normalized["timestamp"] == datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("resting", "total", "expected"),
+    [(1650.0, 1650.0, (1650.0, 0)), (None, 1650.0, (None, None)), (0.0, 0.0, (None, None))],
+)
+def test_normalize_daily_calories_keeps_a_reported_zero(
+    data_247: SensorBio247Data, resting: float | None, total: float, expected: tuple
+) -> None:
+    metrics = [{"name": "Total Calories", "value": total}]
+    if resting is not None:
+        metrics.append({"name": "Resting Calories", "value": resting})
+    response = {"date": "2024-01-15", "granularity": "day", "metrics": metrics}
+
+    normalized = data_247.normalize_daily_calories(response, USER_ID)
+
+    assert (normalized["basal_energy"], normalized["energy"]) == expected
 
 
 def test_get_daily_activity_statistics_no_data_wrapper(data_247: SensorBio247Data) -> None:
     """get_daily_activity_statistics must handle the response as a direct
     StepDetailsResponseBody (no 'data' key wrapping it)."""
-    with patch.object(data_247, "_make_api_request", return_value=_STEP_DETAILS_RESPONSE):
+    with patch.object(data_247, "_make_api_request", autospec=True, return_value=_STEP_DETAILS_RESPONSE):
         result = data_247.get_daily_activity_statistics(
             DB,
             USER_ID,
@@ -262,7 +296,7 @@ def test_get_daily_activity_statistics_no_data_wrapper(data_247: SensorBio247Dat
 def test_get_daily_activity_statistics_ignores_non_metrics_response(data_247: SensorBio247Data) -> None:
     """A response without a 'metrics' key (e.g. old data wrapper shape) is ignored."""
     old_shape = {"data": {"steps": 100, "distance": 1.0}}
-    with patch.object(data_247, "_make_api_request", return_value=old_shape):
+    with patch.object(data_247, "_make_api_request", autospec=True, return_value=old_shape):
         result = data_247.get_daily_activity_statistics(
             DB,
             USER_ID,
@@ -279,7 +313,7 @@ def test_get_daily_activity_statistics_ignores_non_metrics_response(data_247: Se
 
 def test_workouts_make_api_request_uses_http2(workouts: SensorBioWorkouts) -> None:
     """SensorBioWorkouts._make_api_request must pass http2=True."""
-    with patch("app.services.providers.sensorbio.workouts.make_authenticated_request") as mock_req:
+    with patch("app.services.providers.sensorbio.workouts.make_authenticated_request", autospec=True) as mock_req:
         mock_req.return_value = {"data": [], "links": {}}
         workouts._make_api_request(DB, USER_ID, "/v1/activities", params={})
     mock_req.assert_called_once()
@@ -289,7 +323,7 @@ def test_workouts_make_api_request_uses_http2(workouts: SensorBioWorkouts) -> No
 
 def test_data_247_make_api_request_uses_http2(data_247: SensorBio247Data) -> None:
     """SensorBio247Data._make_api_request must pass http2=True."""
-    with patch("app.services.providers.sensorbio.data_247.make_authenticated_request") as mock_req:
+    with patch("app.services.providers.sensorbio.data_247.make_authenticated_request", autospec=True) as mock_req:
         mock_req.return_value = {"metrics": [], "date": "2024-01-15"}
         data_247._make_api_request(DB, USER_ID, "/v1/step/details", params={})
     mock_req.assert_called_once()
@@ -297,31 +331,22 @@ def test_data_247_make_api_request_uses_http2(data_247: SensorBio247Data) -> Non
     assert kwargs.get("http2") is True, "http2=True must be passed for Sensor Bio 247 data"
 
 
-def test_api_client_http2_flag_forwarded() -> None:
+def test_api_client_http2_flag_forwarded(respx_mock: respx.MockRouter) -> None:
     """make_authenticated_request must forward http2 to the httpx.Client."""
     client_req = make_authenticated_request
 
-    mock_repo = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.access_token = "tok"
-    mock_conn.token_expires_at = None
+    mock_repo = create_autospec(UserConnectionRepository, instance=True)
+    mock_conn = UserConnection(access_token="tok", token_expires_at=None)
     mock_repo.get_by_user_and_provider.return_value = mock_conn
 
-    mock_oauth = MagicMock()
+    mock_oauth = create_autospec(SensorBioOAuth, instance=True)
 
-    with patch("httpx.Client") as mock_client_cls:
-        mock_client_instance = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"ok": True}
-        mock_resp.raise_for_status.return_value = None
-        mock_client_instance.__enter__ = MagicMock(return_value=mock_client_instance)
-        mock_client_instance.__exit__ = MagicMock(return_value=False)
-        mock_client_instance.request.return_value = mock_resp
-        mock_client_cls.return_value = mock_client_instance
+    route = respx_mock.get("https://api.sensorbio.com/v1/activities").respond(200, json={"ok": True})
 
-        client_req(
-            db=DB,
+    # respx can't see constructor kwargs, so the real client is wrapped to record them
+    with patch("httpx.Client", wraps=httpx.Client) as mock_client_cls:
+        result = client_req(
+            db=MagicMock(spec=Session, info={}),  # real dict: get_valid_token caches the token in Session.info
             user_id=USER_ID,
             connection_repo=mock_repo,
             oauth=mock_oauth,
@@ -332,3 +357,5 @@ def test_api_client_http2_flag_forwarded() -> None:
         )
 
     mock_client_cls.assert_called_once_with(http2=True)
+    assert result == {"ok": True}
+    assert route.calls.last.request.headers["Authorization"] == "Bearer tok"

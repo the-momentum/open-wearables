@@ -5,22 +5,21 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Upload from '@lucide/svelte/icons/upload';
 	import { enhance } from '$app/forms';
-	import { page } from '$app/state';
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { menuItemClass } from '$lib/components/ui/menu';
-	import { pairingLink } from '$lib/pairing/links';
-	import type { UserDetail } from '$lib/users/types';
+	import { fetchPairingLink } from '$lib/pairing/links';
+	import type { User } from '$lib/users/types';
 	import { createCopier } from '$lib/utils/clipboard.svelte';
 
-	let { user, ondelete }: { user: UserDetail; ondelete: () => void } = $props();
+	let { user, ondelete }: { user: User; ondelete: () => void } = $props();
 
 	let menuOpen = $state(false);
 	const copier = createCopier();
 
 	function copyPairingLink() {
 		menuOpen = false;
-		copier.copy(pairingLink(page.url.origin, user.id));
+		copier.copyPending(fetchPairingLink(user.id));
 	}
 </script>
 

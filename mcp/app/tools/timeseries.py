@@ -42,23 +42,33 @@ async def get_timeseries(
         end_time: End of the window in ISO-8601 format.
                   Example: "2026-04-05T23:59:59Z"
         types: List of SeriesType codes to include. Common values:
-               - "heart_rate", "resting_heart_rate", "walking_heart_rate_average"
+               - "heart_rate", "resting_heart_rate", "walking_heart_rate"
                - "heart_rate_variability_sdnn", "heart_rate_variability_rmssd"
                - "oxygen_saturation", "respiratory_rate"
                - "blood_glucose", "blood_pressure_systolic", "blood_pressure_diastolic"
                - "weight", "body_fat_percentage", "body_mass_index"
                - "steps", "active_energy", "basal_energy", "distance"
-        resolution: One of "raw", "1min", "5min", "15min", "1hour".
-                    Default "raw" returns every sample as stored; higher
-                    resolutions downsample server-side. Prefer "1min" or
-                    coarser for multi-day windows to keep response size
-                    bounded.
+        resolution: One of "raw", "1min", "5min", "15min", "1hour", "1day",
+                    "1week", "1month". Default "raw" returns every sample as
+                    stored; minute and hour resolutions downsample server-side;
+                    "1day", "1week" and "1month" return one value per local day,
+                    week or month, the provider's own day value where it sent
+                    one, with all statistics under "stats". Prefer "1min" or
+                    coarser for multi-day windows, and "1day" or coarser for
+                    weeks and months, to keep response size bounded.
+                    Day values exist ONLY at "1day" and coarser: resting heart
+                    rate, nightly HRV, SpO2, respiratory rate, VO2 max, skin
+                    temperature, and a provider's daily steps or energy. At
+                    "raw" or minute resolutions these types come back empty
+                    for most wearables, so ask for "1day" when the question is
+                    "what was X on/over these days".
 
     Returns:
         A dictionary containing:
         - user: Information about the user (id, first_name, last_name)
         - period: The time window queried (start, end, resolution)
-        - records: List of samples, each {timestamp, type, value, unit, source}
+        - records: List of samples, each {timestamp, type, value, unit, source};
+                   day, week and month records also carry stats {avg, min, max, sum, last, count}
         - summary: Per-type aggregates (count, avg, min, max)
         - truncated: True if pagination hit the safety ceiling (rare)
 
@@ -94,6 +104,10 @@ async def get_timeseries(
         - Multi-day queries at resolution="raw" can return tens of thousands
           of samples. Prefer "1min" or coarser for anything longer than a
           day unless the user explicitly asks for raw data.
+        - An empty `records` list for resting_heart_rate, HRV, SpO2, VO2 max
+          or respiratory_rate at "raw" does not mean the user has no data:
+          those are day values. Retry with resolution="1day" before answering
+          "no data".
         - For a single day's heart-rate average, prefer get_activity_summary
           when it's available — it's cheaper. Use this tool when:
           (a) activity summary is missing or has null heart_rate, or
@@ -139,6 +153,7 @@ async def get_timeseries(
                         "value": sample.get("value"),
                         "unit": sample.get("unit"),
                         "source": source.get("provider") if isinstance(source, dict) else source,
+                        **({"stats": sample["stats"]} if sample.get("stats") else {}),
                     }
                 )
             cursor = (response.get("pagination") or {}).get("next_cursor")

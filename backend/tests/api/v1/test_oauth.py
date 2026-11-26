@@ -7,20 +7,33 @@ Tests the /api/v1/oauth endpoints including:
 - PUT /api/v1/oauth/providers/{provider} - test update provider status
 """
 
+from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import pytest
+from dirty_equals import IsInstance, IsPartialDict, IsStr
 from fastapi.testclient import TestClient
+from jose import jwt
 from sqlalchemy.orm import Session
 
-from tests.factories import DeveloperFactory
-from tests.utils import developer_auth_headers
+from app.config import settings
+from app.utils.connect_token import create_connect_token
+from app.utils.security import create_access_token
+from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
+from tests.utils import api_key_headers, developer_auth_headers
+
+
+@pytest.fixture
+def auth_headers(db: Session) -> dict[str, str]:
+    return api_key_headers(ApiKeyFactory().plain_key)
 
 
 class TestOAuthAuthorizeEndpoint:
     """Test suite for OAuth authorization endpoint."""
 
-    def test_authorize_provider_success(self, client: TestClient, db: Session) -> None:
+    def test_authorize_provider_success(self, client: TestClient, auth_headers: dict[str, str]) -> None:
         """Test successfully initiating OAuth flow for a provider."""
         # Arrange
         user_id = uuid4()
@@ -29,22 +42,19 @@ class TestOAuthAuthorizeEndpoint:
         response = client.get(
             "/api/v1/oauth/garmin/authorize",
             params={"user_id": str(user_id)},
+            headers=auth_headers,
         )
 
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert "authorization_url" in data
-        assert "state" in data
-        assert isinstance(data["authorization_url"], str)
-        assert isinstance(data["state"], str)
-        assert len(data["state"]) > 0
+        assert data == {"authorization_url": IsStr, "state": IsStr(min_length=1)}
 
-    def test_authorize_provider_with_redirect_uri(self, client: TestClient, db: Session) -> None:
+    def test_authorize_provider_with_redirect_uri(self, client: TestClient, auth_headers: dict[str, str]) -> None:
         """Test OAuth flow with optional redirect URI."""
         # Arrange
         user_id = uuid4()
-        redirect_uri = "https://myapp.com/oauth/callback"
+        redirect_uri = "openwearables://oauth/callback"
 
         # Act
         response = client.get(
@@ -53,15 +63,14 @@ class TestOAuthAuthorizeEndpoint:
                 "user_id": str(user_id),
                 "redirect_uri": redirect_uri,
             },
+            headers=auth_headers,
         )
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
-        assert "authorization_url" in data
-        assert "state" in data
+        assert response.json() == {"authorization_url": IsStr, "state": IsStr}
 
-    def test_authorize_different_providers(self, client: TestClient, db: Session) -> None:
+    def test_authorize_different_providers(self, client: TestClient, auth_headers: dict[str, str]) -> None:
         """Test initiating OAuth for different providers."""
         # Arrange
         user_id = uuid4()
@@ -72,34 +81,34 @@ class TestOAuthAuthorizeEndpoint:
             response = client.get(
                 f"/api/v1/oauth/{provider}/authorize",
                 params={"user_id": str(user_id)},
+                headers=auth_headers,
             )
 
             # Assert
             assert response.status_code == 200
-            data = response.json()
-            assert "authorization_url" in data
-            assert "state" in data
+            assert response.json() == {"authorization_url": IsStr, "state": IsStr}
 
-    def test_authorize_missing_user_id(self, client: TestClient, db: Session) -> None:
+    def test_authorize_missing_user_id(self, client: TestClient, auth_headers: dict[str, str]) -> None:
         """Test authorization without user_id parameter."""
         # Act
-        response = client.get("/api/v1/oauth/garmin/authorize")
+        response = client.get("/api/v1/oauth/garmin/authorize", headers=auth_headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
-    def test_authorize_invalid_user_id(self, client: TestClient, db: Session) -> None:
+    def test_authorize_invalid_user_id(self, client: TestClient, auth_headers: dict[str, str]) -> None:
         """Test authorization with invalid user_id format."""
         # Act
         response = client.get(
             "/api/v1/oauth/garmin/authorize",
             params={"user_id": "not-a-uuid"},
+            headers=auth_headers,
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
-    def test_authorize_invalid_provider(self, client: TestClient, db: Session) -> None:
+    def test_authorize_invalid_provider(self, client: TestClient, auth_headers: dict[str, str]) -> None:
         """Test authorization with non-existent provider."""
         # Arrange
         user_id = uuid4()
@@ -108,12 +117,13 @@ class TestOAuthAuthorizeEndpoint:
         response = client.get(
             "/api/v1/oauth/invalid-provider/authorize",
             params={"user_id": str(user_id)},
+            headers=auth_headers,
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
-    def test_authorize_non_oauth_provider(self, client: TestClient, db: Session) -> None:
+    def test_authorize_non_oauth_provider(self, client: TestClient, auth_headers: dict[str, str]) -> None:
         """Test authorization with provider that doesn't support OAuth."""
         # Arrange
         user_id = uuid4()
@@ -122,10 +132,106 @@ class TestOAuthAuthorizeEndpoint:
         response = client.get(
             "/api/v1/oauth/apple/authorize",
             params={"user_id": str(user_id)},
+            headers=auth_headers,
         )
 
         # Assert - Should fail because apple doesn't have OAuth
-        assert response.status_code in [400, 401, 422]
+        assert response.status_code == 400
+        assert response.json()["code"] == "UNSUPPORTED_PROVIDER"
+
+    def test_authorize_requires_credentials(self, client: TestClient, db: Session) -> None:
+        response = client.get("/api/v1/oauth/garmin/authorize", params={"user_id": str(uuid4())})
+        assert response.status_code == 401
+
+    def test_authorize_with_developer_token(self, client: TestClient, db: Session) -> None:
+        response = client.get(
+            "/api/v1/oauth/garmin/authorize",
+            params={"user_id": str(uuid4())},
+            headers=developer_auth_headers(DeveloperFactory().id),
+        )
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        "make_headers",
+        [
+            lambda uid: {"X-Open-Wearables-Connect-Token": create_connect_token(uid)[0]},
+            lambda uid: {
+                "Authorization": f"Bearer {create_access_token(subject=str(uid), scope='sdk', app_id='app_1')}"
+            },
+        ],
+        ids=["connect_token", "sdk_token"],
+    )
+    def test_user_scoped_token_only_connects_its_own_user(
+        self, client: TestClient, db: Session, make_headers: Callable[[UUID], dict[str, str]]
+    ) -> None:
+        user_id = uuid4()
+        headers = make_headers(user_id)
+
+        own = client.get("/api/v1/oauth/garmin/authorize", params={"user_id": str(user_id)}, headers=headers)
+        other = client.get("/api/v1/oauth/garmin/authorize", params={"user_id": str(uuid4())}, headers=headers)
+
+        assert own.status_code == 200
+        assert other.status_code == 403
+
+    def test_invalid_connect_token_is_rejected(self, client: TestClient, db: Session) -> None:
+        response = client.get(
+            "/api/v1/oauth/garmin/authorize",
+            params={"user_id": str(uuid4())},
+            headers={"X-Open-Wearables-Connect-Token": "not-a-token"},
+        )
+        assert response.status_code == 401
+
+    def test_sdk_token_is_not_a_connect_token(self, client: TestClient, db: Session) -> None:
+        user_id = uuid4()
+        response = client.get(
+            "/api/v1/oauth/garmin/authorize",
+            params={"user_id": str(user_id)},
+            headers={
+                "X-Open-Wearables-Connect-Token": create_access_token(subject=str(user_id), scope="sdk", app_id="app_1")
+            },
+        )
+        assert response.status_code == 401
+
+    def test_connect_token_signed_with_secret_key_is_rejected(self, client: TestClient, db: Session) -> None:
+        user_id = uuid4()
+        claims = {"sub": str(user_id), "scope": "connect", "exp": datetime.now(timezone.utc) + timedelta(days=1)}
+        response = client.get(
+            "/api/v1/oauth/garmin/authorize",
+            params={"user_id": str(user_id)},
+            headers={"X-Open-Wearables-Connect-Token": jwt.encode(claims, settings.secret_key, settings.algorithm)},
+        )
+        assert response.status_code == 401
+
+
+class TestConnectTokenEndpoint:
+    def test_requires_credentials(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        assert client.post(f"/api/v1/users/{user.id}/connect-token").status_code == 401
+
+    def test_unknown_user_is_404(self, client: TestClient, auth_headers: dict[str, str]) -> None:
+        response = client.post(f"/api/v1/users/{uuid4()}/connect-token", headers=auth_headers)
+        assert response.status_code == 404
+
+    def test_minted_token_authorizes_its_user(self, client: TestClient, auth_headers: dict[str, str]) -> None:
+        user = UserFactory()
+
+        minted = client.post(f"/api/v1/users/{user.id}/connect-token", headers=auth_headers)
+
+        assert minted.status_code == 200
+        body = minted.json()
+        assert body["pair_url"].endswith(f"/users/{user.id}/pair?t={body['token']}")
+        response = client.get(
+            "/api/v1/oauth/garmin/authorize",
+            params={"user_id": str(user.id)},
+            headers={"X-Open-Wearables-Connect-Token": body["token"]},
+        )
+        assert response.status_code == 200
+
+    def test_connect_token_is_not_an_api_credential(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        token, _ = create_connect_token(user.id)
+        response = client.get(f"/api/v1/users/{user.id}", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401
 
 
 class TestOAuthProvidersEndpoint:
@@ -143,13 +249,13 @@ class TestOAuthProvidersEndpoint:
         assert len(data) > 0
 
         # Verify structure of first provider
-        if data:
-            provider = data[0]
-            assert "provider" in provider
-            assert "name" in provider
-            assert "icon_url" in provider
-            assert "has_cloud_api" in provider
-            assert "is_enabled" in provider
+        assert data[0] == IsPartialDict(
+            provider=IsStr,
+            name=IsStr,
+            icon_url=IsStr,
+            has_cloud_api=IsInstance(bool),
+            is_enabled=IsInstance(bool),
+        )
 
     def test_get_providers_enabled_only(self, client: TestClient, db: Session) -> None:
         """Test retrieving only enabled providers."""
@@ -226,16 +332,13 @@ class TestOAuthProvidersEndpoint:
         assert len(data) > 0
 
         # Check first provider has all required fields
-        provider = data[0]
-        required_fields = [
-            "provider",
-            "name",
-            "icon_url",
-            "has_cloud_api",
-            "is_enabled",
-        ]
-        for field in required_fields:
-            assert field in provider, f"Missing field: {field}"
+        assert data[0] == IsPartialDict(
+            provider=IsStr,
+            name=IsStr,
+            icon_url=IsStr,
+            has_cloud_api=IsInstance(bool),
+            is_enabled=IsInstance(bool),
+        )
 
 
 class TestOAuthUpdateProviderEndpoint:
@@ -342,6 +445,7 @@ class TestOAuthUpdateProviderEndpoint:
 
         # Assert
         assert response.status_code == 400
+        assert response.json()["code"] == "BAD_REQUEST"
 
     def test_update_live_sync_mode_non_configurable_provider(
         self,
@@ -365,6 +469,7 @@ class TestOAuthUpdateProviderEndpoint:
 
         # Assert
         assert response.status_code == 400
+        assert response.json()["code"] == "UNSUPPORTED_PROVIDER"
 
     def test_update_provider_response_structure(
         self,
@@ -387,12 +492,13 @@ class TestOAuthUpdateProviderEndpoint:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
-        assert "provider" in data
-        assert "name" in data
-        assert "icon_url" in data
-        assert "has_cloud_api" in data
-        assert "is_enabled" in data
+        assert response.json() == IsPartialDict(
+            provider="garmin",
+            name="Garmin",
+            icon_url="/static/provider-icons/garmin.svg",
+            has_cloud_api=True,
+            is_enabled=True,
+        )
 
     def test_update_multiple_providers_sequentially(
         self,
@@ -431,4 +537,4 @@ class TestOAuthCallbackProbe:
 
     def test_head_callback_invalid_provider(self, client: TestClient, db: Session) -> None:
         response = client.head("/api/v1/oauth/not-a-provider/callback")
-        assert response.status_code == 400
+        assert response.status_code == 422

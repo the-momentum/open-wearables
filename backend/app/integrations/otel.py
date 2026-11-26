@@ -4,10 +4,9 @@ Nothing here imports the OpenTelemetry SDK unless export is enabled. When it is,
 process builds its own LoggerProvider (it is never registered as the global provider)
 and one handler that receives:
 
-- stdlib records, through the root logger and, in LOG_FORMAT=legacy, the ``celery`` and
-  ``uvicorn`` loggers, which do not propagate to the root there;
-- ``log_structured`` calls, handed over directly by ``export_structured`` because they
-  never pass through the logging module.
+- app records, through the ``app`` logger, which never propagates to the root;
+- other stdlib records, through the root logger and, in LOG_FORMAT=legacy, the ``celery``
+  and ``uvicorn`` loggers, which do not propagate to the root there.
 
 Stdout output is the same with and without export. Exporter endpoint, headers, timeouts
 and batching are read by the SDK from the standard OTEL_EXPORTER_OTLP_* / OTEL_BLRP_*
@@ -228,7 +227,7 @@ class ExportFilter(logging.Filter):
             else:
                 prepared.__dict__[key] = converted
         if structured is not None:
-            # log_structured attributes go under one `app.` namespace, so they cannot
+            # App attributes go under one `app.` namespace, so they cannot
             # collide with LogRecord fields or OpenTelemetry semantic conventions.
             fields = {"provider": structured["provider"], **structured["attributes"]}
             for key, value in fields.items():
@@ -296,8 +295,8 @@ def init_otel(service_name: str, *, processor: "LogRecordProcessor | None" = Non
 
 def _export_logger_names() -> tuple[str, ...]:
     if settings.log_format is LogFormat.LEGACY:
-        return ("", "celery", "uvicorn")
-    return ("",)
+        return ("", "app", "celery", "uvicorn")
+    return ("", "app")
 
 
 def attach_handler() -> None:
@@ -317,19 +316,6 @@ def is_export_handler(handler: logging.Handler) -> bool:
     return handler is _handler
 
 
-def export_structured(
-    logger: logging.Logger, levelno: int, message: str, provider: str | None, attributes: dict
-) -> None:
-    """Export one ``log_structured`` call. Never raises."""
-    handler = _handler
-    if handler is None or levelno < handler.level:
-        return
-    with contextlib.suppress(Exception):
-        record = logger.makeRecord(logger.name, levelno, "", 0, message, (), None)
-        record.structured = {"provider": provider, "attributes": attributes}
-        handler.handle(record)
-
-
 def shutdown_otel(deadline_seconds: float = SHUTDOWN_DEADLINE_SECONDS) -> None:
     """Stop exporting and flush what is queued, waiting at most ``deadline_seconds``.
 
@@ -342,7 +328,7 @@ def shutdown_otel(deadline_seconds: float = SHUTDOWN_DEADLINE_SECONDS) -> None:
         return
     _provider, _handler = None, None
     if handler is not None:
-        for name in ("", "celery", "uvicorn"):
+        for name in ("", "app", "celery", "uvicorn"):
             logging.getLogger(name).removeHandler(handler)
     worker = threading.Thread(target=provider.shutdown, name="otel-shutdown", daemon=True)
     worker.start()

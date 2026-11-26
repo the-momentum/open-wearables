@@ -5,10 +5,11 @@
 
 	let { connections }: { connections: UserConnection[] | null } = $props();
 
-	const STATUS_CLASS = {
-		active: 'border-success/30 bg-success/10 text-success',
-		expired: 'border-warning/30 bg-warning/10 text-warning',
-		revoked: 'border-border bg-surface-muted text-muted-foreground'
+	// Active is the normal state and gets no mark; a dot flags only what needs attention.
+	const DOT = {
+		active: null,
+		expired: 'bg-warning',
+		revoked: 'bg-muted-foreground'
 	} as const;
 
 	// Active first, so the badge that matters is not pushed off the end.
@@ -26,14 +27,18 @@
 {:else}
 	<ul class="flex flex-wrap gap-1">
 		{#each ordered as connection (connection.provider)}
+			{@const dot = DOT[connection.status]}
 			<li
 				title="{connection.provider}: {connection.status}"
 				class={cn(
-					'rounded-md border px-1.5 py-0.5 leading-none capitalize',
-					TINY,
-					STATUS_CLASS[connection.status]
+					'inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 leading-none text-secondary-foreground capitalize',
+					TINY
 				)}
 			>
+				{#if dot}
+					<span aria-hidden="true" class={cn('size-1.5 shrink-0 rounded-full', dot)}></span>
+					<span class="sr-only">{connection.status}:</span>
+				{/if}
 				{connection.provider}
 			</li>
 		{/each}

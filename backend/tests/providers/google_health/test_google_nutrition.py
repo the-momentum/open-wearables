@@ -6,15 +6,19 @@ keyed by Google's per-DataPoint resource ``name`` as ``external_id``. No real da
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import SeriesType
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition, civil_start_filter
+from app.services.providers.google_health.oauth import GoogleOAuth
 from app.services.providers.google_health.webhook_handler import GoogleWebhookHandler
+from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 
 USER_ID = uuid4()
 START = datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
@@ -53,8 +57,8 @@ def _point(name: str = "abc123", data_source: dict | None = None, **overrides: o
 @pytest.fixture
 def nutrition() -> GoogleHealthApiNutrition:
     return GoogleHealthApiNutrition(
-        oauth=MagicMock(),
-        connection_repo=MagicMock(),
+        oauth=create_autospec(GoogleOAuth, instance=True),
+        connection_repo=create_autospec(UserConnectionRepository, instance=True),
         api_base_url="https://health.googleapis.com",
     )
 
@@ -207,11 +211,12 @@ class TestFetch:
         with (
             patch(
                 "app.services.providers.google_health.nutrition.make_authenticated_request",
+                autospec=True,
                 side_effect=[{"dataPoints": [], "nextPageToken": "t"}, {"dataPoints": []}],
             ) as request,
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
+            patch("app.services.providers.google_health.nutrition.store_raw_payload", autospec=True),
         ):
-            nutrition._fetch(MagicMock(), USER_ID, START, END)
+            nutrition._fetch(MagicMock(spec=Session), USER_ID, START, END)
 
         assert request.call_count == 2
         for call in request.call_args_list:
@@ -226,17 +231,20 @@ class TestLoadAndSave:
         with (
             patch(
                 "app.services.providers.google_health.nutrition.make_authenticated_request",
+                autospec=True,
                 return_value={"dataPoints": points},
             ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
+            patch("app.services.providers.google_health.nutrition.store_raw_payload", autospec=True),
+            patch(
+                "app.services.providers.google_health.nutrition.event_record_service", autospec=True
+            ) as event_record_service,
         ):
             event_record_service.upsert_meals.side_effect = lambda _db, meals: len(meals)
             self.count = nutrition.load_and_save(db, USER_ID, *WINDOW)
         return event_record_service.upsert_meals
 
     def test_upserts_every_point_as_its_own_meal_in_one_batch(self, nutrition: GoogleHealthApiNutrition) -> None:
-        upsert = self._run(nutrition, [_point("a"), _point("b"), _point("c")], MagicMock())
+        upsert = self._run(nutrition, [_point("a"), _point("b"), _point("c")], MagicMock(spec=Session))
 
         upsert.assert_called_once()
         meals = upsert.call_args.args[1]
@@ -246,7 +254,7 @@ class TestLoadAndSave:
         assert self.count == 3
 
     def test_nutrients_go_to_the_meal_detail(self, nutrition: GoogleHealthApiNutrition) -> None:
-        upsert = self._run(nutrition, [_point()], MagicMock())
+        upsert = self._run(nutrition, [_point()], MagicMock(spec=Session))
 
         record, detail = upsert.call_args.args[1][0]
         assert detail.record_id == record.id
@@ -256,7 +264,7 @@ class TestLoadAndSave:
 
     def test_never_commits_or_rolls_back(self, nutrition: GoogleHealthApiNutrition) -> None:
         """The 24/7 sync wraps the handler in its own savepoint and commits after it."""
-        db = MagicMock()
+        db = MagicMock(spec=Session)
 
         self._run(nutrition, [_point()], db)
 
@@ -264,7 +272,7 @@ class TestLoadAndSave:
         db.rollback.assert_not_called()
 
     def test_no_points_skip_the_upsert(self, nutrition: GoogleHealthApiNutrition) -> None:
-        upsert = self._run(nutrition, [], MagicMock())
+        upsert = self._run(nutrition, [], MagicMock(spec=Session))
 
         upsert.assert_not_called()
         assert self.count == 0
@@ -274,15 +282,19 @@ class TestWebhookRouting:
     """nutrition-log notifications are routed to the nutrition handler, like sleep/exercise."""
 
     def test_a_nutrition_log_notification_is_routed_to_the_nutrition_handler(self) -> None:
-        db = MagicMock()
+        db = MagicMock(spec=Session)
         data_247 = GoogleHealth247Data(
-            oauth=MagicMock(), connection_repo=MagicMock(), api_base_url="https://health.googleapis.com"
+            oauth=create_autospec(GoogleOAuth, instance=True),
+            connection_repo=create_autospec(UserConnectionRepository, instance=True),
+            api_base_url="https://health.googleapis.com",
         )
-        handler = GoogleWebhookHandler(data_247=data_247, workouts=MagicMock())
+        handler = GoogleWebhookHandler(
+            data_247=data_247, workouts=create_autospec(GoogleHealthApiWorkouts, instance=True)
+        )
 
         with (
-            patch.object(data_247.nutrition, "load_and_save", return_value=2) as nutrition_load,
-            patch.object(data_247, "sync_data_type") as sync_data_type,
+            patch.object(data_247.nutrition, "load_and_save", autospec=True, return_value=2) as nutrition_load,
+            patch.object(data_247, "sync_data_type", autospec=True) as sync_data_type,
         ):
             saved = handler._fetch_and_save(db, USER_ID, "nutrition-log", START, END)
 

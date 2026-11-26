@@ -5,18 +5,17 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 from app.database import DbSession
 from app.models import ProviderSetting
-from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.auth import ConnectionStatus, LiveSyncMode, SDKAuthContext
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.user_management import UserConnectionWithCapabilities
 from app.services import ApiKeyDep, user_connection_service
+from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.utils.auth import CombinedAuthDep
 
 router = APIRouter()
 factory = ProviderFactory()
-provider_settings_repo = ProviderSettingsRepository()
 
 
 def _with_capabilities(
@@ -54,7 +53,7 @@ def get_connections_endpoint(
     _api_key: ApiKeyDep,
 ):
     """Get all connections for a user, enriched with provider capability metadata."""
-    settings_map = provider_settings_repo.get_all(db)
+    settings_map = provider_settings_service.get_settings_map(db)
     connections = user_connection_service.get_connections_by_user(db, user_id)
     provider_pairs = [
         (c.provider, c.provider_user_id)

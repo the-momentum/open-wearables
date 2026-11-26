@@ -1,24 +1,24 @@
 import contextlib
-from datetime import datetime, timedelta, timezone
-from logging import getLogger
+from datetime import datetime, timezone
 from typing import cast
 
 from celery import shared_task
 
-from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.services.sdk.sleep_service import (
     active_users_key,
     finish_sleep,
-    load_sleep_state,
+    is_ready_to_finish,
+    load_sleep_states,
 )
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
-@shared_task
+@shared_task(name=CeleryTask.FINALIZE_STALE_SLEEPS)
 def finalize_stale_sleeps() -> None:
     now = datetime.now(timezone.utc)
     redis_client = get_redis_client()
@@ -32,24 +32,15 @@ def finalize_stale_sleeps() -> None:
                     continue
 
                 try:
-                    state = load_sleep_state(user_id)
-                    if not state:
-                        continue
-
-                    end_time = state.end_time
-                    if end_time.tzinfo is None:
-                        end_time = end_time.replace(tzinfo=timezone.utc)
-
-                    if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
-                        finish_sleep(db, user_id, state)
+                    states = load_sleep_states(user_id)
+                    if not states:
+                        redis_client.srem(active_users_key(), user_id)
+                    for state in states.values():
+                        if is_ready_to_finish(state, now):
+                            finish_sleep(db, user_id, state)
                 finally:
                     with contextlib.suppress(Exception):
                         lock.release()
 
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Error finalizing stale sleep for user {user_id}: {e}",
-                    extra={"user_id": user_id},
-                )
+                logger.error("Error finalizing stale sleep", exc_info=e, user_id=user_id)

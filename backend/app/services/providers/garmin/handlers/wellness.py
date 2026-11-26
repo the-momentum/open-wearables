@@ -10,13 +10,15 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
-from app.schemas.sync_status import SyncSource, SyncStatus
+from app.repositories.data_point_series_repository import WriteCounts
+from app.schemas.sync_status import SyncRunContext, SyncScope, SyncSource, SyncStatus
 from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.sync_status_service import emit_sync_completed, new_run_id
-from app.utils.structured_logging import log_structured
+from app.utils.context import sync_run_context
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def process_wellness_items(
@@ -47,9 +49,7 @@ def process_wellness_items(
     for notification in notifications:
         garmin_user_id: str | None = notification.get("userId")
         if not garmin_user_id:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "No user ID in notification",
                 provider="garmin",
                 trace_id=request_trace_id,
@@ -60,9 +60,7 @@ def process_wellness_items(
 
         connections = connection_repo.get_all_by_provider_user_id(db, "garmin", garmin_user_id)
         if not connections:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "No connection found for Garmin user",
                 provider="garmin",
                 trace_id=request_trace_id,
@@ -85,21 +83,22 @@ def process_wellness_items(
                 secondary_primary.setdefault(user_id, primary_user_id)
 
     total_processed = sum(len(items) for items in user_items.values())
-    total_saved = 0
+    total_saved = WriteCounts(0, 0)
     succeeded_users: list[str] = []
 
     for uid, items in user_items.items():
         trace_id = get_trace_id(uid) or request_trace_id
         is_secondary = uid in secondary_primary
         sync_source = SyncSource.LINKED_ACCOUNT if is_secondary else SyncSource.WEBHOOK
+        run_id = new_run_id(prefix=f"garmin_webhook_{summary_type}")
         try:
-            count = garmin_247.process_items_batch(db, uid, summary_type, items)
+            with sync_run_context(SyncRunContext(run_id=run_id, source=sync_source, scope=SyncScope.LIVE)):
+                count = garmin_247.process_items_batch(db, uid, summary_type, items)
             total_saved += count
             synced_user_ids.add(uid)
             succeeded_users.append(str(uid))
-            log_structured(
-                logger,
-                "debug" if is_secondary else "info",
+            logger.log(
+                logging.DEBUG if is_secondary else logging.INFO,
                 "Saved wellness data",
                 provider="garmin",
                 trace_id=trace_id,
@@ -112,7 +111,7 @@ def process_wellness_items(
                 uid,
                 "garmin",
                 sync_source,
-                run_id=new_run_id(prefix=f"garmin_webhook_{summary_type}"),
+                run_id=run_id,
                 status=SyncStatus.SUCCESS,
                 message=f"Garmin live data received: {summary_type}",
                 items_processed=count,
@@ -124,12 +123,11 @@ def process_wellness_items(
                 },
             )
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
-                f"Error processing {summary_type}",
+            logger.error(
+                "Error processing wellness data",
                 provider="garmin",
                 trace_id=trace_id,
+                summary_type=summary_type,
                 user_id=str(uid),
                 error=str(e),
             )

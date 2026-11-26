@@ -1,6 +1,5 @@
 """Google Health API nutrition-log: each DataPoint is stored as its own meal, nutrients in MealDetails."""
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -10,7 +9,7 @@ from uuid import UUID, uuid4
 from app.constants.google_health_endpoints import LIST_ENDPOINT as DATAPOINTS_LIST_ENDPOINT
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import ProviderName, SeriesType, get_series_type_unit
+from app.schemas.enums import EventCategory, ProviderName, SeriesType, get_series_type_unit
 from app.schemas.model_crud.activities import EventRecordCreate, MealDetailCreate
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
@@ -121,7 +120,6 @@ class GoogleHealthApiNutrition:
         self.connection_repo = connection_repo
         self.provider_name = "google_health"
         self.api_base_url = api_base_url
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
         """Fetch nutrition-log entries starting in the window and upsert them as meals.
@@ -211,7 +209,7 @@ class GoogleHealthApiNutrition:
     def _meal_bundle(self, user_id: UUID, meal: "_Meal") -> tuple[EventRecordCreate, MealDetailCreate]:
         record = EventRecordCreate(
             id=uuid4(),
-            category="meal",
+            category=EventCategory.MEAL,
             provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=meal.source_name,

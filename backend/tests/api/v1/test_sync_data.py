@@ -7,15 +7,21 @@ Tests the following endpoints:
 """
 
 from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
+from celery.result import AsyncResult
 from fastapi.testclient import TestClient
+from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.auth import ConnectionStatus
-from app.services.providers.base_strategy import HistoricalSyncResult
-from app.utils.exceptions import UnsupportedProviderError
+from app.services.providers.base_strategy import BaseProviderStrategy, HistoricalSyncResult
+from app.services.providers.sync_247_result import Sync247Result
+from app.services.providers.templates.base_247_data import Base247DataTemplate
+from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.exceptions import ProviderNotConnectedError, UnsupportedProviderError
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
 
@@ -25,9 +31,12 @@ class TestSyncDataEndpoint:
     @pytest.fixture
     def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
         """Mock the ProviderFactory to avoid external API calls."""
-        with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
-            mock_strategy = MagicMock()
+        with patch("app.api.routes.v1.sync_data.factory", autospec=True) as mock_factory:
+            mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
+            mock_strategy.workouts = create_autospec(BaseWorkoutsTemplate, instance=True)
+            mock_strategy.data_247 = create_autospec(Base247DataTemplate, instance=True)
             mock_strategy.workouts.load_data.return_value = True
+            mock_strategy.data_247.load_and_save_all.return_value = Sync247Result(provider="garmin")
             mock_factory.get_provider.return_value = mock_strategy
             yield mock_factory
 
@@ -52,21 +61,58 @@ class TestSyncDataEndpoint:
         mock_provider_factory.get_provider.assert_called_once_with("garmin")
         mock_provider_factory.get_provider.return_value.workouts.load_data.assert_called_once()
 
-    @patch("app.api.routes.v1.sync_data.sync_vendor_data")
-    def test_sync_garmin_async_mode(
-        self,
-        mock_celery_task: MagicMock,
-        client: TestClient,
-        db: Session,
+    def test_sync_returns_the_24_7_summary(
+        self, client: TestClient, db: Session, mock_provider_factory: MagicMock
     ) -> None:
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        result = Sync247Result(provider="garmin")
+        result.record("sleep", WriteCounts(2, 1))
+        mock_provider_factory.get_provider.return_value.data_247.load_and_save_all.return_value = result
+
+        response = client.post(
+            f"/api/v1/providers/garmin/users/{user.id}/sync",
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
+            params={"async": "false", "data_type": "247"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "success": True,
+            "details": {
+                "workouts": None,
+                "data_247": {
+                    "status": "success",
+                    "items_inserted": 2,
+                    "items_updated": 1,
+                    "items_reported": None,
+                    "error_code": None,
+                    "tasks": {
+                        "sleep": {
+                            "status": "success",
+                            "items_inserted": 2,
+                            "items_updated": 1,
+                            "items_reported": None,
+                            "items_skipped": 0,
+                            "truncated": False,
+                            "error_code": None,
+                        }
+                    },
+                },
+            },
+        }
+
+    def test_sync_garmin_async_mode(self, mocker: MockerFixture, client: TestClient, db: Session) -> None:
         """Test async sync dispatches to Celery task."""
+        mock_celery_task = mocker.patch("app.api.routes.v1.sync_data.sync_vendor_data", autospec=True)
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         # Configure mock task
-        mock_task = MagicMock()
+        mock_task = create_autospec(AsyncResult, instance=True)
         mock_task.id = "test-task-id-123"
         mock_celery_task.delay.return_value = mock_task
 
@@ -107,12 +153,8 @@ class TestSyncDataEndpoint:
         api_key = ApiKeyFactory()
         # No connection created for this user
 
-        # Configure mock to raise HTTPException for no connection
-        from fastapi import HTTPException
-
-        mock_provider_factory.get_provider.return_value.workouts.load_data.side_effect = HTTPException(
-            status_code=404,
-            detail="No active connection found for user",
+        mock_provider_factory.get_provider.return_value.workouts.load_data.side_effect = ProviderNotConnectedError(
+            "garmin"
         )
 
         # Act - use async=false to test synchronous path
@@ -171,7 +213,7 @@ class TestSyncDataEndpoint:
         assert call_kwargs["offset"] == 10
 
     def test_sync_invalid_provider(self, client: TestClient, db: Session) -> None:
-        """Test that invalid provider enum value returns 400."""
+        """Test that invalid provider enum value returns 422."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -183,7 +225,7 @@ class TestSyncDataEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_sync_provider_not_supporting_workouts(
         self,
@@ -198,7 +240,7 @@ class TestSyncDataEndpoint:
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
 
         # Configure mock to return a strategy without workouts
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.workouts = None
         mock_provider_factory.get_provider.return_value = mock_strategy
 
@@ -220,7 +262,7 @@ class TestSyncHistoricalEndpoint:
     @pytest.fixture
     def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
         """Mock the ProviderFactory used by the sync_data router."""
-        with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
+        with patch("app.api.routes.v1.sync_data.factory", autospec=True) as mock_factory:
             yield mock_factory
 
     def test_historical_sync_delegates_to_strategy(
@@ -230,7 +272,7 @@ class TestSyncHistoricalEndpoint:
         user = UserFactory()
         api_key = ApiKeyFactory()
 
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.start_historical_sync.return_value = HistoricalSyncResult(
             task_id="task-abc",
             method="pull_api",
@@ -261,7 +303,7 @@ class TestSyncHistoricalEndpoint:
         user = UserFactory()
         api_key = ApiKeyFactory()
 
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.start_historical_sync.return_value = HistoricalSyncResult(
             task_id="task-xyz",
             method="pull_api",
@@ -286,7 +328,7 @@ class TestSyncHistoricalEndpoint:
         user = UserFactory()
         api_key = ApiKeyFactory()
 
-        mock_strategy = MagicMock()
+        mock_strategy = create_autospec(BaseProviderStrategy, instance=True)
         mock_strategy.start_historical_sync.side_effect = UnsupportedProviderError("apple", "historical sync")
         mock_provider_factory.get_provider.return_value = mock_strategy
 

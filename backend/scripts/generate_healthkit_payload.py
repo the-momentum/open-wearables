@@ -37,6 +37,7 @@ RECORD_TYPE_CONFIG: dict[SDKMetricType, dict[str, Any]] = {
     SDKMetricType.APPLE_HEART_RATE: {"unit": "count/min", "range": (50, 180)},
     SDKMetricType.APPLE_RESTING_HEART_RATE: {"unit": "count/min", "range": (45, 85)},
     SDKMetricType.APPLE_HEART_RATE_VARIABILITY_SDNN: {"unit": "ms", "range": (15, 120)},
+    SDKMetricType.APPLE_HEART_RATE_VARIABILITY_RMSSD: {"unit": "ms", "range": (15, 120)},
     SDKMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: {"unit": "count/min", "range": (12, 55)},
     SDKMetricType.WALKING_HEART_RATE_AVERAGE: {"unit": "count/min", "range": (80, 130)},
     # Blood & Respiratory

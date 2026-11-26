@@ -1,11 +1,12 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, or_, select, update
 
 from app.database import DbSession
 from app.models import RefreshToken
+from app.schemas.auth import TokenType
 
 
 class RefreshTokenRepository:
@@ -21,9 +22,36 @@ class RefreshTokenRepository:
         db_session.refresh(token)
         return token
 
-    def get_valid_token(self, db_session: DbSession, token_id: str) -> RefreshToken | None:
-        """Get a refresh token if it exists and is not revoked."""
-        stmt = select(self.model).where(self.model.id == token_id, self.model.revoked_at.is_(None))
+    def claim_valid_token(
+        self,
+        db_session: DbSession,
+        token_id: str,
+        developer_max_age: timedelta | None = None,
+    ) -> RefreshToken | None:
+        """Revoke a token that is not revoked (and for developer tokens, not expired) yet and return it, or None.
+
+        The check and the write are one UPDATE, so of concurrent claims only one gets the token.
+        Does not commit: the claim is committed together with the replacement token
+        when that is stored, and the row stays locked until then.
+        """
+        now = datetime.now(timezone.utc)
+        conditions = [self.model.id == token_id, self.model.revoked_at.is_(None)]
+        if developer_max_age is not None:
+            cutoff = now - developer_max_age
+            conditions.append(
+                or_(
+                    self.model.token_type != TokenType.DEVELOPER,
+                    self.model.created_at >= cutoff,
+                )
+            )
+
+        stmt = (
+            update(self.model)
+            .where(*conditions)
+            .values(revoked_at=now)
+            .returning(self.model)
+            .execution_options(populate_existing=True)
+        )
         return db_session.execute(stmt).scalar_one_or_none()
 
     def get_by_user_id(self, db_session: DbSession, user_id: UUID) -> list[RefreshToken]:
@@ -35,13 +63,6 @@ class RefreshTokenRepository:
         """Get all refresh tokens for a developer."""
         stmt = select(self.model).where(self.model.developer_id == developer_id, self.model.revoked_at.is_(None))
         return list(db_session.execute(stmt).scalars().all())
-
-    def revoke_token(self, db_session: DbSession, token: RefreshToken) -> RefreshToken:
-        """Revoke a single refresh token."""
-        token.revoked_at = datetime.now(timezone.utc)
-        db_session.commit()
-        db_session.refresh(token)
-        return token
 
     def revoke_all_for_user(self, db_session: DbSession, user_id: UUID) -> int:
         """Revoke all refresh tokens for a user. Returns count of revoked tokens."""

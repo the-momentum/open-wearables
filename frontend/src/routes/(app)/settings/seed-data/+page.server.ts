@@ -4,6 +4,7 @@ import { requireToken } from '$lib/server/guard';
 import { fetchCoverage } from '$lib/server/coverage';
 import { generateSeed, listPresets, listSleepProfiles } from '$lib/server/seed';
 import { listProviderSettings } from '$lib/server/settings';
+import { brandOf } from '$lib/providers/labels';
 import { SEED_PROVIDERS, seriesGroups } from '$lib/seed/catalogue';
 import { problems, requestOf, type Draft } from '$lib/seed/draft';
 import type { Actions, PageServerLoad } from './$types';
@@ -24,14 +25,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		sleepProfiles,
 		series: seriesGroups(presets, coverage),
 		// Every one, enabled or not: seeding a disabled provider is a fair test.
-		providers: SEED_PROVIDERS.map(
-			(slug) =>
-				providers.find((provider) => provider.provider === slug) ?? {
-					provider: slug,
-					name: slug,
-					icon_url: ''
-				}
-		)
+		providers: SEED_PROVIDERS.map((slug) => brandOf(providers, slug))
 	};
 };
 

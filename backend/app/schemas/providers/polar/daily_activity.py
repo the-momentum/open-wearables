@@ -3,6 +3,8 @@ from datetime import datetime
 import isodate
 from pydantic import BaseModel
 
+from app.utils.conversion import energy_difference
+
 _EXERCISE_ZONES = frozenset({"MODERATE", "VIGOROUS"})
 
 
@@ -45,6 +47,11 @@ class DailyActivityJSON(BaseModel):
     inactivity_alert_count: int | None = None
     distance_from_steps: float | None = None  # meters
     samples: DailyActivitySamplesJSON | None = None
+
+    @property
+    def basal_calories(self) -> float | None:
+        """Total ``calories`` (incl. BMR) minus ``active_calories`` (excl. BMR)."""
+        return energy_difference(self.calories, self.active_calories)
 
     @property
     def active_time_minutes(self) -> int | None:

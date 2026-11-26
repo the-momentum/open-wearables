@@ -1,13 +1,14 @@
 """Base template for 247 data (sleep, recovery, activity samples)."""
 
-import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 from app.database import DbSession
+from app.services.providers.sync_247_result import Sync247Result, Sync247Run
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.dates import parse_datetime_or_default
 
 
 class Base247DataTemplate(ABC):
@@ -28,7 +29,6 @@ class Base247DataTemplate(ABC):
         self.provider_name = provider_name
         self.api_base_url = api_base_url
         self.oauth = oauth
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     # -------------------------------------------------------------------------
     # Sleep Data
@@ -176,6 +176,47 @@ class Base247DataTemplate(ABC):
     # -------------------------------------------------------------------------
     # Combined Load
     # -------------------------------------------------------------------------
+
+    def load_and_save_all(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime | str | None = None,
+        end_time: datetime | str | None = None,
+        is_first_sync: bool = False,
+    ) -> Sync247Result:
+        """Fetch and persist every 24/7 data type this provider supports.
+
+        Providers override this and build the result through :class:`Sync247Run`
+        so failures stay isolated to one data type. The default is an empty
+        result, for providers whose 24/7 data only ever arrives by push.
+        """
+        return Sync247Result(provider=self.provider_name)
+
+    def sync_run(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Sync247Run:
+        """Start a 24/7 sync run bound to this provider."""
+        return Sync247Run(self.provider_name, db, user_id, **kwargs)
+
+    def resolve_window(
+        self,
+        start_time: datetime | str | None,
+        end_time: datetime | str | None,
+        *,
+        default_days: int = 30,
+    ) -> tuple[datetime, datetime]:
+        """Normalize a sync window: parse ISO strings, apply defaults, force UTC-aware.
+
+        Callers pass windows as datetimes, ISO strings or nothing at all (Celery
+        task, sync route, webhook replays). Resolving that in one place keeps a
+        naive datetime from reaching a comparison against an aware one.
+        """
+        end_dt = parse_datetime_or_default(end_time, datetime.now(timezone.utc))
+        start_dt = parse_datetime_or_default(start_time, end_dt - timedelta(days=default_days))
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+        return start_dt, end_dt
 
     def load_all_247_data(
         self,

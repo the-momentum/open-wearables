@@ -16,6 +16,7 @@ class SDKMetricType(StrEnum):
     APPLE_RESTING_HEART_RATE = "HKQuantityTypeIdentifierRestingHeartRate"
     ANDROID_RESTING_HEART_RATE = "RESTING_HEART_RATE"
     APPLE_HEART_RATE_VARIABILITY_SDNN = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+    APPLE_HEART_RATE_VARIABILITY_RMSSD = "HKQuantityTypeIdentifierHeartRateVariabilityRMSSD"
     ANDROID_HEART_RATE_VARIABILITY = "HEART_RATE_VARIABILITY"
     HEART_RATE_RECOVERY_ONE_MINUTE = "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute"
     WALKING_HEART_RATE_AVERAGE = "HKQuantityTypeIdentifierWalkingHeartRateAverage"
@@ -62,6 +63,8 @@ class SDKMetricType(StrEnum):
     ANDROID_BASAL_METABOLIC_RATE = "BASAL_METABOLIC_RATE"
     APPLE_STAND_TIME = "HKQuantityTypeIdentifierAppleStandTime"
     APPLE_EXERCISE_TIME = "HKQuantityTypeIdentifierAppleExerciseTime"
+    ANDROID_ACTIVITY_INTENSITY_MODERATE = "ACTIVITY_INTENSITY_MODERATE"
+    ANDROID_ACTIVITY_INTENSITY_VIGOROUS = "ACTIVITY_INTENSITY_VIGOROUS"
     FLIGHTS_CLIMBED = "HKQuantityTypeIdentifierFlightsClimbed"
     ANDROID_FLOORS_CLIMBED = "FLOORS_CLIMBED"
 
@@ -256,6 +259,11 @@ class SDKMetricType(StrEnum):
     ANDROID_DIETARY_FOLIC_ACID = "DIETARY_FOLIC_ACID"
 
 
+# Health Connect's ActivityIntensityRecord has no value of its own: its minutes are the record's length.
+INTERVAL_MINUTE_METRIC_TYPES: frozenset[SDKMetricType] = frozenset(
+    {SDKMetricType.ANDROID_ACTIVITY_INTENSITY_MODERATE, SDKMetricType.ANDROID_ACTIVITY_INTENSITY_VIGOROUS}
+)
+
 METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Heart & Cardiovascular
     SDKMetricType.APPLE_HEART_RATE: SeriesType.heart_rate,
@@ -263,9 +271,10 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.APPLE_RESTING_HEART_RATE: SeriesType.resting_heart_rate,
     SDKMetricType.ANDROID_RESTING_HEART_RATE: SeriesType.resting_heart_rate,
     SDKMetricType.APPLE_HEART_RATE_VARIABILITY_SDNN: SeriesType.heart_rate_variability_sdnn,
+    SDKMetricType.APPLE_HEART_RATE_VARIABILITY_RMSSD: SeriesType.heart_rate_variability_rmssd,
     SDKMetricType.ANDROID_HEART_RATE_VARIABILITY: SeriesType.heart_rate_variability_rmssd,
     SDKMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: SeriesType.heart_rate_recovery_one_minute,
-    SDKMetricType.WALKING_HEART_RATE_AVERAGE: SeriesType.walking_heart_rate_average,
+    SDKMetricType.WALKING_HEART_RATE_AVERAGE: SeriesType.walking_heart_rate,
     # Blood & Respiratory
     SDKMetricType.APPLE_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
     SDKMetricType.ANDROID_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
@@ -315,6 +324,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.ANDROID_BASAL_METABOLIC_RATE: SeriesType.basal_energy,
     SDKMetricType.APPLE_STAND_TIME: SeriesType.stand_time,
     SDKMetricType.APPLE_EXERCISE_TIME: SeriesType.exercise_time,
+    SDKMetricType.ANDROID_ACTIVITY_INTENSITY_MODERATE: SeriesType.exercise_time,
+    SDKMetricType.ANDROID_ACTIVITY_INTENSITY_VIGOROUS: SeriesType.exercise_time,
     SDKMetricType.FLIGHTS_CLIMBED: SeriesType.flights_climbed,
     SDKMetricType.ANDROID_FLOORS_CLIMBED: SeriesType.flights_climbed,
     SDKMetricType.PHYSICAL_EFFORT: SeriesType.physical_effort,
@@ -375,8 +386,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.UV_EXPOSURE: SeriesType.uv_exposure,
     # Wheelchair Metrics
     SDKMetricType.PUSH_COUNT: SeriesType.push_count,
-    # Apple-specific Temperature
-    SDKMetricType.APPLE_SLEEPING_WRIST_TEMPERATURE: SeriesType.body_temperature,
+    # Apple-specific Temperature: overnight wrist skin reading (~34-35 °C), not core body temperature
+    SDKMetricType.APPLE_SLEEPING_WRIST_TEMPERATURE: SeriesType.skin_temperature,
     # Atrial Fibrillation
     SDKMetricType.ATRIAL_FIBRILLATION_BURDEN: SeriesType.atrial_fibrillation_burden,
     # Workout Metrics

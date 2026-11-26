@@ -1,11 +1,14 @@
-import contextlib
-from logging import Logger, getLogger
 from uuid import UUID
 
+from celery import current_app as celery_app
+
+from app.constants.celery_tasks import CeleryTask
+from app.constants.devices_map import resolve_device_name
 from app.database import DbSession
 from app.models import DataSource, ProviderPriority
 from app.repositories import DataSourceRepository, ProviderPriorityRepository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
+from app.repositories.repositories import SourceRanking
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.data_priority import (
     DataSourceListResponse,
@@ -17,27 +20,29 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityListResponse,
     ProviderPriorityResponse,
 )
-from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import handle_exceptions
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class PriorityService:
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.priority_repo = ProviderPriorityRepository(ProviderPriority)
         self.device_type_priority_repo = DeviceTypePriorityRepository()
         self.data_source_repo = DataSourceRepository(DataSource)
 
-    def _to_provider_response(self, priority: ProviderPriority) -> ProviderPriorityResponse:
-        """Enrich a priority row with the strategy's display name and icon, like provider settings do."""
-        response = ProviderPriorityResponse.model_validate(priority)
-        with contextlib.suppress(ValueError):
-            strategy = ProviderFactory().get_provider(str(priority.provider))
-            response.name = strategy.display_name
-            response.icon_url = strategy.icon_url
-        return response
+    def get_source_ranking(self, db_session: DbSession) -> SourceRanking:
+        """The provider and device type priorities as configured now, to rank a user's data sources by."""
+        return SourceRanking(
+            self.priority_repo.get_priority_order(db_session),
+            self.device_type_priority_repo.get_priority_order(db_session),
+        )
 
-    @handle_exceptions
+    def _to_provider_response(self, priority: ProviderPriority) -> ProviderPriorityResponse:
+        # The display name and icon are added by the priorities routes: the provider strategies they come from
+        # import the services that read get_source_ranking, so importing them here would be circular.
+        return ProviderPriorityResponse.model_validate(priority)
+
     def get_provider_priorities(
         self,
         db_session: DbSession,
@@ -45,7 +50,6 @@ class PriorityService:
         priorities = self.priority_repo.get_all_ordered(db_session)
         return ProviderPriorityListResponse(items=[self._to_provider_response(p) for p in priorities])
 
-    @handle_exceptions
     def update_provider_priority(
         self,
         db_session: DbSession,
@@ -54,9 +58,9 @@ class PriorityService:
     ) -> ProviderPriorityResponse:
         result = self.priority_repo.upsert(db_session, provider, priority)
         db_session.commit()
+        _drop_reconciled_days()
         return self._to_provider_response(result)
 
-    @handle_exceptions
     def bulk_update_priorities(
         self,
         db_session: DbSession,
@@ -65,33 +69,34 @@ class PriorityService:
         priorities_tuples = [(p.provider, p.priority) for p in update.priorities]
         results = self.priority_repo.bulk_update(db_session, priorities_tuples)
         db_session.commit()
+        _drop_reconciled_days()
         return ProviderPriorityListResponse(items=[self._to_provider_response(p) for p in results])
 
-    @handle_exceptions
     def get_user_data_sources(
         self,
         db_session: DbSession,
         user_id: UUID,
     ) -> DataSourceListResponse:
         sources = self.data_source_repo.get_user_data_sources(db_session, user_id)
-        items = [
-            DataSourceResponse(
-                id=ds.id,
-                user_id=ds.user_id,
-                provider=ds.provider,
-                user_connection_id=ds.user_connection_id,
-                device_model=ds.device_model,
-                software_version=ds.software_version,
-                source=ds.source,
-                device_type=ds.device_type,
-                original_source_name=ds.original_source_name,
-                display_name=self._build_display_name(ds),
-            )
-            for ds in sources
-        ]
+        items = [self._to_data_source_response(ds) for ds in sources]
         return DataSourceListResponse(items=items, total=len(items))
 
-    @handle_exceptions
+    def _to_data_source_response(self, ds: DataSource) -> DataSourceResponse:
+        device_name = resolve_device_name(ds.device_model)
+        return DataSourceResponse(
+            id=ds.id,
+            user_id=ds.user_id,
+            provider=ds.provider,
+            user_connection_id=ds.user_connection_id,
+            device_model=ds.device_model,
+            software_version=ds.software_version,
+            source=ds.source,
+            device_type=ds.device_type,
+            original_source_name=ds.original_source_name,
+            device_name=device_name,
+            display_name=self._build_display_name(ds, device_name),
+        )
+
     def get_device_type_priorities(
         self,
         db_session: DbSession,
@@ -99,7 +104,6 @@ class PriorityService:
         priorities = self.device_type_priority_repo.get_all_ordered(db_session)
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in priorities])
 
-    @handle_exceptions
     def update_device_type_priority(
         self,
         db_session: DbSession,
@@ -108,9 +112,9 @@ class PriorityService:
     ) -> DeviceTypePriorityResponse:
         result = self.device_type_priority_repo.upsert(db_session, device_type, priority)
         db_session.commit()
+        _drop_reconciled_days()
         return DeviceTypePriorityResponse.model_validate(result)
 
-    @handle_exceptions
     def bulk_update_device_type_priorities(
         self,
         db_session: DbSession,
@@ -119,54 +123,29 @@ class PriorityService:
         priorities_tuples = [(p.device_type, p.priority) for p in update.priorities]
         results = self.device_type_priority_repo.bulk_update(db_session, priorities_tuples)
         db_session.commit()
+        _drop_reconciled_days()
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in results])
 
-    def get_priority_data_source_ids(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-    ) -> list[UUID]:
-        """Get data source IDs for a user, ordered by global priority."""
-        provider_order = self.priority_repo.get_priority_order(db_session)
-        device_type_order = self.device_type_priority_repo.get_priority_order(db_session)
-        sources = self.data_source_repo.get_user_data_sources(db_session, user_id)
-
-        if not sources:
-            return []
-
-        def sort_key(ds: DataSource) -> tuple[int, int, str]:
-            provider_priority = provider_order.get(ds.provider, 99)
-            device_type_priority = 99
-            if ds.device_type:
-                try:
-                    dt = DeviceType(ds.device_type)
-                    device_type_priority = device_type_order.get(dt, 99)
-                except ValueError:
-                    pass
-            return (provider_priority, device_type_priority, ds.device_model or "")
-
-        sorted_sources = sorted(sources, key=sort_key)
-        return [ds.id for ds in sorted_sources]
-
-    def get_best_data_source_id(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-    ) -> UUID | None:
-        ids = self.get_priority_data_source_ids(db_session, user_id)
-        return ids[0] if ids else None
-
-    def _build_display_name(self, ds: DataSource) -> str:
+    def _build_display_name(self, ds: DataSource, device_name: str | None) -> str:
         parts = []
         if ds.provider:
             # Rows loaded from the database carry provider as a plain str (the
             # column is a String, not a native enum), so there is no .value.
             parts.append(ds.provider.capitalize())
-        if ds.device_model:
-            parts.append(ds.device_model)
+        if device_name:
+            parts.append(device_name)
         elif ds.original_source_name:
             parts.append(ds.original_source_name)
         return " - ".join(parts) if parts else "Unknown Source"
 
 
-priority_service = PriorityService(log=getLogger(__name__))
+priority_service = PriorityService()
+
+
+def _drop_reconciled_days() -> None:
+    """Merged days stored in the old order are dropped in the background, so reads merge them in the new one."""
+    try:
+        celery_app.send_task(CeleryTask.DROP_RECONCILED_DAYS, retry=False)
+    except Exception as exc:
+        # Reads keep the stale merge until the next priority change; nothing else depends on this.
+        logger.warning("Could not queue dropping merged days after a priority change", exc_info=exc)

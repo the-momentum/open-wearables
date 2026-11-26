@@ -8,7 +8,7 @@ import { userActions } from '$lib/server/user-actions';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * Both aggregates scan this user's slice of data_point_series, which is why
+ * Both aggregates scan this user's slice of series_sample, which is why
  * Data Summary is its own route: opening a user to check an email must not pay
  * for them.
  */

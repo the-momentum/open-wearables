@@ -9,13 +9,17 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from unittest.mock import create_autospec, patch
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.schemas.auth import ConnectionStatus
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
+from app.schemas.sync_status import DataTypeKind
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.user_connection_service import user_connection_service
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -434,7 +438,7 @@ class TestEnsureSdkConnection:
         """First upload for a user should create the connection and emit."""
         user = UserFactory()
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             connection = user_connection_service.ensure_sdk_connection(db, user.id, "apple")
 
         assert connection.provider == "apple"
@@ -453,7 +457,7 @@ class TestEnsureSdkConnection:
         user = UserFactory()
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             user_connection_service.ensure_sdk_connection(db, user.id, "apple")
 
         emit.assert_not_called()
@@ -463,7 +467,7 @@ class TestEnsureSdkConnection:
         user = UserFactory()
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.REVOKED)
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             connection = user_connection_service.ensure_sdk_connection(db, user.id, "apple")
 
         assert connection.status == ConnectionStatus.ACTIVE
@@ -475,7 +479,7 @@ class TestEnsureSdkConnection:
         """Retries of the Celery task must not produce a second event."""
         user = UserFactory()
 
-        with patch("app.services.user_connection_service.on_connection_created") as emit:
+        with patch("app.services.user_connection_service.on_connection_created", autospec=True) as emit:
             first = user_connection_service.ensure_sdk_connection(db, user.id, "apple")
             for _ in range(3):
                 user_connection_service.ensure_sdk_connection(db, user.id, "apple")
@@ -495,13 +499,14 @@ class TestUserConnectionServiceDeregisterFromProvider:
             access_token="stale",
             token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
         )
-        oauth = MagicMock()
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
         oauth.refresh_access_token.return_value.access_token = "fresh"
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
+        # The disconnect revokes the connection itself, with its own webhook
         oauth.refresh_access_token.assert_called_once_with(
-            db, user.id, connection.refresh_token, revoke_on_failure=True
+            db, user.id, connection.refresh_token, revoke_on_failure=False
         )
         oauth.deregister_user.assert_called_once_with("fresh", provider_user_id=connection.provider_user_id)
 
@@ -513,7 +518,7 @@ class TestUserConnectionServiceDeregisterFromProvider:
             access_token="valid",
             token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
-        oauth = MagicMock()
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
@@ -527,9 +532,84 @@ class TestUserConnectionServiceDeregisterFromProvider:
             provider="garmin",
             token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
         )
-        oauth = MagicMock()
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
         oauth.refresh_access_token.side_effect = RuntimeError("refresh rejected")
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
         oauth.deregister_user.assert_not_called()
+
+    def test_expired_token_without_refresh_token_is_left_for_the_disconnect_to_revoke(self, db: Session) -> None:
+        """Revoking here would leave the disconnect nothing to update, so user_disconnected would never go out."""
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            refresh_token=None,
+            token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+        oauth = create_autospec(BaseOAuthTemplate, instance=True)
+
+        user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
+
+        oauth.revoke_connection.assert_not_called()
+        oauth.deregister_user.assert_not_called()
+        db.refresh(connection)
+        assert connection.status == ConnectionStatus.ACTIVE
+
+
+class TestHistoricalStartOnConnect:
+    """On reconnect only the gap since the last sync is backfilled."""
+
+    def _hold_data(self, user_id: UUID, provider: str, db: Session) -> None:
+        now = datetime.now(timezone.utc)
+        data_type_coverage_repository.record(
+            db, [CoverageSpan(user_id, provider, "heart_rate", DataTypeKind.SERIES, now - timedelta(days=60), now)]
+        )
+
+    def test_stamp_returns_replaced_value(self, db: Session) -> None:
+        last = datetime.now(timezone.utc) - timedelta(days=5)
+        connection = UserConnectionFactory(provider="oura", last_synced_at=last)
+
+        previous = user_connection_service.stamp_last_synced_at(db, connection.user_id, "oura")
+
+        assert previous == last
+        assert connection.last_synced_at > last
+
+    def test_reconnect_with_held_data_starts_at_last_sync(self, db: Session) -> None:
+        user = UserFactory()
+        self._hold_data(user.id, "oura", db)
+        last = datetime.now(timezone.utc) - timedelta(days=5)
+
+        with patch("app.services.user_connection_service.settings.pull_sync_lookback", timedelta(days=1)):
+            start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
+
+        assert start == last - timedelta(days=1)
+
+    def test_gap_longer_than_window_is_clamped(self, db: Session) -> None:
+        user = UserFactory()
+        self._hold_data(user.id, "oura", db)
+        last = datetime.now(timezone.utc) - timedelta(days=200)
+
+        before = datetime.now(timezone.utc)
+        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
+
+        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)
+
+    def test_no_held_data_uses_full_window(self, db: Session) -> None:
+        user = UserFactory()
+        self._hold_data(user.id, "whoop", db)
+        last = datetime.now(timezone.utc) - timedelta(days=5)
+
+        before = datetime.now(timezone.utc)
+        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
+
+        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)
+
+    def test_first_connect_uses_full_window(self, db: Session) -> None:
+        user = UserFactory()
+
+        before = datetime.now(timezone.utc)
+        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", None, days=90)
+
+        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)

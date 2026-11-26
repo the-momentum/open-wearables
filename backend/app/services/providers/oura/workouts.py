@@ -9,6 +9,7 @@ from app.constants.entry_source import get_unified_oura_entry_source
 from app.constants.intensity import get_unified_oura_intensity
 from app.constants.workout_types.oura import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -19,7 +20,9 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.dates import offset_to_iso
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class OuraWorkouts(BaseWorkoutsTemplate):
@@ -69,18 +72,14 @@ class OuraWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     "Error fetching Oura workout data",
                     action="oura_workout_fetch_error",
                     error=str(e),
                     user_id=str(user_id),
                 )
                 if all_workouts:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Returning partial workout data due to error",
                         action="oura_workout_partial_data",
                         error=str(e),
@@ -191,7 +190,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         metrics = self._build_metrics(raw_workout)
 
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Oura",
             device_model=None,

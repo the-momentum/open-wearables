@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { extent, linePath, scaleY } from '$lib/charts/geometry';
-import { dailyMeans, resolutionFor, toSeries, unitLabel, type Sample } from './samples';
+import { SERIES_TONES } from '$lib/charts/palette';
+import {
+	dailyMeans,
+	resolutionFor,
+	seriesColour,
+	toSeries,
+	unitLabel,
+	type Sample
+} from './samples';
 
 describe('dailyMeans', () => {
 	const series = {
@@ -125,5 +133,15 @@ describe('toSeries', () => {
 	// One point draws no line, so a lone reading is not a series.
 	it('leaves out a type with a single reading', () => {
 		expect(toSeries([sample({})])).toEqual([]);
+	});
+});
+
+describe('series colours', () => {
+	// Green, amber and red mean success, warning and failure everywhere else.
+	it('never draws a measure in a status colour', () => {
+		const types = ['heart_rate', 'power', 'cadence', 'speed', 'weight', 'something_new'];
+		for (const colour of [...SERIES_TONES, ...types.map(seriesColour)]) {
+			expect(colour).not.toMatch(/success|warning|danger/);
+		}
 	});
 });

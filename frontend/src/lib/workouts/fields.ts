@@ -21,7 +21,7 @@ const bpm = (value: number) => formatNumber(value, ' bpm');
  * grouped so a reader scans a subject rather than an alphabet. Absent fields are
  * dropped rather than dashed: on the summary row a dash says "this provider sent
  * nothing", but a dozen of them here would say nothing at all. `average_speed`
- * is deliberately missing - its unit differs per provider.
+ * is deliberately missing - the pace on the row already says it.
  */
 export function detailGroups(workout: Workout): FieldGroup[] {
 	const groups: GroupSpec[] = [

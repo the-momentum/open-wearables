@@ -1,5 +1,4 @@
-import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
@@ -7,6 +6,7 @@ from uuid import UUID, uuid4
 from app.constants.entry_source import get_unified_garmin_entry_source
 from app.constants.workout_types.garmin import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -14,11 +14,12 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.event_record_service import event_record_service
+from app.services.providers.garmin.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.utils.dates import offset_to_iso
-from app.utils.structured_logging import log_structured
+from app.utils.dates import as_utc, offset_to_iso
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GarminWorkouts(BaseWorkoutsTemplate):
@@ -87,13 +88,14 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                     all_activities.extend(activities)
             except Exception as e:
                 # Log error but continue with other chunks
-                log_structured(
-                    logger,
-                    "warning",
-                    f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
+                logger.warning(
+                    "Error fetching activities chunk",
                     provider="garmin",
                     task="get_workouts_historical",
                     user_id=str(user_id),
+                    chunk_start=current_start.isoformat(),
+                    chunk_end=current_end.isoformat(),
+                    error=str(e),
                 )
 
             current_start = current_end
@@ -114,13 +116,12 @@ class GarminWorkouts(BaseWorkoutsTemplate):
 
         # Default to last 24 hours if no time range provided
         if not start_ts:
-            start_ts = int((datetime.now() - timedelta(hours=24)).timestamp())
+            start_ts = int((datetime.now(timezone.utc) - timedelta(hours=24)).timestamp())
         if not end_ts:
-            end_ts = int(datetime.now().timestamp())
+            end_ts = int(datetime.now(timezone.utc).timestamp())
 
-        # Convert to datetime for chunked fetching
-        start_dt = datetime.fromtimestamp(start_ts)
-        end_dt = datetime.fromtimestamp(end_ts)
+        start_dt = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+        end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
         # Check if range exceeds 24 hours - if so, use chunked fetching
         if (end_dt - start_dt) > timedelta(hours=24):
@@ -152,15 +153,15 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         except ValueError:
             pass
         try:
-            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            dt = as_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))  # no offset in the string means UTC
             return int(dt.timestamp())
         except (ValueError, AttributeError):
             return None
 
     def _extract_dates(self, start_timestamp: int, end_timestamp: int) -> tuple[datetime, datetime]:
         """Extract start and end dates from timestamps."""
-        start_date = datetime.fromtimestamp(start_timestamp)
-        end_date = datetime.fromtimestamp(end_timestamp)
+        start_date = datetime.fromtimestamp(start_timestamp, tz=timezone.utc)
+        end_date = datetime.fromtimestamp(end_timestamp, tz=timezone.utc)
         return start_date, end_date
 
     def _build_metrics(self, raw_workout: GarminActivityJSON) -> EventRecordMetrics:
@@ -192,6 +193,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "heart_rate_avg": heart_rate_avg,
             "steps_count": steps_count,
             "energy_burned": energy_burned,
+            "energy_series": WORKOUT_ENERGY_SERIES,
             "distance": distance,
             "average_cadence": average_cadence,
         }
@@ -228,7 +230,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         zone_offset = offset_to_iso(raw_workout.startTimeOffsetInSeconds)
 
         record = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=device_name,
             device_model=raw_workout.deviceName,
@@ -269,7 +271,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         REST/summary endpoints are not used. Historical data is fetched
         via the backfill API which delivers data through webhooks.
         """
-        self.logger.info(f"Garmin activities for user {user_id} arrive via webhooks (no REST fetch)")
+        logger.info("Garmin activities arrive via webhooks (no REST fetch)", provider="garmin", user_id=str(user_id))
         return 0
 
     def get_activity_detail(

@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from faker import Faker
 
 from app.constants.sleep import SleepStageType
-from app.schemas.enums import ProviderName, SeriesType, WorkoutType
+from app.schemas.enums import EventCategory, ProviderName, SeriesType, WorkoutType
 from app.schemas.enums.workout_types import WORKOUTS_WITH_PACE
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -270,7 +270,7 @@ def _generate_workout(
         id=workout_id,
         source=provider.value,
         user_id=user_id,
-        category="workout",
+        category=EventCategory.WORKOUT,
         type=workout_type,
         duration_seconds=duration_seconds,
         source_name=prov_config["source_name"],
@@ -384,7 +384,7 @@ def _generate_sleep(
         id=sleep_id,
         source=provider.value,
         user_id=user_id,
-        category="sleep",
+        category=EventCategory.SLEEP,
         type=None,
         duration_seconds=sleep_duration_seconds,
         source_name=prov_config["source_name"],
@@ -468,7 +468,7 @@ def _generate_meal(
         external_id=str(meal_id),
         source=provider.value,
         user_id=user_id,
-        category="meal",
+        category=EventCategory.MEAL,
         type=None,
         duration_seconds=int((end_datetime - start_datetime).total_seconds()),
         source_name=prov_config["source_name"],

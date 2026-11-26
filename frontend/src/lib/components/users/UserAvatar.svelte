@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { avatarTone, initials } from '$lib/users/avatar';
+	import { AVATAR_TONE, initials } from '$lib/users/avatar';
 	import { cn } from '$lib/utils/cn';
 	import type { User } from '$lib/users/types';
 
@@ -10,11 +10,7 @@
 
 <span
 	aria-hidden="true"
-	class={cn(
-		'grid shrink-0 place-items-center rounded-full font-medium',
-		SIZE[size],
-		avatarTone(user.id)
-	)}
+	class={cn('grid shrink-0 place-items-center rounded-full font-medium', SIZE[size], AVATAR_TONE)}
 >
 	{initials(user)}
 </span>

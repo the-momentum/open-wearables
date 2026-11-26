@@ -15,6 +15,8 @@ class SourceMetadata(BaseModel):
     source: str | None = Field(None, example="Connect")
     device: str | None = Field(None, example="iPhone15,2")
     device_type: DeviceType | None = Field(None, example="phone")
+    # Provider device identifier where one is reported (Samsung, Polar); tells same-model devices apart
+    device_id: str | None = Field(None, example="R9ZW30ABC12")
 
     @computed_field
     @property

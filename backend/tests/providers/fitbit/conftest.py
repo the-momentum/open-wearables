@@ -1,18 +1,10 @@
 """
 Fitbit provider test configuration.
 
-Overrides session-scoped DB fixtures for pure unit tests that don't need a database.
+Disables factory session setup for pure unit tests that don't use factories.
 """
 
-from unittest.mock import MagicMock
-
 import pytest
-
-
-@pytest.fixture(scope="session")
-def engine() -> MagicMock:
-    """Override engine fixture — fitbit unit tests don't need a database."""
-    return MagicMock()
 
 
 @pytest.fixture(autouse=True)

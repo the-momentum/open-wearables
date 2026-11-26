@@ -7,10 +7,11 @@ Tests cover:
 - Pagination and sorting
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+import time_machine
 from sqlalchemy.orm import Session
 
 from app.models import Developer
@@ -113,6 +114,18 @@ class TestDeveloperRepository:
         assert len(results) == 1
         assert results[0].email == "target@example.com"
         assert results[0].id == dev1.id
+
+    def test_get_by_email(self, db: Session, developer_repo: DeveloperRepository) -> None:
+        developer = DeveloperFactory(email="found@example.com")
+        DeveloperFactory(email="other@example.com")
+
+        assert developer_repo.get_by_email(db, "found@example.com") == developer
+        assert developer_repo.get_by_email(db, "missing@example.com") is None
+
+    def test_list_all(self, db: Session, developer_repo: DeveloperRepository) -> None:
+        developers = {DeveloperFactory().id for _ in range(3)}
+
+        assert {developer.id for developer in developer_repo.list_all(db)} >= developers
 
     def test_get_all_with_pagination(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test pagination with offset and limit."""
@@ -280,19 +293,16 @@ class TestDeveloperRepository:
     def test_timestamps_on_update(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test that updated_at changes on update."""
         # Arrange
-        developer = DeveloperFactory(email="dev@example.com")
-        original_created_at = developer.created_at
-        original_updated_at = developer.updated_at
+        with time_machine.travel(datetime.now(timezone.utc), tick=False) as traveller:
+            developer = DeveloperFactory(email="dev@example.com")
+            original_created_at = developer.created_at
+            original_updated_at = developer.updated_at
 
-        # Wait a tiny bit to ensure timestamp difference
-        import time
+            traveller.shift(timedelta(seconds=1))
+            update_data = DeveloperUpdateInternal(email="updated@example.com")
 
-        time.sleep(0.01)
-
-        update_data = DeveloperUpdateInternal(email="updated@example.com")
-
-        # Act
-        result = developer_repo.update(db, developer, update_data)
+            # Act
+            result = developer_repo.update(db, developer, update_data)
 
         # Assert
         assert result.created_at == original_created_at  # Created timestamp unchanged

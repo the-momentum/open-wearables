@@ -5,17 +5,18 @@ all active subscriptions well before they expire.
 """
 
 import asyncio
-from logging import getLogger
 
 from celery import Task, shared_task
 
+from app.constants.celery_tasks import CeleryTask
 from app.services.providers.oura.webhook_service import oura_webhook_service
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(
+    name=CeleryTask.RENEW_OURA_WEBHOOKS,
     bind=True,
     acks_late=True,
     reject_on_worker_lost=True,
@@ -28,9 +29,7 @@ def renew_oura_webhooks(self: Task) -> dict:
         results = asyncio.run(oura_webhook_service.renew_subscriptions())
         renewed = sum(1 for r in results if r.get("status") == "renewed")
         errors = sum(1 for r in results if r.get("status") == "error")
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Oura webhook subscriptions renewed",
             action="renew_oura_webhooks_complete",
             renewed=renewed,
@@ -39,9 +38,7 @@ def renew_oura_webhooks(self: Task) -> dict:
         return {"renewed": renewed, "errors": errors}
 
     except Exception as exc:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Oura webhook renewal task failed, scheduling retry",
             error=str(exc),
             attempt=self.request.retries,

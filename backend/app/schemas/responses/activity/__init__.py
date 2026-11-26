@@ -2,6 +2,7 @@ from .data_point_responses import (
     ActiveMinutesResult,
     ActivityAggregateResult,
     IntensityMinutesResult,
+    SeriesStats,
     TimeSeriesSample,
 )
 from .events import (
@@ -40,6 +41,7 @@ __all__ = [
     "DailyHrvScore",
     "HrvCvScoreResult",
     # Data point responses
+    "SeriesStats",
     "TimeSeriesSample",
     "ActivityAggregateResult",
     "ActiveMinutesResult",

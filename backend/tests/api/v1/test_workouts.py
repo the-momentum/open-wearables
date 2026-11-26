@@ -373,7 +373,7 @@ class TestWorkoutsEndpoints:
         api_key = ApiKeyFactory()
         headers = api_key_headers(api_key.plain_key)
 
-        # Act & Assert - Invalid UUID causes 400 Bad Request (or 422 depending on config, but here 400)
+        # Act & Assert - Invalid UUID is a 422 validation error
         now = datetime.now(timezone.utc)
         start_date = (now - timedelta(days=30)).isoformat()
         end_date = (now + timedelta(days=1)).isoformat()
@@ -383,7 +383,7 @@ class TestWorkoutsEndpoints:
             headers=headers,
             params={"start_date": start_date, "end_date": end_date},
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_get_workouts_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving workouts for a user that doesn't exist."""
@@ -516,7 +516,7 @@ class TestWorkoutsEndpoints:
                 "include": "zonez",
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_source_filters_narrow_the_list(self, client: TestClient, db: Session) -> None:
         """Every source filter is wired through to the query, not just accepted and dropped."""
