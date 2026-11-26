@@ -44,6 +44,7 @@ from app.services.providers.google_health.data_247 import (
     UnsupportedGranularityError,
 )
 from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
+from app.services.providers.sync_247_result import error_code_of
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.exceptions import REAUTH_REQUIRED, InvalidInputError, ReauthRequiredError
@@ -169,15 +170,30 @@ class GoogleWebhookHandler(BaseWebhookHandler):
                 # Already revoked: an expected state, not a failure for Sentry; the rest of the batch goes on
                 results.append({"status": "error", "error": REAUTH_REQUIRED, "user_id": str(e.user_id)})
             except Exception as e:
+                context = self._user_context(db, item)
                 logger.error(
                     "Google webhook notification failed",
                     exc_info=e,
                     provider="google_health",
                     trace_id=trace_id,
+                    **context,
                 )
-                results.append({"status": "error", "error": str(e)})
+                results.append({"status": "error", "error": error_code_of(e), **context})
         records = sum(int(r.get("records_saved") or 0) for r in results)
         return {"status": "processed", "notifications": len(items), "records_saved": records, "results": results}
+
+    def _user_context(self, db: DbSession, item: Any) -> dict[str, str]:
+        """User and data type of a notification that raised, or {} when they can't be resolved."""
+        try:
+            notification = GoogleWebhookNotification.model_validate(item)
+            connection = self.connection_repo.get_by_provider_user_id(
+                db, "google_health", notification.data.health_user_id
+            )
+        except Exception:
+            return {}
+        if connection is None:
+            return {}
+        return {"user_id": str(connection.user_id), "data_type": notification.data.data_type}
 
     def _process_one(self, db: DbSession, item: Any, trace_id: str) -> dict[str, Any]:
         """Resolve the user, fetch the changed data over its intervals, and persist it."""
