@@ -13,7 +13,7 @@ RESERVED_CLAIMS = frozenset({"sub", "exp"})
 def create_access_token(
     subject: str | Any,
     expires_delta: timedelta | None = None,
-    **extra_claims: Any,
+    **extra_claims: str,
 ) -> str:
     """Create a signed JWT for `subject`, expiring after `expires_delta`.
 

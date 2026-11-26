@@ -179,11 +179,12 @@ class TestCreateAccessTokenExtraClaims:
         assert (payload1["sub"], payload1["app_id"]) == ("user_1", "app_1")
         assert (payload2["sub"], payload2["app_id"]) == ("user_2", "app_2")
 
-    @pytest.mark.parametrize("claim", ["sub", "exp"])
-    def test_reserved_claims_cannot_be_overridden(self, claim: str) -> None:
+    def test_reserved_claims_cannot_be_overridden(self) -> None:
         """Passing sub or exp as an extra claim should raise ValueError."""
-        with pytest.raises(ValueError, match=claim):
-            create_access_token(subject="user_456", **{claim: "forged"})
+        with pytest.raises(ValueError, match="sub"):
+            create_access_token(subject="user_456", sub="forged")
+        with pytest.raises(ValueError, match="exp"):
+            create_access_token(subject="user_456", exp="forged")
 
 
 class TestPasswordHashing:
