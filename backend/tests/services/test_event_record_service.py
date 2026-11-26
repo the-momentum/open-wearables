@@ -872,6 +872,30 @@ class TestCreateOrMergeSleep:
         assert d.sleep_awake_minutes == 52  # 22 + 30
         assert d.sleep_total_duration_minutes == 378  # 8 + 370
 
+    def test_overlapping_oura_sessions_with_different_ids_do_not_double_time_in_bed(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            external_id="oura-session-1",
+            start_datetime=self._dt(0),
+            end_datetime=self._dt(5),
+        )
+        SleepDetailsFactory(event_record=existing, sleep_time_in_bed_minutes=300)
+
+        record = self._record(data_source, self._dt(4), self._dt(8)).model_copy(
+            update={"external_id": "oura-session-2"}
+        )
+        result = event_record_service.create_or_merge_sleep(
+            db, user.id, record, self._detail(record.id, in_bed=240), self.THRESHOLD
+        )
+
+        assert result.start_datetime == self._dt(0)
+        assert result.end_datetime == self._dt(8)
+        assert result.sleep_detail.sleep_time_in_bed_minutes == 480
+
     def _unstaged_detail(self, record_id: UUID, stages: list[SleepStage] | None = None) -> EventRecordDetailCreate:
         return self._detail(record_id).model_copy(
             update={

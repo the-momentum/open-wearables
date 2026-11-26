@@ -35,7 +35,14 @@ from app.repositories.data_point_series_repository import WorkoutWindow
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.event_record_repository import local_days
 from app.schemas.data_type_coverage import CoverageSpan
-from app.schemas.enums import EventCategory, HealthScoreCategory, SeriesType, SourceSelection, get_series_type_unit
+from app.schemas.enums import (
+    EventCategory,
+    HealthScoreCategory,
+    ProviderName,
+    SeriesType,
+    SourceSelection,
+    get_series_type_unit,
+)
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -563,9 +570,23 @@ class EventRecordService(
             def _adj_int(attr: str) -> int:
                 return _adj_opt_int(attr) or 0
 
+            merged_start = min(adjacent.start_datetime, record.start_datetime)
+            merged_end = max(adjacent.end_datetime, record.end_datetime)
+            overlap_seconds = max(
+                0,
+                (
+                    min(adjacent.end_datetime, record.end_datetime)
+                    - max(adjacent.start_datetime, record.start_datetime)
+                ).total_seconds(),
+            )
+
             adj_in_bed = _adj_int("sleep_time_in_bed_minutes")
             new_in_bed = detail.sleep_time_in_bed_minutes or 0
             merged_in_bed = adj_in_bed + new_in_bed
+            if overlap_seconds > 0 and record.source == ProviderName.OURA:
+                # Oura's in-bed value is the full session window, so overlapping
+                # sessions with revised IDs must be measured over their union.
+                merged_in_bed = int((merged_end - merged_start).total_seconds() // 60)
 
             # Weighted efficiency: only include sessions that have a non-None score
             # so a missing score on one session does not dilute the merged average.
@@ -589,21 +610,11 @@ class EventRecordService(
             if adj_stages or new_stages:
                 merged_stages = sorted(adj_stages + new_stages, key=lambda s: s.start_time)
 
-            merged_start = min(adjacent.start_datetime, record.start_datetime)
-            merged_end = max(adjacent.end_datetime, record.end_datetime)
-
             # Compute per-stage minute totals.  When the windows actually overlap
             # and stage intervals are available, recompute from the merged timeline
             # (clipping overlaps — consistent with Apple SDK's _calculate_final_metrics)
             # to avoid double-counting the overlapping period.  For non-overlapping
             # sessions simple summation is exact.
-            overlap_seconds = max(
-                0,
-                (
-                    min(adjacent.end_datetime, record.end_datetime)
-                    - max(adjacent.start_datetime, record.start_datetime)
-                ).total_seconds(),
-            )
             if overlap_seconds > 0 and merged_stages:
                 deep_secs = light_secs = rem_secs = awake_secs = sleeping_secs = 0.0
                 last_end = None
