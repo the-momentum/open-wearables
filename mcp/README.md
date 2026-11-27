@@ -1,5 +1,7 @@
 # Open Wearables MCP Server
 
+[![Open Wearables MCP server](https://glama.ai/mcp/servers/the-momentum/open-wearables/badges/score.svg)](https://glama.ai/mcp/servers/the-momentum/open-wearables)
+
 MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants like Claude Desktop and Cursor to query wearable health data through natural language.
 
 ## Features
