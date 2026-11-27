@@ -1090,7 +1090,9 @@ class Garmin247Data(Base247DataTemplate):
         calories = raw_activity.get("activeKilocalories")
         avg_hr = raw_activity.get("averageHeartRateInBeatsPerMinute")
         max_hr = raw_activity.get("maxHeartRateInBeatsPerMinute")
-        elevation_gain = raw_activity.get("elevationGainInMeters")
+        elevation_gain = raw_activity.get("totalElevationGainInMeters")
+        if elevation_gain is None:
+            elevation_gain = raw_activity.get("elevationGainInMeters")
         avg_speed = raw_activity.get("averageSpeedInMetersPerSecond")
         avg_cadence = (
             raw_activity.get("averageRunCadenceInStepsPerMinute")

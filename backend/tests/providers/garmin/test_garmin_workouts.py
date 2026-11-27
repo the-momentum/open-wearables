@@ -30,7 +30,7 @@ class TestGarminWorkouts:
     """Tests for GarminWorkouts class."""
 
     @pytest.fixture
-    def garmin_workouts(self, db: Session) -> GarminWorkouts:
+    def garmin_workouts(self) -> GarminWorkouts:
         """Create GarminWorkouts instance for testing."""
         workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
@@ -200,6 +200,33 @@ class TestGarminWorkouts:
 
         # Should handle zero values
         assert metrics["steps_count"] == 0
+
+    def test_build_metrics_with_elevation_gain(self, garmin_workouts: GarminWorkouts) -> None:
+        """Test building metrics with elevation gain."""
+        activity = GarminActivityJSON(
+            userId="user_123",
+            activityId="act_123",
+            activityType="RUNNING",
+            startTimeInSeconds=1705309200,
+            durationInSeconds=3600,
+            totalElevationGainInMeters=125.5,
+            totalElevationLossInMeters=50.2,
+        )
+        metrics = garmin_workouts._build_metrics(activity)
+        assert metrics.get("total_elevation_gain") == Decimal("125.5")
+
+    def test_build_metrics_with_legacy_elevation_gain(self, garmin_workouts: GarminWorkouts) -> None:
+        """Test building metrics with legacy elevationGainInMeters fallback."""
+        activity = GarminActivityJSON(
+            userId="user_123",
+            activityId="act_123",
+            activityType="RUNNING",
+            startTimeInSeconds=1705309200,
+            durationInSeconds=3600,
+            elevationGainInMeters=75.0,
+        )
+        metrics = garmin_workouts._build_metrics(activity)
+        assert metrics.get("total_elevation_gain") == Decimal("75.0")
 
     def test_build_metrics_entry_source_and_label(self, garmin_workouts: GarminWorkouts) -> None:
         """manual=True is a hand-typed Connect entry -> MANUAL; isWebUpload=True is a real
