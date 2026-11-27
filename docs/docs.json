@@ -283,11 +283,14 @@
             "group": "Events",
             "pages": [
               "GET /api/v1/users/{user_id}/events/workouts",
+              "GET /api/v1/users/{user_id}/events/workouts/types",
               "GET /api/v1/users/{user_id}/events/workouts/totals",
               "DELETE /api/v1/users/{user_id}/events/workouts/{workout_id}",
               "GET /api/v1/users/{user_id}/events/sleep",
               "GET /api/v1/users/{user_id}/events/sleep/totals",
               "DELETE /api/v1/users/{user_id}/events/sleep/{sleep_id}",
+              "GET /api/v1/users/{user_id}/events/menstrual-cycles",
+              "DELETE /api/v1/users/{user_id}/events/menstrual-cycles/{cycle_id}",
               "GET /api/v1/users/{user_id}/events/meals",
               "DELETE /api/v1/users/{user_id}/events/meals/{meal_id}"
             ]
@@ -307,7 +310,8 @@
           {
             "group": "Meta",
             "pages": [
-              "GET /api/v1/meta/coverage"
+              "GET /api/v1/meta/coverage",
+              "GET /api/v1/meta/extensions"
             ]
           },
           {
@@ -326,6 +330,7 @@
             "pages": [
               "POST /api/v1/sdk/users/{user_id}/sync",
               "GET /api/v1/sdk/users/{user_id}/sync/status",
+              "POST /api/v1/sdk/users/{user_id}/logs",
               "POST /api/v1/users/{user_id}/token",
               "POST /api/v1/users/{user_id}/invitation-code",
               "POST /api/v1/invitation-code/redeem"
