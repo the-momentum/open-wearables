@@ -12,6 +12,7 @@
 	import { HEADING, MICRO } from '$lib/components/ui/typography';
 	import type { EventType, Subscription } from '$lib/webhooks/types';
 	import RecentDeliveries from './RecentDeliveries.svelte';
+	import SigningSecret from './SigningSecret.svelte';
 	import { summarise } from '$lib/webhooks/events';
 	import { plural } from '$lib/utils/text';
 	import EventList from './EventList.svelte';
@@ -94,6 +95,8 @@
 	{#snippet details()}
 		<div class="flex flex-col gap-4 border-t border-border pt-4">
 			<EventList {groups} />
+
+			<SigningSecret id={subscription.id} />
 
 			<!-- Above the list on purpose: what you send lands in it. -->
 			<TestEvent {subscription} {types} message={testMessage} />

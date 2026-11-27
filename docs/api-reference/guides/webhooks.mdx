@@ -64,7 +64,7 @@ Webhooks are delivered via [Svix](https://svix.com/), which handles retries, sig
   </Step>
 
   <Step title="Get the signing secret">
-    Retrieve the HMAC signing key for your endpoint to verify incoming payloads.
+    Retrieve the HMAC signing key for your endpoint to verify incoming payloads. In the developer portal, open the endpoint on the **Webhooks** page and use **Reveal** or **Copy** next to **Signing secret**. Through the API:
 
     ```bash
     curl "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7/secret" \
