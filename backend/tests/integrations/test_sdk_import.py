@@ -1311,6 +1311,21 @@ class TestSDKImportUnitConversion:
         assert samples[0].series_type == SeriesType.blood_glucose
         assert samples[0].value == Decimal("105")
 
+    def test_apple_hip_circumference_maps_to_own_series(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """iOS 27.3 adds HKQuantityTypeIdentifierHipCircumference beside waist; cm is stored unchanged."""
+        request = self._build_request(
+            "apple",
+            [self._record("HKQuantityTypeIdentifierHipCircumference", 98.0, unit="cm")],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.hip_circumference
+        assert samples[0].value == Decimal("98.000")
+
 
 class TestSDKImportPercentageScale:
     """Percentage metrics: iOS SDK builds before `APPLE_SDK_PERCENT_SCALE_MIN_VERSION` send a

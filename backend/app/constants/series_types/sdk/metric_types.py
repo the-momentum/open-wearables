@@ -125,6 +125,7 @@ class SDKMetricType(StrEnum):
 
     # Body Metrics - Extended
     WAIST_CIRCUMFERENCE = "HKQuantityTypeIdentifierWaistCircumference"
+    HIP_CIRCUMFERENCE = "HKQuantityTypeIdentifierHipCircumference"
     INSULIN_DELIVERY = "HKQuantityTypeIdentifierInsulinDelivery"
 
     # Behavioral
@@ -311,6 +312,7 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.ANDROID_BODY_TEMPERATURE: SeriesType.body_temperature,
     # Body Composition - Extended
     SDKMetricType.WAIST_CIRCUMFERENCE: SeriesType.waist_circumference,
+    SDKMetricType.HIP_CIRCUMFERENCE: SeriesType.hip_circumference,
     # Fitness Metrics
     SDKMetricType.APPLE_VO2_MAX: SeriesType.vo2_max,
     SDKMetricType.ANDROID_VO2_MAX: SeriesType.vo2_max,

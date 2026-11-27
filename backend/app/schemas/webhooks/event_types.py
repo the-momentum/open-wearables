@@ -124,6 +124,7 @@ class WebhookEventType(StrEnum):
     SERIES_BODY_WATER_MASS = "series.body_water_mass.created"
     SERIES_BODY_WATER_PERCENTAGE = "series.body_water_percentage.created"
     SERIES_WAIST_CIRCUMFERENCE = "series.waist_circumference.created"
+    SERIES_HIP_CIRCUMFERENCE = "series.hip_circumference.created"
 
     # Body temperature
     SERIES_BODY_TEMPERATURE = "series.body_temperature.created"
@@ -281,6 +282,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_BODY_WATER_MASS: "Body water mass samples were ingested.",
     WebhookEventType.SERIES_BODY_WATER_PERCENTAGE: "Body water percentage samples were ingested.",
     WebhookEventType.SERIES_WAIST_CIRCUMFERENCE: "Waist circumference samples were ingested.",
+    WebhookEventType.SERIES_HIP_CIRCUMFERENCE: "Hip circumference samples were ingested.",
     WebhookEventType.SERIES_BODY_TEMPERATURE: "Core body temperature samples were ingested.",
     WebhookEventType.SERIES_SKIN_TEMPERATURE: "Skin temperature samples were ingested.",
     WebhookEventType.SERIES_SKIN_TEMPERATURE_DEVIATION: "Skin temperature deviation samples were ingested.",
@@ -399,6 +401,7 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_BODY_WATER_MASS,
         WebhookEventType.SERIES_BODY_WATER_PERCENTAGE,
         WebhookEventType.SERIES_WAIST_CIRCUMFERENCE,
+        WebhookEventType.SERIES_HIP_CIRCUMFERENCE,
     ],
     WebhookEventType.BODY_TEMPERATURE_CREATED: [
         WebhookEventType.SERIES_BODY_TEMPERATURE,

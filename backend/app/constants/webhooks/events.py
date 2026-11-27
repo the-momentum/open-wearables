@@ -48,6 +48,7 @@ SERIES_TYPE_TO_GROUP_EVENT: dict[str, str] = {
     "body_water_mass": WebhookEventType.BODY_COMPOSITION_CREATED,
     "body_water_percentage": WebhookEventType.BODY_COMPOSITION_CREATED,
     "waist_circumference": WebhookEventType.BODY_COMPOSITION_CREATED,
+    "hip_circumference": WebhookEventType.BODY_COMPOSITION_CREATED,
     # Body Temperature
     "body_temperature": WebhookEventType.BODY_TEMPERATURE_CREATED,
     "skin_temperature": WebhookEventType.BODY_TEMPERATURE_CREATED,
@@ -154,6 +155,7 @@ SERIES_TYPE_TO_GRANULAR_EVENT: dict[str, str] = {
     "body_water_mass": WebhookEventType.SERIES_BODY_WATER_MASS,
     "body_water_percentage": WebhookEventType.SERIES_BODY_WATER_PERCENTAGE,
     "waist_circumference": WebhookEventType.SERIES_WAIST_CIRCUMFERENCE,
+    "hip_circumference": WebhookEventType.SERIES_HIP_CIRCUMFERENCE,
     "body_temperature": WebhookEventType.SERIES_BODY_TEMPERATURE,
     "skin_temperature": WebhookEventType.SERIES_SKIN_TEMPERATURE,
     "skin_temperature_deviation": WebhookEventType.SERIES_SKIN_TEMPERATURE_DEVIATION,

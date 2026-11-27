@@ -341,6 +341,9 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     WebhookEventType.SERIES_BODY_WATER_PERCENTAGE: _ts_payload(
         WebhookEventType.SERIES_BODY_WATER_PERCENTAGE, "body_water_percentage", "garmin", "%", 56.4
     ),
+    WebhookEventType.SERIES_HIP_CIRCUMFERENCE: _ts_payload(
+        WebhookEventType.SERIES_HIP_CIRCUMFERENCE, "hip_circumference", "apple", "cm", 98.0
+    ),
     WebhookEventType.SERIES_WAIST_CIRCUMFERENCE: _ts_payload(
         WebhookEventType.SERIES_WAIST_CIRCUMFERENCE, "waist_circumference", "apple", "cm", 84.0
     ),
