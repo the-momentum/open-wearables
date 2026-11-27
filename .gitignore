@@ -175,6 +175,9 @@ CLAUDE.local.md
 # Exception: generated OpenAPI spec that feeds the docs API Reference
 !docs/openapi.json
 
+# Exception: Glama listing maintainers for the MCP server
+!glama.json
+
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
 # Locally checked-out extensions
