@@ -1430,6 +1430,12 @@ export const deleteSubscription = (id: string) => {
 	return true;
 };
 
+/** Svix keeps one signing secret per endpoint; a fictional one, but shaped like the real `whsec_` key. */
+export const signingSecretFor = (id: string) =>
+	SUBSCRIPTIONS.some((entry) => entry.id === id)
+		? { key: `whsec_e2e_${id}_not_a_real_secret` }
+		: null;
+
 /**
  * Delivery attempts, faithful to what Svix 2.x actually returns: the response
  * body and the event payload are behind a `with_content` flag the backend does
