@@ -291,3 +291,20 @@ test('sends deliveries back to the list when webhooks are off', async ({ page, r
 
 	await expect(page).toHaveURL('/webhooks');
 });
+
+test('keeps the signing secret masked until it is revealed', async ({ page }) => {
+	await page.goto('/webhooks');
+
+	const card = page.getByRole('article').first();
+	await card.getByRole('button', { name: /Production listener/ }).click();
+
+	// Not in the page until someone asks: masked, and the real key nowhere on it.
+	await expect(card.getByLabel('Signing secret, hidden')).toBeVisible();
+	await expect(card.getByText('whsec_e2e_ep_live_not_a_real_secret')).toHaveCount(0);
+
+	await card.getByRole('button', { name: 'Reveal' }).click();
+	await expect(card.getByText('whsec_e2e_ep_live_not_a_real_secret')).toBeVisible();
+
+	await card.getByRole('button', { name: 'Hide' }).click();
+	await expect(card.getByLabel('Signing secret, hidden')).toBeVisible();
+});

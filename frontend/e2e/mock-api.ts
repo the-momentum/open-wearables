@@ -47,6 +47,7 @@ import {
 	createSubscription,
 	deleteSubscription,
 	listSubscriptions,
+	signingSecretFor,
 	makeCoverage,
 	makeDeliveries,
 	makeEventTypes,
@@ -334,6 +335,12 @@ const server = Bun.serve({
 			const { event_type } = await request.json();
 			// The real thing queues it, so a delivery does not appear at once.
 			return json({ message: 'Test event sent successfully.', message_id: `msg_${event_type}` });
+		}
+
+		const secretMatch = pathname.match(/^\/api\/v1\/webhooks\/endpoints\/([^/]+)\/secret$/);
+		if (secretMatch && request.method === 'GET') {
+			const secret = signingSecretFor(secretMatch[1]);
+			return secret ? json(secret) : problem(404, 'Not found', 'NOT_FOUND');
 		}
 
 		const attemptsMatch = pathname.match(/^\/api\/v1\/webhooks\/endpoints\/([^/]+)\/attempts$/);

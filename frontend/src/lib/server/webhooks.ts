@@ -47,3 +47,9 @@ export function listDeliveries(
 
 	return apiGet<WebhookPage<Delivery>>(`${ENDPOINTS}/${id}/attempts?${params}`, accessToken);
 }
+
+/** Mirrors backend `EndpointSecretResponse`: the `whsec_...` key Svix signs deliveries with. */
+export type SigningSecret = { key: string };
+
+export const getSigningSecret = (id: string, accessToken: string) =>
+	apiGet<SigningSecret>(`${ENDPOINTS}/${id}/secret`, accessToken);
