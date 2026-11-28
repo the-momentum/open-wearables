@@ -388,6 +388,9 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     WebhookEventType.SERIES_BASAL_ENERGY: _ts_payload(
         WebhookEventType.SERIES_BASAL_ENERGY, "basal_energy", "apple", "kcal", 1850.0
     ),
+    WebhookEventType.SERIES_BASAL_METABOLIC_RATE: _ts_payload(
+        WebhookEventType.SERIES_BASAL_METABOLIC_RATE, "basal_metabolic_rate", "health_connect", "kcal/day", 1520.0
+    ),
     WebhookEventType.SERIES_TOTAL_ENERGY: _ts_payload(
         WebhookEventType.SERIES_TOTAL_ENERGY, "total_energy", "health_connect", "kcal", 2150.0
     ),

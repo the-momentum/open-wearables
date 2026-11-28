@@ -224,6 +224,15 @@ echo 'Running sleep external_id dedupe...'
 uv run python scripts/data_migrations/dedupe_sleep_by_external_id.py \
     || echo "Warning: sleep external_id dedupe failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-05-01 once all deployments have migrated.
+# Relabels Health Connect/Samsung BMR stored as basal_energy (id=82) to basal_metabolic_rate
+# (id=90): the records are kcal/day rate estimates, not interval energy. No other Android
+# record writes basal_energy, so the provider scope makes the relabel unambiguous.
+# Idempotent, no-op once corrected.
+echo 'Running Android basal_energy->basal_metabolic_rate relabel...'
+uv run python scripts/data_migrations/relabel_android_basal_energy_to_bmr.py \
+    || echo "Warning: Android basal energy relabel failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

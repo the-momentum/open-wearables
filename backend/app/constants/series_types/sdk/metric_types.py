@@ -41,6 +41,8 @@ class SDKMetricType(StrEnum):
     ANDROID_LEAN_BODY_MASS = "LEAN_BODY_MASS"
     ANDROID_SKELETAL_MUSCLE_MASS = "SKELETAL_MUSCLE_MASS"
     ANDROID_BODY_FAT_MASS = "BODY_FAT_MASS"
+    ANDROID_BONE_MASS = "BONE_MASS"
+    ANDROID_BODY_WATER_MASS = "BODY_WATER_MASS"
     APPLE_BODY_FAT_PERCENTAGE = "HKQuantityTypeIdentifierBodyFatPercentage"
     ANDROID_BODY_FAT_PERCENTAGE = "BODY_FAT"
     APPLE_BODY_MASS_INDEX = "HKQuantityTypeIdentifierBodyMassIndex"
@@ -302,6 +304,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.APPLE_BODY_FAT_PERCENTAGE: SeriesType.body_fat_percentage,
     SDKMetricType.ANDROID_BODY_FAT_PERCENTAGE: SeriesType.body_fat_percentage,
     SDKMetricType.ANDROID_BODY_FAT_MASS: SeriesType.body_fat_mass,
+    SDKMetricType.ANDROID_BONE_MASS: SeriesType.bone_mass,
+    SDKMetricType.ANDROID_BODY_WATER_MASS: SeriesType.body_water_mass,
     SDKMetricType.APPLE_BODY_MASS_INDEX: SeriesType.body_mass_index,
     SDKMetricType.ANDROID_BODY_MASS_INDEX: SeriesType.body_mass_index,
     SDKMetricType.LEAN_BODY_MASS: SeriesType.lean_body_mass,
@@ -321,7 +325,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.APPLE_ACTIVE_ENERGY_BURNED: SeriesType.active_energy,
     SDKMetricType.APPLE_BASAL_ENERGY_BURNED: SeriesType.basal_energy,
     SDKMetricType.ANDROID_ACTIVE_CALORIES_BURNED: SeriesType.active_energy,
-    SDKMetricType.ANDROID_BASAL_METABOLIC_RATE: SeriesType.basal_energy,
+    # A scale-estimated kcal/day rate, not energy burned over an interval (#2103).
+    SDKMetricType.ANDROID_BASAL_METABOLIC_RATE: SeriesType.basal_metabolic_rate,
     SDKMetricType.APPLE_STAND_TIME: SeriesType.stand_time,
     SDKMetricType.APPLE_EXERCISE_TIME: SeriesType.exercise_time,
     SDKMetricType.ANDROID_ACTIVITY_INTENSITY_MODERATE: SeriesType.exercise_time,

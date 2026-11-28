@@ -5,6 +5,11 @@
 - `series.average_met.created` -> retired: average_met merged into physical_effort, and a workout's
   average MET is a session value now, not a sample, so no series event carries it any more
 
+One pair is a split, not a rename: Android BMR readings moved from `series.basal_energy.created`
+to `series.basal_metabolic_rate.created`, but Apple's interval basal energy still dispatches the
+old name. Endpoints filtering on it gain the new one in the add phase and keep the old one —
+`--phase=remove` never drops a split pair.
+
 A Svix endpoint filters on event-type names, so switching the name we dispatch would leave every
 existing subscription intact but matching a name nothing sends any more: no error, just silence.
 
@@ -44,6 +49,15 @@ RENAMED: dict[str, str | None] = {
     "series.average_met.created": None,
 }
 
+# Old event type -> the new one part of its samples moved to. Unlike a rename the old name
+# keeps firing (Apple's interval basal energy still dispatches series.basal_energy.created),
+# so subscribers gain the new name and KEEP the old one: before the split they received
+# Android BMR under the old name, and dropping it would lose them the Apple data. These pairs
+# are add-only — --phase=remove never touches them.
+SPLIT: dict[str, str] = {
+    "series.basal_energy.created": "series.basal_metabolic_rate.created",
+}
+
 
 def _target_filters(current: list[str], phase: str) -> list[str] | None:
     """The filter list this endpoint should end up with, or None when it is already correct.
@@ -53,6 +67,7 @@ def _target_filters(current: list[str], phase: str) -> list[str] | None:
     """
     if phase == "add":
         added = [new for old, new in RENAMED.items() if old in current and new and new not in current]
+        added += [new for old, new in SPLIT.items() if old in current and new not in current]
         return [*current, *added] if added else None
     kept = [f for f in current if f not in RENAMED]
     return kept if kept and kept != current else None
