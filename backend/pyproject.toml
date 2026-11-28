@@ -8,23 +8,23 @@ dependencies = [
     "pydantic-settings>=2.16.3",
     "email-validator>=2.4.0",
     "psycopg>=3.3.9",
-    "sqlalchemy>=2.1.8",
+    "sqlalchemy>=2.1.9",
     "fastapi>=0.163.1",
     "fastapi-cli>=0.0.34",
     "celery>=5.7.0",
     "flower>=2.2.0",
     "redis>=8.1.0",
     "sentry-sdk[fastapi]>=2.75.0",
-    "python-multipart>=0.0.33",
+    "python-multipart>=0.0.34",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
     "alembic>=1.20.1",
-    "boto3>=1.44.3",
+    "boto3>=1.44.9",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.53.2",
-    "pyyaml>=6.0.3",
+    "resend>=2.54.0",
+    "pyyaml>=6.0.4",
     "svix>=2.10.0",
     "numpy>=2.5.5",
     "faker>=40.54.0",
@@ -36,7 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 # OpenTelemetry log export, used only with OTEL_ENABLED=true. The published image includes it.
 otel = [
-    "fastapi[opentelemetry]>=0.163.1",
+    "fastapi[opentelemetry]>=0.165.0",
     "opentelemetry-sdk>=1.45.2",
     "opentelemetry-exporter-otlp-proto-http>=1.45.2",
     "opentelemetry-instrumentation-logging>=0.66b2",
@@ -45,8 +45,8 @@ otel = [
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.7.0",
-    "ruff>=0.17.5",
-    "ty>=0.0.104",
+    "ruff>=0.17.6",
+    "ty>=0.0.108",
 ]
 dev = [
     "pytest>=9.2.0",
@@ -63,7 +63,7 @@ dev = [
     "pytest-mock>=3.17.0",
     "dirty-equals>=0.11",
     "inline-snapshot>=0.37.0",
-    "ruff>=0.17.5",  # inline-snapshot formats fixed snapshots with ruff
+    "ruff>=0.17.6",  # inline-snapshot formats fixed snapshots with ruff
     "polyfactory>=3.5.0",
 ]
 

@@ -46,7 +46,7 @@ backend/app/static/provider-icons/strava.svg    # Provider icon
 Files to modify:
 ```
 backend/app/services/providers/factory.py       # Register in ProviderFactory
-backend/app/schemas/oauth.py                    # Add to ProviderName enum
+backend/app/schemas/enums/provider.py           # Add to ProviderName enum
 backend/app/config.py                           # Add OAuth credentials
 ```
 

@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.schemas.model_crud.credentials import OAuthState
-from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.exceptions import InvalidInputError
+from app.utils.security import create_access_token
 from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
 from tests.utils import api_key_headers, developer_auth_headers
 
@@ -61,12 +61,12 @@ class TestRedirectAllowlist:
 class TestAuthorizeAuth:
     def test_sdk_token_connects_its_own_user(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
-        headers = {"Authorization": f"Bearer {create_sdk_user_token('app', str(user.id))}"}
+        headers = {"Authorization": f"Bearer {create_access_token(subject=str(user.id), scope='sdk', app_id='app')}"}
 
         assert authorize(client, APP_CALLBACK, headers, str(user.id)).status_code == 200
 
     def test_sdk_token_cannot_connect_another_user(self, client: TestClient, db: Session) -> None:
-        headers = {"Authorization": f"Bearer {create_sdk_user_token('app', str(uuid4()))}"}
+        headers = {"Authorization": f"Bearer {create_access_token(subject=str(uuid4()), scope='sdk', app_id='app')}"}
 
         assert authorize(client, APP_CALLBACK, headers).status_code == 403
 

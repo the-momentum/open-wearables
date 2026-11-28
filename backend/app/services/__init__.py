@@ -10,7 +10,6 @@ from .priority_service import PriorityService
 from .providers.apple.apple_xml.presigned_url_service import presigned_url_service
 from .refresh_token_service import refresh_token_service
 from .sdk.import_service import import_service as sdk_import_service
-from .sdk_token_service import create_sdk_user_token
 from .services import AppService
 from .summaries_service import summaries_service
 from .system_info_service import system_info_service
@@ -24,7 +23,6 @@ __all__ = [
     "api_key_service",
     "application_service",
     "archival_service",
-    "create_sdk_user_token",
     "developer_service",
     "invitation_service",
     "refresh_token_service",
